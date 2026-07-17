@@ -11,7 +11,7 @@ import {
   BRANDS_PROMO,
   VIEW_ALL_BRANDS_HREF,
   VIEW_ALL_STYLES_HREF,
-} from "@/data/navigation";
+} from "@/content/navigation";
 
 const CLOSE_DELAY = 150;
 

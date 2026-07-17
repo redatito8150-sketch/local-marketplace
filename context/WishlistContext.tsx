@@ -8,15 +8,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { WishlistItem } from "@/types";
 
-export interface WishlistItem {
-  productId: string;
-  name: string;
-  brand: string;
-  price: number;
-  currency: "USD" | "EGP";
-  image: string;
-}
+export type { WishlistItem };
 
 interface WishlistContextValue {
   items: WishlistItem[];

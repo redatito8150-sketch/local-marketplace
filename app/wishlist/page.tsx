@@ -7,11 +7,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useWishlist } from "@/context/WishlistContext";
 import { useCart } from "@/context/CartContext";
-
-function formatPrice(price: number, currency: "USD" | "EGP") {
-  if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-  return `$${price.toFixed(2)}`;
-}
+import { formatPrice } from "@/lib/format";
 
 export default function WishlistPage() {
   const { items, removeItem } = useWishlist();

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Search, Heart, ShoppingBag } from "lucide-react";
+import { Heart, ShoppingBag } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
+import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 
@@ -19,8 +19,6 @@ const NAV_LINKS = [
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [active, setActive] = useState("Home");
-  const [query, setQuery] = useState("");
-  const router = useRouter();
   const { itemCount } = useCart();
   const { count: wishlistCount } = useWishlist();
 
@@ -29,12 +27,6 @@ export default function Header() {
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = query.trim();
-    if (trimmed) router.push(`/search?q=${encodeURIComponent(trimmed)}`);
-  };
 
   return (
     <motion.header
@@ -95,16 +87,7 @@ export default function Header() {
 
         {/* Right actions */}
         <div className="flex items-center gap-4">
-          <form onSubmit={handleSearch} className="relative hidden md:block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/60" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search for products, brands..."
-              className="w-64 rounded-full border border-stone-150 bg-white/70 py-2.5 pl-11 pr-4 text-sm text-ink placeholder:text-ink-soft/50 outline-none transition-all focus:w-72 focus:border-ink/30 focus:bg-white"
-            />
-          </form>
+          <SearchAutocomplete />
 
           <Link
             href="/wishlist"

@@ -6,7 +6,7 @@ import {
   ProductReview,
   ProductColorOption,
 } from "@/types";
-import { CATEGORIES } from "@/data/categories";
+import { CATEGORIES } from "@/content/categories";
 
 interface ProductRow {
   id: string;
@@ -60,6 +60,9 @@ function toProductCard(row: ProductRow): Product {
     rating: Math.round(row.rating),
     reviewCount: row.review_count,
     image: row.image,
+    sizes: row.sizes ?? [],
+    colors: row.colors ?? [],
+    inStock: row.in_stock,
   };
 }
 
@@ -109,8 +112,7 @@ export async function getProductsByCategory(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error("getProductsByCategory failed:", error.message);
-    return [];
+    throw new Error(`getProductsByCategory(${category}) failed: ${error.message}`);
   }
   return (data as ProductRow[]).map(toProductCard);
 }
@@ -123,10 +125,13 @@ export async function getProductCountLabel(
     .select("id", { count: "exact", head: true })
     .eq("category", category);
 
-  if (error || count === null) return 0;
+  if (error) {
+    throw new Error(`getProductCountLabel(${category}) failed: ${error.message}`);
+  }
   // Storefront copy shows a rounded "catalog size" rather than the literal
   // seeded row count — keeps the existing look while the catalog is small.
-  return category === "women" ? Math.max(count, 342) : count * 40;
+  const safeCount = count ?? 0;
+  return category === "women" ? Math.max(safeCount, 342) : safeCount * 40;
 }
 
 export async function getProductById(id: string): Promise<ProductDetail | null> {
@@ -136,7 +141,14 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) return null;
+  // A real fetch/connection error should surface as an error page.
+  // `data === null` with no error just means "no product with this id",
+  // which is a normal 404, not a failure.
+  if (error) {
+    throw new Error(`getProductById(${id}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+
   const row = data as ProductRow;
   const detail = toProductDetail(row);
 
@@ -146,8 +158,15 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
     ? relatedQuery.eq("category", row.category)
     : relatedQuery.eq("brand_slug", row.brand_slug ?? "__none__");
 
-  const { data: relatedRows } = await relatedQuery;
-  detail.relatedIds = (relatedRows ?? []).map((r) => r.id as string);
+  const { data: relatedRows, error: relatedError } = await relatedQuery;
+  if (relatedError) {
+    // Related products are supplementary, not critical — degrade quietly
+    // rather than failing the whole product page over a secondary query.
+    console.error("Related products query failed:", relatedError.message);
+    detail.relatedIds = [];
+  } else {
+    detail.relatedIds = (relatedRows ?? []).map((r) => r.id as string);
+  }
 
   return detail;
 }
@@ -168,7 +187,15 @@ export async function getRelatedProductCards(
 ): Promise<RelatedProductCard[]> {
   if (ids.length === 0) return [];
   const { data, error } = await supabase.from("products").select("*").in("id", ids);
-  if (error || !data) return [];
+  // Intentionally degrade quietly here (unlike the other functions in this
+  // file): related products are a secondary "you may also like" section,
+  // not core content. A failure here shouldn't take down the whole
+  // product page via the error boundary.
+  if (error) {
+    console.error("getRelatedProductCards failed:", error.message);
+    return [];
+  }
+  if (!data) return [];
 
   return (data as ProductRow[]).map((row) => ({
     id: row.id,
@@ -192,25 +219,52 @@ export interface SearchResult {
   href: string;
 }
 
-export async function searchProducts(query: string): Promise<SearchResult[]> {
+function escapeLikePattern(value: string): string {
+  // Escape LIKE/ILIKE wildcard characters so user input is matched
+  // literally instead of being interpreted as a wildcard pattern.
+  return value.replace(/[%_]/g, (match) => `\\${match}`);
+}
+
+export async function searchProducts(
+  query: string,
+  limit: number = 24
+): Promise<SearchResult[]> {
   const q = query.trim();
   if (!q) return [];
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .or(`name.ilike.%${q}%,brand_name.ilike.%${q}%`)
-    .limit(24);
+  const pattern = `%${escapeLikePattern(q)}%`;
 
-  if (error || !data) return [];
+  // Two parameterized queries instead of one interpolated `.or()` filter
+  // string — user input never gets parsed as PostgREST filter syntax.
+  const [byName, byBrand] = await Promise.all([
+    supabase.from("products").select("*").ilike("name", pattern).limit(limit),
+    supabase.from("products").select("*").ilike("brand_name", pattern).limit(limit),
+  ]);
 
-  return (data as ProductRow[]).map((row) => ({
-    id: row.id,
-    name: row.name,
-    brand: row.brand_name,
-    price: Number(row.price),
-    currency: row.currency,
-    image: row.image,
-    href: `/product/${row.id}`,
-  }));
+  if (byName.error || byBrand.error) {
+    throw new Error(
+      (byName.error ?? byBrand.error)?.message ?? "Search failed"
+    );
+  }
+
+  const seen = new Set<string>();
+  const merged = [...(byName.data ?? []), ...(byBrand.data ?? [])].filter(
+    (row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    }
+  );
+
+  return (merged as ProductRow[])
+    .slice(0, limit)
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      brand: row.brand_name,
+      price: Number(row.price),
+      currency: row.currency,
+      image: row.image,
+      href: `/product/${row.id}`,
+    }));
 }

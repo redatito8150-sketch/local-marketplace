@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { ARTICLES, getArticle } from "@/data/journal";
+import { ARTICLES, getArticle } from "@/content/journal";
 
 export function generateStaticParams() {
   return ARTICLES.map((a) => ({ slug: a.slug }));

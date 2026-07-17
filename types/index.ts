@@ -52,11 +52,40 @@ export interface Product {
   rating: number;
   reviewCount: number;
   image: string;
+  sizes: string[];
+  colors: ProductColorOption[];
+  inStock: boolean;
 }
 
 export type SortOption = "newest" | "price-asc" | "price-desc" | "top-rated";
 
 export type ViewMode = "grid" | "list";
+
+// ── Cart & Wishlist (moved here from context/CartContext.tsx and
+// context/WishlistContext.tsx so all domain types live in one place) ──────
+
+export interface CartLineItem {
+  id: string; // unique line id (product id + size + color)
+  productId: string;
+  name: string;
+  brand: string;
+  price: number;
+  currency: "USD" | "EGP";
+  image: string;
+  size: string;
+  color?: string;
+  quantity: number;
+}
+
+export interface WishlistItem {
+  productId: string;
+  name: string;
+  brand: string;
+  price: number;
+  currency: "USD" | "EGP";
+  image: string;
+}
+
 
 // ── Brand page types (LOCAL brand-page template) ────────────────────────────
 

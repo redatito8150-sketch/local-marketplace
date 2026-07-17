@@ -2,10 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, Star } from "lucide-react";
+import { Heart } from "lucide-react";
 import { Product, ViewMode } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
+import { formatPrice } from "@/lib/format";
+import StarRating from "@/components/shared/StarRating";
 
 export default function ProductCard({
   product,
@@ -71,20 +73,11 @@ export default function ProductCard({
           {product.name}
         </h3>
         <p className="mt-1.5 text-[14px] font-semibold text-ink">
-          ${product.price.toFixed(2)}
+          {formatPrice(product.price, "USD")}
         </p>
 
         <div className="mt-1.5 flex items-center gap-1.5">
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star
-                key={i}
-                className="h-3 w-3"
-                strokeWidth={0}
-                fill={i < product.rating ? "#161513" : "#E7E4DE"}
-              />
-            ))}
-          </div>
+          <StarRating rating={product.rating} size="xs" />
           <span className="text-[12px] text-ink-soft/45">
             ({product.reviewCount})
           </span>

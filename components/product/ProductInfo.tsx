@@ -2,15 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Heart, Minus, Plus, Star, Check, Truck } from "lucide-react";
+import { Heart, Minus, Plus, Check, Truck } from "lucide-react";
 import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
-
-function formatPrice(price: number, currency: "USD" | "EGP") {
-  if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-  return `$${price.toFixed(2)}`;
-}
+import { formatPrice } from "@/lib/format";
+import StarRating from "@/components/shared/StarRating";
 
 export default function ProductInfo({ product }: { product: ProductDetail }) {
   const { addItem } = useCart();
@@ -68,16 +65,7 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
       </h1>
 
       <div className="mt-3 flex items-center gap-3">
-        <div className="flex items-center gap-0.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star
-              key={i}
-              className="h-3.5 w-3.5"
-              strokeWidth={0}
-              fill={i < Math.round(product.rating) ? "#161513" : "#E7E4DE"}
-            />
-          ))}
-        </div>
+        <StarRating rating={product.rating} size="sm" />
         <a
           href="#reviews"
           className="text-[13px] text-ink-soft/60 underline-offset-2 hover:underline"

@@ -29,19 +29,36 @@ npm run start
 
 ```
 local-marketplace/
-├── app/
-│   ├── layout.tsx      # Root layout, fonts, metadata
-│   ├── page.tsx         # Assembles all sections
-│   └── globals.css      # Tailwind base + Inter font
+├── app/                    # Routes (Next.js App Router)
+│   ├── shop/[category]/     # Women/Men/Kids category pages
+│   ├── product/[id]/        # Product detail page
+│   ├── brands/[slug]/       # Individual brand pages
+│   ├── cart/, checkout/, wishlist/, search/, journal/, account/
+│   ├── error.tsx             # Catches errors in any page below the root layout
+│   └── global-error.tsx      # Catches errors in the root layout itself
 ├── components/
-│   ├── Header.tsx        # Sticky nav, search, wishlist, cart
-│   ├── Hero.tsx           # Split hero + rotated department cards
-│   ├── ExploreBoards.tsx  # Pinterest-style horizontal gallery
-│   ├── Sponsored.tsx      # Featured brand campaign section
-│   └── Footer.tsx         # Zalando-style multi-column footer
-├── tailwind.config.ts    # Design tokens (colors, radius, shadows)
-└── next.config.js         # Unsplash remote image support
+│   ├── shared/               # Cross-cutting UI (StarRating, etc.)
+│   ├── category/, brand/, product/, navigation/
+│   └── Header.tsx, Footer.tsx, Hero.tsx, ...
+├── content/                 # STATIC editorial/marketing copy (not the product catalog)
+│   ├── categories.ts          # Category hero copy, collection cards
+│   ├── navigation.ts          # Mega menu content
+│   └── journal.ts             # Journal articles
+├── lib/
+│   ├── data/                 # DYNAMIC data layer — reads from Supabase
+│   │   ├── products.ts
+│   │   └── brands.ts
+│   ├── supabase/client.ts    # Shared Supabase client (anon key only)
+│   └── format.ts             # Shared formatPrice()
+├── context/                 # CartContext, WishlistContext (client state)
+├── types/index.ts           # All shared TypeScript types in one place
+├── supabase/schema.sql      # Database schema + RLS policies
+├── scripts/seed.mjs         # One-time catalog seed script
+├── tailwind.config.ts       # Design tokens (colors, radius, shadows)
+└── next.config.js           # Remote image domains
 ```
+
+**`content/` vs `lib/data/` — why they're separate:** `content/` holds static marketing/editorial copy that ships with the code (category hero text, nav menu items, journal articles) — change it, redeploy. `lib/data/` holds the live product and brand catalog, fetched from Supabase at request time — change it in Supabase, no redeploy needed.
 
 ## Connecting to Supabase (real database)
 
@@ -61,7 +78,7 @@ The product and brand catalog now lives in Supabase instead of static files.
 
 Pages that read the catalog (`/shop/[category]`, `/product/[id]`, `/brands`, `/brands/[slug]`, `/search`) now fetch live from Supabase and revalidate every 60 seconds, so catalog edits in Supabase show up without a redeploy.
 
-The Brands mega menu in the header still uses a small static list (`data/navigation.ts`) for instant, no-fetch navigation — update it manually when you add or remove a brand.
+The Brands mega menu in the header still uses a small static list (`content/navigation.ts`) for instant, no-fetch navigation — update it manually when you add or remove a brand.
 
 ## Notes
 

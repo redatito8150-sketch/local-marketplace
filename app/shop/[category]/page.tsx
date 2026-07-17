@@ -5,7 +5,7 @@ import Breadcrumb from "@/components/category/Breadcrumb";
 import CategoryHero from "@/components/category/CategoryHero";
 import CollectionCards from "@/components/category/CollectionCards";
 import CategoryShoppingArea from "@/components/category/CategoryShoppingArea";
-import { getCategoryContent, FILTER_GROUPS } from "@/data/categories";
+import { getCategoryContent, FILTER_GROUPS } from "@/content/categories";
 import { getProductsByCategory, getProductCountLabel } from "@/lib/data/products";
 import { CategorySlug } from "@/types";
 

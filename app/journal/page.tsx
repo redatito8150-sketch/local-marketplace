@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { ARTICLES } from "@/data/journal";
+import { ARTICLES } from "@/content/journal";
 
 export const metadata = {
   title: "Journal — Local",

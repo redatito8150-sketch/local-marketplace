@@ -4,6 +4,7 @@ import { Search as SearchIcon } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { searchProducts } from "@/lib/data/products";
+import { formatPrice } from "@/lib/format";
 
 export async function generateMetadata({
   searchParams,
@@ -24,11 +25,6 @@ export default async function SearchPage({
 }) {
   const query = searchParams.q ?? "";
   const results = await searchProducts(query);
-
-  function formatPrice(price: number, currency: "USD" | "EGP") {
-    if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-    return `$${price.toFixed(2)}`;
-  }
 
   return (
     <main className="min-h-screen bg-cream">

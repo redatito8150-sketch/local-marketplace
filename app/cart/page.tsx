@@ -6,12 +6,7 @@ import { Minus, Plus, X, ShoppingBag, ArrowRight } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
-
-function formatPrice(price: number, currency: "USD" | "EGP") {
-  if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-  return `$${price.toFixed(2)}`;
-}
-
+import { formatPrice } from "@/lib/format";
 export default function CartPage() {
   const { items, removeItem, updateQuantity, subtotal } = useCart();
   const isEmpty = items.length === 0;

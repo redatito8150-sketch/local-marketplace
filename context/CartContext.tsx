@@ -8,19 +8,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { CartLineItem } from "@/types";
 
-export interface CartLineItem {
-  id: string; // unique line id (product id + size + color)
-  productId: string;
-  name: string;
-  brand: string;
-  price: number;
-  currency: "USD" | "EGP";
-  image: string;
-  size: string;
-  color?: string;
-  quantity: number;
-}
+export type { CartLineItem };
 
 interface CartContextValue {
   items: CartLineItem[];

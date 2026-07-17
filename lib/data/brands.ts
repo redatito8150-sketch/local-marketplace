@@ -56,18 +56,33 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     .eq("slug", slug)
     .maybeSingle();
 
-  if (error || !brandRow) return null;
+  if (error) {
+    throw new Error(`getBrandContent(${slug}) failed: ${error.message}`);
+  }
+  if (!brandRow) return null;
   const brand = brandRow as BrandRow;
 
-  const { data: productRows } = await supabase
+  const { data: productRows, error: productsError } = await supabase
     .from("products")
     .select("*")
     .eq("brand_slug", slug);
 
-  const { data: similarRows } = await supabase
+  if (productsError) {
+    throw new Error(
+      `getBrandContent(${slug}) products query failed: ${productsError.message}`
+    );
+  }
+
+  const { data: similarRows, error: similarError } = await supabase
     .from("brands")
     .select("slug, name, category, city, hero_image")
     .in("slug", brand.similar_brand_slugs?.length ? brand.similar_brand_slugs : ["__none__"]);
+
+  // Similar brands are supplementary — degrade quietly rather than failing
+  // the whole brand page if this secondary lookup breaks.
+  if (similarError) {
+    console.error(`getBrandContent(${slug}) similar brands query failed:`, similarError.message);
+  }
 
   const similarBrands: SimilarBrand[] = (similarRows ?? []).map((r) => ({
     id: r.slug,
@@ -100,8 +115,10 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
 
 export async function getAllBrandSlugs(): Promise<string[]> {
   const { data, error } = await supabase.from("brands").select("slug");
-  if (error || !data) return [];
-  return data.map((r) => r.slug as string);
+  if (error) {
+    throw new Error(`getAllBrandSlugs failed: ${error.message}`);
+  }
+  return (data ?? []).map((r) => r.slug as string);
 }
 
 export interface FeaturedBrandSummary {
@@ -116,8 +133,10 @@ export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
     .select("slug, name, hero_image")
     .order("created_at", { ascending: true });
 
-  if (error || !data) return [];
-  return data.map((r) => ({
+  if (error) {
+    throw new Error(`getFeaturedBrands failed: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({
     slug: r.slug as string,
     name: r.name as string,
     thumbnail: r.hero_image as string,

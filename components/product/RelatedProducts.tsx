@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { formatPrice } from "@/lib/format";
+import StarRating from "@/components/shared/StarRating";
 
 interface RelatedProductCard {
   id: string;
@@ -11,11 +12,6 @@ interface RelatedProductCard {
   image: string;
   rating: number;
   reviewCount: number;
-}
-
-function formatPrice(price: number, currency: "USD" | "EGP") {
-  if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-  return `$${price.toFixed(2)}`;
 }
 
 export default function RelatedProducts({
@@ -54,16 +50,7 @@ export default function RelatedProducts({
                 {formatPrice(product.price, product.currency)}
               </p>
               <div className="mt-1.5 flex items-center gap-1.5">
-                <div className="flex items-center gap-0.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star
-                      key={i}
-                      className="h-3 w-3"
-                      strokeWidth={0}
-                      fill={i < Math.round(product.rating) ? "#161513" : "#E7E4DE"}
-                    />
-                  ))}
-                </div>
+                <StarRating rating={product.rating} size="xs" />
                 <span className="text-[12px] text-ink-soft/45">
                   ({product.reviewCount})
                 </span>

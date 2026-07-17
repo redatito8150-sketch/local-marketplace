@@ -1,5 +1,5 @@
-import { Star } from "lucide-react";
 import { ProductReview } from "@/types";
+import StarRating from "@/components/shared/StarRating";
 
 export default function ProductReviews({
   rating,
@@ -18,16 +18,7 @@ export default function ProductReviews({
             Customer Reviews
           </h2>
           <div className="mt-2 flex items-center gap-2.5">
-            <div className="flex items-center gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className="h-4 w-4"
-                  strokeWidth={0}
-                  fill={i < Math.round(rating) ? "#161513" : "#E7E4DE"}
-                />
-              ))}
-            </div>
+            <StarRating rating={rating} size="md" />
             <span className="text-sm text-ink-soft/60">
               {rating.toFixed(1)} out of 5 — based on {reviewCount} reviews
             </span>
@@ -42,15 +33,8 @@ export default function ProductReviews({
               <p className="text-sm font-semibold text-ink">{review.author}</p>
               <span className="text-xs text-ink-soft/40">{review.date}</span>
             </div>
-            <div className="mt-1.5 flex items-center gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className="h-3 w-3"
-                  strokeWidth={0}
-                  fill={i < review.rating ? "#161513" : "#E7E4DE"}
-                />
-              ))}
+            <div className="mt-1.5">
+              <StarRating rating={review.rating} size="xs" />
             </div>
             <p className="mt-2.5 text-[13.5px] leading-relaxed text-ink-soft/75">
               {review.comment}
