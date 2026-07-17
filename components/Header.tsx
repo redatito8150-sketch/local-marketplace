@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Search, Heart, ShoppingBag } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
+import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
 
 const NAV_LINKS = [
   { label: "Home", href: "/#home" },
@@ -16,12 +19,22 @@ const NAV_LINKS = [
 export default function Header() {
   const [scrolled, setScrolled] = useState(false);
   const [active, setActive] = useState("Home");
+  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const { itemCount } = useCart();
+  const { count: wishlistCount } = useWishlist();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = query.trim();
+    if (trimmed) router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+  };
 
   return (
     <motion.header
@@ -82,31 +95,42 @@ export default function Header() {
 
         {/* Right actions */}
         <div className="flex items-center gap-4">
-          <div className="relative hidden md:block">
+          <form onSubmit={handleSearch} className="relative hidden md:block">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/60" />
             <input
               type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
               placeholder="Search for products, brands..."
               className="w-64 rounded-full border border-stone-150 bg-white/70 py-2.5 pl-11 pr-4 text-sm text-ink placeholder:text-ink-soft/50 outline-none transition-all focus:w-72 focus:border-ink/30 focus:bg-white"
             />
-          </div>
+          </form>
 
-          <button
+          <Link
+            href="/wishlist"
             aria-label="Wishlist"
-            className="rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+            className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
           >
             <Heart className="h-5 w-5" strokeWidth={1.6} />
-          </button>
+            {wishlistCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] font-semibold text-cream">
+                {wishlistCount}
+              </span>
+            )}
+          </Link>
 
-          <button
+          <Link
+            href="/cart"
             aria-label="Shopping bag"
             className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
           >
             <ShoppingBag className="h-5 w-5" strokeWidth={1.6} />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] font-semibold text-cream">
-              2
-            </span>
-          </button>
+            {itemCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-ink text-[10px] font-semibold text-cream">
+                {itemCount}
+              </span>
+            )}
+          </Link>
         </div>
       </div>
     </motion.header>

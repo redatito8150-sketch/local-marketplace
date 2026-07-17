@@ -32,7 +32,7 @@ export default function BrandProductGrid({
 
       <div className="grid grid-cols-2 gap-x-6 gap-y-14 lg:grid-cols-4 lg:gap-x-8">
         {products.map((product) => (
-          <BrandProductCard key={product.id} product={product} />
+          <BrandProductCard key={product.id} product={product} brandName={brandName} />
         ))}
       </div>
     </section>

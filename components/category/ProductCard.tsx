@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
 import { Heart, Star } from "lucide-react";
 import { Product, ViewMode } from "@/types";
+import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
 
 export default function ProductCard({
   product,
@@ -13,7 +14,9 @@ export default function ProductCard({
   product: Product;
   viewMode?: ViewMode;
 }) {
-  const [wishlisted, setWishlisted] = useState(false);
+  const { addItem } = useCart();
+  const { toggleItem, isWishlisted } = useWishlist();
+  const wishlisted = isWishlisted(product.id);
 
   return (
     <Link
@@ -40,7 +43,14 @@ export default function ProductCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setWishlisted((w) => !w);
+            toggleItem({
+              productId: product.id,
+              name: product.name,
+              brand: product.brand,
+              price: product.price,
+              currency: "USD",
+              image: product.image,
+            });
           }}
           className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-soft backdrop-blur-sm transition-transform hover:scale-105"
         >
@@ -84,6 +94,16 @@ export default function ProductCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            addItem({
+              productId: product.id,
+              name: product.name,
+              brand: product.brand,
+              price: product.price,
+              currency: "USD",
+              image: product.image,
+              size: "M",
+              quantity: 1,
+            });
           }}
           className={`rounded-md bg-ink text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02] active:scale-[0.98] ${
             viewMode === "list"

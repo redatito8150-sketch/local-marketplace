@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Instagram, Facebook, Music2, Send } from "lucide-react";
 
 const COLUMNS: { title: string; links: string[] }[] = [
@@ -9,6 +10,13 @@ const COLUMNS: { title: string; links: string[] }[] = [
   { title: "For Brands", links: ["Join as a Brand", "Seller Guidelines", "Brand Support"] },
   { title: "Help", links: ["Contact Us", "Shipping", "Returns", "FAQ"] },
 ];
+
+const LINK_HREFS: Record<string, string> = {
+  Brands: "/brands",
+  Journal: "/journal",
+  Women: "/shop/women",
+  "New Arrivals": "/shop/women",
+};
 
 export default function BrandFooter() {
   return (
@@ -23,12 +31,12 @@ export default function BrandFooter() {
               <ul className="mt-5 space-y-3">
                 {col.links.map((link) => (
                   <li key={link}>
-                    <a
-                      href="#"
+                    <Link
+                      href={LINK_HREFS[link] ?? "#"}
                       className="text-[13px] font-light text-muted transition-colors hover:text-charcoal"
                     >
                       {link}
-                    </a>
+                    </Link>
                   </li>
                 ))}
               </ul>

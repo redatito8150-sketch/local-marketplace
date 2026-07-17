@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { Heart, Minus, Plus, Star, Check, Truck } from "lucide-react";
 import { ProductDetail } from "@/types";
+import { useCart } from "@/context/CartContext";
+import { useWishlist } from "@/context/WishlistContext";
 
 function formatPrice(price: number, currency: "USD" | "EGP") {
   if (currency === "EGP") return `${price.toLocaleString()} EGP`;
@@ -11,10 +13,13 @@ function formatPrice(price: number, currency: "USD" | "EGP") {
 }
 
 export default function ProductInfo({ product }: { product: ProductDetail }) {
+  const { addItem } = useCart();
+  const { toggleItem, isWishlisted } = useWishlist();
+  const wishlisted = isWishlisted(product.id);
+
   const [selectedColor, setSelectedColor] = useState(product.colors[0]?.name);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [wishlisted, setWishlisted] = useState(false);
   const [added, setAdded] = useState(false);
   const [sizeError, setSizeError] = useState(false);
 
@@ -28,6 +33,17 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
       return;
     }
     setSizeError(false);
+    addItem({
+      productId: product.id,
+      name: product.name,
+      brand: product.brandName,
+      price: product.price,
+      currency: product.currency,
+      image: product.images[0],
+      size: selectedSize,
+      color: selectedColor,
+      quantity,
+    });
     setAdded(true);
     setTimeout(() => setAdded(false), 2200);
   };
@@ -178,7 +194,16 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
 
         <button
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          onClick={() => setWishlisted((w) => !w)}
+          onClick={() =>
+            toggleItem({
+              productId: product.id,
+              name: product.name,
+              brand: product.brandName,
+              price: product.price,
+              currency: product.currency,
+              image: product.images[0],
+            })
+          }
           className="flex h-11 w-11 flex-none items-center justify-center rounded-md border border-stone-150 transition-colors hover:bg-stone-50"
         >
           <Heart

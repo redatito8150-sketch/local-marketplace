@@ -2,16 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
 import { Heart } from "lucide-react";
 import { BrandProduct } from "@/types";
+import { useWishlist } from "@/context/WishlistContext";
 
 export default function BrandProductCard({
   product,
+  brandName,
 }: {
   product: BrandProduct;
+  brandName?: string;
 }) {
-  const [wishlisted, setWishlisted] = useState(false);
+  const { toggleItem, isWishlisted } = useWishlist();
+  const wishlisted = isWishlisted(product.id);
 
   return (
     <Link href={`/product/${product.id}`} className="group block">
@@ -37,7 +40,14 @@ export default function BrandProductCard({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            setWishlisted((w) => !w);
+            toggleItem({
+              productId: product.id,
+              name: product.name,
+              brand: brandName ?? "",
+              price: product.price,
+              currency: "EGP",
+              image: product.image,
+            });
           }}
           className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 opacity-0 shadow-sm transition-opacity duration-300 focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-navy group-hover:opacity-100"
         >

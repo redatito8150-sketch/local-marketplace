@@ -136,6 +136,50 @@ export const PRODUCTS: Product[] = [
     image:
       "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=600&q=80",
   },
+  {
+    id: "m-5",
+    category: "men",
+    brand: "AUREUM",
+    name: "Slim Fit Denim Jeans",
+    price: 139.0,
+    rating: 4,
+    reviewCount: 17,
+    image:
+      "https://images.unsplash.com/photo-1542272604-787c3835535d?w=600&q=80",
+  },
+  {
+    id: "m-6",
+    category: "men",
+    brand: "NOYA",
+    name: "Quilted Bomber Jacket",
+    price: 219.0,
+    rating: 5,
+    reviewCount: 23,
+    image:
+      "https://images.unsplash.com/photo-1551028719-00167b16eac5?w=600&q=80",
+  },
+  {
+    id: "m-7",
+    category: "men",
+    brand: "ÉLAN ATELIER",
+    name: "Cotton Oxford Shirt",
+    price: 99.0,
+    rating: 4,
+    reviewCount: 14,
+    image:
+      "https://images.unsplash.com/photo-1598033129183-c4f50c736f10?w=600&q=80",
+  },
+  {
+    id: "m-8",
+    category: "men",
+    brand: "OTHER BRANDS",
+    name: "Knit Polo Shirt",
+    price: 79.0,
+    rating: 4,
+    reviewCount: 9,
+    image:
+      "https://images.unsplash.com/photo-1586790170083-2f9ceadc732d?w=600&q=80",
+  },
 
   // Kids
   {
@@ -181,6 +225,50 @@ export const PRODUCTS: Product[] = [
     reviewCount: 5,
     image:
       "https://images.unsplash.com/photo-1519238263530-99bdd11df2ea?w=600&q=80",
+  },
+  {
+    id: "k-5",
+    category: "kids",
+    brand: "AUREUM",
+    name: "Striped Cotton Romper",
+    price: 39.0,
+    rating: 5,
+    reviewCount: 10,
+    image:
+      "https://images.unsplash.com/photo-1522771930-78848d9293e8?w=600&q=80",
+  },
+  {
+    id: "k-6",
+    category: "kids",
+    brand: "NOYA",
+    name: "Quilted Puffer Jacket",
+    price: 65.0,
+    rating: 4,
+    reviewCount: 7,
+    image:
+      "https://images.unsplash.com/photo-1522771930-78848d9293e9?w=600&q=80",
+  },
+  {
+    id: "k-7",
+    category: "kids",
+    brand: "ÉLAN ATELIER",
+    name: "Linen Button-Up Shirt",
+    price: 42.0,
+    rating: 4,
+    reviewCount: 4,
+    image:
+      "https://images.unsplash.com/photo-1519238425481-4e2b9e2d6b8c?w=600&q=80",
+  },
+  {
+    id: "k-8",
+    category: "kids",
+    brand: "OTHER BRANDS",
+    name: "Fleece Pull-On Pants",
+    price: 35.0,
+    rating: 4,
+    reviewCount: 6,
+    image:
+      "https://images.unsplash.com/photo-1503457574465-52ee3dbedcd7?w=600&q=80",
   },
 ];
 
