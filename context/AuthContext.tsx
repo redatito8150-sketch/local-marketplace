@@ -59,7 +59,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName } },
+        options: {
+          data: { full_name: fullName },
+          // Send the confirmation link back to wherever the app is running
+          // (localhost in dev, the deployed domain in production) instead of
+          // relying on a single fixed Site URL in the Supabase dashboard.
+          emailRedirectTo: `${window.location.origin}/account`,
+        },
       });
       if (error) return { error: error.message };
       // If email confirmation is required, Supabase returns a user but no
