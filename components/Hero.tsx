@@ -57,15 +57,15 @@ export default function Hero() {
           Wear what matters.
         </p>
 
-        <motion.a
-          href="#join"
+        <MotionLink
+          href="/join-as-a-brand"
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.98 }}
           className="mt-9 inline-flex items-center gap-2.5 rounded-full bg-ink px-7 py-4 text-[15px] font-semibold text-cream shadow-soft transition-shadow hover:shadow-card"
         >
           <Store className="h-4 w-4" strokeWidth={1.8} />
           Join As Brand
-        </motion.a>
+        </MotionLink>
       </motion.div>
 
       {/* Right column — Pinterest-style rotated department cards */}
