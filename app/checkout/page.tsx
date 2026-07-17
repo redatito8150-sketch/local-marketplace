@@ -15,10 +15,33 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "confirmation", label: "Confirmation" },
 ];
 
+interface ShippingForm {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  governorate: string;
+}
+
+const EMPTY_SHIPPING: ShippingForm = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  address: "",
+  city: "",
+  governorate: "",
+};
+
 export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
   const [step, setStep] = useState<Step>("shipping");
   const [orderNumber, setOrderNumber] = useState("");
+  const [shipping, setShipping] = useState<ShippingForm>(EMPTY_SHIPPING);
+  const [placing, setPlacing] = useState(false);
+  const [error, setError] = useState("");
 
   const stepIndex = STEPS.findIndex((s) => s.id === step);
 
@@ -27,11 +50,40 @@ export default function CheckoutPage() {
     setStep("payment");
   };
 
-  const placeOrder = (e: React.FormEvent) => {
+  const placeOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    setOrderNumber(`LC-${Math.floor(100000 + Math.random() * 900000)}`);
-    clearCart();
-    setStep("confirmation");
+    setPlacing(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            productId: item.productId,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity,
+          })),
+          shipping,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Something went wrong placing your order.");
+        return;
+      }
+
+      setOrderNumber(data.orderNumber);
+      clearCart();
+      setStep("confirmation");
+    } catch {
+      setError("Something went wrong placing your order. Please try again.");
+    } finally {
+      setPlacing(false);
+    }
   };
 
   if (items.length === 0 && step !== "confirmation") {
@@ -94,15 +146,59 @@ export default function CheckoutPage() {
                   Shipping Information
                 </h1>
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="First name" placeholder="Nour" required />
-                  <Field label="Last name" placeholder="Ahmed" required />
+                  <Field
+                    label="First name"
+                    placeholder="Nour"
+                    required
+                    value={shipping.firstName}
+                    onChange={(v) => setShipping((s) => ({ ...s, firstName: v }))}
+                  />
+                  <Field
+                    label="Last name"
+                    placeholder="Ahmed"
+                    required
+                    value={shipping.lastName}
+                    onChange={(v) => setShipping((s) => ({ ...s, lastName: v }))}
+                  />
                 </div>
-                <Field label="Email" type="email" placeholder="you@example.com" required />
-                <Field label="Phone" type="tel" placeholder="+20 10 000 0000" required />
-                <Field label="Address" placeholder="Street, building, apartment" required />
+                <Field
+                  label="Email"
+                  type="email"
+                  placeholder="you@example.com"
+                  required
+                  value={shipping.email}
+                  onChange={(v) => setShipping((s) => ({ ...s, email: v }))}
+                />
+                <Field
+                  label="Phone"
+                  type="tel"
+                  placeholder="+20 10 000 0000"
+                  required
+                  value={shipping.phone}
+                  onChange={(v) => setShipping((s) => ({ ...s, phone: v }))}
+                />
+                <Field
+                  label="Address"
+                  placeholder="Street, building, apartment"
+                  required
+                  value={shipping.address}
+                  onChange={(v) => setShipping((s) => ({ ...s, address: v }))}
+                />
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="City" placeholder="Cairo" required />
-                  <Field label="Governorate" placeholder="Cairo" required />
+                  <Field
+                    label="City"
+                    placeholder="Cairo"
+                    required
+                    value={shipping.city}
+                    onChange={(v) => setShipping((s) => ({ ...s, city: v }))}
+                  />
+                  <Field
+                    label="Governorate"
+                    placeholder="Cairo"
+                    required
+                    value={shipping.governorate}
+                    onChange={(v) => setShipping((s) => ({ ...s, governorate: v }))}
+                  />
                 </div>
 
                 <button
@@ -142,11 +238,18 @@ export default function CheckoutPage() {
                 </div>
                 <Field label="Name on card" placeholder="Nour Ahmed" required />
 
+                {error && (
+                  <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+                    {error}
+                  </p>
+                )}
+
                 <button
                   type="submit"
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
+                  disabled={placing}
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Place Order
+                  {placing ? "Placing Order…" : "Place Order"}
                 </button>
               </form>
             )}
@@ -232,11 +335,15 @@ function Field({
   type = "text",
   placeholder,
   required,
+  value,
+  onChange,
 }: {
   label: string;
   type?: string;
   placeholder?: string;
   required?: boolean;
+  value?: string;
+  onChange?: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -245,6 +352,8 @@ function Field({
         type={type}
         placeholder={placeholder}
         required={required}
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
         className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink/30"
       />
     </label>

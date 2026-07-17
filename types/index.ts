@@ -161,6 +161,39 @@ export interface ProductDetail {
   relatedIds: string[];
 }
 
+// ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
+
+export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled";
+
+export interface OrderItemRecord {
+  id: string;
+  productId: string | null;
+  name: string;
+  brand: string;
+  price: number;
+  currency: "USD" | "EGP";
+  size: string;
+  color?: string;
+  quantity: number;
+  image: string;
+}
+
+export interface OrderRecord {
+  id: string;
+  orderNumber: string;
+  status: OrderStatus;
+  shippingName: string;
+  shippingEmail: string;
+  shippingPhone: string;
+  shippingAddress: string;
+  shippingCity: string;
+  shippingGovernorate: string;
+  subtotalUsd: number;
+  subtotalEgp: number;
+  createdAt: string;
+  items: OrderItemRecord[];
+}
+
 export interface BrandPageContent {
   slug: string;
   name: string;

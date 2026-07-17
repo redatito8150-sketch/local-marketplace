@@ -148,7 +148,35 @@ create policy "Users can read their own order items"
     )
   );
 
--- NOTE: There are deliberately no public INSERT policies yet. Writes
--- (placing an order, creating a profile) will go through a server-side
--- API route using the service_role key once Phase 3 (checkout) is wired
--- up — never directly from the browser with the anon key.
+-- NOTE: There are deliberately no public INSERT policies on orders/
+-- order_items. Order writes go through app/api/orders/route.ts using the
+-- service_role key (lib/supabase/admin.ts), which bypasses RLS entirely —
+-- never directly from the browser with the anon key.
+
+-- ============================================================================
+-- AUTH TRIGGER
+-- Mirrors every new auth.users row into `profiles` so the "Users can read
+-- their own profile" policy above has something to read. Run once, same as
+-- the rest of this file, in the Supabase SQL editor.
+-- ============================================================================
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  insert into public.profiles (id, full_name, email)
+  values (
+    new.id,
+    new.raw_user_meta_data ->> 'full_name',
+    new.email
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();

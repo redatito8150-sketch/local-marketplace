@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Heart, ShoppingBag } from "lucide-react";
+import { Heart, ShoppingBag, User } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
+import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 
@@ -21,6 +22,7 @@ export default function Header() {
   const [active, setActive] = useState("Home");
   const { itemCount } = useCart();
   const { count: wishlistCount } = useWishlist();
+  const { user } = useAuth();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -88,6 +90,17 @@ export default function Header() {
         {/* Right actions */}
         <div className="flex items-center gap-4">
           <SearchAutocomplete />
+
+          <Link
+            href="/account"
+            aria-label="Account"
+            className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+          >
+            <User className="h-5 w-5" strokeWidth={1.6} />
+            {user && (
+              <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-ink ring-2 ring-cream" />
+            )}
+          </Link>
 
           <Link
             href="/wishlist"

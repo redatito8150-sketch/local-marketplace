@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -9,11 +9,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-// Single shared client. Safe to use in both Server Components and the
-// browser because it only ever carries the public anon key — row-level
-// security policies on each table decide what it's actually allowed to read.
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-  },
-});
+// Browser client backed by cookies (via @supabase/ssr) so the auth session
+// persists across reloads and is readable by the server client/middleware.
+// Only ever carries the public anon key — row-level security policies on
+// each table decide what it's actually allowed to read or write.
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
