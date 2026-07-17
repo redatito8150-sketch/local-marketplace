@@ -71,6 +71,7 @@ create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
   email text,
+  is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 
@@ -180,3 +181,13 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ============================================================================
+-- ADMIN FLAG
+-- `profiles` already exists in production, so `create table if not exists`
+-- above won't retroactively add this column — this alter is what actually
+-- needs to run. Gates app/admin/** (see lib/supabase/adminAuth.ts). No admin
+-- UI grants/revokes this; it's set directly in the Table Editor or via a
+-- one-off service-role script.
+-- ============================================================================
+alter table profiles add column if not exists is_admin boolean not null default false;

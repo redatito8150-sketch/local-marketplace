@@ -161,6 +161,29 @@ export interface ProductDetail {
   relatedIds: string[];
 }
 
+// ── Admin (raw `products` row shape, used by the admin CRUD form/API) ──────
+
+export interface ProductRecord {
+  id: string;
+  name: string;
+  brandName: string;
+  brandSlug?: string;
+  category?: CategorySlug;
+  price: number;
+  currency: "USD" | "EGP";
+  image: string;
+  images: string[];
+  colors: ProductColorOption[];
+  sizes: string[];
+  description: string;
+  details: string[];
+  careInstructions: string[];
+  shippingReturns: string;
+  sku: string;
+  inStock: boolean;
+  isNew: boolean;
+}
+
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
 
 export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled";
