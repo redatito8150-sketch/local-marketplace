@@ -83,11 +83,26 @@ export default function FilterSidebar({
   onClear?: () => void;
 }) {
   const hasActiveFilters = Object.values(selected).some((ids) => ids.length > 0);
+  // Collapsed by default on mobile — the full ~25-row filter list otherwise
+  // sits above the product grid, since the layout stacks to one column
+  // below the `lg` breakpoint. Always expanded at `lg` and up.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <aside className="w-full lg:w-[240px] lg:flex-none">
       <div className="mb-5 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-ink">Filters</h2>
+        <button
+          type="button"
+          onClick={() => setMobileOpen((o) => !o)}
+          className="flex items-center gap-2 lg:pointer-events-none"
+        >
+          <h2 className="text-base font-semibold text-ink">Filters</h2>
+          <ChevronDown
+            className={`h-4 w-4 text-ink-soft/60 transition-transform duration-300 lg:hidden ${
+              mobileOpen ? "rotate-180" : ""
+            }`}
+          />
+        </button>
         {hasActiveFilters && onClear ? (
           <button
             onClick={onClear}
@@ -100,7 +115,7 @@ export default function FilterSidebar({
         )}
       </div>
 
-      <div>
+      <div className={`${mobileOpen ? "block" : "hidden"} lg:block`}>
         {groups.map((group) => (
           <FilterSection
             key={group.id}
