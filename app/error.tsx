@@ -24,8 +24,7 @@ export default function AppError({
         Something went wrong.
       </h1>
       <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-ink-soft/70">
-        We couldn't load this page. This is usually temporary — try again in
-        a moment.
+       We couldn’t load this page. This is usually temporary — try again in a moment.
       </p>
       <div className="mt-8 flex items-center gap-3">
         <button
