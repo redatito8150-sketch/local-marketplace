@@ -94,6 +94,44 @@ export interface BrandCategoryTab {
   label: string;
 }
 
+export interface ProductReview {
+  id: string;
+  author: string;
+  rating: number;
+  date: string;
+  comment: string;
+}
+
+export interface ProductColorOption {
+  name: string;
+  hex: string;
+}
+
+export interface ProductDetail {
+  id: string;
+  name: string;
+  brandName: string;
+  brandSlug?: string;
+  price: number;
+  currency: "USD" | "EGP";
+  images: string[];
+  description: string;
+  details: string[];
+  careInstructions: string[];
+  shippingReturns: string;
+  sizes: string[];
+  colors: ProductColorOption[];
+  rating: number;
+  reviewCount: number;
+  reviews: ProductReview[];
+  sku: string;
+  inStock: boolean;
+  categorySlug?: CategorySlug;
+  categoryLabel: string;
+  categoryHref: string;
+  relatedIds: string[];
+}
+
 export interface BrandPageContent {
   slug: string;
   name: string;

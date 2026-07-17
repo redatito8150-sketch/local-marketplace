@@ -24,7 +24,7 @@ export default function BrandHero({ brand }: { brand: BrandPageContent }) {
       <div className="relative z-10 mx-auto w-full max-w-brand px-6 pb-16 lg:px-10 lg:pb-24">
         <div className="mx-auto max-w-2xl text-center">
           <span className="inline-flex items-center rounded-full bg-white/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-navy">
-            test1001
+            Made in Egypt
           </span>
 
           <h1 className="mt-7 text-[2.75rem] font-medium leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-[5rem]">
