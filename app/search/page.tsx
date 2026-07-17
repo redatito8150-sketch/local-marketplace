@@ -3,74 +3,9 @@ import Image from "next/image";
 import { Search as SearchIcon } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { PRODUCTS } from "@/data/products";
-import { BRANDS } from "@/data/brand";
+import { searchProducts } from "@/lib/data/products";
 
-interface SearchResult {
-  id: string;
-  name: string;
-  brand: string;
-  price: number;
-  currency: "USD" | "EGP";
-  image: string;
-  href: string;
-}
-
-function search(query: string): SearchResult[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-
-  const categoryMatches: SearchResult[] = PRODUCTS.filter(
-    (p) =>
-      p.name.toLowerCase().includes(q) || p.brand.toLowerCase().includes(q)
-  ).map((p) => ({
-    id: p.id,
-    name: p.name,
-    brand: p.brand,
-    price: p.price,
-    currency: "USD",
-    image: p.image,
-    href: `/product/${p.id}`,
-  }));
-
-  const brandMatches: SearchResult[] = Object.values(BRANDS).flatMap((brand) =>
-    brand.name.toLowerCase().includes(q) || q.includes(brand.name.toLowerCase())
-      ? brand.products.slice(0, 4).map((p) => ({
-          id: p.id,
-          name: p.name,
-          brand: brand.name,
-          price: p.price,
-          currency: "EGP" as const,
-          image: p.image,
-          href: `/product/${p.id}`,
-        }))
-      : brand.products
-          .filter((p) => p.name.toLowerCase().includes(q))
-          .map((p) => ({
-            id: p.id,
-            name: p.name,
-            brand: brand.name,
-            price: p.price,
-            currency: "EGP" as const,
-            image: p.image,
-            href: `/product/${p.id}`,
-          }))
-  );
-
-  const seen = new Set<string>();
-  return [...categoryMatches, ...brandMatches].filter((r) => {
-    if (seen.has(r.id)) return false;
-    seen.add(r.id);
-    return true;
-  });
-}
-
-function formatPrice(price: number, currency: "USD" | "EGP") {
-  if (currency === "EGP") return `${price.toLocaleString()} EGP`;
-  return `$${price.toFixed(2)}`;
-}
-
-export function generateMetadata({
+export async function generateMetadata({
   searchParams,
 }: {
   searchParams: { q?: string };
@@ -82,13 +17,18 @@ export function generateMetadata({
   };
 }
 
-export default function SearchPage({
+export default async function SearchPage({
   searchParams,
 }: {
   searchParams: { q?: string };
 }) {
   const query = searchParams.q ?? "";
-  const results = search(query);
+  const results = await searchProducts(query);
+
+  function formatPrice(price: number, currency: "USD" | "EGP") {
+    if (currency === "EGP") return `${price.toLocaleString()} EGP`;
+    return `$${price.toFixed(2)}`;
+  }
 
   return (
     <main className="min-h-screen bg-cream">

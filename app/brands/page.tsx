@@ -3,7 +3,9 @@ import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { FEATURED_BRANDS } from "@/data/navigation";
+import { getFeaturedBrands } from "@/lib/data/brands";
+
+export const revalidate = 60;
 
 export const metadata = {
   title: "Brands — Local",
@@ -11,14 +13,16 @@ export const metadata = {
     "Discover independent local brands curated by Local. Support creators, wear what matters.",
 };
 
-export default function BrandsDirectoryPage() {
+export default async function BrandsDirectoryPage() {
+  const brands = await getFeaturedBrands();
+
   return (
     <main className="min-h-screen bg-cream">
       <Header />
 
       <section className="mx-auto max-w-screen2xl px-8 pb-6 pt-14 lg:px-12 lg:pt-20">
         <p className="text-xs font-medium uppercase tracking-wide text-ink-soft/50">
-          {FEATURED_BRANDS.length} brands and counting
+          {brands.length} brands and counting
         </p>
         <h1 className="mt-3 max-w-xl text-4xl font-bold leading-[1.1] tracking-tightest text-ink lg:text-5xl">
           Every brand here is independent, local, and real.
@@ -31,7 +35,7 @@ export default function BrandsDirectoryPage() {
 
       <section className="mx-auto max-w-screen2xl px-8 py-12 lg:px-12">
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURED_BRANDS.map((brand) => (
+          {brands.map((brand) => (
             <Link
               key={brand.slug}
               href={`/brands/${brand.slug}`}

@@ -6,8 +6,10 @@ import CategoryHero from "@/components/category/CategoryHero";
 import CollectionCards from "@/components/category/CollectionCards";
 import CategoryShoppingArea from "@/components/category/CategoryShoppingArea";
 import { getCategoryContent, FILTER_GROUPS } from "@/data/categories";
-import { getProductsByCategory, getProductCountLabel } from "@/data/products";
+import { getProductsByCategory, getProductCountLabel } from "@/lib/data/products";
 import { CategorySlug } from "@/types";
+
+export const revalidate = 60; // re-fetch from Supabase at most once a minute
 
 export function generateStaticParams() {
   const categories: CategorySlug[] = ["women", "men", "kids"];
@@ -27,7 +29,7 @@ export function generateMetadata({
   };
 }
 
-export default function CategoryPage({
+export default async function CategoryPage({
   params,
 }: {
   params: { category: string };
@@ -35,8 +37,10 @@ export default function CategoryPage({
   const content = getCategoryContent(params.category);
   if (!content) notFound();
 
-  const products = getProductsByCategory(content.slug);
-  const productCount = getProductCountLabel(content.slug);
+  const [products, productCount] = await Promise.all([
+    getProductsByCategory(content.slug),
+    getProductCountLabel(content.slug),
+  ]);
 
   return (
     <main className="min-h-screen bg-white">

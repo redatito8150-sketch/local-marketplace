@@ -8,14 +8,17 @@ import OurStory from "@/components/brand/OurStory";
 import ValuesSection from "@/components/brand/ValuesSection";
 import SimilarBrands from "@/components/brand/SimilarBrands";
 import BrandFooter from "@/components/brand/BrandFooter";
-import { getBrandContent, BRANDS } from "@/data/brand";
+import { getBrandContent, getAllBrandSlugs } from "@/lib/data/brands";
 
-export function generateStaticParams() {
-  return Object.keys(BRANDS).map((slug) => ({ slug }));
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const slugs = await getAllBrandSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }) {
-  const brand = getBrandContent(params.slug);
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const brand = await getBrandContent(params.slug);
   if (!brand) return {};
   return {
     title: `${brand.name} — LOCAL`,
@@ -23,8 +26,8 @@ export function generateMetadata({ params }: { params: { slug: string } }) {
   };
 }
 
-export default function BrandPage({ params }: { params: { slug: string } }) {
-  const brand = getBrandContent(params.slug);
+export default async function BrandPage({ params }: { params: { slug: string } }) {
+  const brand = await getBrandContent(params.slug);
   if (!brand) notFound();
 
   return (

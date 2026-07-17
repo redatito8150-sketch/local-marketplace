@@ -7,20 +7,18 @@ import ProductInfo from "@/components/product/ProductInfo";
 import ProductAccordion from "@/components/product/ProductAccordion";
 import ProductReviews from "@/components/product/ProductReviews";
 import RelatedProducts from "@/components/product/RelatedProducts";
-import { getProductDetail, getRelatedProductCards } from "@/data/productDetail";
-import { PRODUCTS } from "@/data/products";
-import { BRANDS } from "@/data/brand";
+import { getProductById, getRelatedProductCards } from "@/lib/data/products";
+import { supabase } from "@/lib/supabase/client";
 
-export function generateStaticParams() {
-  const categoryIds = PRODUCTS.map((p) => ({ id: p.id }));
-  const brandIds = Object.values(BRANDS).flatMap((brand) =>
-    brand.products.map((p) => ({ id: p.id }))
-  );
-  return [...categoryIds, ...brandIds];
+export const revalidate = 60;
+
+export async function generateStaticParams() {
+  const { data } = await supabase.from("products").select("id");
+  return (data ?? []).map((row) => ({ id: row.id as string }));
 }
 
-export function generateMetadata({ params }: { params: { id: string } }) {
-  const product = getProductDetail(params.id);
+export async function generateMetadata({ params }: { params: { id: string } }) {
+  const product = await getProductById(params.id);
   if (!product) return {};
   return {
     title: `${product.name} — ${product.brandName} — Local`,
@@ -28,11 +26,11 @@ export function generateMetadata({ params }: { params: { id: string } }) {
   };
 }
 
-export default function ProductPage({ params }: { params: { id: string } }) {
-  const product = getProductDetail(params.id);
+export default async function ProductPage({ params }: { params: { id: string } }) {
+  const product = await getProductById(params.id);
   if (!product) notFound();
 
-  const related = getRelatedProductCards(product.relatedIds);
+  const related = await getRelatedProductCards(product.relatedIds);
 
   return (
     <main className="min-h-screen bg-cream">
