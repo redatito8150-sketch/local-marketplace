@@ -57,6 +57,8 @@ create table if not exists products (
   sku text not null,
   in_stock boolean not null default true,
   is_new boolean not null default false,
+  is_unisex boolean not null default false,          -- also shows under the paired gender category (women<->men only)
+  unavailable_sizes text[] not null default '{}',    -- subset of `sizes` that's currently out of stock
   created_at timestamptz not null default now()
 );
 
@@ -191,3 +193,10 @@ create trigger on_auth_user_created
 -- one-off service-role script.
 -- ============================================================================
 alter table profiles add column if not exists is_admin boolean not null default false;
+
+-- ============================================================================
+-- UNISEX + PER-SIZE AVAILABILITY
+-- `products` already exists in production too — same reasoning as above.
+-- ============================================================================
+alter table products add column if not exists is_unisex boolean not null default false;
+alter table products add column if not exists unavailable_sizes text[] not null default '{}';

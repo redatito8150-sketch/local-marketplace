@@ -118,22 +118,33 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2.5">
-          {product.sizes.map((size) => (
-            <button
-              key={size}
-              onClick={() => {
-                setSelectedSize(size);
-                setSizeError(false);
-              }}
-              className={`flex h-10 min-w-[2.5rem] items-center justify-center rounded-md border px-3 text-[13px] font-medium transition-colors ${
-                selectedSize === size
-                  ? "border-ink bg-ink text-cream"
-                  : "border-stone-150 text-ink hover:border-ink/40"
-              }`}
-            >
-              {size}
-            </button>
-          ))}
+          {product.sizes.map((size) => {
+            const unavailable = product.unavailableSizes.includes(size);
+            return (
+              <button
+                key={size}
+                disabled={unavailable}
+                title={unavailable ? "Currently unavailable" : undefined}
+                onClick={() => {
+                  if (unavailable) return;
+                  setSelectedSize(size);
+                  setSizeError(false);
+                }}
+                className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
+                  unavailable
+                    ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
+                    : selectedSize === size
+                    ? "border-ink bg-ink text-cream"
+                    : "border-stone-150 text-ink hover:border-ink/40"
+                }`}
+              >
+                {size}
+                {unavailable && (
+                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-ink-soft/40" />
+                )}
+              </button>
+            );
+          })}
         </div>
         {sizeError && (
           <p className="mt-2 text-[12px] font-medium text-red-600">

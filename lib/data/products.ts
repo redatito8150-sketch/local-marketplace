@@ -29,6 +29,8 @@ interface ProductRow {
   sku: string;
   in_stock: boolean;
   is_new: boolean;
+  is_unisex: boolean;
+  unavailable_sizes: string[];
 }
 
 const REVIEW_AUTHORS = ["Mona K.", "Youssef A.", "Salma R.", "Karim T.", "Nadine H."];
@@ -89,6 +91,7 @@ function toProductDetail(row: ProductRow): ProductDetail {
     careInstructions: row.care_instructions ?? [],
     shippingReturns: row.shipping_returns,
     sizes: row.sizes ?? [],
+    unavailableSizes: row.unavailable_sizes ?? [],
     colors: row.colors ?? [],
     rating: Number(row.rating),
     reviewCount: row.review_count,
@@ -102,19 +105,49 @@ function toProductDetail(row: ProductRow): ProductDetail {
   };
 }
 
+// A unisex product is stored under one category (women or men) with
+// is_unisex = true, meaning it should also appear under the other one.
+// Kids has no pairing.
+const PAIRED_CATEGORY: Partial<Record<CategorySlug, CategorySlug>> = {
+  women: "men",
+  men: "women",
+};
+
 export async function getProductsByCategory(
   category: CategorySlug
 ): Promise<Product[]> {
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("category", category)
-    .order("created_at", { ascending: true });
+  const pairedCategory = PAIRED_CATEGORY[category];
 
-  if (error) {
-    throw new Error(`getProductsByCategory(${category}) failed: ${error.message}`);
+  const queries = [
+    supabase
+      .from("products")
+      .select("*")
+      .eq("category", category)
+      .order("created_at", { ascending: true }),
+  ];
+  if (pairedCategory) {
+    queries.push(
+      supabase.from("products").select("*").eq("category", pairedCategory).eq("is_unisex", true)
+    );
   }
-  return (data as ProductRow[]).map(toProductCard);
+
+  const results = await Promise.all(queries);
+  for (const result of results) {
+    if (result.error) {
+      throw new Error(`getProductsByCategory(${category}) failed: ${result.error.message}`);
+    }
+  }
+
+  const seen = new Set<string>();
+  const merged = results
+    .flatMap((result) => result.data ?? [])
+    .filter((row) => {
+      if (seen.has(row.id)) return false;
+      seen.add(row.id);
+      return true;
+    });
+
+  return (merged as ProductRow[]).map(toProductCard);
 }
 
 export async function getProductCountLabel(

@@ -4,7 +4,13 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
-export default function DeleteProductButton({ id, name }: { id: string; name: string }) {
+export default function DeleteEntityButton({
+  apiPath,
+  name,
+}: {
+  apiPath: string;
+  name: string;
+}) {
   const router = useRouter();
   const [deleting, setDeleting] = useState(false);
 
@@ -12,10 +18,10 @@ export default function DeleteProductButton({ id, name }: { id: string; name: st
     if (!confirm(`Delete "${name}"? This can't be undone.`)) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/products/${id}`, { method: "DELETE" });
+      const res = await fetch(apiPath, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Failed to delete product");
+        alert(data.error ?? "Failed to delete");
         return;
       }
       router.refresh();

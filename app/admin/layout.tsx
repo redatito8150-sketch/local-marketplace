@@ -36,6 +36,12 @@ export default async function AdminLayout({
             <Link href="/admin/products/new" className="hover:text-ink">
               Add product
             </Link>
+            <Link href="/admin/brands" className="hover:text-ink">
+              Brands
+            </Link>
+            <Link href="/admin/brands/new" className="hover:text-ink">
+              Add brand
+            </Link>
             <Link href="/" className="hover:text-ink">
               ← Back to site
             </Link>

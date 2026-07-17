@@ -38,6 +38,8 @@ export async function PATCH(
       sku: body.sku?.trim() || params.id,
       in_stock: body.inStock,
       is_new: body.isNew,
+      is_unisex: body.isUnisex,
+      unavailable_sizes: body.unavailableSizes,
     })
     .eq("id", params.id);
 

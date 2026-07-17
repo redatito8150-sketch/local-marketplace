@@ -30,6 +30,8 @@ interface FormState {
   sku: string;
   inStock: boolean;
   isNew: boolean;
+  isUnisex: boolean;
+  unavailableSizes: string[];
 }
 
 function toFormState(product?: ProductRecord): FormState {
@@ -51,6 +53,8 @@ function toFormState(product?: ProductRecord): FormState {
     sku: product?.sku ?? "",
     inStock: product?.inStock ?? true,
     isNew: product?.isNew ?? false,
+    isUnisex: product?.isUnisex ?? false,
+    unavailableSizes: product?.unavailableSizes ?? [],
   };
 }
 
@@ -75,6 +79,19 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
 
   const removeColor = (index: number) =>
     setForm((f) => ({ ...f, colors: f.colors.filter((_, i) => i !== index) }));
+
+  const currentSizes = form.sizesText
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const toggleUnavailableSize = (size: string) =>
+    setForm((f) => ({
+      ...f,
+      unavailableSizes: f.unavailableSizes.includes(size)
+        ? f.unavailableSizes.filter((s) => s !== size)
+        : [...f.unavailableSizes, size],
+    }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +119,8 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
       sku: form.sku.trim() || undefined,
       inStock: form.inStock,
       isNew: form.isNew,
+      isUnisex: form.category !== "kids" && form.isUnisex,
+      unavailableSizes: form.unavailableSizes.filter((s) => currentSizes.includes(s)),
     };
 
     try {
@@ -170,6 +189,17 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
         </label>
       </div>
 
+      {(form.category === "women" || form.category === "men") && (
+        <label className="flex items-center gap-2 text-[13.5px] text-ink">
+          <input
+            type="checkbox"
+            checked={form.isUnisex}
+            onChange={(e) => set("isUnisex", e.target.checked)}
+          />
+          Unisex (also show in Men & Women)
+        </label>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <TextField
           label="Price"
@@ -212,6 +242,26 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
         onChange={(v) => set("sizesText", v)}
         required
       />
+
+      {currentSizes.length > 0 && (
+        <div>
+          <span className="text-[12.5px] font-medium text-ink-soft/70">
+            Mark sizes unavailable
+          </span>
+          <div className="mt-1.5 flex flex-wrap gap-4">
+            {currentSizes.map((size) => (
+              <label key={size} className="flex items-center gap-1.5 text-[13.5px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={form.unavailableSizes.includes(size)}
+                  onChange={() => toggleUnavailableSize(size)}
+                />
+                {size}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <span className="text-[12.5px] font-medium text-ink-soft/70">Colors</span>

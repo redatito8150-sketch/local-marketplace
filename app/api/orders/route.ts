@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   const productIds = [...new Set(items.map((i) => i.productId))];
   const { data: products, error: productsError } = await supabaseAdmin
     .from("products")
-    .select("id, name, brand_name, price, currency, image, in_stock")
+    .select("id, name, brand_name, price, currency, image, in_stock, unavailable_sizes")
     .in("id", productIds);
 
   if (productsError) {
@@ -87,6 +87,13 @@ export async function POST(request: NextRequest) {
     if (!Number.isInteger(item.quantity) || item.quantity < 1) {
       return NextResponse.json(
         { error: `Invalid quantity for product: ${item.productId}` },
+        { status: 400 }
+      );
+    }
+    const product = productById.get(item.productId)!;
+    if (product.unavailable_sizes?.includes(item.size)) {
+      return NextResponse.json(
+        { error: `Size ${item.size} is currently unavailable for ${product.name}` },
         { status: 400 }
       );
     }

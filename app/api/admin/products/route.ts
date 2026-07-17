@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
       sku: body.sku?.trim() || id,
       in_stock: body.inStock,
       is_new: body.isNew,
+      is_unisex: body.isUnisex,
+      unavailable_sizes: body.unavailableSizes,
     });
 
     if (!error) {

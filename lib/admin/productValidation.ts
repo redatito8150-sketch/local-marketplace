@@ -18,6 +18,8 @@ export interface ProductInput {
   sku?: string;
   inStock: boolean;
   isNew: boolean;
+  isUnisex: boolean;
+  unavailableSizes: string[];
 }
 
 export function validateProductInput(body: ProductInput): string | null {

@@ -149,6 +149,7 @@ export interface ProductDetail {
   careInstructions: string[];
   shippingReturns: string;
   sizes: string[];
+  unavailableSizes: string[];
   colors: ProductColorOption[];
   rating: number;
   reviewCount: number;
@@ -175,6 +176,7 @@ export interface ProductRecord {
   images: string[];
   colors: ProductColorOption[];
   sizes: string[];
+  unavailableSizes: string[];
   description: string;
   details: string[];
   careInstructions: string[];
@@ -182,6 +184,28 @@ export interface ProductRecord {
   sku: string;
   inStock: boolean;
   isNew: boolean;
+  isUnisex: boolean;
+}
+
+// ── Admin (raw `brands` row shape, used by the admin CRUD form/API) ────────
+
+export interface BrandRecord {
+  slug: string;
+  name: string;
+  tagline: string;
+  category: string;
+  foundedYear?: number;
+  city: string;
+  heroImage: string;
+  aboutDescription: string;
+  aboutImage: string;
+  storyImage: string;
+  storyBody: string;
+  infoBadges: BrandInfoBadge[];
+  categoryTabs: BrandCategoryTab[];
+  activeTab: string;
+  values: BrandValue[];
+  similarBrandSlugs: string[];
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
