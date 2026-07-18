@@ -8,7 +8,7 @@ import {
 } from "@/types";
 import { CATEGORIES } from "@/content/categories";
 
-interface ProductRow {
+export interface ProductRow {
   id: string;
   name: string;
   brand_name: string;
@@ -52,7 +52,7 @@ function generateReviews(count: number, rating: number): ProductReview[] {
   }));
 }
 
-function toProductCard(row: ProductRow): Product {
+export function toProductCard(row: ProductRow): Product {
   return {
     id: row.id,
     category: (row.category ?? "women") as CategorySlug,
@@ -165,6 +165,21 @@ export async function getProductCountLabel(
   // seeded row count — keeps the existing look while the catalog is small.
   const safeCount = count ?? 0;
   return category === "women" ? Math.max(safeCount, 342) : safeCount * 40;
+}
+
+export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("is_new", true)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getNewArrivals failed: ${error.message}`);
+  }
+
+  return ((data as ProductRow[]) ?? []).map(toProductCard);
 }
 
 export async function getProductById(id: string): Promise<ProductDetail | null> {
