@@ -1,96 +1,117 @@
 import Link from "next/link";
-import { Pencil } from "lucide-react";
-import { getAllProductsForAdmin } from "@/lib/data/admin";
-import { formatPrice } from "@/lib/format";
-import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
+import { FileText, Package, ShoppingBag, Store, Users } from "lucide-react";
+import {
+  getAllApplicationsForAdmin,
+  getAllBrandsForAdmin,
+  getAllOrdersForAdmin,
+  getAllProductsForAdmin,
+  getAllProfilesForAdmin,
+} from "@/lib/data/admin";
 
-export default async function AdminProductsPage() {
-  const products = await getAllProductsForAdmin();
+export default async function AdminOverviewPage() {
+  const [products, brands, orders, applications, profiles] = await Promise.all([
+    getAllProductsForAdmin(),
+    getAllBrandsForAdmin(),
+    getAllOrdersForAdmin(),
+    getAllApplicationsForAdmin(),
+    getAllProfilesForAdmin(),
+  ]);
+
+  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+  const newApplications = applications.filter((a) => a.status === "new").length;
+
+  const stats: {
+    label: string;
+    value: number;
+    sublabel?: string;
+    href: string;
+    icon: React.ElementType;
+  }[] = [
+    { label: "Products", value: products.length, href: "/admin/products", icon: Package },
+    { label: "Brands", value: brands.length, href: "/admin/brands", icon: Store },
+    {
+      label: "Orders",
+      value: orders.length,
+      sublabel: `${pendingOrders} pending`,
+      href: "/admin/orders",
+      icon: ShoppingBag,
+    },
+    {
+      label: "Applications",
+      value: applications.length,
+      sublabel: `${newApplications} new`,
+      href: "/admin/applications",
+      icon: FileText,
+    },
+    { label: "Users", value: profiles.length, href: "/admin/users", icon: Users },
+  ];
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tightest text-ink">
-          Products ({products.length})
-        </h1>
-        <Link
-          href="/admin/products/new"
-          className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02]"
-        >
-          Add product
-        </Link>
+      <h1 className="text-2xl font-bold tracking-tightest text-ink">Overview</h1>
+      <p className="mt-1 text-[13.5px] text-ink-soft/60">
+        A quick look at what&apos;s happening on Local.
+      </p>
+
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {stats.map((stat) => (
+          <Link
+            key={stat.label}
+            href={stat.href}
+            className="rounded-xl3 border border-stone-150 bg-white p-5 transition-colors hover:border-ink/30"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-beige-100">
+              <stat.icon className="h-4 w-4 text-ink" strokeWidth={1.6} />
+            </div>
+            <p className="mt-4 text-2xl font-semibold text-ink">{stat.value}</p>
+            <p className="text-[12.5px] font-medium text-ink-soft/60">{stat.label}</p>
+            {stat.sublabel && (
+              <p className="mt-1 text-[11px] font-medium text-ink-soft/45">{stat.sublabel}</p>
+            )}
+          </Link>
+        ))}
       </div>
 
-      <div className="mt-8 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
-        <table className="w-full text-left text-[13.5px]">
-          <thead className="border-b border-stone-150 text-[12px] uppercase tracking-wide text-ink-soft/50">
-            <tr>
-              <th className="px-5 py-3 font-medium">Product</th>
-              <th className="px-5 py-3 font-medium">Brand</th>
-              <th className="px-5 py-3 font-medium">Category</th>
-              <th className="px-5 py-3 font-medium">Price</th>
-              <th className="px-5 py-3 font-medium">Stock</th>
-              <th className="px-5 py-3 font-medium" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-150">
-            {products.map((product) => (
-              <tr key={product.id}>
-                <td className="flex items-center gap-3 px-5 py-3">
-                  <div className="h-10 w-10 overflow-hidden rounded-md bg-stone-100">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
-                  <span className="font-medium text-ink">{product.name}</span>
-                </td>
-                <td className="px-5 py-3 text-ink-soft/70">{product.brandName}</td>
-                <td className="px-5 py-3 capitalize text-ink-soft/70">
-                  {product.category ?? "—"}
-                </td>
-                <td className="px-5 py-3 font-medium text-ink">
-                  {formatPrice(product.price, product.currency)}
-                </td>
-                <td className="px-5 py-3">
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                      product.inStock
-                        ? "bg-green-50 text-green-700"
-                        : "bg-red-50 text-red-700"
-                    }`}
-                  >
-                    {product.inStock ? "In stock" : "Out of stock"}
-                  </span>
-                </td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center justify-end gap-1">
-                    <Link
-                      href={`/admin/products/${product.id}/edit`}
-                      aria-label={`Edit ${product.name}`}
-                      className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
-                    >
-                      <Pencil className="h-4 w-4" strokeWidth={1.6} />
-                    </Link>
-                    <DeleteEntityButton
-                      apiPath={`/api/admin/products/${product.id}`}
-                      name={product.name}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {products.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-ink-soft/60">
-            No products yet.
-          </p>
-        )}
+      <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <QuickLinks
+          title="Products & Brands"
+          links={[
+            { label: "Add a product", href: "/admin/products/new" },
+            { label: "Add a brand", href: "/admin/brands/new" },
+          ]}
+        />
+        <QuickLinks title="Orders" links={[{ label: "View all orders", href: "/admin/orders" }]} />
+        <QuickLinks
+          title="Brand Applications"
+          links={[{ label: "Review applications", href: "/admin/applications" }]}
+        />
       </div>
+    </div>
+  );
+}
+
+function QuickLinks({
+  title,
+  links,
+}: {
+  title: string;
+  links: { label: string; href: string }[];
+}) {
+  return (
+    <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+      <h2 className="text-[13.5px] font-semibold text-ink">{title}</h2>
+      <ul className="mt-3 space-y-2">
+        {links.map((link) => (
+          <li key={link.href}>
+            <Link
+              href={link.href}
+              className="text-[13px] font-medium text-ink-soft/70 hover:text-ink hover:underline"
+            >
+              {link.label} →
+            </Link>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -1,12 +1,19 @@
 import { supabase } from "@/lib/supabase/client";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  ApplicationStatus,
+  BrandApplicationRecord,
   BrandCategoryTab,
   BrandInfoBadge,
   BrandRecord,
   BrandValue,
   CategorySlug,
+  OrderItemRecord,
+  OrderRecord,
+  OrderStatus,
   ProductColorOption,
   ProductRecord,
+  ProfileRecord,
 } from "@/types";
 
 interface ProductRow {
@@ -143,4 +150,184 @@ export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null
   }
   if (!data) return null;
   return toBrandRecord(data as BrandRow);
+}
+
+interface OrderItemRow {
+  id: string;
+  product_id: string | null;
+  name: string;
+  brand: string;
+  price: number;
+  currency: "USD" | "EGP";
+  size: string;
+  color: string | null;
+  quantity: number;
+  image: string;
+}
+
+interface OrderRow {
+  id: string;
+  order_number: string;
+  status: OrderStatus;
+  user_id: string | null;
+  shipping_name: string;
+  shipping_email: string;
+  shipping_phone: string;
+  shipping_address: string;
+  shipping_city: string;
+  shipping_governorate: string;
+  subtotal_usd: number;
+  subtotal_egp: number;
+  created_at: string;
+  order_items: OrderItemRow[];
+}
+
+function toOrderRecord(row: OrderRow): OrderRecord {
+  return {
+    id: row.id,
+    orderNumber: row.order_number,
+    status: row.status,
+    userId: row.user_id ?? undefined,
+    shippingName: row.shipping_name,
+    shippingEmail: row.shipping_email,
+    shippingPhone: row.shipping_phone,
+    shippingAddress: row.shipping_address,
+    shippingCity: row.shipping_city,
+    shippingGovernorate: row.shipping_governorate,
+    subtotalUsd: Number(row.subtotal_usd),
+    subtotalEgp: Number(row.subtotal_egp),
+    createdAt: row.created_at,
+    items: (row.order_items ?? []).map((item) => ({
+      id: item.id,
+      productId: item.product_id,
+      name: item.name,
+      brand: item.brand,
+      price: Number(item.price),
+      currency: item.currency,
+      size: item.size,
+      color: item.color ?? undefined,
+      quantity: item.quantity,
+      image: item.image,
+    })),
+  };
+}
+
+// Orders have no public/admin RLS read policy, so admin reads go through
+// the service-role client directly — these functions are only ever called
+// from pages already behind the requireAdminUser()/layout gate.
+export async function getAllOrdersForAdmin(): Promise<OrderRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*, order_items(*)")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getAllOrdersForAdmin failed: ${error.message}`);
+  }
+  return (data as OrderRow[]).map(toOrderRecord);
+}
+
+export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("*, order_items(*)")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getOrderForAdmin(${id}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  return toOrderRecord(data as OrderRow);
+}
+
+interface BrandApplicationRow {
+  id: string;
+  brand_name: string;
+  founder_name: string;
+  email: string;
+  phone: string;
+  instagram_or_website: string;
+  product_category: string;
+  brand_story: string;
+  sales_channels: string;
+  status: ApplicationStatus;
+  created_at: string;
+}
+
+function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplicationRecord {
+  return {
+    id: row.id,
+    brandName: row.brand_name,
+    founderName: row.founder_name,
+    email: row.email,
+    phone: row.phone,
+    instagramOrWebsite: row.instagram_or_website,
+    productCategory: row.product_category,
+    brandStory: row.brand_story,
+    salesChannels: row.sales_channels,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+// brand_applications also has no public policy — service-role reads only.
+export async function getAllApplicationsForAdmin(): Promise<BrandApplicationRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getAllApplicationsForAdmin failed: ${error.message}`);
+  }
+  return (data as BrandApplicationRow[]).map(toBrandApplicationRecord);
+}
+
+export async function getApplicationForAdmin(
+  id: string
+): Promise<BrandApplicationRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getApplicationForAdmin(${id}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  return toBrandApplicationRecord(data as BrandApplicationRow);
+}
+
+interface ProfileRow {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  is_admin: boolean;
+  created_at: string;
+}
+
+function toProfileRecord(row: ProfileRow): ProfileRecord {
+  return {
+    id: row.id,
+    fullName: row.full_name ?? undefined,
+    email: row.email ?? undefined,
+    isAdmin: row.is_admin,
+    createdAt: row.created_at,
+  };
+}
+
+// profiles RLS only allows a user to read their own row — admin's "list
+// every account" view needs the service-role client too.
+export async function getAllProfilesForAdmin(): Promise<ProfileRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getAllProfilesForAdmin failed: ${error.message}`);
+  }
+  return (data as ProfileRow[]).map(toProfileRecord);
 }

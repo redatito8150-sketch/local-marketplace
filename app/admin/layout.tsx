@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import AdminSidebar from "@/components/admin/AdminSidebar";
 
 export default async function AdminLayout({
   children,
@@ -25,30 +26,16 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-cream">
       <header className="border-b border-stone-150 bg-white">
-        <div className="mx-auto flex max-w-screen2xl items-center justify-between px-8 py-5 lg:px-12">
+        <div className="mx-auto flex max-w-screen2xl items-center px-8 py-5 lg:px-12">
           <Link href="/admin" className="text-lg font-bold tracking-tightest text-ink">
             Local Admin
           </Link>
-          <nav className="flex items-center gap-6 text-[13px] font-medium text-ink-soft">
-            <Link href="/admin" className="hover:text-ink">
-              Products
-            </Link>
-            <Link href="/admin/products/new" className="hover:text-ink">
-              Add product
-            </Link>
-            <Link href="/admin/brands" className="hover:text-ink">
-              Brands
-            </Link>
-            <Link href="/admin/brands/new" className="hover:text-ink">
-              Add brand
-            </Link>
-            <Link href="/" className="hover:text-ink">
-              ← Back to site
-            </Link>
-          </nav>
         </div>
       </header>
-      <main className="mx-auto max-w-screen2xl px-8 py-10 lg:px-12">{children}</main>
+      <div className="mx-auto grid max-w-screen2xl grid-cols-1 gap-8 px-8 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-12">
+        <AdminSidebar />
+        <main>{children}</main>
+      </div>
     </div>
   );
 }

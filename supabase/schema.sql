@@ -85,7 +85,7 @@ create table if not exists orders (
   order_number text not null unique,
   user_id uuid references auth.users (id) on delete set null,
   status text not null default 'pending'
-    check (status in ('pending', 'paid', 'fulfilled', 'cancelled')),
+    check (status in ('pending', 'paid', 'shipped', 'fulfilled', 'cancelled')),
   shipping_name text not null,
   shipping_email text not null,
   shipping_phone text not null,
@@ -114,6 +114,26 @@ create table if not exists order_items (
 create index if not exists order_items_order_id_idx on order_items (order_id);
 
 -- ============================================================================
+-- BRAND APPLICATIONS
+-- Submissions from app/join-as-a-brand/apply (app/api/join/apply/route.ts).
+-- Reviewed from app/admin/applications.
+-- ============================================================================
+create table if not exists brand_applications (
+  id uuid primary key default gen_random_uuid(),
+  brand_name text not null,
+  founder_name text not null,
+  email text not null,
+  phone text not null,
+  instagram_or_website text not null,
+  product_category text not null,
+  brand_story text not null,
+  sales_channels text not null,
+  status text not null default 'new'
+    check (status in ('new', 'reviewing', 'approved', 'rejected')),
+  created_at timestamptz not null default now()
+);
+
+-- ============================================================================
 -- ROW LEVEL SECURITY
 -- Products and brands are public catalog data → readable by anyone.
 -- Orders/profiles are private → only the owning user (or no one, until
@@ -124,6 +144,7 @@ alter table products enable row level security;
 alter table profiles enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
+alter table brand_applications enable row level security;
 
 create policy "Public can read brands"
   on brands for select
@@ -154,7 +175,9 @@ create policy "Users can read their own order items"
 -- NOTE: There are deliberately no public INSERT policies on orders/
 -- order_items. Order writes go through app/api/orders/route.ts using the
 -- service_role key (lib/supabase/admin.ts), which bypasses RLS entirely —
--- never directly from the browser with the anon key.
+-- never directly from the browser with the anon key. Same story for
+-- brand_applications (app/api/join/apply/route.ts) — no public policies
+-- at all, admin reads/writes go through the service-role client too.
 
 -- ============================================================================
 -- AUTH TRIGGER
@@ -200,3 +223,17 @@ alter table profiles add column if not exists is_admin boolean not null default 
 -- ============================================================================
 alter table products add column if not exists is_unisex boolean not null default false;
 alter table products add column if not exists unavailable_sizes text[] not null default '{}';
+
+-- ============================================================================
+-- ADMIN DASHBOARD: ORDER STATUS + BRAND APPLICATIONS
+-- `orders` already exists in production, so its status check constraint
+-- needs to be replaced (not just added-to) to allow 'shipped'. The default
+-- constraint name below is Postgres's auto-generated name for an inline
+-- check on `orders.status` — if this DROP silently no-ops because the name
+-- differs, check the actual name under Table Editor → orders → Constraints
+-- and adjust. `brand_applications` is a brand-new table, so plain
+-- `create table if not exists` (already above) is enough to run once.
+-- ============================================================================
+alter table orders drop constraint if exists orders_status_check;
+alter table orders add constraint orders_status_check
+  check (status in ('pending', 'paid', 'shipped', 'fulfilled', 'cancelled'));

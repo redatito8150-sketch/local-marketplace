@@ -210,7 +210,7 @@ export interface BrandRecord {
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
 
-export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled";
+export type OrderStatus = "pending" | "paid" | "shipped" | "fulfilled" | "cancelled";
 
 export interface OrderItemRecord {
   id: string;
@@ -229,6 +229,7 @@ export interface OrderRecord {
   id: string;
   orderNumber: string;
   status: OrderStatus;
+  userId?: string;
   shippingName: string;
   shippingEmail: string;
   shippingPhone: string;
@@ -239,6 +240,34 @@ export interface OrderRecord {
   subtotalEgp: number;
   createdAt: string;
   items: OrderItemRecord[];
+}
+
+// ── Admin (raw `brand_applications` row shape) ──────────────────────────────
+
+export type ApplicationStatus = "new" | "reviewing" | "approved" | "rejected";
+
+export interface BrandApplicationRecord {
+  id: string;
+  brandName: string;
+  founderName: string;
+  email: string;
+  phone: string;
+  instagramOrWebsite: string;
+  productCategory: string;
+  brandStory: string;
+  salesChannels: string;
+  status: ApplicationStatus;
+  createdAt: string;
+}
+
+// ── Admin (raw `profiles` row shape, used by the users/permissions page) ───
+
+export interface ProfileRecord {
+  id: string;
+  fullName?: string;
+  email?: string;
+  isAdmin: boolean;
+  createdAt: string;
 }
 
 export interface BrandPageContent {
