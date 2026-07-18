@@ -9,7 +9,17 @@ import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
 import StarRating from "@/components/shared/StarRating";
 
-export default function ProductInfo({ product }: { product: ProductDetail }) {
+export default function ProductInfo({
+  product,
+  disableActions = false,
+}: {
+  product: ProductDetail;
+  // Used by the admin live-preview panel, which reuses this component
+  // as-is: without this, its Add to Cart/Wishlist buttons would mutate
+  // the admin's own real cart/wishlist (those contexts are global). Default
+  // stays false so the real product page's behavior is unchanged.
+  disableActions?: boolean;
+}) {
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
@@ -25,6 +35,7 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
     : undefined;
 
   const handleAddToCart = () => {
+    if (disableActions) return;
     if (!selectedSize) {
       setSizeError(true);
       return;
@@ -177,9 +188,10 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
 
         <button
           onClick={handleAddToCart}
+          disabled={disableActions}
           className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-md text-[14px] font-semibold transition-all ${
             added ? "bg-green-700 text-white" : "bg-ink text-cream hover:scale-[1.01]"
-          }`}
+          } ${disableActions ? "cursor-not-allowed opacity-50" : ""}`}
         >
           {added ? (
             <>
@@ -193,7 +205,9 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
 
         <button
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
-          onClick={() =>
+          disabled={disableActions}
+          onClick={() => {
+            if (disableActions) return;
             toggleItem({
               productId: product.id,
               name: product.name,
@@ -201,9 +215,11 @@ export default function ProductInfo({ product }: { product: ProductDetail }) {
               price: product.price,
               currency: product.currency,
               image: product.images[0],
-            })
-          }
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-md border border-stone-150 transition-colors hover:bg-stone-50"
+            });
+          }}
+          className={`flex h-11 w-11 flex-none items-center justify-center rounded-md border border-stone-150 transition-colors hover:bg-stone-50 ${
+            disableActions ? "cursor-not-allowed opacity-50" : ""
+          }`}
         >
           <Heart
             className="h-[18px] w-[18px]"

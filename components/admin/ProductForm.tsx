@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import type { ProductColorOption, ProductRecord } from "@/types";
+import { parseCsv, parseLines } from "@/lib/admin/parseTextInputs";
+import ProductLivePreview from "@/components/admin/ProductLivePreview";
 
 interface ProductFormProps {
   mode: "create" | "edit";
@@ -64,6 +66,19 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  // Save now keeps the admin on this page instead of redirecting to the
+  // list, so a first-time create needs to remember the id it gets back and
+  // switch to PATCHing from then on instead of POSTing a duplicate.
+  const [currentMode, setCurrentMode] = useState(mode);
+  const [currentProductId, setCurrentProductId] = useState(productId);
+  const [savedSnapshot, setSavedSnapshot] = useState(form);
+  const [justSaved, setJustSaved] = useState(false);
+
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(savedSnapshot),
+    [form, savedSnapshot]
+  );
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
@@ -80,10 +95,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
   const removeColor = (index: number) =>
     setForm((f) => ({ ...f, colors: f.colors.filter((_, i) => i !== index) }));
 
-  const currentSizes = form.sizesText
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const currentSizes = parseCsv(form.sizesText);
 
   const toggleUnavailableSize = (size: string) =>
     setForm((f) => ({
@@ -106,15 +118,12 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
       price: Number(form.price),
       currency: form.currency,
       image: form.image.trim(),
-      images: form.imagesText.split("\n").map((s) => s.trim()).filter(Boolean),
+      images: parseLines(form.imagesText),
       colors: form.colors.filter((c) => c.name.trim() && c.hex.trim()),
-      sizes: form.sizesText.split(",").map((s) => s.trim()).filter(Boolean),
+      sizes: parseCsv(form.sizesText),
       description: form.description.trim(),
-      details: form.detailsText.split("\n").map((s) => s.trim()).filter(Boolean),
-      careInstructions: form.careInstructionsText
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
+      details: parseLines(form.detailsText),
+      careInstructions: parseLines(form.careInstructionsText),
       shippingReturns: form.shippingReturns.trim(),
       sku: form.sku.trim() || undefined,
       inStock: form.inStock,
@@ -125,9 +134,11 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
 
     try {
       const res = await fetch(
-        mode === "create" ? "/api/admin/products" : `/api/admin/products/${productId}`,
+        currentMode === "create"
+          ? "/api/admin/products"
+          : `/api/admin/products/${currentProductId}`,
         {
-          method: mode === "create" ? "POST" : "PATCH",
+          method: currentMode === "create" ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         }
@@ -137,7 +148,14 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
         setError(data.error ?? "Something went wrong");
         return;
       }
-      router.push("/admin");
+
+      // Stay on the page — a first-time create switches to editing the
+      // product it just made instead of re-posting a duplicate next save.
+      setCurrentProductId(data.id);
+      if (currentMode === "create") setCurrentMode("edit");
+      setSavedSnapshot(form);
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
@@ -147,228 +165,242 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <TextField label="Name" value={form.name} onChange={(v) => set("name", v)} required />
-        <TextField
-          label="Brand name"
-          value={form.brandName}
-          onChange={(v) => set("brandName", v)}
-          required
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <label className="block">
-          <span className="text-[12.5px] font-medium text-ink-soft/70">Brand (optional)</span>
-          <select
-            value={form.brandSlug}
-            onChange={(e) => set("brandSlug", e.target.value)}
-            className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-          >
-            <option value="">None</option>
-            {brandOptions.map((b) => (
-              <option key={b.slug} value={b.slug}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block">
-          <span className="text-[12.5px] font-medium text-ink-soft/70">Category</span>
-          <select
-            value={form.category}
-            onChange={(e) => set("category", e.target.value as FormState["category"])}
-            className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-          >
-            <option value="">None (brand-only product)</option>
-            <option value="women">Women</option>
-            <option value="men">Men</option>
-            <option value="kids">Kids</option>
-          </select>
-        </label>
-      </div>
-
-      {(form.category === "women" || form.category === "men") && (
-        <label className="flex items-center gap-2 text-[13.5px] text-ink">
-          <input
-            type="checkbox"
-            checked={form.isUnisex}
-            onChange={(e) => set("isUnisex", e.target.checked)}
+    <div className="grid grid-cols-1 gap-10 lg:grid-cols-[55%_45%] lg:items-start">
+      <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+        <div className="grid grid-cols-2 gap-4">
+          <TextField label="Name" value={form.name} onChange={(v) => set("name", v)} required />
+          <TextField
+            label="Brand name"
+            value={form.brandName}
+            onChange={(v) => set("brandName", v)}
+            required
           />
-          Unisex (also show in Men & Women)
-        </label>
-      )}
+        </div>
 
-      <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Brand (optional)</span>
+            <select
+              value={form.brandSlug}
+              onChange={(e) => set("brandSlug", e.target.value)}
+              className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+            >
+              <option value="">None</option>
+              {brandOptions.map((b) => (
+                <option key={b.slug} value={b.slug}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Category</span>
+            <select
+              value={form.category}
+              onChange={(e) => set("category", e.target.value as FormState["category"])}
+              className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+            >
+              <option value="">None (brand-only product)</option>
+              <option value="women">Women</option>
+              <option value="men">Men</option>
+              <option value="kids">Kids</option>
+            </select>
+          </label>
+        </div>
+
+        {(form.category === "women" || form.category === "men") && (
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              checked={form.isUnisex}
+              onChange={(e) => set("isUnisex", e.target.checked)}
+            />
+            Unisex (also show in Men & Women)
+          </label>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <TextField
+            label="Price"
+            type="number"
+            value={form.price}
+            onChange={(v) => set("price", v)}
+            required
+          />
+          <label className="block">
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Currency</span>
+            <select
+              value={form.currency}
+              onChange={(e) => set("currency", e.target.value as "USD" | "EGP")}
+              className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+            >
+              <option value="USD">USD</option>
+              <option value="EGP">EGP</option>
+            </select>
+          </label>
+        </div>
+
         <TextField
-          label="Price"
-          type="number"
-          value={form.price}
-          onChange={(v) => set("price", v)}
+          label="Main image URL"
+          value={form.image}
+          onChange={(v) => set("image", v)}
+          required
+          hint="Must be on images.unsplash.com, or add the host to next.config.js remotePatterns first."
+        />
+
+        <TextArea
+          label="Gallery image URLs (optional, one per line)"
+          value={form.imagesText}
+          onChange={(v) => set("imagesText", v)}
+          rows={3}
+        />
+
+        <TextField
+          label="Sizes (comma-separated)"
+          value={form.sizesText}
+          onChange={(v) => set("sizesText", v)}
           required
         />
-        <label className="block">
-          <span className="text-[12.5px] font-medium text-ink-soft/70">Currency</span>
-          <select
-            value={form.currency}
-            onChange={(e) => set("currency", e.target.value as "USD" | "EGP")}
-            className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-          >
-            <option value="USD">USD</option>
-            <option value="EGP">EGP</option>
-          </select>
-        </label>
-      </div>
 
-      <TextField
-        label="Main image URL"
-        value={form.image}
-        onChange={(v) => set("image", v)}
-        required
-        hint="Must be on images.unsplash.com, or add the host to next.config.js remotePatterns first."
-      />
+        {currentSizes.length > 0 && (
+          <div>
+            <span className="text-[12.5px] font-medium text-ink-soft/70">
+              Mark sizes unavailable
+            </span>
+            <div className="mt-1.5 flex flex-wrap gap-4">
+              {currentSizes.map((size) => (
+                <label key={size} className="flex items-center gap-1.5 text-[13.5px] text-ink">
+                  <input
+                    type="checkbox"
+                    checked={form.unavailableSizes.includes(size)}
+                    onChange={() => toggleUnavailableSize(size)}
+                  />
+                  {size}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
-      <TextArea
-        label="Gallery image URLs (optional, one per line)"
-        value={form.imagesText}
-        onChange={(v) => set("imagesText", v)}
-        rows={3}
-      />
-
-      <TextField
-        label="Sizes (comma-separated)"
-        value={form.sizesText}
-        onChange={(v) => set("sizesText", v)}
-        required
-      />
-
-      {currentSizes.length > 0 && (
         <div>
-          <span className="text-[12.5px] font-medium text-ink-soft/70">
-            Mark sizes unavailable
-          </span>
-          <div className="mt-1.5 flex flex-wrap gap-4">
-            {currentSizes.map((size) => (
-              <label key={size} className="flex items-center gap-1.5 text-[13.5px] text-ink">
+          <span className="text-[12.5px] font-medium text-ink-soft/70">Colors</span>
+          <div className="mt-1.5 space-y-2">
+            {form.colors.map((color, i) => (
+              <div key={i} className="flex items-center gap-2">
                 <input
-                  type="checkbox"
-                  checked={form.unavailableSizes.includes(size)}
-                  onChange={() => toggleUnavailableSize(size)}
+                  type="text"
+                  placeholder="Color name"
+                  value={color.name}
+                  onChange={(e) => updateColor(i, { name: e.target.value })}
+                  className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
                 />
-                {size}
-              </label>
+                <input
+                  type="color"
+                  value={color.hex}
+                  onChange={(e) => updateColor(i, { hex: e.target.value })}
+                  className="h-9 w-12 rounded-md border border-stone-150"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeColor(i)}
+                  className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+                </button>
+              </div>
             ))}
+            <button
+              type="button"
+              onClick={addColor}
+              className="flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+              Add color
+            </button>
           </div>
         </div>
-      )}
 
-      <div>
-        <span className="text-[12.5px] font-medium text-ink-soft/70">Colors</span>
-        <div className="mt-1.5 space-y-2">
-          {form.colors.map((color, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input
-                type="text"
-                placeholder="Color name"
-                value={color.name}
-                onChange={(e) => updateColor(i, { name: e.target.value })}
-                className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
-              />
-              <input
-                type="color"
-                value={color.hex}
-                onChange={(e) => updateColor(i, { hex: e.target.value })}
-                className="h-9 w-12 rounded-md border border-stone-150"
-              />
-              <button
-                type="button"
-                onClick={() => removeColor(i)}
-                className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700"
-              >
-                <Trash2 className="h-4 w-4" strokeWidth={1.6} />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addColor}
-            className="flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline"
-          >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-            Add color
-          </button>
+        <TextArea
+          label="Description"
+          value={form.description}
+          onChange={(v) => set("description", v)}
+          rows={3}
+          required
+        />
+
+        <TextArea
+          label="Details (one per line)"
+          value={form.detailsText}
+          onChange={(v) => set("detailsText", v)}
+          rows={3}
+        />
+
+        <TextArea
+          label="Care instructions (one per line)"
+          value={form.careInstructionsText}
+          onChange={(v) => set("careInstructionsText", v)}
+          rows={3}
+        />
+
+        <TextArea
+          label="Shipping & returns"
+          value={form.shippingReturns}
+          onChange={(v) => set("shippingReturns", v)}
+          rows={2}
+        />
+
+        <TextField
+          label="SKU (optional, auto-generated if left blank)"
+          value={form.sku}
+          onChange={(v) => set("sku", v)}
+        />
+
+        <div className="flex items-center gap-6">
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              checked={form.inStock}
+              onChange={(e) => set("inStock", e.target.checked)}
+            />
+            In stock
+          </label>
+          <label className="flex items-center gap-2 text-[13.5px] text-ink">
+            <input
+              type="checkbox"
+              checked={form.isNew}
+              onChange={(e) => set("isNew", e.target.checked)}
+            />
+            Mark as new
+          </label>
         </div>
-      </div>
 
-      <TextArea
-        label="Description"
-        value={form.description}
-        onChange={(v) => set("description", v)}
-        rows={3}
-        required
+        {error && (
+          <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+            {error}
+          </p>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-md bg-ink px-6 py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? "Saving…" : currentMode === "create" ? "Create product" : "Save changes"}
+          </button>
+          {hasUnsavedChanges && !submitting && (
+            <span className="text-[12.5px] font-medium text-ink-soft/50">Unsaved changes</span>
+          )}
+        </div>
+      </form>
+
+      <ProductLivePreview
+        form={form}
+        productId={currentProductId}
+        hasUnsavedChanges={hasUnsavedChanges}
+        justSaved={justSaved}
       />
-
-      <TextArea
-        label="Details (one per line)"
-        value={form.detailsText}
-        onChange={(v) => set("detailsText", v)}
-        rows={3}
-      />
-
-      <TextArea
-        label="Care instructions (one per line)"
-        value={form.careInstructionsText}
-        onChange={(v) => set("careInstructionsText", v)}
-        rows={3}
-      />
-
-      <TextArea
-        label="Shipping & returns"
-        value={form.shippingReturns}
-        onChange={(v) => set("shippingReturns", v)}
-        rows={2}
-      />
-
-      <TextField
-        label="SKU (optional, auto-generated if left blank)"
-        value={form.sku}
-        onChange={(v) => set("sku", v)}
-      />
-
-      <div className="flex items-center gap-6">
-        <label className="flex items-center gap-2 text-[13.5px] text-ink">
-          <input
-            type="checkbox"
-            checked={form.inStock}
-            onChange={(e) => set("inStock", e.target.checked)}
-          />
-          In stock
-        </label>
-        <label className="flex items-center gap-2 text-[13.5px] text-ink">
-          <input
-            type="checkbox"
-            checked={form.isNew}
-            onChange={(e) => set("isNew", e.target.checked)}
-          />
-          Mark as new
-        </label>
-      </div>
-
-      {error && (
-        <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded-md bg-ink px-6 py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? "Saving…" : mode === "create" ? "Create product" : "Save changes"}
-      </button>
-    </form>
+    </div>
   );
 }
 
