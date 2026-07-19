@@ -5,8 +5,9 @@ import Breadcrumb from "@/components/category/Breadcrumb";
 import CategoryHero from "@/components/category/CategoryHero";
 import CollectionCards from "@/components/category/CollectionCards";
 import CategoryShoppingArea from "@/components/category/CategoryShoppingArea";
-import { getCategoryContent, FILTER_GROUPS } from "@/content/categories";
+import { getCategoryContent } from "@/content/categories";
 import { getProductsByCategory, getProductCountLabel } from "@/lib/data/products";
+import { buildDynamicFilterGroups } from "@/lib/filters";
 import { CategorySlug } from "@/types";
 
 export const revalidate = 60; // re-fetch from Supabase at most once a minute
@@ -49,7 +50,7 @@ export default async function CategoryPage({
       <CategoryHero hero={content.hero} />
       <CollectionCards cards={content.collectionCards} />
       <CategoryShoppingArea
-        filterGroups={FILTER_GROUPS}
+        filterGroups={buildDynamicFilterGroups(products)}
         products={products}
         productCount={productCount}
         featuredBrand={content.featuredBrand}

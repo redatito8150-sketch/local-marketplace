@@ -42,8 +42,8 @@ export default function ProductLivePreview({
   }, []);
 
   const previewImages = useMemo(
-    () => deriveProductImages(form.image, form.imagesText),
-    [form.image, form.imagesText]
+    () => deriveProductImages(form.image, form.images),
+    [form.image, form.images]
   );
 
   const previewProduct = useMemo(() => buildPreviewProduct(form, productId), [form, productId]);

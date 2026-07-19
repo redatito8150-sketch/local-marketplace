@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUnreadNotificationCount } from "@/lib/data/admin";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 
 export default async function AdminLayout({
@@ -23,6 +24,8 @@ export default async function AdminLayout({
 
   if (!profile?.is_admin) redirect("/account");
 
+  const unreadNotifications = await getUnreadNotificationCount();
+
   return (
     <div className="min-h-screen bg-cream">
       <header className="border-b border-stone-150 bg-white">
@@ -33,7 +36,7 @@ export default async function AdminLayout({
         </div>
       </header>
       <div className="mx-auto grid max-w-screen2xl grid-cols-1 gap-8 px-8 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-12">
-        <AdminSidebar />
+        <AdminSidebar unreadNotifications={unreadNotifications} />
         <main>{children}</main>
       </div>
     </div>

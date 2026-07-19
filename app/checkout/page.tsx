@@ -6,6 +6,7 @@ import { Check, CreditCard, Truck, PartyPopper, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
+import { formatSize } from "@/lib/format";
 
 type Step = "shipping" | "payment" | "confirmation";
 
@@ -290,12 +291,12 @@ export default function CheckoutPage() {
                     <div>
                       <p className="text-[13px] font-medium text-ink">{item.name}</p>
                       <p className="text-[12px] text-ink-soft/50">
-                        Qty {item.quantity} · {item.size}
+                        Qty {item.quantity} · {formatSize(item.size)}
                       </p>
                     </div>
                     <p className="text-[13px] font-semibold text-ink">
                       {item.currency === "EGP"
-                        ? `${(item.price * item.quantity).toLocaleString()} EGP`
+                        ? `${(item.price * item.quantity).toLocaleString("en-US")} EGP`
                         : `$${(item.price * item.quantity).toFixed(2)}`}
                     </p>
                   </div>
@@ -315,7 +316,7 @@ export default function CheckoutPage() {
                   <div className="flex items-center justify-between">
                     <span>Total (EGP)</span>
                     <span className="font-semibold text-ink">
-                      {subtotal.egp.toLocaleString()} EGP
+                      {subtotal.egp.toLocaleString("en-US")} EGP
                     </span>
                   </div>
                 )}

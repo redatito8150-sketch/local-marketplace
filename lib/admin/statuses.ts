@@ -46,3 +46,15 @@ export function applicationStatusBadgeClass(status: string): string {
       return "bg-stone-100 text-ink-soft/70"; // new
   }
 }
+
+export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
+  order_created: "New Order",
+  product_created: "Product Created",
+  product_updated: "Product Updated",
+  product_published: "Product Published",
+  product_archived: "Product Archived",
+  brand_application_submitted: "Brand Application",
+  low_stock: "Low Stock",
+  image_upload_failed: "Image Upload Failed",
+  storage_error: "Storage Error",
+};

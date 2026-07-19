@@ -1,4 +1,4 @@
-import { CategoryContent, FilterGroup, CategorySlug } from "@/types";
+import { CategoryContent, CategorySlug } from "@/types";
 
 export const CATEGORIES: Record<CategorySlug, CategoryContent> = {
   women: {
@@ -150,66 +150,3 @@ export function getCategoryContent(slug: string): CategoryContent | null {
   }
   return null;
 }
-
-export const FILTER_GROUPS: FilterGroup[] = [
-  {
-    id: "brand",
-    title: "Brand",
-    options: [
-      { id: "noya", label: "Noya", count: 32 },
-      { id: "elan-atelier", label: "Élan Atelier", count: 28 },
-      { id: "aureum", label: "Aureum", count: 21 },
-      { id: "kivari", label: "Kivari", count: 18 },
-      { id: "other-brands", label: "Other Brands", count: 42 },
-    ],
-  },
-  {
-    id: "price",
-    title: "Price",
-    options: [
-      { id: "under-50", label: "Under $50" },
-      { id: "50-100", label: "$50 - $100" },
-      { id: "100-200", label: "$100 - $200" },
-      { id: "200-500", label: "$200 - $500" },
-      { id: "above-500", label: "Above $500" },
-    ],
-  },
-  {
-    id: "size",
-    title: "Size",
-    options: [
-      { id: "xs", label: "XS" },
-      { id: "s", label: "S" },
-      { id: "m", label: "M" },
-      { id: "l", label: "L" },
-      { id: "xl", label: "XL" },
-    ],
-  },
-  {
-    id: "color",
-    title: "Color",
-    options: [
-      { id: "black", label: "Black" },
-      { id: "white", label: "White" },
-      { id: "beige", label: "Beige" },
-      { id: "brown", label: "Brown" },
-      { id: "green", label: "Green" },
-    ],
-  },
-  {
-    id: "availability",
-    title: "Availability",
-    options: [
-      { id: "in-stock", label: "In Stock" },
-      { id: "out-of-stock", label: "Out of Stock" },
-    ],
-  },
-  {
-    id: "rating",
-    title: "Rating",
-    options: [
-      { id: "4-plus", label: "4 Stars & Up" },
-      { id: "3-plus", label: "3 Stars & Up" },
-    ],
-  },
-];

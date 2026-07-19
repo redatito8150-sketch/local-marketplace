@@ -65,7 +65,7 @@ export default function BrandProductCard({
           {product.name}
         </h3>
         <p className="mt-1.5 text-[14px] font-medium text-charcoal">
-          {product.price.toLocaleString()} {product.currency}
+          {product.price.toLocaleString("en-US")} {product.currency}
         </p>
 
         <div className="mt-2.5 flex items-center gap-1.5">

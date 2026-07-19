@@ -19,7 +19,7 @@ export default async function AdminApplicationDetailPage({
             {application.brandName}
           </h1>
           <p className="mt-1 text-[13px] text-ink-soft/60">
-            Submitted {new Date(application.createdAt).toLocaleString()}
+            Submitted {new Date(application.createdAt).toLocaleString("en-US")}
           </p>
         </div>
         <StatusSelect

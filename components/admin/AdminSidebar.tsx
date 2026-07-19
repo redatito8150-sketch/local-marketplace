@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ArrowLeft,
+  Bell,
   FileText,
   LayoutDashboard,
   Package,
@@ -19,9 +20,10 @@ const NAV_ITEMS = [
   { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
   { label: "Applications", href: "/admin/applications", icon: FileText },
   { label: "Users", href: "/admin/users", icon: Users },
+  { label: "Notifications", href: "/admin/notifications", icon: Bell },
 ];
 
-export default function AdminSidebar() {
+export default function AdminSidebar({ unreadNotifications = 0 }: { unreadNotifications?: number }) {
   const pathname = usePathname();
 
   return (
@@ -41,6 +43,11 @@ export default function AdminSidebar() {
           >
             <item.icon className="h-4 w-4" strokeWidth={1.6} />
             {item.label}
+            {item.href === "/admin/notifications" && unreadNotifications > 0 && (
+              <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-ink px-1.5 text-[10.5px] font-semibold text-cream">
+                {unreadNotifications}
+              </span>
+            )}
           </Link>
         );
       })}

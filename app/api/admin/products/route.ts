@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
+import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
+import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
+import { notify } from "@/lib/notify";
 
 function slugify(value: string): string {
   return value
@@ -27,6 +30,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  const duplicateSku = await findDuplicateSku(body.sku, body.variants);
+  if (duplicateSku) {
+    return NextResponse.json(
+      { error: `SKU "${duplicateSku}" is already used by another product` },
+      { status: 400 }
+    );
+  }
+
+  const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
+
   const baseSlug = slugify(body.name) || "product";
   let id = "";
   let inserted = false;
@@ -39,21 +52,33 @@ export async function POST(request: NextRequest) {
       brand_name: body.brandName,
       brand_slug: body.brandSlug || null,
       category: body.category || null,
+      product_category: body.productCategory || null,
+      product_type: body.productType || null,
+      collection: body.collection || null,
+      material: body.material || null,
+      fit: body.fit || null,
       price: body.price,
+      compare_at_price: body.compareAtPrice ?? null,
       currency: body.currency,
       image: body.image,
       images: body.images?.length ? body.images : [body.image],
-      colors: body.colors,
-      sizes: body.sizes,
+      colors: legacy.colors,
+      sizes: legacy.sizes,
       description: body.description,
       details: body.details,
       care_instructions: body.careInstructions,
       shipping_returns: body.shippingReturns,
+      model_height: body.modelHeight || null,
+      model_wearing: body.modelWearing || null,
       sku: body.sku?.trim() || id,
-      in_stock: body.inStock,
+      in_stock: legacy.inStock,
       is_new: body.isNew,
       is_unisex: body.isUnisex,
-      unavailable_sizes: body.unavailableSizes,
+      unavailable_sizes: legacy.unavailableSizes,
+      track_inventory: body.trackInventory,
+      featured: body.featured,
+      status: body.status,
+      publish_date: body.publishDate ?? null,
     });
 
     if (!error) {
@@ -72,6 +97,34 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  if (body.variants.length > 0) {
+    const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
+      body.variants.map((v) => ({
+        product_id: id,
+        color: v.color || null,
+        size: v.size || null,
+        sku: v.sku?.trim() || null,
+        quantity: v.quantity,
+        low_stock_threshold: v.lowStockThreshold,
+        price_override: v.priceOverride ?? null,
+        availability_status: v.availabilityStatus,
+      }))
+    );
+
+    if (variantsError) {
+      return NextResponse.json(
+        { error: `Product created, but saving variants failed: ${variantsError.message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  await notify(
+    body.status === "published" ? "product_published" : "product_created",
+    body.status === "published" ? `Product published: ${body.name}` : `Product created: ${body.name}`,
+    body.brandName
+  );
 
   return NextResponse.json({ id });
 }

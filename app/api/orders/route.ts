@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { notify } from "@/lib/notify";
 
 interface OrderItemInput {
   productId: string;
@@ -22,10 +23,6 @@ interface ShippingInput {
 interface OrderRequestBody {
   items: OrderItemInput[];
   shipping: ShippingInput;
-}
-
-function generateOrderNumber(): string {
-  return `LC-${Math.floor(100000 + Math.random() * 900000)}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -60,17 +57,33 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Re-fetch prices/details from the DB rather than trusting client-submitted
-  // values — the client only sends product id + size/color/quantity.
+  // Re-fetch prices/details/variants from the DB rather than trusting
+  // client-submitted values — the client only sends product id +
+  // size/color/quantity, never a price or variant id we'd act on directly.
   const productIds = [...new Set(items.map((i) => i.productId))];
-  const { data: products, error: productsError } = await supabaseAdmin
-    .from("products")
-    .select("id, name, brand_name, price, currency, image, in_stock, unavailable_sizes")
-    .in("id", productIds);
+  const [
+    { data: products, error: productsError },
+    { data: variantRows, error: variantsError },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("products")
+      .select("id, name, brand_name, price, currency, image, unavailable_sizes")
+      .in("id", productIds),
+    supabaseAdmin
+      .from("product_variants")
+      .select("id, product_id, color, size, price_override")
+      .in("product_id", productIds),
+  ]);
 
   if (productsError) {
     return NextResponse.json(
       { error: `Failed to look up products: ${productsError.message}` },
+      { status: 500 }
+    );
+  }
+  if (variantsError) {
+    return NextResponse.json(
+      { error: `Failed to look up variants: ${variantsError.message}` },
       { status: 500 }
     );
   }
@@ -91,6 +104,8 @@ export async function POST(request: NextRequest) {
       );
     }
     const product = productById.get(item.productId)!;
+    // Legacy per-size flag — still enforced for any product not yet using
+    // variants; place_order does the precise per-variant stock check below.
     if (product.unavailable_sizes?.includes(item.size)) {
       return NextResponse.json(
         { error: `Size ${item.size} is currently unavailable for ${product.name}` },
@@ -99,21 +114,27 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const subtotal = { usd: 0, egp: 0 };
-  const orderItemRows = items.map((item) => {
+  // Resolve each item to its real variant by product+color+size — never by
+  // trusting a client-supplied variant id — so the price and stock check
+  // place_order runs are both grounded in the DB, not the request body.
+  const rpcItems = items.map((item) => {
     const product = productById.get(item.productId)!;
-    const lineTotal = Number(product.price) * item.quantity;
-    if (product.currency === "EGP") subtotal.egp += lineTotal;
-    else subtotal.usd += lineTotal;
+    const variant = (variantRows ?? []).find(
+      (v) =>
+        v.product_id === item.productId &&
+        (v.color ?? undefined) === (item.color || undefined) &&
+        (v.size ?? undefined) === (item.size || undefined)
+    );
 
     return {
       product_id: product.id,
+      variant_id: variant?.id ?? "",
       name: product.name,
       brand: product.brand_name,
-      price: product.price,
+      price: variant?.price_override ?? Number(product.price),
       currency: product.currency,
       size: item.size,
-      color: item.color ?? null,
+      color: item.color ?? "",
       quantity: item.quantity,
       image: product.image,
     };
@@ -126,56 +147,63 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  let orderId: string | null = null;
-  let orderNumber = "";
+  // One RPC call does the whole checkout atomically: unique order number,
+  // order row, per-variant stock check + decrement, and order_items — all
+  // in a single transaction, so two concurrent purchases of the last unit
+  // can't both succeed and a multi-item order can't half-complete.
+  const { data: result, error: placeOrderError } = await supabaseAdmin.rpc("place_order", {
+    p_shipping_name: `${shipping.firstName} ${shipping.lastName}`.trim(),
+    p_shipping_email: shipping.email,
+    p_shipping_phone: shipping.phone,
+    p_shipping_address: shipping.address,
+    p_shipping_city: shipping.city,
+    p_shipping_governorate: shipping.governorate,
+    p_user_id: user?.id ?? null,
+    p_items: rpcItems,
+  });
 
-  // Order numbers are unique — retry once on the rare collision.
-  for (let attempt = 0; attempt < 2 && !orderId; attempt++) {
-    orderNumber = generateOrderNumber();
-    const { data: order, error: orderError } = await supabaseAdmin
-      .from("orders")
-      .insert({
-        order_number: orderNumber,
-        user_id: user?.id ?? null,
-        shipping_name: `${shipping.firstName} ${shipping.lastName}`.trim(),
-        shipping_email: shipping.email,
-        shipping_phone: shipping.phone,
-        shipping_address: shipping.address,
-        shipping_city: shipping.city,
-        shipping_governorate: shipping.governorate,
-        subtotal_usd: subtotal.usd,
-        subtotal_egp: subtotal.egp,
-      })
-      .select("id")
-      .single();
-
-    if (order) {
-      orderId = order.id;
-    } else if (orderError?.code !== "23505" /* unique_violation */) {
+  if (placeOrderError) {
+    const message = placeOrderError.message ?? "";
+    if (message.startsWith("INSUFFICIENT_STOCK")) {
+      const productName = message.split(":")[1]?.trim() || "An item";
       return NextResponse.json(
-        { error: `Failed to create order: ${orderError?.message}` },
-        { status: 500 }
+        { error: `${productName} no longer has enough stock — please update your cart.` },
+        { status: 409 }
       );
+    }
+    return NextResponse.json(
+      { error: `Failed to place order: ${message}` },
+      { status: 500 }
+    );
+  }
+
+  await notify(
+    "order_created",
+    `New order ${result?.order_number}`,
+    `${shipping.firstName} ${shipping.lastName} — ${items.length} item${items.length === 1 ? "" : "s"}`
+  );
+
+  // Check the variants this order actually touched for anything that just
+  // crossed into low stock, now that place_order has committed the decrement.
+  const touchedVariantIds = rpcItems.map((i) => i.variant_id).filter(Boolean);
+  if (touchedVariantIds.length > 0) {
+    const { data: lowStockVariants } = await supabaseAdmin
+      .from("product_variants")
+      .select("id, product_id, color, size, quantity, low_stock_threshold")
+      .in("id", touchedVariantIds);
+
+    for (const variant of lowStockVariants ?? []) {
+      if (variant.quantity <= variant.low_stock_threshold) {
+        const product = productById.get(variant.product_id);
+        const combo = [variant.color, variant.size].filter(Boolean).join(" / ") || "default";
+        await notify(
+          "low_stock",
+          `Low stock: ${product?.name ?? variant.product_id}`,
+          `${combo} — ${variant.quantity} left`
+        );
+      }
     }
   }
 
-  if (!orderId) {
-    return NextResponse.json(
-      { error: "Failed to generate a unique order number, please try again" },
-      { status: 500 }
-    );
-  }
-
-  const { error: itemsError } = await supabaseAdmin
-    .from("order_items")
-    .insert(orderItemRows.map((row) => ({ ...row, order_id: orderId })));
-
-  if (itemsError) {
-    return NextResponse.json(
-      { error: `Failed to save order items: ${itemsError.message}` },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ orderNumber });
+  return NextResponse.json({ orderNumber: result?.order_number });
 }

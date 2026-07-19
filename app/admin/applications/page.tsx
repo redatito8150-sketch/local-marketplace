@@ -33,7 +33,7 @@ export default async function AdminApplicationsPage() {
                 </td>
                 <td className="px-5 py-3 text-ink-soft/70">{app.productCategory}</td>
                 <td className="px-5 py-3 text-ink-soft/70">
-                  {new Date(app.createdAt).toLocaleDateString()}
+                  {new Date(app.createdAt).toLocaleDateString("en-US")}
                 </td>
                 <td className="px-5 py-3">
                   <span

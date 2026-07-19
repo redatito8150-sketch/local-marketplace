@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { getOrderForAdmin } from "@/lib/data/admin";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 
@@ -20,7 +20,7 @@ export default async function AdminOrderDetailPage({
             Order #{order.orderNumber}
           </h1>
           <p className="mt-1 text-[13px] text-ink-soft/60">
-            {new Date(order.createdAt).toLocaleString()}
+            {new Date(order.createdAt).toLocaleString("en-US")}
           </p>
         </div>
         <StatusSelect
@@ -39,7 +39,7 @@ export default async function AdminOrderDetailPage({
                 <div>
                   <p className="text-[13.5px] font-medium text-ink">{item.name}</p>
                   <p className="text-[12px] text-ink-soft/50">
-                    {item.brand} · Qty {item.quantity} · {item.size}
+                    {item.brand} · Qty {item.quantity} · {formatSize(item.size)}
                     {item.color ? ` · ${item.color}` : ""}
                   </p>
                 </div>

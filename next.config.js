@@ -10,6 +10,11 @@ const nextConfig = {
         protocol: "https",
         hostname: "i.imgur.com",
       },
+      {
+        protocol: "https",
+        hostname: "kdrrzrboibwyxzrfwsgu.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
     ],
   },
 };

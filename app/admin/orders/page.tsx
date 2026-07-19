@@ -33,7 +33,7 @@ export default async function AdminOrdersPage() {
                   <p className="text-[12px] text-ink-soft/50">{order.shippingEmail}</p>
                 </td>
                 <td className="px-5 py-3 text-ink-soft/70">
-                  {new Date(order.createdAt).toLocaleDateString()}
+                  {new Date(order.createdAt).toLocaleDateString("en-US")}
                 </td>
                 <td className="px-5 py-3 font-medium text-ink">
                   {order.subtotalUsd > 0 && formatPrice(order.subtotalUsd, "USD")}

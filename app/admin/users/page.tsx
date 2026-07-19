@@ -39,7 +39,7 @@ export default async function AdminUsersPage() {
                   </td>
                   <td className="px-5 py-3 text-ink-soft/70">{profile.email}</td>
                   <td className="px-5 py-3 text-ink-soft/70">
-                    {new Date(profile.createdAt).toLocaleDateString()}
+                    {new Date(profile.createdAt).toLocaleDateString("en-US")}
                   </td>
                   <td className="px-5 py-3">
                     {isSelf ? (

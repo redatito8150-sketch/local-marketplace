@@ -7,7 +7,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import { supabase } from "@/lib/supabase/client";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatSize } from "@/lib/format";
 import type { OrderRecord } from "@/types";
 
 interface OrderRow {
@@ -192,7 +192,7 @@ export default function AccountPage() {
                         #{order.orderNumber}
                       </p>
                       <p className="text-[12.5px] text-ink-soft/50">
-                        {new Date(order.createdAt).toLocaleDateString()} ·{" "}
+                        {new Date(order.createdAt).toLocaleDateString("en-US")} ·{" "}
                         <span className="capitalize">{order.status}</span>
                       </p>
                     </div>
@@ -212,7 +212,7 @@ export default function AccountPage() {
                         className="flex items-center justify-between pt-2 first:pt-0"
                       >
                         <p className="text-[13px] text-ink-soft/80">
-                          {item.name} · Qty {item.quantity} · {item.size}
+                          {item.name} · Qty {item.quantity} · {formatSize(item.size)}
                         </p>
                         <p className="text-[13px] font-medium text-ink">
                           {formatPrice(item.price * item.quantity, item.currency)}

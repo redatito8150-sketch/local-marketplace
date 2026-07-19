@@ -1,10 +1,12 @@
 import { supabase } from "@/lib/supabase/client";
+import { getVariantsForProducts } from "@/lib/data/variants";
 import {
   CategorySlug,
   Product,
   ProductDetail,
   ProductReview,
   ProductColorOption,
+  ProductStatus,
 } from "@/types";
 import { CATEGORIES } from "@/content/categories";
 
@@ -14,7 +16,13 @@ export interface ProductRow {
   brand_name: string;
   brand_slug: string | null;
   category: CategorySlug | null;
+  product_category: string | null;
+  product_type: string | null;
+  collection: string | null;
+  material: string | null;
+  fit: string | null;
   price: number;
+  compare_at_price: number | null;
   currency: "USD" | "EGP";
   image: string;
   images: string[];
@@ -26,11 +34,17 @@ export interface ProductRow {
   details: string[];
   care_instructions: string[];
   shipping_returns: string;
+  model_height: string | null;
+  model_wearing: string | null;
   sku: string;
   in_stock: boolean;
   is_new: boolean;
   is_unisex: boolean;
   unavailable_sizes: string[];
+  track_inventory: boolean;
+  featured: boolean;
+  status: ProductStatus;
+  publish_date: string | null;
 }
 
 const REVIEW_AUTHORS = ["Mona K.", "Youssef A.", "Salma R.", "Karim T.", "Nadine H."];
@@ -59,12 +73,20 @@ export function toProductCard(row: ProductRow): Product {
     brand: row.brand_name,
     name: row.name,
     price: Number(row.price),
+    currency: row.currency,
     rating: Math.round(row.rating),
     reviewCount: row.review_count,
     image: row.image,
     sizes: row.sizes ?? [],
     colors: row.colors ?? [],
     inStock: row.in_stock,
+    productCategory: row.product_category ?? undefined,
+    productType: row.product_type ?? undefined,
+    collection: row.collection ?? undefined,
+    material: row.material ?? undefined,
+    fit: row.fit ?? undefined,
+    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
+    featured: row.featured,
   };
 }
 
@@ -84,6 +106,7 @@ function toProductDetail(row: ProductRow): ProductDetail {
     brandName: row.brand_name,
     brandSlug: row.brand_slug ?? undefined,
     price: Number(row.price),
+    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
     currency: row.currency,
     images: row.images?.length ? row.images : [row.image],
     description: row.description,
@@ -102,6 +125,17 @@ function toProductDetail(row: ProductRow): ProductDetail {
     categoryLabel,
     categoryHref,
     relatedIds: [], // filled in by getProductById after a second query
+    productCategory: row.product_category ?? undefined,
+    productType: row.product_type ?? undefined,
+    collection: row.collection ?? undefined,
+    material: row.material ?? undefined,
+    fit: row.fit ?? undefined,
+    modelHeight: row.model_height ?? undefined,
+    modelWearing: row.model_wearing ?? undefined,
+    trackInventory: row.track_inventory,
+    featured: row.featured,
+    status: row.status,
+    publishDate: row.publish_date ?? undefined,
   };
 }
 
@@ -147,7 +181,9 @@ export async function getProductsByCategory(
       return true;
     });
 
-  return (merged as ProductRow[]).map(toProductCard);
+  const cards = (merged as ProductRow[]).map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
+  return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
 
 export async function getProductCountLabel(
@@ -179,7 +215,9 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     throw new Error(`getNewArrivals failed: ${error.message}`);
   }
 
-  return ((data as ProductRow[]) ?? []).map(toProductCard);
+  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
+  return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
 
 export async function getProductById(id: string): Promise<ProductDetail | null> {
@@ -199,6 +237,9 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
 
   const row = data as ProductRow;
   const detail = toProductDetail(row);
+
+  const variantsByProduct = await getVariantsForProducts([id]);
+  detail.variants = variantsByProduct.get(id) ?? [];
 
   // Related products: same category if it's a shop item, same brand otherwise.
   let relatedQuery = supabase.from("products").select("id").neq("id", id).limit(4);

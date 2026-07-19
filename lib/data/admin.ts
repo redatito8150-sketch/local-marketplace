@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getVariantsForProducts } from "@/lib/data/variants";
 import {
   ApplicationStatus,
   BrandApplicationRecord,
@@ -8,11 +9,13 @@ import {
   BrandRecord,
   BrandValue,
   CategorySlug,
+  NotificationRecord,
   OrderItemRecord,
   OrderRecord,
   OrderStatus,
   ProductColorOption,
   ProductRecord,
+  ProductStatus,
   ProfileRecord,
 } from "@/types";
 
@@ -22,7 +25,13 @@ interface ProductRow {
   brand_name: string;
   brand_slug: string | null;
   category: CategorySlug | null;
+  product_category: string | null;
+  product_type: string | null;
+  collection: string | null;
+  material: string | null;
+  fit: string | null;
   price: number;
+  compare_at_price: number | null;
   currency: "USD" | "EGP";
   image: string;
   images: string[];
@@ -32,11 +41,17 @@ interface ProductRow {
   details: string[];
   care_instructions: string[];
   shipping_returns: string;
+  model_height: string | null;
+  model_wearing: string | null;
   sku: string;
   in_stock: boolean;
   is_new: boolean;
   is_unisex: boolean;
   unavailable_sizes: string[];
+  track_inventory: boolean;
+  featured: boolean;
+  status: ProductStatus;
+  publish_date: string | null;
 }
 
 function toProductRecord(row: ProductRow): ProductRecord {
@@ -46,7 +61,13 @@ function toProductRecord(row: ProductRow): ProductRecord {
     brandName: row.brand_name,
     brandSlug: row.brand_slug ?? undefined,
     category: row.category ?? undefined,
+    productCategory: row.product_category ?? undefined,
+    productType: row.product_type ?? undefined,
+    collection: row.collection ?? undefined,
+    material: row.material ?? undefined,
+    fit: row.fit ?? undefined,
     price: Number(row.price),
+    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
     currency: row.currency,
     image: row.image,
     images: row.images ?? [],
@@ -57,10 +78,16 @@ function toProductRecord(row: ProductRow): ProductRecord {
     details: row.details ?? [],
     careInstructions: row.care_instructions ?? [],
     shippingReturns: row.shipping_returns,
+    modelHeight: row.model_height ?? undefined,
+    modelWearing: row.model_wearing ?? undefined,
     sku: row.sku,
     inStock: row.in_stock,
     isNew: row.is_new,
     isUnisex: row.is_unisex,
+    trackInventory: row.track_inventory,
+    featured: row.featured,
+    status: row.status,
+    publishDate: row.publish_date ?? undefined,
   };
 }
 
@@ -85,7 +112,11 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
     throw new Error(`getProductForAdmin(${id}) failed: ${error.message}`);
   }
   if (!data) return null;
-  return toProductRecord(data as ProductRow);
+
+  const record = toProductRecord(data as ProductRow);
+  const variantsByProduct = await getVariantsForProducts([id]);
+  record.variants = variantsByProduct.get(id) ?? [];
+  return record;
 }
 
 interface BrandRow {
@@ -330,4 +361,50 @@ export async function getAllProfilesForAdmin(): Promise<ProfileRecord[]> {
     throw new Error(`getAllProfilesForAdmin failed: ${error.message}`);
   }
   return (data as ProfileRow[]).map(toProfileRecord);
+}
+
+interface NotificationRow {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  created_at: string;
+}
+
+function toNotificationRecord(row: NotificationRow): NotificationRecord {
+  return {
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    read: row.read,
+    createdAt: row.created_at,
+  };
+}
+
+// notifications has no public policy at all — admin-only, service-role reads.
+export async function getAllNotificationsForAdmin(limit = 50): Promise<NotificationRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("notifications")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getAllNotificationsForAdmin failed: ${error.message}`);
+  }
+  return (data as NotificationRow[]).map(toNotificationRecord);
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("read", false);
+
+  if (error) {
+    throw new Error(`getUnreadNotificationCount failed: ${error.message}`);
+  }
+  return count ?? 0;
 }

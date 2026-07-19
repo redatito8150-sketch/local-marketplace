@@ -43,18 +43,62 @@ export interface FilterGroup {
   options: FilterOption[];
 }
 
-export interface Product {
+// ── Product Variants (Color + Size combinations) ───────────────────────────
+// Additive to the flat product-level sizes/colors/unavailableSizes/sku/
+// inStock fields, not a replacement — a product with no variant rows keeps
+// working off those flat fields exactly as before. `variants` stays
+// optional everywhere it appears so every existing call site (which never
+// supplies it) keeps type-checking unchanged.
+
+export type ProductStatus = "draft" | "published" | "archived";
+export type VariantAvailabilityStatus = "available" | "unavailable" | "discontinued";
+
+export interface ProductVariant {
+  id: string;
+  productId: string;
+  color?: string;
+  size?: string;
+  sku?: string;
+  quantity: number;
+  lowStockThreshold: number;
+  priceOverride?: number;
+  availabilityStatus: VariantAvailabilityStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── New product-level taxonomy/merchandising fields ─────────────────────────
+// All optional/nullable in the DB, so every mapping function that doesn't
+// set them yet (nothing does until Phase 2/3) keeps compiling unchanged.
+export interface ProductTaxonomyFields {
+  productCategory?: string;
+  productType?: string;
+  collection?: string;
+  material?: string;
+  fit?: string;
+  compareAtPrice?: number;
+  modelHeight?: string;
+  modelWearing?: string;
+  trackInventory?: boolean;
+  featured?: boolean;
+  status?: ProductStatus;
+  publishDate?: string;
+}
+
+export interface Product extends ProductTaxonomyFields {
   id: string;
   category: CategorySlug;
   brand: string;
   name: string;
   price: number;
+  currency: "USD" | "EGP";
   rating: number;
   reviewCount: number;
   image: string;
   sizes: string[];
   colors: ProductColorOption[];
   inStock: boolean;
+  variants?: ProductVariant[];
 }
 
 export type SortOption = "newest" | "price-asc" | "price-desc" | "top-rated";
@@ -67,6 +111,7 @@ export type ViewMode = "grid" | "list";
 export interface CartLineItem {
   id: string; // unique line id (product id + size + color)
   productId: string;
+  variantId?: string; // present once a product resolves to a real variant
   name: string;
   brand: string;
   price: number;
@@ -136,7 +181,7 @@ export interface ProductColorOption {
   hex: string;
 }
 
-export interface ProductDetail {
+export interface ProductDetail extends ProductTaxonomyFields {
   id: string;
   name: string;
   brandName: string;
@@ -160,11 +205,12 @@ export interface ProductDetail {
   categoryLabel: string;
   categoryHref: string;
   relatedIds: string[];
+  variants?: ProductVariant[];
 }
 
 // ── Admin (raw `products` row shape, used by the admin CRUD form/API) ──────
 
-export interface ProductRecord {
+export interface ProductRecord extends ProductTaxonomyFields {
   id: string;
   name: string;
   brandName: string;
@@ -185,6 +231,7 @@ export interface ProductRecord {
   inStock: boolean;
   isNew: boolean;
   isUnisex: boolean;
+  variants?: ProductVariant[];
 }
 
 // ── Admin (raw `brands` row shape, used by the admin CRUD form/API) ────────
@@ -267,6 +314,17 @@ export interface ProfileRecord {
   fullName?: string;
   email?: string;
   isAdmin: boolean;
+  createdAt: string;
+}
+
+// ── Admin (raw `notifications` row shape) ───────────────────────────────────
+
+export interface NotificationRecord {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
   createdAt: string;
 }
 

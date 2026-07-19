@@ -9,16 +9,16 @@ import FeaturedBrand from "./FeaturedBrand";
 
 function matchesPriceRange(price: number, rangeId: string): boolean {
   switch (rangeId) {
-    case "under-50":
-      return price < 50;
-    case "50-100":
-      return price >= 50 && price <= 100;
-    case "100-200":
-      return price > 100 && price <= 200;
-    case "200-500":
-      return price > 200 && price <= 500;
-    case "above-500":
-      return price > 500;
+    case "under-500":
+      return price < 500;
+    case "500-1000":
+      return price >= 500 && price <= 1000;
+    case "1000-2000":
+      return price > 1000 && price <= 2000;
+    case "2000-5000":
+      return price > 2000 && price <= 5000;
+    case "above-5000":
+      return price > 5000;
     default:
       return true;
   }
@@ -60,10 +60,6 @@ export default function CategoryShoppingArea({
   const [sort, setSort] = useState<SortOption>("newest");
   const [selected, setSelected] = useState<Record<string, string[]>>({});
 
-  const brandGroup = filterGroups.find((g) => g.id === "brand");
-  const sizeGroup = filterGroups.find((g) => g.id === "size");
-  const colorGroup = filterGroups.find((g) => g.id === "color");
-
   const toggleFilter = (groupId: string, optionId: string) => {
     setSelected((prev) => {
       const current = prev[groupId] ?? [];
@@ -77,75 +73,108 @@ export default function CategoryShoppingArea({
   const clearFilters = () => setSelected({});
 
   const filteredProducts = useMemo(() => {
+    // Brand/size/color/category/type/collection/material/fit options are
+    // generated from real product data with id === label (lib/filters.ts),
+    // so matching is a direct value comparison — no reverse lookup into
+    // filterGroups needed.
     const selectedBrandIds = selected.brand ?? [];
     const selectedPriceIds = selected.price ?? [];
     const selectedSizeIds = selected.size ?? [];
     const selectedColorIds = selected.color ?? [];
+    const selectedCategoryIds = selected.productCategory ?? [];
+    const selectedTypeIds = selected.productType ?? [];
+    const selectedCollectionIds = selected.collection ?? [];
+    const selectedMaterialIds = selected.material ?? [];
+    const selectedFitIds = selected.fit ?? [];
     const selectedAvailabilityIds = selected.availability ?? [];
     const selectedRatingIds = selected.rating ?? [];
+    const selectedFeaturedIds = selected.featured ?? [];
 
     return products.filter((product) => {
-      // Brand — every selected brand must match the product's brand name
-      if (selectedBrandIds.length > 0 && brandGroup) {
-        const brandOption = brandGroup.options.find(
-          (opt) => opt.label.toUpperCase() === product.brand.toUpperCase()
-        );
-        const matchesBrand = brandOption
-          ? selectedBrandIds.includes(brandOption.id)
-          : false;
-        if (!matchesBrand) return false;
+      if (selectedBrandIds.length > 0 && !selectedBrandIds.includes(product.brand)) {
+        return false;
       }
 
       // Price — OR across selected ranges (a product only needs to fall
       // into one of the checked ranges)
-      if (selectedPriceIds.length > 0) {
-        const matchesPrice = selectedPriceIds.some((rangeId) =>
-          matchesPriceRange(product.price, rangeId)
-        );
-        if (!matchesPrice) return false;
+      if (
+        selectedPriceIds.length > 0 &&
+        !selectedPriceIds.some((rangeId) => matchesPriceRange(product.price, rangeId))
+      ) {
+        return false;
       }
 
       // Size — product must offer at least one of the selected sizes
-      if (selectedSizeIds.length > 0 && sizeGroup) {
-        const selectedLabels = selectedSizeIds.map((id) =>
-          sizeGroup.options.find((opt) => opt.id === id)?.label.toUpperCase()
-        );
-        const matchesSize = product.sizes.some((size) =>
-          selectedLabels.includes(size.toUpperCase())
-        );
-        if (!matchesSize) return false;
+      if (
+        selectedSizeIds.length > 0 &&
+        !product.sizes.some((size) => selectedSizeIds.includes(size))
+      ) {
+        return false;
       }
 
       // Color — product must offer at least one of the selected colors
-      if (selectedColorIds.length > 0 && colorGroup) {
-        const selectedLabels = selectedColorIds.map((id) =>
-          colorGroup.options.find((opt) => opt.id === id)?.label.toUpperCase()
-        );
-        const matchesColor = product.colors.some((color) =>
-          selectedLabels.includes(color.name.toUpperCase())
-        );
-        if (!matchesColor) return false;
+      if (
+        selectedColorIds.length > 0 &&
+        !product.colors.some((color) => selectedColorIds.includes(color.name))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!product.productCategory || !selectedCategoryIds.includes(product.productCategory))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedTypeIds.length > 0 &&
+        (!product.productType || !selectedTypeIds.includes(product.productType))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedCollectionIds.length > 0 &&
+        (!product.collection || !selectedCollectionIds.includes(product.collection))
+      ) {
+        return false;
+      }
+
+      if (
+        selectedMaterialIds.length > 0 &&
+        (!product.material || !selectedMaterialIds.includes(product.material))
+      ) {
+        return false;
+      }
+
+      if (selectedFitIds.length > 0 && (!product.fit || !selectedFitIds.includes(product.fit))) {
+        return false;
       }
 
       // Availability — OR across selected states (usually only one is picked)
-      if (selectedAvailabilityIds.length > 0) {
-        const matchesStock = selectedAvailabilityIds.some((id) =>
-          matchesAvailability(product.inStock, id)
-        );
-        if (!matchesStock) return false;
+      if (
+        selectedAvailabilityIds.length > 0 &&
+        !selectedAvailabilityIds.some((id) => matchesAvailability(product.inStock, id))
+      ) {
+        return false;
       }
 
       // Rating — OR across selected thresholds
-      if (selectedRatingIds.length > 0) {
-        const matchesStars = selectedRatingIds.some((id) =>
-          matchesRating(product.rating, id)
-        );
-        if (!matchesStars) return false;
+      if (
+        selectedRatingIds.length > 0 &&
+        !selectedRatingIds.some((id) => matchesRating(product.rating, id))
+      ) {
+        return false;
+      }
+
+      if (selectedFeaturedIds.length > 0 && !product.featured) {
+        return false;
       }
 
       return true;
     });
-  }, [products, selected, brandGroup, sizeGroup, colorGroup]);
+  }, [products, selected]);
 
   const sortedProducts = useMemo(() => {
     const list = [...filteredProducts];

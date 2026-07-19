@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Heart, Minus, Plus, Check, Truck } from "lucide-react";
+import { AlertTriangle, Heart, Minus, Plus, Check, Truck } from "lucide-react";
 import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
@@ -34,21 +34,68 @@ export default function ProductInfo({
     ? `/brands/${product.brandSlug}`
     : undefined;
 
+  const hasVariants = (product.variants?.length ?? 0) > 0;
+
+  // Resolves the exact Color+Size combination to a specific variant, so
+  // price overrides / availability / low-stock reflect that one
+  // combination instead of the whole product.
+  const resolvedVariant = useMemo(() => {
+    if (!hasVariants) return undefined;
+    return product.variants!.find(
+      (v) => (v.color ?? "") === (selectedColor ?? "") && (v.size ?? "") === (selectedSize ?? "")
+    );
+  }, [hasVariants, product.variants, selectedColor, selectedSize]);
+
+  const displayPrice = resolvedVariant?.priceOverride ?? product.price;
+
+  // A size is disabled once every variant for it (under the selected
+  // color, when one's picked) is out of stock or unavailable. Sizes with
+  // no matching variant row at all aren't blocked — keeps working for
+  // products that predate the variant system.
+  const isSizeDisabled = (size: string): boolean => {
+    if (!hasVariants) return product.unavailableSizes.includes(size);
+    const matching = product.variants!.filter(
+      (v) => v.size === size && (!selectedColor || (v.color ?? "") === selectedColor)
+    );
+    if (matching.length === 0) return false;
+    return !matching.some((v) => v.availabilityStatus === "available" && v.quantity > 0);
+  };
+
+  const isLowStock =
+    Boolean(resolvedVariant) &&
+    resolvedVariant!.availabilityStatus === "available" &&
+    resolvedVariant!.quantity > 0 &&
+    resolvedVariant!.quantity <= resolvedVariant!.lowStockThreshold;
+
   const handleAddToCart = () => {
     if (disableActions) return;
-    if (!selectedSize) {
+    // A product with no sizes at all (a single default variant) has
+    // nothing for the shopper to click to set selectedSize — only require
+    // a selection when there's actually a size list to pick from.
+    if (product.sizes.length > 0 && !selectedSize) {
+      setSizeError(true);
+      return;
+    }
+    if (
+      hasVariants &&
+      (!resolvedVariant || resolvedVariant.quantity <= 0 || resolvedVariant.availabilityStatus !== "available")
+    ) {
       setSizeError(true);
       return;
     }
     setSizeError(false);
     addItem({
       productId: product.id,
+      variantId: resolvedVariant?.id,
       name: product.name,
       brand: product.brandName,
-      price: product.price,
+      price: displayPrice,
       currency: product.currency,
       image: product.images[0],
-      size: selectedSize,
+      // Real, matchable value — a sizeless product's variant has
+      // `size: null`, so this stays "" to match it; formatSize() turns
+      // this into "One Size" only where it's shown to the shopper.
+      size: selectedSize ?? "",
       color: selectedColor,
       quantity,
     });
@@ -85,9 +132,16 @@ export default function ProductInfo({
         </a>
       </div>
 
-      <p className="mt-5 text-2xl font-semibold text-ink">
-        {formatPrice(product.price, product.currency)}
-      </p>
+      <div className="mt-5 flex items-center gap-3">
+        <p className="text-2xl font-semibold text-ink">
+          {formatPrice(displayPrice, product.currency)}
+        </p>
+        {typeof product.compareAtPrice === "number" && product.compareAtPrice > displayPrice && (
+          <p className="text-[15px] text-ink-soft/40 line-through">
+            {formatPrice(product.compareAtPrice, product.currency)}
+          </p>
+        )}
+      </div>
 
       {/* Color selector */}
       {product.colors.length > 0 && (
@@ -130,7 +184,7 @@ export default function ProductInfo({
         </div>
         <div className="mt-3 flex flex-wrap gap-2.5">
           {product.sizes.map((size) => {
-            const unavailable = product.unavailableSizes.includes(size);
+            const unavailable = isSizeDisabled(size);
             return (
               <button
                 key={size}
@@ -160,6 +214,12 @@ export default function ProductInfo({
         {sizeError && (
           <p className="mt-2 text-[12px] font-medium text-red-600">
             Please select a size to continue.
+          </p>
+        )}
+        {isLowStock && (
+          <p className="mt-2 flex items-center gap-1.5 text-[12px] font-medium text-amber-700">
+            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+            Only {resolvedVariant!.quantity} left in stock
           </p>
         )}
       </div>

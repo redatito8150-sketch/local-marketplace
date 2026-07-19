@@ -20,6 +20,17 @@ export default function ProductCard({
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
 
+  // A compact card has no size/color picker, so "Add to Cart" here picks a
+  // sensible real default instead of the old hardcoded "M" (which silently
+  // added a size some products don't even offer, e.g. shoes sized 38-45).
+  const variants = product.variants ?? [];
+  const defaultVariant =
+    variants.find((v) => v.availabilityStatus === "available" && v.quantity > 0) ?? variants[0];
+  // Real, matchable value — "" for a sizeless product, matching its
+  // variant's `size: null`; formatSize() renders it as "One Size" for
+  // display only, never stored as the literal cart/order size.
+  const quickAddSize = defaultVariant?.size ?? product.sizes[0] ?? "";
+
   return (
     <Link
       href={`/product/${product.id}`}
@@ -50,7 +61,7 @@ export default function ProductCard({
               name: product.name,
               brand: product.brand,
               price: product.price,
-              currency: "USD",
+              currency: product.currency,
               image: product.image,
             });
           }}
@@ -73,7 +84,7 @@ export default function ProductCard({
           {product.name}
         </h3>
         <p className="mt-1.5 text-[14px] font-semibold text-ink">
-          {formatPrice(product.price, "USD")}
+          {formatPrice(product.price, product.currency)}
         </p>
 
         <div className="mt-1.5 flex items-center gap-1.5">
@@ -89,22 +100,25 @@ export default function ProductCard({
             e.stopPropagation();
             addItem({
               productId: product.id,
+              variantId: defaultVariant?.id,
               name: product.name,
               brand: product.brand,
-              price: product.price,
-              currency: "USD",
+              price: defaultVariant?.priceOverride ?? product.price,
+              currency: product.currency,
               image: product.image,
-              size: "M",
+              size: quickAddSize,
+              color: defaultVariant?.color,
               quantity: 1,
             });
           }}
-          className={`rounded-md bg-ink text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02] active:scale-[0.98] ${
+          disabled={!product.inStock}
+          className={`rounded-md bg-ink text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
             viewMode === "list"
               ? "mt-3 px-5 py-2"
               : "mt-3.5 w-full py-2.5"
           }`}
         >
-          Add to Cart
+          {product.inStock ? "Add to Cart" : "Sold Out"}
         </button>
       </div>
     </Link>

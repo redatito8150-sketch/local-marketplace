@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { notify } from "@/lib/notify";
 import type { BrandApplicationInput } from "@/lib/join/submitApplication";
 
 function validateApplicationInput(body: BrandApplicationInput): string | null {
@@ -48,6 +49,12 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
+  await notify(
+    "brand_application_submitted",
+    `New brand application: ${body.brandName}`,
+    body.founderName
+  );
 
   return NextResponse.json({ ok: true });
 }

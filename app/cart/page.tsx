@@ -6,7 +6,7 @@ import { Minus, Plus, X, ShoppingBag, ArrowRight } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, formatSize } from "@/lib/format";
 export default function CartPage() {
   const { items, removeItem, updateQuantity, subtotal } = useCart();
   const isEmpty = items.length === 0;
@@ -61,7 +61,7 @@ export default function CartPage() {
                           {item.name}
                         </p>
                         <p className="mt-1 text-[12.5px] text-ink-soft/60">
-                          Size: {item.size}
+                          Size: {formatSize(item.size)}
                           {item.color ? ` · Color: ${item.color}` : ""}
                         </p>
                       </div>
@@ -121,7 +121,7 @@ export default function CartPage() {
                   <div className="flex items-center justify-between">
                     <span>Subtotal (EGP)</span>
                     <span className="font-medium text-ink">
-                      {subtotal.egp.toLocaleString()} EGP
+                      {subtotal.egp.toLocaleString("en-US")} EGP
                     </span>
                   </div>
                 )}
@@ -139,9 +139,11 @@ export default function CartPage() {
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
 
-              <p className="mt-4 text-center text-[12px] text-ink-soft/50">
-                Multiple currencies are settled separately at checkout.
-              </p>
+              {subtotal.usd > 0 && subtotal.egp > 0 && (
+                <p className="mt-4 text-center text-[12px] text-ink-soft/50">
+                  Multiple currencies are settled separately at checkout.
+                </p>
+              )}
             </div>
           </div>
         )}

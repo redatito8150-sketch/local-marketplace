@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
+import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
+import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
+import { notify } from "@/lib/notify";
 
 export async function PATCH(
   request: NextRequest,
@@ -18,6 +21,23 @@ export async function PATCH(
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  const duplicateSku = await findDuplicateSku(body.sku, body.variants, params.id);
+  if (duplicateSku) {
+    return NextResponse.json(
+      { error: `SKU "${duplicateSku}" is already used by another product` },
+      { status: 400 }
+    );
+  }
+
+  const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
+
+  const { data: existing } = await supabaseAdmin
+    .from("products")
+    .select("status")
+    .eq("id", params.id)
+    .maybeSingle();
+  const previousStatus = existing?.status;
+
   const { error } = await supabaseAdmin
     .from("products")
     .update({
@@ -25,21 +45,33 @@ export async function PATCH(
       brand_name: body.brandName,
       brand_slug: body.brandSlug || null,
       category: body.category || null,
+      product_category: body.productCategory || null,
+      product_type: body.productType || null,
+      collection: body.collection || null,
+      material: body.material || null,
+      fit: body.fit || null,
       price: body.price,
+      compare_at_price: body.compareAtPrice ?? null,
       currency: body.currency,
       image: body.image,
       images: body.images?.length ? body.images : [body.image],
-      colors: body.colors,
-      sizes: body.sizes,
+      colors: legacy.colors,
+      sizes: legacy.sizes,
       description: body.description,
       details: body.details,
       care_instructions: body.careInstructions,
       shipping_returns: body.shippingReturns,
+      model_height: body.modelHeight || null,
+      model_wearing: body.modelWearing || null,
       sku: body.sku?.trim() || params.id,
-      in_stock: body.inStock,
+      in_stock: legacy.inStock,
       is_new: body.isNew,
       is_unisex: body.isUnisex,
-      unavailable_sizes: body.unavailableSizes,
+      unavailable_sizes: legacy.unavailableSizes,
+      track_inventory: body.trackInventory,
+      featured: body.featured,
+      status: body.status,
+      publish_date: body.publishDate ?? null,
     })
     .eq("id", params.id);
 
@@ -48,6 +80,55 @@ export async function PATCH(
       { error: `Failed to update product: ${error.message}` },
       { status: 500 }
     );
+  }
+
+  // Full-form save: replace the variant set wholesale rather than diffing
+  // individual rows — simpler and correct for "the form is the source of
+  // truth for this product's variants on every save."
+  const { error: deleteError } = await supabaseAdmin
+    .from("product_variants")
+    .delete()
+    .eq("product_id", params.id);
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: `Failed to update variants: ${deleteError.message}` },
+      { status: 500 }
+    );
+  }
+
+  if (body.variants.length > 0) {
+    const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
+      body.variants.map((v) => ({
+        product_id: params.id,
+        color: v.color || null,
+        size: v.size || null,
+        sku: v.sku?.trim() || null,
+        quantity: v.quantity,
+        low_stock_threshold: v.lowStockThreshold,
+        price_override: v.priceOverride ?? null,
+        availability_status: v.availabilityStatus,
+      }))
+    );
+
+    if (variantsError) {
+      return NextResponse.json(
+        { error: `Product updated, but saving variants failed: ${variantsError.message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  if (previousStatus !== body.status) {
+    if (body.status === "published") {
+      await notify("product_published", `Product published: ${body.name}`, body.brandName);
+    } else if (body.status === "archived") {
+      await notify("product_archived", `Product archived: ${body.name}`, body.brandName);
+    } else {
+      await notify("product_updated", `Product updated: ${body.name}`, body.brandName);
+    }
+  } else {
+    await notify("product_updated", `Product updated: ${body.name}`, body.brandName);
   }
 
   return NextResponse.json({ id: params.id });
