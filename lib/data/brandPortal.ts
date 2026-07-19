@@ -1,9 +1,16 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
-// Every query here uses the cookie-aware anon client (never supabaseAdmin)
-// so the new brand-owner RLS policies actually do the scoping — the
-// portal must never be able to see another brand's data even if a query
-// here had a bug, because the database itself refuses the row.
+// Every query here uses the cookie-aware anon client by default (never
+// supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
+// the portal must never be able to see another brand's data even if a
+// query here had a bug, because the database itself refuses the row.
+// `impersonating` is the one deliberate exception: an admin viewing a
+// brand they don't personally own would get correctly blocked by that
+// same RLS policy, so requireBrandOwner() (which has already verified the
+// caller really is an admin) passes this through to read via
+// supabaseAdmin instead — the same trust boundary already used by every
+// read in lib/data/admin.ts.
 
 export interface BrandOrderItem {
   id: string;
@@ -49,8 +56,11 @@ interface OrderItemRow {
 // Orders containing at least one of this brand's items — only orders
 // placed after brand_slug attribution shipped will appear; historical
 // orders keep a null brand_slug and are correctly invisible here.
-export async function getOrdersForBrand(brandSlug: string): Promise<BrandOrder[]> {
-  const supabase = createSupabaseServerClient();
+export async function getOrdersForBrand(
+  brandSlug: string,
+  impersonating = false
+): Promise<BrandOrder[]> {
+  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
   const { data, error } = await supabase
     .from("order_items")
     .select(
@@ -115,8 +125,11 @@ interface BrandVariantRow {
 
 // Read-only for v1 — brand owners see their stock, only admin/staff edit
 // it, so inventory oversight stays centralized.
-export async function getVariantsForBrand(brandSlug: string): Promise<BrandVariant[]> {
-  const supabase = createSupabaseServerClient();
+export async function getVariantsForBrand(
+  brandSlug: string,
+  impersonating = false
+): Promise<BrandVariant[]> {
+  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
   const { data, error } = await supabase
     .from("product_variants")
     .select("id, product_id, color, size, quantity, low_stock_threshold, products!inner(id, name, image, brand_slug)")

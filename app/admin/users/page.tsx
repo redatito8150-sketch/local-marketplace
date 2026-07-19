@@ -1,15 +1,26 @@
-import { getAllProfilesForAdmin } from "@/lib/data/admin";
+import { getAllProfilesForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import StatusSelect from "@/components/admin/StatusSelect";
 import TestEmailButton from "@/components/admin/TestEmailButton";
+import LinkUserToBrandField from "@/components/admin/LinkUserToBrandField";
 
 export default async function AdminUsersPage() {
-  const [profiles, currentAdmin, staff] = await Promise.all([
+  const [profiles, currentAdmin, staff, brands] = await Promise.all([
     getAllProfilesForAdmin(),
     requireAdminUser(),
     requireStaffRole("admin"),
+    getAllBrandsForAdmin(),
   ]);
   const canManageRoles = Boolean(staff);
+
+  // Keyed by lowercased email — brands.owner_user_id resolves to an
+  // account, and this table only has that account's email to match on.
+  const brandByOwnerEmail = new Map(
+    brands
+      .filter((b) => b.ownerEmail)
+      .map((b) => [b.ownerEmail!.toLowerCase(), { slug: b.slug, name: b.name }])
+  );
+  const brandOptions = brands.map((b) => ({ slug: b.slug, name: b.name }));
 
   return (
     <div>
@@ -29,6 +40,7 @@ export default async function AdminUsersPage() {
               <th className="px-5 py-3 font-medium">Joined</th>
               <th className="px-5 py-3 font-medium">Access</th>
               <th className="px-5 py-3 font-medium">Staff Role</th>
+              <th className="px-5 py-3 font-medium">Brand Portal</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-150">
@@ -82,6 +94,19 @@ export default async function AdminUsersPage() {
                           { value: "admin", label: "Admin (full control)" },
                         ]}
                       />
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {canManageRoles && profile.email ? (
+                      <LinkUserToBrandField
+                        email={profile.email}
+                        currentBrand={brandByOwnerEmail.get(profile.email.toLowerCase())}
+                        brands={brandOptions}
+                      />
+                    ) : (
+                      <span className="text-ink-soft/60">
+                        {(profile.email && brandByOwnerEmail.get(profile.email.toLowerCase())?.name) ?? "—"}
+                      </span>
                     )}
                   </td>
                 </tr>

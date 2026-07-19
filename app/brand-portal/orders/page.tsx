@@ -1,18 +1,31 @@
 import { redirect } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand } from "@/lib/data/brandPortal";
+import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import { formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import BrandPicker from "@/components/brand-portal/BrandPicker";
+import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import type { OrderStatus } from "@/types";
 
-export default async function BrandPortalOrdersPage() {
-  const owner = await requireBrandOwner();
+export default async function BrandPortalOrdersPage({
+  searchParams,
+}: {
+  searchParams: { brand?: string };
+}) {
+  const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 
-  const orders = await getOrdersForBrand(owner.brandSlug);
+  if (!owner.brandSlug) {
+    const brands = await getAllBrandsForAdmin();
+    return <BrandPicker brands={brands.map((b) => ({ slug: b.slug, name: b.name }))} />;
+  }
+
+  const orders = await getOrdersForBrand(owner.brandSlug, owner.isImpersonating);
 
   return (
     <div>
+      {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
       <h1 className="text-2xl font-bold tracking-tightest text-ink">
         Orders ({orders.length})
       </h1>

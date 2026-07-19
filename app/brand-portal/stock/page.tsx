@@ -2,15 +2,28 @@ import { redirect } from "next/navigation";
 import Image from "next/image";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getVariantsForBrand } from "@/lib/data/brandPortal";
+import { getAllBrandsForAdmin } from "@/lib/data/admin";
+import BrandPicker from "@/components/brand-portal/BrandPicker";
+import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 
-export default async function BrandPortalStockPage() {
-  const owner = await requireBrandOwner();
+export default async function BrandPortalStockPage({
+  searchParams,
+}: {
+  searchParams: { brand?: string };
+}) {
+  const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 
-  const variants = await getVariantsForBrand(owner.brandSlug);
+  if (!owner.brandSlug) {
+    const brands = await getAllBrandsForAdmin();
+    return <BrandPicker brands={brands.map((b) => ({ slug: b.slug, name: b.name }))} />;
+  }
+
+  const variants = await getVariantsForBrand(owner.brandSlug, owner.isImpersonating);
 
   return (
     <div>
+      {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
       <h1 className="text-2xl font-bold tracking-tightest text-ink">Stock</h1>
       <p className="mt-1 text-[13.5px] text-ink-soft/60">
         Read-only — contact the Local team to update inventory.

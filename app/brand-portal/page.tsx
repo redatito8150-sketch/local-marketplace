@@ -1,15 +1,27 @@
 import { redirect } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
+import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import { formatPrice } from "@/lib/format";
+import BrandPicker from "@/components/brand-portal/BrandPicker";
+import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 
-export default async function BrandPortalOverviewPage() {
-  const owner = await requireBrandOwner();
+export default async function BrandPortalOverviewPage({
+  searchParams,
+}: {
+  searchParams: { brand?: string };
+}) {
+  const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 
+  if (!owner.brandSlug) {
+    const brands = await getAllBrandsForAdmin();
+    return <BrandPicker brands={brands.map((b) => ({ slug: b.slug, name: b.name }))} />;
+  }
+
   const [orders, variants] = await Promise.all([
-    getOrdersForBrand(owner.brandSlug),
-    getVariantsForBrand(owner.brandSlug),
+    getOrdersForBrand(owner.brandSlug, owner.isImpersonating),
+    getVariantsForBrand(owner.brandSlug, owner.isImpersonating),
   ]);
 
   const revenue = orders
@@ -23,6 +35,7 @@ export default async function BrandPortalOverviewPage() {
 
   return (
     <div>
+      {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
       <h1 className="text-2xl font-bold tracking-tightest text-ink">Overview</h1>
       <p className="mt-1 text-[13.5px] text-ink-soft/60">
         A quick look at your orders and stock on Local.

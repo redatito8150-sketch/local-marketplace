@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { LayoutDashboard, Pencil } from "lucide-react";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
 
@@ -51,6 +51,13 @@ export default async function AdminBrandsPage() {
                 <td className="px-5 py-3 text-ink-soft/70">{brand.city}</td>
                 <td className="px-5 py-3">
                   <div className="flex items-center justify-end gap-1">
+                    <Link
+                      href={`/brand-portal?brand=${brand.slug}`}
+                      aria-label={`View ${brand.name}'s portal`}
+                      className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+                    >
+                      <LayoutDashboard className="h-4 w-4" strokeWidth={1.6} />
+                    </Link>
                     <Link
                       href={`/admin/brands/${brand.slug}/edit`}
                       aria-label={`Edit ${brand.name}`}
