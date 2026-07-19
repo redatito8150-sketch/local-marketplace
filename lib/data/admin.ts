@@ -601,3 +601,22 @@ export async function getCouponForAdmin(code: string): Promise<CouponRecord | nu
   if (!data) return null;
   return toCouponRecord(data as CouponRow);
 }
+
+// Used by the admin content forms both to prefill with the currently-live
+// value (custom or still the static default — the caller merges in its own
+// fallback) and to show a "Customized" badge with a last-edited timestamp.
+export async function getSiteContentRowForAdmin(
+  key: string
+): Promise<{ value: unknown; updatedAt: string } | null> {
+  const { data, error } = await supabaseAdmin
+    .from("site_content")
+    .select("value, updated_at")
+    .eq("key", key)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getSiteContentRowForAdmin(${key}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  return { value: data.value, updatedAt: data.updated_at };
+}

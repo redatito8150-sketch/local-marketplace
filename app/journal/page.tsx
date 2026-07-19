@@ -3,6 +3,7 @@ import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { ARTICLES } from "@/content/journal";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 
 export const metadata = {
   title: "Journal — Local",
@@ -10,8 +11,11 @@ export const metadata = {
     "Stories from the makers, studios, and ateliers behind Local's brands.",
 };
 
-export default function JournalPage() {
-  const [feature, ...rest] = ARTICLES;
+export const revalidate = 60; // re-fetch site_content from Supabase at most once a minute
+
+export default async function JournalPage() {
+  const articles = await getSiteContentWithFallback("journal_articles", ARTICLES);
+  const [feature, ...rest] = articles;
 
   return (
     <main className="min-h-screen bg-cream">
@@ -26,7 +30,14 @@ export default function JournalPage() {
         </h1>
       </section>
 
+      {!feature && (
+        <section className="mx-auto max-w-screen2xl px-8 pb-20 lg:px-12">
+          <p className="text-sm text-ink-soft/60">No articles yet.</p>
+        </section>
+      )}
+
       {/* Featured article */}
+      {feature && (
       <section className="mx-auto max-w-screen2xl px-8 py-10 lg:px-12">
         <Link
           href={`/journal/${feature.slug}`}
@@ -57,6 +68,7 @@ export default function JournalPage() {
           </div>
         </Link>
       </section>
+      )}
 
       {/* Rest of the articles */}
       <section className="mx-auto max-w-screen2xl px-8 pb-20 lg:px-12">

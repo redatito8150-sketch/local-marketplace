@@ -31,6 +31,22 @@ export interface CategoryContent {
   featuredBrand: FeaturedBrandContent;
 }
 
+// Admin-editable marketing copy (Phase 11 CMS) — each shape mirrors the
+// subset of its content/*.ts static export that's safe to edit from a
+// plain-text admin form. Images/structural fields stay code-only.
+export interface HomeHeroContent {
+  headingLines: string[];
+  subheading: string;
+  ctaLabel: string;
+}
+
+export interface JoinHeroContent {
+  label: string;
+  headingLines: string[];
+  subheading: string;
+  ctaLabel: string;
+}
+
 export interface FilterOption {
   id: string;
   label: string;

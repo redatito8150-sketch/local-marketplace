@@ -4,8 +4,9 @@ import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import ApplyBrandCTA from "./ApplyBrandCTA";
 import { JOIN_HERO } from "@/content/join";
+import type { JoinHeroContent } from "@/types";
 
-export default function JoinHero() {
+export default function JoinHero({ content }: { content: JoinHeroContent }) {
   const reduceMotion = useReducedMotion();
 
   return (
@@ -34,19 +35,19 @@ export default function JoinHero() {
           className="flex flex-col items-center justify-center px-8 py-16 text-center lg:px-14 lg:py-0"
         >
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-cream/60">
-            {JOIN_HERO.label}
+            {content.label}
           </span>
           <h1 className="mt-5 font-serif text-4xl font-semibold leading-[1.15] text-cream lg:text-[2.75rem]">
-            {JOIN_HERO.headingLines.map((line) => (
+            {content.headingLines.map((line) => (
               <span key={line} className="block">
                 {line}
               </span>
             ))}
           </h1>
           <p className="mt-5 max-w-sm text-[15px] leading-relaxed text-cream/70">
-            {JOIN_HERO.subheading}
+            {content.subheading}
           </p>
-          <ApplyBrandCTA label={JOIN_HERO.ctaLabel} variant="light" className="mt-8" />
+          <ApplyBrandCTA label={content.ctaLabel} variant="light" className="mt-8" />
         </motion.div>
 
         {/* Right collage */}

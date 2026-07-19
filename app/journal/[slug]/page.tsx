@@ -3,24 +3,30 @@ import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { ARTICLES, getArticle } from "@/content/journal";
+import { ARTICLES, type JournalArticle } from "@/content/journal";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 
-export function generateStaticParams() {
-  return ARTICLES.map((a) => ({ slug: a.slug }));
+export const revalidate = 60; // re-fetch site_content from Supabase at most once a minute
+
+export async function generateStaticParams() {
+  const articles = await getSiteContentWithFallback("journal_articles", ARTICLES);
+  return articles.map((a) => ({ slug: a.slug }));
 }
 
-export function generateMetadata({ params }: { params: { slug: string } }) {
-  const article = getArticle(params.slug);
+export async function generateMetadata({ params }: { params: { slug: string } }) {
+  const articles = await getSiteContentWithFallback("journal_articles", ARTICLES);
+  const article = articles.find((a) => a.slug === params.slug);
   if (!article) return {};
   return { title: `${article.title} — Local Journal`, description: article.excerpt };
 }
 
-export default function JournalArticlePage({
+export default async function JournalArticlePage({
   params,
 }: {
   params: { slug: string };
 }) {
-  const article = getArticle(params.slug);
+  const articles: JournalArticle[] = await getSiteContentWithFallback("journal_articles", ARTICLES);
+  const article = articles.find((a) => a.slug === params.slug);
   if (!article) notFound();
 
   return (

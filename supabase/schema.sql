@@ -652,3 +652,28 @@ create policy "Brand owners can read orders containing their items"
   on orders for select using (
     public.brand_owns_order_item(orders.id)
   );
+
+-- ============================================================================
+-- ADMIN DASHBOARD EXPANSION — Phase 11: Homepage/Marketing Content Management
+-- ============================================================================
+
+-- One generic key/value table for every admin-editable marketing copy block
+-- (home hero, category heroes, journal articles, join-page hero) instead of
+-- a bespoke schema per content type. Every public read path falls back to
+-- the current static content/*.ts export when a row is missing, so this
+-- ships with zero required data-entry and zero downtime risk — deleting a
+-- row (or never populating it) just means the page shows its original
+-- static copy instead of erroring.
+create table if not exists site_content (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table site_content enable row level security;
+
+-- Public read (every storefront page needs this); no insert/update/delete
+-- policy — writes go through supabaseAdmin (service_role) only, from admin
+-- API routes, same convention as products/brands.
+create policy "Anyone can read site content"
+  on site_content for select using (true);

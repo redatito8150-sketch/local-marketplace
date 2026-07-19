@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowUpRight, Store } from "lucide-react";
+import type { HomeHeroContent } from "@/types";
 
 const MotionLink = motion(Link);
 
@@ -31,7 +32,7 @@ const DEPARTMENTS = [
   },
 ];
 
-export default function Hero() {
+export default function Hero({ content }: { content: HomeHeroContent }) {
   return (
     <section
       id="home"
@@ -45,16 +46,15 @@ export default function Hero() {
         className="max-w-xl"
       >
         <h1 className="text-5xl font-bold leading-[1.08] tracking-tightest text-ink lg:text-[3.4rem]">
-          Local brands.
-          <br />
-          Real stories.
-          <br />
-          All in one place.
+          {content.headingLines.map((line) => (
+            <span key={line} className="block">
+              {line}
+            </span>
+          ))}
         </h1>
 
         <p className="mt-6 max-w-md text-lg leading-relaxed text-ink-soft/80">
-          Discover and shop from the best local brands. Support creators.
-          Wear what matters.
+          {content.subheading}
         </p>
 
         <MotionLink
@@ -64,7 +64,7 @@ export default function Hero() {
           className="mt-9 inline-flex items-center gap-2.5 rounded-full bg-ink px-7 py-4 text-[15px] font-semibold text-cream shadow-soft transition-shadow hover:shadow-card"
         >
           <Store className="h-4 w-4" strokeWidth={1.8} />
-          Join As Brand
+          {content.ctaLabel}
         </MotionLink>
       </motion.div>
 

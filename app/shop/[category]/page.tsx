@@ -7,8 +7,9 @@ import CollectionCards from "@/components/category/CollectionCards";
 import CategoryShoppingArea from "@/components/category/CategoryShoppingArea";
 import { getCategoryContent } from "@/content/categories";
 import { getProductsByCategory, getProductCountLabel } from "@/lib/data/products";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { buildDynamicFilterGroups } from "@/lib/filters";
-import { CategorySlug } from "@/types";
+import { CategoryHeroContent, CategorySlug } from "@/types";
 
 export const revalidate = 60; // re-fetch from Supabase at most once a minute
 
@@ -17,16 +18,25 @@ export function generateStaticParams() {
   return categories.map((category) => ({ category }));
 }
 
-export function generateMetadata({
+async function getHero(content: { slug: CategorySlug; hero: CategoryHeroContent }) {
+  const overrides = await getSiteContentWithFallback<Partial<Record<CategorySlug, CategoryHeroContent>>>(
+    "category_heroes",
+    {}
+  );
+  return overrides[content.slug] ?? content.hero;
+}
+
+export async function generateMetadata({
   params,
 }: {
   params: { category: string };
 }) {
   const content = getCategoryContent(params.category);
   if (!content) return {};
+  const hero = await getHero(content);
   return {
-    title: `${content.hero.title} — Local`,
-    description: content.hero.description,
+    title: `${hero.title} — Local`,
+    description: hero.description,
   };
 }
 
@@ -38,16 +48,17 @@ export default async function CategoryPage({
   const content = getCategoryContent(params.category);
   if (!content) notFound();
 
-  const [products, productCount] = await Promise.all([
+  const [products, productCount, hero] = await Promise.all([
     getProductsByCategory(content.slug),
     getProductCountLabel(content.slug),
+    getHero(content),
   ]);
 
   return (
     <main className="min-h-screen bg-white">
       <Header />
       <Breadcrumb current={content.label} />
-      <CategoryHero hero={content.hero} />
+      <CategoryHero hero={hero} />
       <CollectionCards cards={content.collectionCards} />
       <CategoryShoppingArea
         filterGroups={buildDynamicFilterGroups(products)}
