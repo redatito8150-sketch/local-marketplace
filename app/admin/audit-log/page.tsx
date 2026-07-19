@@ -1,18 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAllAuditLogsForAdmin } from "@/lib/data/admin";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
-
-const ACTION_LABELS: Record<string, string> = {
-  create: "Created",
-  update: "Updated",
-  delete: "Deleted",
-  status_change: "Status changed",
-  bulk_archive: "Bulk archived",
-  bulk_publish: "Bulk published",
-  bulk_delete: "Bulk deleted",
-  restock: "Restocked",
-  role_change: "Role changed",
-};
+import { describeAuditLog } from "@/lib/auditLogDescribe";
 
 const ENTITY_LABELS: Record<string, string> = {
   product: "Product",
@@ -23,15 +12,6 @@ const ENTITY_LABELS: Record<string, string> = {
   coupon: "Coupon",
   site_content: "Site content",
 };
-
-function diffPreview(before: unknown, after: unknown): string | null {
-  if (before == null && after == null) return null;
-  // Keep this a short, scannable one-liner — the full JSON is available in
-  // the <details> panel below for anyone who needs the exact values.
-  if (before == null) return "Created";
-  if (after == null) return "Removed";
-  return "Changed";
-}
 
 export default async function AdminAuditLogPage() {
   const staff = await requireStaffRole("admin");
@@ -56,20 +36,11 @@ export default async function AdminAuditLogPage() {
                 <span className="rounded-full bg-beige-100 px-2.5 py-1 text-[11px] font-semibold text-ink">
                   {ENTITY_LABELS[log.entityType] ?? log.entityType}
                 </span>
-                <span className="text-[13.5px] font-medium text-ink">
-                  {ACTION_LABELS[log.action] ?? log.action}
-                </span>
-                <span className="text-[12.5px] text-ink-soft/50">{log.entityId}</span>
-                {diffPreview(log.beforeValue, log.afterValue) && (
-                  <span className="text-[12px] text-ink-soft/40">
-                    {diffPreview(log.beforeValue, log.afterValue)}
-                  </span>
-                )}
+                <span className="text-[13.5px] text-ink">{describeAuditLog(log)}</span>
               </div>
-              <div className="flex items-center gap-4 text-[12px] text-ink-soft/50">
-                <span>{log.actorLabel}</span>
-                <span>{new Date(log.createdAt).toLocaleString("en-US")}</span>
-              </div>
+              <span className="whitespace-nowrap text-[12px] text-ink-soft/50">
+                {new Date(log.createdAt).toLocaleString("en-US")}
+              </span>
             </summary>
             <div className="mt-3 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-2">
               <div>

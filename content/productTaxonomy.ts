@@ -1,9 +1,9 @@
-// Curated option lists for the admin Product Form's Category/Product Type/
-// Collection/Material/Fit dropdowns. Plain static content (same pattern as
-// content/categories.ts's FILTER_GROUPS) rather than an admin-managed
-// taxonomy table — nothing in this project asked for brands to manage
-// their own category tree, and a normalized table would be new complexity
-// with no current consumer.
+// Default option lists for the admin Product Form's Category/Product Type/
+// Collection/Material/Fit dropdowns — the fallback `DEFAULT_PRODUCT_TAXONOMY`
+// below is used whenever no admin-edited "product_taxonomy" row exists in
+// site_content (see lib/data/siteContent.ts and app/admin/products/categories).
+
+import type { ProductTaxonomyContent } from "@/types";
 
 // "Home" exists because the brand catalog already includes a home/ceramics
 // brand (Sahara Form) predating this taxonomy — not every brand on Local
@@ -50,3 +50,11 @@ export const MATERIALS = [
 ];
 
 export const FITS = ["Regular", "Slim", "Oversized", "Relaxed", "Tailored"];
+
+export const DEFAULT_PRODUCT_TAXONOMY: ProductTaxonomyContent = {
+  categories: [...PRODUCT_CATEGORIES],
+  typesByCategory: PRODUCT_TYPES_BY_CATEGORY,
+  collections: COLLECTIONS,
+  materials: MATERIALS,
+  fits: FITS,
+};

@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
-import type { HomeHeroContent, JoinHeroContent } from "@/types";
+import type {
+  ContactInfoContent,
+  HomeHeroContent,
+  JoinHeroContent,
+  ShippingSettingsContent,
+} from "@/types";
 
-// Single-value keys handled generically here. category-heroes and journal
-// (list-shaped, needing per-item patch/add/remove semantics) get their own
-// dedicated routes instead.
-const ALLOWED_KEYS = ["home_hero", "join_hero"] as const;
+// Single-value keys handled generically here. category-heroes, journal, and
+// product-taxonomy (list-shaped, needing per-item patch/add/remove
+// semantics) get their own dedicated routes instead.
+const ALLOWED_KEYS = ["home_hero", "join_hero", "shipping_settings", "contact_info"] as const;
 type AllowedKey = (typeof ALLOWED_KEYS)[number];
 
-function validate(key: AllowedKey, value: unknown): string | null {
+function validateHero(key: "home_hero" | "join_hero", value: unknown): string | null {
   if (!value || typeof value !== "object") return "Missing content";
   const v = value as Partial<HomeHeroContent & JoinHeroContent>;
 
@@ -25,6 +30,33 @@ function validate(key: AllowedKey, value: unknown): string | null {
   if (key === "join_hero" && !v.label?.trim()) return "Label is required";
 
   return null;
+}
+
+function validateShippingSettings(value: unknown): string | null {
+  if (!value || typeof value !== "object") return "Missing content";
+  const v = value as Partial<ShippingSettingsContent>;
+  if (typeof v.freeShippingThresholdEgp !== "number" || v.freeShippingThresholdEgp < 0) {
+    return "Free shipping threshold must be a positive number";
+  }
+  if (typeof v.returnPolicyDays !== "number" || v.returnPolicyDays < 0) {
+    return "Return policy days must be a positive number";
+  }
+  return null;
+}
+
+function validateContactInfo(value: unknown): string | null {
+  if (!value || typeof value !== "object") return "Missing content";
+  const v = value as Partial<ContactInfoContent>;
+  if (!v.supportEmail?.trim()) return "Support email is required";
+  if (!v.supportPhone?.trim()) return "Support phone is required";
+  if (!v.address?.trim()) return "Address is required";
+  return null;
+}
+
+function validate(key: AllowedKey, value: unknown): string | null {
+  if (key === "home_hero" || key === "join_hero") return validateHero(key, value);
+  if (key === "shipping_settings") return validateShippingSettings(value);
+  return validateContactInfo(value);
 }
 
 export async function PUT(

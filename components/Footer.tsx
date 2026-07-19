@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Instagram,
@@ -9,6 +10,9 @@ import {
   CreditCard,
   ShieldCheck,
 } from "lucide-react";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { DEFAULT_SHIPPING_SETTINGS, DEFAULT_CONTACT_INFO } from "@/content/settings";
+import { formatPrice } from "@/lib/format";
 
 const HELP_LINKS = [
   "Frequently asked questions",
@@ -67,17 +71,43 @@ function FooterColumn({
 }
 
 export default function Footer() {
+  // Site-wide operational settings (Round 2 Phase 4) — fetched client-side
+  // via the same admin-editable site_content mechanism as the marketing
+  // copy CMS, so every page that already renders this footer picks up
+  // owner edits with zero changes to those call sites.
+  const [shippingSettings, setShippingSettings] = useState(DEFAULT_SHIPPING_SETTINGS);
+  const [contactInfo, setContactInfo] = useState(DEFAULT_CONTACT_INFO);
+
+  useEffect(() => {
+    getSiteContentWithFallback("shipping_settings", DEFAULT_SHIPPING_SETTINGS).then(
+      setShippingSettings
+    );
+    getSiteContentWithFallback("contact_info", DEFAULT_CONTACT_INFO).then(setContactInfo);
+  }, []);
+
   return (
     <footer id="about" className="border-t border-stone-150 bg-stone-50">
       <div className="mx-auto max-w-screen2xl px-8 py-16 lg:px-12">
         {/* Row 1 */}
         <div className="grid grid-cols-2 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          <FooterColumn title="Help & Contact" links={HELP_LINKS} icon={ShieldCheck} />
+          <div>
+            <FooterColumn title="Help & Contact" links={HELP_LINKS} icon={ShieldCheck} />
+            <p className="mt-5 text-sm text-ink-soft/70">{contactInfo.supportEmail}</p>
+            <p className="mt-1 text-sm text-ink-soft/70">{contactInfo.supportPhone}</p>
+            <p className="mt-1 text-sm text-ink-soft/70">{contactInfo.address}</p>
+          </div>
           <FooterColumn title="Gift Cards" links={GIFT_LINKS} icon={CreditCard} />
           <FooterColumn title="About Us" links={ABOUT_LINKS} icon={Truck} />
           <FooterColumn
             title="Delivery Options"
-            links={["Free delivery on orders over $25", "30-day return policy", "Secure payments"]}
+            links={[
+              `Free delivery on orders over ${formatPrice(
+                shippingSettings.freeShippingThresholdEgp,
+                "EGP"
+              )}`,
+              `${shippingSettings.returnPolicyDays}-day return policy`,
+              "Secure payments",
+            ]}
             icon={Truck}
           />
         </div>

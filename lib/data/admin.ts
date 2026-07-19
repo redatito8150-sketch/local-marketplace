@@ -466,11 +466,12 @@ interface AuditLogRow {
   created_at: string;
 }
 
-function toAuditLogRecord(row: AuditLogRow): AuditLogRecord {
+function toAuditLogRecord(row: AuditLogRow, nameByActorId?: Map<string, string>): AuditLogRecord {
   return {
     id: row.id,
     actorId: row.actor_id ?? undefined,
     actorLabel: row.actor_label,
+    actorName: row.actor_id ? nameByActorId?.get(row.actor_id) : undefined,
     entityType: row.entity_type,
     entityId: row.entity_id,
     action: row.action,
@@ -478,6 +479,23 @@ function toAuditLogRecord(row: AuditLogRow): AuditLogRecord {
     afterValue: row.after_value,
     createdAt: row.created_at,
   };
+}
+
+// Same batching convention as getOwnerEmailsByUserId — one query for every
+// distinct actor across the page of rows, not one per row.
+async function getFullNamesByActorId(rows: AuditLogRow[]): Promise<Map<string, string>> {
+  const actorIds = [...new Set(rows.map((r) => r.actor_id).filter((id): id is string => Boolean(id)))];
+  const nameByActorId = new Map<string, string>();
+  if (actorIds.length === 0) return nameByActorId;
+
+  const { data: profiles } = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name")
+    .in("id", actorIds);
+  for (const p of profiles ?? []) {
+    if (p.full_name) nameByActorId.set(p.id, p.full_name);
+  }
+  return nameByActorId;
 }
 
 // audit_logs has no public policy at all — admin-only, service-role reads.
@@ -491,7 +509,9 @@ export async function getAllAuditLogsForAdmin(limit = 200): Promise<AuditLogReco
   if (error) {
     throw new Error(`getAllAuditLogsForAdmin failed: ${error.message}`);
   }
-  return (data as AuditLogRow[]).map(toAuditLogRecord);
+  const rows = data as AuditLogRow[];
+  const nameByActorId = await getFullNamesByActorId(rows);
+  return rows.map((row) => toAuditLogRecord(row, nameByActorId));
 }
 
 interface LowStockVariantRow {
@@ -547,7 +567,9 @@ export async function getAuditLogsForEntity(
   if (error) {
     throw new Error(`getAuditLogsForEntity(${entityType}, ${entityId}) failed: ${error.message}`);
   }
-  return (data as AuditLogRow[]).map(toAuditLogRecord);
+  const rows = data as AuditLogRow[];
+  const nameByActorId = await getFullNamesByActorId(rows);
+  return rows.map((row) => toAuditLogRecord(row, nameByActorId));
 }
 
 interface CouponRow {

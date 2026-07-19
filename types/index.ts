@@ -47,6 +47,32 @@ export interface JoinHeroContent {
   ctaLabel: string;
 }
 
+export interface ProductTaxonomyContent {
+  categories: string[];
+  typesByCategory: Record<string, string[]>;
+  collections: string[];
+  materials: string[];
+  fits: string[];
+}
+
+export interface ShippingSettingsContent {
+  freeShippingThresholdEgp: number;
+  returnPolicyDays: number;
+}
+
+export interface ContactInfoContent {
+  supportEmail: string;
+  supportPhone: string;
+  address: string;
+}
+
+export interface AdminSearchResult {
+  type: "product" | "brand" | "order" | "user";
+  label: string;
+  sublabel: string;
+  href: string;
+}
+
 export interface FilterOption {
   id: string;
   label: string;
@@ -389,6 +415,10 @@ export interface AuditLogRecord {
   id: string;
   actorId?: string;
   actorLabel: string;
+  // Resolved from profiles.full_name at read time (Round 2 Phase 5) — falls
+  // back to actorLabel (email) when unset, including for every historical
+  // row logged before this existed.
+  actorName?: string;
   entityType: string;
   entityId: string;
   action: string;

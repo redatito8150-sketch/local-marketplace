@@ -1,8 +1,15 @@
 import { getAllProfilesForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
-import StatusSelect from "@/components/admin/StatusSelect";
 import TestEmailButton from "@/components/admin/TestEmailButton";
-import LinkUserToBrandField from "@/components/admin/LinkUserToBrandField";
+import UserAccessControl from "@/components/admin/UserAccessControl";
+
+const ACCESS_LABELS: Record<string, string> = {
+  customer: "Customer",
+  brand_owner: "Brand Owner",
+  staff: "Staff",
+  manager: "Manager",
+  admin: "Admin",
+};
 
 export default async function AdminUsersPage() {
   const [profiles, currentAdmin, staff, brands] = await Promise.all([
@@ -30,6 +37,10 @@ export default async function AdminUsersPage() {
         </h1>
         {canManageRoles && <TestEmailButton />}
       </div>
+      <p className="mt-1.5 text-[13.5px] text-ink-soft/60">
+        Every account&apos;s access level — customer, brand owner, or staff
+        tier — is managed right here.
+      </p>
 
       <div className="mt-8 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
         <table className="w-full text-left text-[13.5px]">
@@ -39,13 +50,15 @@ export default async function AdminUsersPage() {
               <th className="px-5 py-3 font-medium">Email</th>
               <th className="px-5 py-3 font-medium">Joined</th>
               <th className="px-5 py-3 font-medium">Access</th>
-              <th className="px-5 py-3 font-medium">Staff Role</th>
-              <th className="px-5 py-3 font-medium">Brand Portal</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-150">
             {profiles.map((profile) => {
               const isSelf = profile.id === currentAdmin?.id;
+              const linkedBrand = profile.email
+                ? brandByOwnerEmail.get(profile.email.toLowerCase())
+                : undefined;
+
               return (
                 <tr key={profile.id}>
                   <td className="px-5 py-3 font-medium text-ink">
@@ -63,49 +76,24 @@ export default async function AdminUsersPage() {
                   <td className="px-5 py-3">
                     {isSelf ? (
                       <span className="rounded-full bg-beige-100 px-2.5 py-1 text-[11px] font-semibold text-ink">
-                        Admin
+                        {ACCESS_LABELS[profile.role] ?? "Admin"}
                       </span>
-                    ) : (
-                      <StatusSelect
-                        apiPath={`/api/admin/users/${profile.id}`}
-                        value={String(profile.isAdmin)}
-                        bodyKey="isAdmin"
-                        valueType="boolean"
-                        options={[
-                          { value: "false", label: "Customer" },
-                          { value: "true", label: "Admin" },
-                        ]}
-                      />
-                    )}
-                  </td>
-                  <td className="px-5 py-3">
-                    {!profile.isAdmin ? (
-                      <span className="text-ink-soft/40">—</span>
-                    ) : isSelf || !canManageRoles ? (
-                      <span className="text-ink-soft/60 capitalize">{profile.role}</span>
-                    ) : (
-                      <StatusSelect
-                        apiPath={`/api/admin/users/${profile.id}`}
-                        value={profile.role}
-                        bodyKey="role"
-                        options={[
-                          { value: "staff", label: "Staff (read-only + order status)" },
-                          { value: "manager", label: "Manager (day-to-day control)" },
-                          { value: "admin", label: "Admin (full control)" },
-                        ]}
-                      />
-                    )}
-                  </td>
-                  <td className="px-5 py-3">
-                    {canManageRoles && profile.email ? (
-                      <LinkUserToBrandField
-                        email={profile.email}
-                        currentBrand={brandByOwnerEmail.get(profile.email.toLowerCase())}
+                    ) : canManageRoles && profile.email ? (
+                      <UserAccessControl
+                        userId={profile.id}
+                        currentAccess={profile.role as
+                          | "customer"
+                          | "brand_owner"
+                          | "staff"
+                          | "manager"
+                          | "admin"}
+                        currentBrand={linkedBrand}
                         brands={brandOptions}
                       />
                     ) : (
                       <span className="text-ink-soft/60">
-                        {(profile.email && brandByOwnerEmail.get(profile.email.toLowerCase())?.name) ?? "—"}
+                        {ACCESS_LABELS[profile.role] ?? profile.role}
+                        {linkedBrand ? ` — ${linkedBrand.name}` : ""}
                       </span>
                     )}
                   </td>

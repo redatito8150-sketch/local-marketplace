@@ -77,10 +77,10 @@ export async function getRevenueSummary(): Promise<RevenueSummary> {
 // Trailing-30-day window — the standard definition for "top products/brands"
 // on a dashboard; with this catalog's order volume still low, this can read
 // as all-time in practice, but the window is the correct long-term default.
-export async function getTopProducts(limit = 5): Promise<TopProductEntry[]> {
+export async function getTopProducts(limit = 5, days = 30): Promise<TopProductEntry[]> {
   const orders = await getRevenueEligibleOrders();
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setDate(cutoff.getDate() - days);
 
   const byProduct = new Map<string, TopProductEntry>();
   for (const order of orders) {
@@ -106,10 +106,10 @@ export async function getTopProducts(limit = 5): Promise<TopProductEntry[]> {
   return [...byProduct.values()].sort((a, b) => b.revenue - a.revenue).slice(0, limit);
 }
 
-export async function getTopBrands(limit = 5): Promise<TopBrandEntry[]> {
+export async function getTopBrands(limit = 5, days = 30): Promise<TopBrandEntry[]> {
   const orders = await getRevenueEligibleOrders();
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - 30);
+  cutoff.setDate(cutoff.getDate() - days);
 
   const byBrand = new Map<string, number>();
   for (const order of orders) {
@@ -123,6 +123,55 @@ export async function getTopBrands(limit = 5): Promise<TopBrandEntry[]> {
     .map(([brand, revenue]) => ({ brand, revenue }))
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, limit);
+}
+
+export interface CategoryRevenueEntry {
+  category: string;
+  revenue: number;
+}
+
+interface CategoryOrderItemRow {
+  price: number;
+  currency: "USD" | "EGP";
+  quantity: number;
+  products: { product_category: string | null } | null;
+}
+
+interface CategoryOrderRow {
+  created_at: string;
+  order_items: CategoryOrderItemRow[];
+}
+
+// Joins through products (not stored redundantly on order_items) — an item
+// whose product was later deleted has no category to attribute to, so it's
+// bucketed as "Uncategorized" rather than dropped, keeping the total in
+// sync with getDailyRevenueTrend's for the same window.
+export async function getRevenueByCategory(days = 30): Promise<CategoryRevenueEntry[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("created_at, order_items(price, currency, quantity, products(product_category))")
+    .neq("status", "cancelled");
+
+  if (error) {
+    throw new Error(`getRevenueByCategory failed: ${error.message}`);
+  }
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  const byCategory = new Map<string, number>();
+  for (const order of (data as unknown as CategoryOrderRow[]) ?? []) {
+    if (new Date(order.created_at) < cutoff) continue;
+    for (const item of order.order_items ?? []) {
+      if (item.currency !== "EGP") continue;
+      const category = item.products?.product_category ?? "Uncategorized";
+      byCategory.set(category, (byCategory.get(category) ?? 0) + Number(item.price) * item.quantity);
+    }
+  }
+
+  return [...byCategory.entries()]
+    .map(([category, revenue]) => ({ category, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
 }
 
 export async function getDailyRevenueTrend(days = 14): Promise<DailyRevenuePoint[]> {

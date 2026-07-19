@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import type { ProductColorOption, ProductRecord, ProductStatus } from "@/types";
+import type { ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent } from "@/types";
 import { parseCsv, parseLines } from "@/lib/admin/parseTextInputs";
 import {
   validateProductInput,
@@ -14,20 +14,16 @@ import { reconcileVariants } from "@/lib/admin/variantGrid";
 import ImageUploader from "@/components/admin/ImageUploader";
 import VariantGrid from "@/components/admin/VariantGrid";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
-import {
-  COLLECTIONS,
-  FITS,
-  MATERIALS,
-  PRODUCT_CATEGORIES,
-  PRODUCT_TYPES_BY_CATEGORY,
-  type ProductCategoryOption,
-} from "@/content/productTaxonomy";
+import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 
 interface ProductFormProps {
   mode: "create" | "edit";
   productId?: string;
   initial?: ProductRecord;
   brandOptions: { slug: string; name: string }[];
+  // Admin-editable (Round 2 Phase 2) — falls back to the static defaults so
+  // any caller that doesn't fetch site_content still works unchanged.
+  taxonomy?: ProductTaxonomyContent;
 }
 
 interface FormState {
@@ -114,7 +110,13 @@ function toFormState(product?: ProductRecord): FormState {
   };
 }
 
-export default function ProductForm({ mode, productId, initial, brandOptions }: ProductFormProps) {
+export default function ProductForm({
+  mode,
+  productId,
+  initial,
+  brandOptions,
+  taxonomy = DEFAULT_PRODUCT_TAXONOMY,
+}: ProductFormProps) {
   const router = useRouter();
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
@@ -156,7 +158,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
   // A category change can leave a now-invalid product type selected.
   useEffect(() => {
     if (!form.productCategory) return;
-    const validTypes = PRODUCT_TYPES_BY_CATEGORY[form.productCategory as ProductCategoryOption];
+    const validTypes = taxonomy.typesByCategory[form.productCategory];
     if (validTypes && form.productType && !validTypes.includes(form.productType)) {
       set("productType", "");
     }
@@ -267,7 +269,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
 
   const submitting = submittingStatus !== null;
   const productTypeOptions = form.productCategory
-    ? PRODUCT_TYPES_BY_CATEGORY[form.productCategory as ProductCategoryOption] ?? []
+    ? taxonomy.typesByCategory[form.productCategory] ?? []
     : [];
 
   const ActionToolbar = (
@@ -352,7 +354,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
               onChange={(v) => set("productCategory", v)}
               options={[
                 { value: "", label: "Select category" },
-                ...PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c })),
+                ...taxonomy.categories.map((c) => ({ value: c, label: c })),
               ]}
             />
             <SelectField
@@ -372,7 +374,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
               onChange={(v) => set("collection", v)}
               options={[
                 { value: "", label: "None" },
-                ...COLLECTIONS.map((c) => ({ value: c, label: c })),
+                ...taxonomy.collections.map((c) => ({ value: c, label: c })),
               ]}
             />
           </div>
@@ -544,7 +546,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
               onChange={(v) => set("material", v)}
               options={[
                 { value: "", label: "Select material" },
-                ...MATERIALS.map((m) => ({ value: m, label: m })),
+                ...taxonomy.materials.map((m) => ({ value: m, label: m })),
               ]}
             />
             <SelectField
@@ -553,7 +555,7 @@ export default function ProductForm({ mode, productId, initial, brandOptions }: 
               onChange={(v) => set("fit", v)}
               options={[
                 { value: "", label: "Select fit" },
-                ...FITS.map((f) => ({ value: f, label: f })),
+                ...taxonomy.fits.map((f) => ({ value: f, label: f })),
               ]}
             />
           </div>
