@@ -5,6 +5,7 @@ import { validateProductInput, type ProductInput } from "@/lib/admin/productVali
 import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
+import { logAudit } from "@/lib/auditLog";
 
 function slugify(value: string): string {
   return value
@@ -125,6 +126,15 @@ export async function POST(request: NextRequest) {
     body.status === "published" ? `Product published: ${body.name}` : `Product created: ${body.name}`,
     body.brandName
   );
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "product",
+    entityId: id,
+    action: "create",
+    after: body,
+  });
 
   return NextResponse.json({ id });
 }

@@ -1,18 +1,24 @@
 import { getAllProfilesForAdmin } from "@/lib/data/admin";
-import { requireAdminUser } from "@/lib/supabase/adminAuth";
+import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import StatusSelect from "@/components/admin/StatusSelect";
+import TestEmailButton from "@/components/admin/TestEmailButton";
 
 export default async function AdminUsersPage() {
-  const [profiles, currentAdmin] = await Promise.all([
+  const [profiles, currentAdmin, staff] = await Promise.all([
     getAllProfilesForAdmin(),
     requireAdminUser(),
+    requireStaffRole("admin"),
   ]);
+  const canManageRoles = Boolean(staff);
 
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">
-        Users ({profiles.length})
-      </h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold tracking-tightest text-ink">
+          Users ({profiles.length})
+        </h1>
+        {canManageRoles && <TestEmailButton />}
+      </div>
 
       <div className="mt-8 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
         <table className="w-full text-left text-[13.5px]">
@@ -21,7 +27,8 @@ export default async function AdminUsersPage() {
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Email</th>
               <th className="px-5 py-3 font-medium">Joined</th>
-              <th className="px-5 py-3 font-medium">Role</th>
+              <th className="px-5 py-3 font-medium">Access</th>
+              <th className="px-5 py-3 font-medium">Staff Role</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-150">
@@ -55,6 +62,24 @@ export default async function AdminUsersPage() {
                         options={[
                           { value: "false", label: "Customer" },
                           { value: "true", label: "Admin" },
+                        ]}
+                      />
+                    )}
+                  </td>
+                  <td className="px-5 py-3">
+                    {!profile.isAdmin ? (
+                      <span className="text-ink-soft/40">—</span>
+                    ) : isSelf || !canManageRoles ? (
+                      <span className="text-ink-soft/60 capitalize">{profile.role}</span>
+                    ) : (
+                      <StatusSelect
+                        apiPath={`/api/admin/users/${profile.id}`}
+                        value={profile.role}
+                        bodyKey="role"
+                        options={[
+                          { value: "staff", label: "Staff (read-only + order status)" },
+                          { value: "manager", label: "Manager (day-to-day control)" },
+                          { value: "admin", label: "Admin (full control)" },
                         ]}
                       />
                     )}

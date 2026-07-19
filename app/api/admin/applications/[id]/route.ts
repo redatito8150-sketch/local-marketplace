@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { APPLICATION_STATUSES } from "@/lib/admin/statuses";
+import { logAudit } from "@/lib/auditLog";
 
 export async function PATCH(
   request: NextRequest,
@@ -19,6 +20,12 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
+  const { data: existing } = await supabaseAdmin
+    .from("brand_applications")
+    .select("status")
+    .eq("id", params.id)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin
     .from("brand_applications")
     .update({ status })
@@ -30,6 +37,16 @@ export async function PATCH(
       { status: 500 }
     );
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "application",
+    entityId: params.id,
+    action: "status_change",
+    before: existing,
+    after: { status },
+  });
 
   return NextResponse.json({ id: params.id, status });
 }

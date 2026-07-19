@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
+import { sendEmail } from "@/lib/email/sendEmail";
+import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
+import { getOrderForAdmin } from "@/lib/data/admin";
 
 interface OrderItemInput {
   productId: string;
@@ -23,6 +26,7 @@ interface ShippingInput {
 interface OrderRequestBody {
   items: OrderItemInput[];
   shipping: ShippingInput;
+  couponCode?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -33,7 +37,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { items, shipping } = body;
+  const { items, shipping, couponCode } = body;
 
   if (!Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
@@ -67,7 +71,7 @@ export async function POST(request: NextRequest) {
   ] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, price, currency, image, unavailable_sizes")
+      .select("id, name, brand_name, brand_slug, price, currency, image, unavailable_sizes")
       .in("id", productIds),
     supabaseAdmin
       .from("product_variants")
@@ -131,6 +135,7 @@ export async function POST(request: NextRequest) {
       variant_id: variant?.id ?? "",
       name: product.name,
       brand: product.brand_name,
+      brand_slug: product.brand_slug ?? "",
       price: variant?.price_override ?? Number(product.price),
       currency: product.currency,
       size: item.size,
@@ -160,6 +165,7 @@ export async function POST(request: NextRequest) {
     p_shipping_governorate: shipping.governorate,
     p_user_id: user?.id ?? null,
     p_items: rpcItems,
+    p_coupon_code: couponCode?.trim() || null,
   });
 
   if (placeOrderError) {
@@ -169,6 +175,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: `${productName} no longer has enough stock — please update your cart.` },
         { status: 409 }
+      );
+    }
+    if (message.startsWith("COUPON_INVALID")) {
+      return NextResponse.json(
+        { error: message.split(":").slice(1).join(":").trim() || "This code isn't valid" },
+        { status: 400 }
       );
     }
     return NextResponse.json(
@@ -182,6 +194,13 @@ export async function POST(request: NextRequest) {
     `New order ${result?.order_number}`,
     `${shipping.firstName} ${shipping.lastName} — ${items.length} item${items.length === 1 ? "" : "s"}`
   );
+
+  if (result?.order_id) {
+    const order = await getOrderForAdmin(result.order_id);
+    if (order) {
+      await sendEmail({ to: shipping.email, ...orderConfirmationEmail(order) });
+    }
+  }
 
   // Check the variants this order actually touched for anything that just
   // crossed into low stock, now that place_order has committed the decrement.

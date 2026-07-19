@@ -1,18 +1,54 @@
 import Link from "next/link";
 import { getAllOrdersForAdmin } from "@/lib/data/admin";
 import { formatPrice } from "@/lib/format";
-import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 
-export default async function AdminOrdersPage() {
-  const orders = await getAllOrdersForAdmin();
+export default async function AdminOrdersPage({
+  searchParams,
+}: {
+  searchParams: { status?: string };
+}) {
+  const allOrders = await getAllOrdersForAdmin();
+  const activeStatus = searchParams.status;
+  const orders = activeStatus ? allOrders.filter((o) => o.status === activeStatus) : allOrders;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">
-        Orders ({orders.length})
-      </h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="text-2xl font-bold tracking-tightest text-ink">
+          Orders ({orders.length})
+        </h1>
+        <a
+          href="/api/admin/orders/export"
+          className="rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-stone-50"
+        >
+          Export CSV
+        </a>
+      </div>
 
-      <div className="mt-8 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href="/admin/orders"
+          className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+            !activeStatus ? "bg-ink text-cream" : "bg-stone-100 text-ink-soft/70 hover:bg-stone-150"
+          }`}
+        >
+          All
+        </Link>
+        {ORDER_STATUSES.map((s) => (
+          <Link
+            key={s}
+            href={`/admin/orders?status=${s}`}
+            className={`rounded-full px-3 py-1.5 text-[12px] font-medium ${
+              activeStatus === s ? "bg-ink text-cream" : "bg-stone-100 text-ink-soft/70 hover:bg-stone-150"
+            }`}
+          >
+            {ORDER_STATUS_LABELS[s]}
+          </Link>
+        ))}
+      </div>
+
+      <div className="mt-6 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
         <table className="w-full text-left text-[13.5px]">
           <thead className="border-b border-stone-150 text-[12px] uppercase tracking-wide text-ink-soft/50">
             <tr>

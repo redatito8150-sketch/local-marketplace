@@ -7,15 +7,23 @@ import {
   getAllProductsForAdmin,
   getAllProfilesForAdmin,
 } from "@/lib/data/admin";
+import { getRevenueSummary, getTopProducts, getTopBrands, getDailyRevenueTrend } from "@/lib/data/analytics";
+import { formatPrice } from "@/lib/format";
+import RevenueChart from "@/components/admin/RevenueChart";
 
 export default async function AdminOverviewPage() {
-  const [products, brands, orders, applications, profiles] = await Promise.all([
-    getAllProductsForAdmin(),
-    getAllBrandsForAdmin(),
-    getAllOrdersForAdmin(),
-    getAllApplicationsForAdmin(),
-    getAllProfilesForAdmin(),
-  ]);
+  const [products, brands, orders, applications, profiles, revenue, topProducts, topBrands, trend] =
+    await Promise.all([
+      getAllProductsForAdmin(),
+      getAllBrandsForAdmin(),
+      getAllOrdersForAdmin(),
+      getAllApplicationsForAdmin(),
+      getAllProfilesForAdmin(),
+      getRevenueSummary(),
+      getTopProducts(5),
+      getTopBrands(5),
+      getDailyRevenueTrend(14),
+    ]);
 
   const pendingOrders = orders.filter((o) => o.status === "pending").length;
   const newApplications = applications.filter((a) => a.status === "new").length;
@@ -70,6 +78,64 @@ export default async function AdminOverviewPage() {
             )}
           </Link>
         ))}
+      </div>
+
+      <div className="mt-10">
+        <h2 className="text-[15px] font-semibold text-ink">Revenue</h2>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+            <p className="text-[12.5px] font-medium text-ink-soft/60">Today</p>
+            <p className="mt-1 text-xl font-semibold text-ink">{formatPrice(revenue.today, "EGP")}</p>
+          </div>
+          <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+            <p className="text-[12.5px] font-medium text-ink-soft/60">Last 7 days</p>
+            <p className="mt-1 text-xl font-semibold text-ink">{formatPrice(revenue.week, "EGP")}</p>
+          </div>
+          <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+            <p className="text-[12.5px] font-medium text-ink-soft/60">Last 30 days</p>
+            <p className="mt-1 text-xl font-semibold text-ink">{formatPrice(revenue.month, "EGP")}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+            <p className="text-[13px] font-semibold text-ink">Daily Revenue (last 14 days)</p>
+            <div className="mt-3">
+              <RevenueChart points={trend} />
+            </div>
+          </div>
+
+          <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+            <p className="text-[13px] font-semibold text-ink">Top Products (30 days)</p>
+            <ul className="mt-3 space-y-2.5">
+              {topProducts.map((p) => (
+                <li key={p.productId ?? p.name} className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[12.5px] font-medium text-ink">{p.name}</p>
+                    <p className="text-[11px] text-ink-soft/50">{p.brand} · Qty {p.quantity}</p>
+                  </div>
+                  <p className="text-[12px] font-semibold text-ink">{formatPrice(p.revenue, "EGP")}</p>
+                </li>
+              ))}
+              {topProducts.length === 0 && (
+                <p className="text-[12px] text-ink-soft/50">No sales in the last 30 days.</p>
+              )}
+            </ul>
+
+            <p className="mt-5 text-[13px] font-semibold text-ink">Top Brands (30 days)</p>
+            <ul className="mt-3 space-y-2">
+              {topBrands.map((b) => (
+                <li key={b.brand} className="flex items-center justify-between gap-2">
+                  <p className="text-[12.5px] font-medium text-ink">{b.brand}</p>
+                  <p className="text-[12px] font-semibold text-ink">{formatPrice(b.revenue, "EGP")}</p>
+                </li>
+              ))}
+              {topBrands.length === 0 && (
+                <p className="text-[12px] text-ink-soft/50">No sales in the last 30 days.</p>
+              )}
+            </ul>
+          </div>
+        </div>
       </div>
 
       <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">

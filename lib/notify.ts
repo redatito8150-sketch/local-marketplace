@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export type NotificationType =
   | "order_created"
+  | "order_cancelled"
   | "product_created"
   | "product_updated"
   | "product_published"

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
+import { logAudit } from "@/lib/auditLog";
 
 export async function PATCH(
   request: NextRequest,
@@ -17,6 +18,12 @@ export async function PATCH(
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
+
+  const { data: existing } = await supabaseAdmin
+    .from("brands")
+    .select("*")
+    .eq("slug", params.slug)
+    .maybeSingle();
 
   // Slug is the primary key and the /brands/[slug] URL — it's locked in the
   // UI, and ignored here even if a caller sends a different value, so a
@@ -49,6 +56,16 @@ export async function PATCH(
     );
   }
 
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "brand",
+    entityId: params.slug,
+    action: "update",
+    before: existing,
+    after: body,
+  });
+
   return NextResponse.json({ slug: params.slug });
 }
 
@@ -61,6 +78,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  const { data: existing } = await supabaseAdmin
+    .from("brands")
+    .select("*")
+    .eq("slug", params.slug)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin.from("brands").delete().eq("slug", params.slug);
 
   if (error) {
@@ -69,6 +92,15 @@ export async function DELETE(
       { status: 500 }
     );
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "brand",
+    entityId: params.slug,
+    action: "delete",
+    before: existing,
+  });
 
   return NextResponse.json({ ok: true });
 }

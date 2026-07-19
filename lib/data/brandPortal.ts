@@ -1,0 +1,141 @@
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+// Every query here uses the cookie-aware anon client (never supabaseAdmin)
+// so the new brand-owner RLS policies actually do the scoping — the
+// portal must never be able to see another brand's data even if a query
+// here had a bug, because the database itself refuses the row.
+
+export interface BrandOrderItem {
+  id: string;
+  name: string;
+  size: string;
+  color?: string;
+  price: number;
+  currency: "USD" | "EGP";
+  quantity: number;
+}
+
+export interface BrandOrder {
+  id: string;
+  orderNumber: string;
+  status: string;
+  shippingName: string;
+  shippingCity: string;
+  shippingGovernorate: string;
+  createdAt: string;
+  items: BrandOrderItem[];
+}
+
+interface OrderItemRow {
+  id: string;
+  name: string;
+  size: string;
+  color: string | null;
+  price: number;
+  currency: "USD" | "EGP";
+  quantity: number;
+  order_id: string;
+  orders: {
+    id: string;
+    order_number: string;
+    status: string;
+    shipping_name: string;
+    shipping_city: string;
+    shipping_governorate: string;
+    created_at: string;
+  } | null;
+}
+
+// Orders containing at least one of this brand's items — only orders
+// placed after brand_slug attribution shipped will appear; historical
+// orders keep a null brand_slug and are correctly invisible here.
+export async function getOrdersForBrand(brandSlug: string): Promise<BrandOrder[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("order_items")
+    .select(
+      "id, name, size, color, price, currency, quantity, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at)"
+    )
+    .eq("brand_slug", brandSlug);
+
+  if (error) {
+    throw new Error(`getOrdersForBrand(${brandSlug}) failed: ${error.message}`);
+  }
+
+  const byOrder = new Map<string, BrandOrder>();
+  for (const row of (data as unknown as OrderItemRow[]) ?? []) {
+    if (!row.orders) continue;
+    const existing = byOrder.get(row.orders.id) ?? {
+      id: row.orders.id,
+      orderNumber: row.orders.order_number,
+      status: row.orders.status,
+      shippingName: row.orders.shipping_name,
+      shippingCity: row.orders.shipping_city,
+      shippingGovernorate: row.orders.shipping_governorate,
+      createdAt: row.orders.created_at,
+      items: [],
+    };
+    existing.items.push({
+      id: row.id,
+      name: row.name,
+      size: row.size,
+      color: row.color ?? undefined,
+      price: Number(row.price),
+      currency: row.currency,
+      quantity: row.quantity,
+    });
+    byOrder.set(row.orders.id, existing);
+  }
+
+  return [...byOrder.values()].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+export interface BrandVariant {
+  variantId: string;
+  productId: string;
+  productName: string;
+  image: string;
+  color?: string;
+  size?: string;
+  quantity: number;
+  lowStockThreshold: number;
+}
+
+interface BrandVariantRow {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string | null;
+  quantity: number;
+  low_stock_threshold: number;
+  products: { id: string; name: string; image: string; brand_slug: string | null } | null;
+}
+
+// Read-only for v1 — brand owners see their stock, only admin/staff edit
+// it, so inventory oversight stays centralized.
+export async function getVariantsForBrand(brandSlug: string): Promise<BrandVariant[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("id, product_id, color, size, quantity, low_stock_threshold, products!inner(id, name, image, brand_slug)")
+    .eq("products.brand_slug", brandSlug);
+
+  if (error) {
+    throw new Error(`getVariantsForBrand(${brandSlug}) failed: ${error.message}`);
+  }
+
+  return ((data as unknown as BrandVariantRow[]) ?? [])
+    .filter((row) => row.products)
+    .map((row) => ({
+      variantId: row.id,
+      productId: row.product_id,
+      productName: row.products!.name,
+      image: row.products!.image,
+      color: row.color ?? undefined,
+      size: row.size ?? undefined,
+      quantity: row.quantity,
+      lowStockThreshold: row.low_stock_threshold,
+    }));
+}

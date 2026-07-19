@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
+import { logAudit } from "@/lib/auditLog";
 
 export async function POST(request: NextRequest) {
   const admin = await requireAdminUser();
@@ -41,6 +42,15 @@ export async function POST(request: NextRequest) {
         : `Failed to create brand: ${error.message}`;
     return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "brand",
+    entityId: body.slug.trim(),
+    action: "create",
+    after: body,
+  });
 
   return NextResponse.json({ slug: body.slug.trim() });
 }

@@ -326,6 +326,130 @@ alter table products add column if not exists product_category text;
 -- ============================================================================
 alter table order_items add column if not exists variant_id uuid references product_variants(id) on delete set null;
 
+-- place_order() itself is defined once, further below (search "One function
+-- does the whole checkout") — every phase that extended it (coupons, brand
+-- attribution) edits that single definition in place via `create or replace`
+-- rather than layering a second copy here, so there's exactly one source of
+-- truth for its current signature and behavior.
+
+-- ============================================================================
+-- ADMIN DASHBOARD EXPANSION — Phase 1: Roles & Audit Log
+-- ============================================================================
+
+-- Granular permission tier on top of the existing is_admin boolean.
+-- is_admin still gates "/admin at all" (unchanged, every existing check
+-- keeps working); role adds section-level gating for staff/manager/admin,
+-- and a separate brand_owner track for the future brand portal.
+alter table profiles add column if not exists role text not null default 'customer'
+  check (role in ('customer', 'staff', 'manager', 'admin', 'brand_owner'));
+
+-- One-time backfill: every existing is_admin=true account becomes a full admin.
+update profiles set role = 'admin' where is_admin = true and role = 'customer';
+
+-- Full history of admin actions: who, what, when, and the before/after value.
+-- entity_id is always text — uuid PKs (orders, profiles, product_variants)
+-- cast to text, text PKs (products.id, brands.slug) used as-is. No real FK
+-- is possible across five differently-typed parent tables, so entity_type
+-- tells the app which table entity_id refers to.
+create table if not exists audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_id uuid references profiles(id) on delete set null,
+  actor_label text not null default '',
+  entity_type text not null,
+  entity_id text not null,
+  action text not null,
+  before_value jsonb,
+  after_value jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists audit_logs_entity_idx on audit_logs (entity_type, entity_id);
+create index if not exists audit_logs_actor_idx on audit_logs (actor_id);
+create index if not exists audit_logs_created_at_idx on audit_logs (created_at desc);
+
+alter table audit_logs enable row level security;
+-- No public policy at all — admin-only, service-role reads/writes, same
+-- convention as notifications.
+
+-- ============================================================================
+-- ADMIN DASHBOARD EXPANSION — Phase 3: Order Cancellation with Restock
+-- ============================================================================
+
+alter table orders add column if not exists internal_notes text;
+
+-- Mirrors place_order's transactional safety in reverse: locks the order
+-- row first (blocks a concurrent double-cancel), refuses to touch a
+-- fulfilled order, then restocks every item's variant and flips the
+-- status — all inside one transaction, so a failure partway through
+-- rolls back the whole cancellation instead of leaving stock half-restored.
+create or replace function public.cancel_order(p_order_id uuid)
+returns jsonb
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_status text;
+  v_item record;
+  v_track_inventory boolean;
+  v_restocked int := 0;
+begin
+  select status into v_status from orders where id = p_order_id for update;
+
+  if v_status is null then
+    raise exception 'ORDER_NOT_FOUND';
+  end if;
+  if v_status = 'cancelled' then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+  if v_status = 'fulfilled' then
+    raise exception 'CANNOT_CANCEL_FULFILLED';
+  end if;
+
+  for v_item in
+    select oi.variant_id, oi.quantity, pv.product_id
+    from order_items oi
+    join product_variants pv on pv.id = oi.variant_id
+    where oi.order_id = p_order_id
+  loop
+    select track_inventory into v_track_inventory from products where id = v_item.product_id;
+
+    if coalesce(v_track_inventory, true) then
+      update product_variants
+      set quantity = quantity + v_item.quantity, updated_at = now()
+      where id = v_item.variant_id;
+      v_restocked := v_restocked + 1;
+    end if;
+  end loop;
+
+  update orders set status = 'cancelled' where id = p_order_id;
+
+  return jsonb_build_object('order_id', p_order_id, 'restocked_variants', v_restocked);
+end;
+$$;
+
+-- ============================================================================
+-- ADMIN DASHBOARD EXPANSION — Phase 9: Discount/Coupon Codes
+-- ============================================================================
+
+create table if not exists coupons (
+  code text primary key,
+  discount_type text not null check (discount_type in ('percentage', 'fixed')),
+  discount_value numeric(10, 2) not null,
+  max_uses int,
+  used_count int not null default 0,
+  expires_at timestamptz,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+alter table coupons enable row level security;
+-- No public policy — coupons are validated only through a server-side route
+-- (never read directly by the browser's anon key), so every valid code
+-- can't be scraped by listing the table.
+
+alter table orders add column if not exists coupon_code text references coupons(code) on delete set null;
+alter table orders add column if not exists discount_amount_egp numeric(10, 2) not null default 0;
+
 -- One function does the whole checkout — generates a unique order number,
 -- inserts the order, and for each item checks + decrements the purchased
 -- variant's stock and inserts the order_item, all inside a single
@@ -334,6 +458,14 @@ alter table order_items add column if not exists variant_id uuid references prod
 -- already decremented for earlier items in the same order) — so two
 -- concurrent purchases of the last unit can't both succeed, and a
 -- multi-item order can't half-complete.
+--
+-- Additive since: existing callers that don't pass p_coupon_code keep
+-- working unchanged (defaults to null, meaning "no coupon"). The coupon
+-- row is locked with `for update` in the same transaction as the stock
+-- decrement, so two concurrent checkouts racing a max_uses=1 coupon
+-- serialize on that row — the second sees the incremented used_count and
+-- is rejected, the same race-safety principle already governing per-variant
+-- stock.
 create or replace function public.place_order(
   p_shipping_name text,
   p_shipping_email text,
@@ -342,7 +474,8 @@ create or replace function public.place_order(
   p_shipping_city text,
   p_shipping_governorate text,
   p_user_id uuid,
-  p_items jsonb -- [{product_id, variant_id, name, brand, price, currency, size, color, quantity, image}]
+  p_items jsonb,
+  p_coupon_code text default null
 )
 returns jsonb
 language plpgsql
@@ -362,6 +495,9 @@ declare
   v_track_inventory boolean;
   v_updated int;
   v_attempt int := 0;
+  v_coupon coupons%rowtype;
+  v_discount_egp numeric(10, 2) := 0;
+  v_coupon_code text;
 begin
   loop
     v_order_number := 'LC-' || floor(100000 + random() * 900000)::text;
@@ -410,10 +546,11 @@ begin
     end if;
 
     insert into order_items (
-      order_id, product_id, variant_id, name, brand, price, currency, size, color, quantity, image
+      order_id, product_id, variant_id, name, brand, brand_slug, price, currency, size, color, quantity, image
     ) values (
       v_order_id, v_item ->> 'product_id', v_variant_id, v_item ->> 'name', v_item ->> 'brand',
-      v_price, v_currency, v_item ->> 'size', nullif(v_item ->> 'color', ''), v_quantity, v_item ->> 'image'
+      nullif(v_item ->> 'brand_slug', ''), v_price, v_currency, v_item ->> 'size',
+      nullif(v_item ->> 'color', ''), v_quantity, v_item ->> 'image'
     );
 
     v_line_total := v_price * v_quantity;
@@ -424,8 +561,94 @@ begin
     end if;
   end loop;
 
-  update orders set subtotal_usd = v_subtotal_usd, subtotal_egp = v_subtotal_egp where id = v_order_id;
+  if p_coupon_code is not null and p_coupon_code <> '' then
+    v_coupon_code := upper(p_coupon_code);
+    select * into v_coupon from coupons where code = v_coupon_code for update;
 
-  return jsonb_build_object('order_id', v_order_id, 'order_number', v_order_number);
+    if not found then
+      raise exception 'COUPON_INVALID: code not found';
+    end if;
+    if not v_coupon.active then
+      raise exception 'COUPON_INVALID: this code is no longer active';
+    end if;
+    if v_coupon.expires_at is not null and v_coupon.expires_at < now() then
+      raise exception 'COUPON_INVALID: this code has expired';
+    end if;
+    if v_coupon.max_uses is not null and v_coupon.used_count >= v_coupon.max_uses then
+      raise exception 'COUPON_INVALID: this code has reached its usage limit';
+    end if;
+
+    if v_coupon.discount_type = 'percentage' then
+      v_discount_egp := round(v_subtotal_egp * v_coupon.discount_value / 100, 2);
+    else
+      v_discount_egp := least(v_coupon.discount_value, v_subtotal_egp);
+    end if;
+
+    update coupons set used_count = used_count + 1 where code = v_coupon_code;
+  end if;
+
+  update orders
+  set subtotal_usd = v_subtotal_usd,
+      subtotal_egp = v_subtotal_egp,
+      coupon_code = v_coupon_code,
+      discount_amount_egp = v_discount_egp
+  where id = v_order_id;
+
+  return jsonb_build_object(
+    'order_id', v_order_id,
+    'order_number', v_order_number,
+    'discount_amount_egp', v_discount_egp
+  );
 end;
 $$;
+
+-- ============================================================================
+-- ADMIN DASHBOARD EXPANSION — Phase 10: Brand-Owner Portal
+-- ============================================================================
+
+-- One brand per owner for v1 — the partial unique index enforces this at
+-- the DB level while leaving owner_user_id nullable (most brands stay
+-- admin-only-managed, never linked to a login).
+alter table brands add column if not exists owner_user_id uuid references auth.users(id) on delete set null;
+create unique index if not exists brands_owner_user_id_key on brands (owner_user_id) where owner_user_id is not null;
+
+-- Populated only for orders placed after this migration ships — historical
+-- rows keep it null forever, same "never rewrite order history" principle
+-- already governing USD-vs-EGP history. product_variants already has a
+-- public-read policy, so no new policy is needed there for the portal's
+-- stock view; order_items/orders do need new policies since their existing
+-- ones only cover "the customer who placed it," not a brand owner.
+alter table order_items add column if not exists brand_slug text references brands(slug) on delete set null;
+
+create policy "Brand owners can read their own order items"
+  on order_items for select using (
+    brand_slug in (select slug from brands where owner_user_id = auth.uid())
+  );
+
+-- A plain inline EXISTS subquery here (checking order_items from an orders
+-- policy) creates infinite recursion: evaluating order_items' own policies
+-- (the existing "Users can read their own order items" checks orders,
+-- which would re-check this orders policy, which re-checks order_items,
+-- forever). Wrapping the check in a `security definer` function breaks the
+-- cycle — the function runs as its owner (bypassing RLS internally on the
+-- table it queries), so evaluating this orders policy no longer re-triggers
+-- order_items' RLS.
+create or replace function public.brand_owns_order_item(p_order_id uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select exists (
+    select 1 from order_items oi
+    join brands b on b.slug = oi.brand_slug
+    where oi.order_id = p_order_id
+      and b.owner_user_id = auth.uid()
+  );
+$$;
+
+create policy "Brand owners can read orders containing their items"
+  on orders for select using (
+    public.brand_owns_order_item(orders.id)
+  );

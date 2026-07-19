@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { getUnreadNotificationCount } from "@/lib/data/admin";
+import { getUnreadNotificationCount, getLowStockVariantsForAdmin } from "@/lib/data/admin";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 
 export default async function AdminLayout({
@@ -18,13 +18,16 @@ export default async function AdminLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, role")
     .eq("id", user.id)
     .maybeSingle();
 
   if (!profile?.is_admin) redirect("/account");
 
-  const unreadNotifications = await getUnreadNotificationCount();
+  const [unreadNotifications, lowStockVariants] = await Promise.all([
+    getUnreadNotificationCount(),
+    getLowStockVariantsForAdmin(),
+  ]);
 
   return (
     <div className="min-h-screen bg-cream">
@@ -36,7 +39,11 @@ export default async function AdminLayout({
         </div>
       </header>
       <div className="mx-auto grid max-w-screen2xl grid-cols-1 gap-8 px-8 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-12">
-        <AdminSidebar unreadNotifications={unreadNotifications} />
+        <AdminSidebar
+          unreadNotifications={unreadNotifications}
+          lowStockCount={lowStockVariants.length}
+          role={profile.role}
+        />
         <main>{children}</main>
       </div>
     </div>

@@ -1,15 +1,19 @@
 import { notFound } from "next/navigation";
-import { getOrderForAdmin } from "@/lib/data/admin";
+import { getOrderForAdmin, getAuditLogsForEntity } from "@/lib/data/admin";
 import { formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
+import InternalNotesField from "@/components/admin/InternalNotesField";
 
 export default async function AdminOrderDetailPage({
   params,
 }: {
   params: { id: string };
 }) {
-  const order = await getOrderForAdmin(params.id);
+  const [order, auditLogs] = await Promise.all([
+    getOrderForAdmin(params.id),
+    getAuditLogsForEntity("order", params.id),
+  ]);
   if (!order) notFound();
 
   return (
@@ -49,6 +53,16 @@ export default async function AdminOrderDetailPage({
               </div>
             ))}
           </div>
+          {order.couponCode && (
+            <div className="mt-4 flex items-center justify-between border-t border-stone-150 pt-4 text-[13px]">
+              <span className="text-ink-soft/60">
+                Coupon <span className="font-medium text-ink">{order.couponCode}</span>
+              </span>
+              <span className="font-semibold text-green-700">
+                -{formatPrice(order.discountAmountEgp, "EGP")}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
@@ -67,6 +81,33 @@ export default async function AdminOrderDetailPage({
               Guest checkout — no account linked to this order.
             </p>
           )}
+        </div>
+
+        <div className="rounded-xl3 border border-stone-150 bg-white p-6 lg:col-start-1">
+          <h2 className="text-[15px] font-semibold text-ink">Internal Notes</h2>
+          <p className="mt-1 text-[12px] text-ink-soft/50">
+            Only visible to admin/staff — never shown to the customer.
+          </p>
+          <div className="mt-3">
+            <InternalNotesField orderId={order.id} initialValue={order.internalNotes ?? ""} />
+          </div>
+        </div>
+
+        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
+          <h2 className="text-[15px] font-semibold text-ink">History</h2>
+          <div className="mt-3 space-y-3">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="text-[12.5px]">
+                <p className="font-medium text-ink capitalize">{log.action.replace("_", " ")}</p>
+                <p className="text-[11.5px] text-ink-soft/50">
+                  {log.actorLabel} · {new Date(log.createdAt).toLocaleString("en-US")}
+                </p>
+              </div>
+            ))}
+            {auditLogs.length === 0 && (
+              <p className="text-[12.5px] text-ink-soft/50">No actions recorded yet.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

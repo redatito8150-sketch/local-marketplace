@@ -49,6 +49,7 @@ export function applicationStatusBadgeClass(status: string): string {
 
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   order_created: "New Order",
+  order_cancelled: "Order Cancelled",
   product_created: "Product Created",
   product_updated: "Product Updated",
   product_published: "Product Published",

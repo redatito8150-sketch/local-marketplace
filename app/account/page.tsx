@@ -22,6 +22,7 @@ interface OrderRow {
   shipping_governorate: string;
   subtotal_usd: number;
   subtotal_egp: number;
+  discount_amount_egp: number;
   created_at: string;
   order_items: {
     id: string;
@@ -50,6 +51,7 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     shippingGovernorate: row.shipping_governorate,
     subtotalUsd: Number(row.subtotal_usd),
     subtotalEgp: Number(row.subtotal_egp),
+    discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
     items: row.order_items.map((item) => ({
       id: item.id,
@@ -88,6 +90,11 @@ export default function AccountPage() {
     supabase
       .from("orders")
       .select("*, order_items(*)")
+      // Explicit even though RLS also enforces it — RLS additionally allows
+      // a brand owner to read orders containing their brand's items (for
+      // fulfillment), which this "my purchase history" view must never
+      // surface under the customer's own name.
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .then(({ data, error }) => {
         if (cancelled) return;

@@ -5,6 +5,7 @@ import { validateProductInput, type ProductInput } from "@/lib/admin/productVali
 import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
+import { logAudit } from "@/lib/auditLog";
 
 export async function PATCH(
   request: NextRequest,
@@ -33,7 +34,7 @@ export async function PATCH(
 
   const { data: existing } = await supabaseAdmin
     .from("products")
-    .select("status")
+    .select("*")
     .eq("id", params.id)
     .maybeSingle();
   const previousStatus = existing?.status;
@@ -131,6 +132,16 @@ export async function PATCH(
     await notify("product_updated", `Product updated: ${body.name}`, body.brandName);
   }
 
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "product",
+    entityId: params.id,
+    action: previousStatus !== body.status ? "status_change" : "update",
+    before: existing,
+    after: body,
+  });
+
   return NextResponse.json({ id: params.id });
 }
 
@@ -143,6 +154,12 @@ export async function DELETE(
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  const { data: existing } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("id", params.id)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin.from("products").delete().eq("id", params.id);
 
   if (error) {
@@ -151,6 +168,15 @@ export async function DELETE(
       { status: 500 }
     );
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "product",
+    entityId: params.id,
+    action: "delete",
+    before: existing,
+  });
 
   return NextResponse.json({ ok: true });
 }

@@ -44,11 +44,42 @@ export default function CheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
 
+  const [couponInput, setCouponInput] = useState("");
+  const [couponChecking, setCouponChecking] = useState(false);
+  const [couponError, setCouponError] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discountEgp: number } | null>(
+    null
+  );
+
   const stepIndex = STEPS.findIndex((s) => s.id === step);
 
   const goToPayment = (e: React.FormEvent) => {
     e.preventDefault();
     setStep("payment");
+  };
+
+  const applyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponChecking(true);
+    setCouponError("");
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: couponInput, subtotalEgp: subtotal.egp }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCouponError(data.error ?? "This code isn't valid");
+        setAppliedCoupon(null);
+        return;
+      }
+      setAppliedCoupon({ code: data.code, discountEgp: data.discountEgp });
+    } catch {
+      setCouponError("Couldn't check that code — please try again.");
+    } finally {
+      setCouponChecking(false);
+    }
   };
 
   const placeOrder = async (e: React.FormEvent) => {
@@ -68,6 +99,7 @@ export default function CheckoutPage() {
             quantity: item.quantity,
           })),
           shipping,
+          couponCode: appliedCoupon?.code,
         }),
       });
 
@@ -303,7 +335,46 @@ export default function CheckoutPage() {
                 ))}
               </div>
 
-              <div className="mt-5 space-y-2 border-t border-stone-150 pt-4 text-[13.5px] text-ink-soft/75">
+              <div className="mt-5 border-t border-stone-150 pt-4">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between rounded-md bg-green-50 px-3 py-2 text-[12.5px] font-medium text-green-700">
+                    <span>Code &quot;{appliedCoupon.code}&quot; applied</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedCoupon(null);
+                        setCouponInput("");
+                      }}
+                      className="text-[11.5px] underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                      placeholder="Discount code"
+                      className="min-w-0 flex-1 rounded-md border border-stone-150 bg-white px-3 py-2 text-[13px] uppercase text-ink outline-none focus:border-ink/30"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyCoupon}
+                      disabled={couponChecking || !couponInput.trim()}
+                      className="rounded-md border border-stone-150 bg-white px-3 py-2 text-[12.5px] font-medium text-ink hover:bg-stone-100 disabled:opacity-60"
+                    >
+                      {couponChecking ? "…" : "Apply"}
+                    </button>
+                  </div>
+                )}
+                {couponError && (
+                  <p className="mt-1.5 text-[12px] text-red-600">{couponError}</p>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-2 border-t border-stone-150 pt-4 text-[13.5px] text-ink-soft/75">
                 {subtotal.usd > 0 && (
                   <div className="flex items-center justify-between">
                     <span>Total (USD)</span>
@@ -313,12 +384,29 @@ export default function CheckoutPage() {
                   </div>
                 )}
                 {subtotal.egp > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span>Total (EGP)</span>
-                    <span className="font-semibold text-ink">
-                      {subtotal.egp.toLocaleString("en-US")} EGP
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span>Subtotal (EGP)</span>
+                      <span className="font-medium text-ink">
+                        {subtotal.egp.toLocaleString("en-US")} EGP
+                      </span>
+                    </div>
+                    {appliedCoupon && appliedCoupon.discountEgp > 0 && (
+                      <div className="flex items-center justify-between text-green-700">
+                        <span>Discount</span>
+                        <span className="font-medium">
+                          -{appliedCoupon.discountEgp.toLocaleString("en-US")} EGP
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-ink">
+                      <span className="font-semibold">Total (EGP)</span>
+                      <span className="font-semibold">
+                        {(subtotal.egp - (appliedCoupon?.discountEgp ?? 0)).toLocaleString("en-US")}{" "}
+                        EGP
+                      </span>
+                    </div>
+                  </>
                 )}
               </div>
             </div>

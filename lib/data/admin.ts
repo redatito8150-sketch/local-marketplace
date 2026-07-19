@@ -3,12 +3,15 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import {
   ApplicationStatus,
+  AuditLogRecord,
   BrandApplicationRecord,
   BrandCategoryTab,
   BrandInfoBadge,
   BrandRecord,
   BrandValue,
   CategorySlug,
+  CouponRecord,
+  LowStockVariantRecord,
   NotificationRecord,
   OrderItemRecord,
   OrderRecord,
@@ -17,6 +20,7 @@ import {
   ProductRecord,
   ProductStatus,
   ProfileRecord,
+  ProfileRole,
 } from "@/types";
 
 interface ProductRow {
@@ -136,9 +140,10 @@ interface BrandRow {
   active_tab: string;
   values: BrandValue[];
   similar_brand_slugs: string[];
+  owner_user_id: string | null;
 }
 
-function toBrandRecord(row: BrandRow): BrandRecord {
+function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
   return {
     slug: row.slug,
     name: row.name,
@@ -156,7 +161,28 @@ function toBrandRecord(row: BrandRow): BrandRecord {
     activeTab: row.active_tab,
     values: row.values ?? [],
     similarBrandSlugs: row.similar_brand_slugs ?? [],
+    ownerUserId: row.owner_user_id ?? undefined,
+    ownerEmail,
   };
+}
+
+// owner_user_id has no email on the brands row itself — batch-look-up the
+// linked accounts' emails from profiles (service-role, since profiles RLS
+// only allows reading your own row) the same way variants are batched for
+// a product list, rather than one query per brand.
+async function getOwnerEmailsByUserId(rows: BrandRow[]): Promise<Map<string, string>> {
+  const ownerIds = rows.map((r) => r.owner_user_id).filter((id): id is string => Boolean(id));
+  const emailByOwner = new Map<string, string>();
+  if (ownerIds.length === 0) return emailByOwner;
+
+  const { data: profiles } = await supabaseAdmin
+    .from("profiles")
+    .select("id, email")
+    .in("id", ownerIds);
+  for (const p of profiles ?? []) {
+    if (p.email) emailByOwner.set(p.id, p.email);
+  }
+  return emailByOwner;
 }
 
 // Public SELECT policy on `brands` already allows this — no service role
@@ -170,7 +196,11 @@ export async function getAllBrandsForAdmin(): Promise<BrandRecord[]> {
   if (error) {
     throw new Error(`getAllBrandsForAdmin failed: ${error.message}`);
   }
-  return (data as BrandRow[]).map(toBrandRecord);
+  const rows = data as BrandRow[];
+  const emailByOwner = await getOwnerEmailsByUserId(rows);
+  return rows.map((row) =>
+    toBrandRecord(row, row.owner_user_id ? emailByOwner.get(row.owner_user_id) : undefined)
+  );
 }
 
 export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null> {
@@ -180,12 +210,18 @@ export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null
     throw new Error(`getBrandForAdmin(${slug}) failed: ${error.message}`);
   }
   if (!data) return null;
+  const row = data as BrandRow;
+  if (row.owner_user_id) {
+    const emailByOwner = await getOwnerEmailsByUserId([row]);
+    return toBrandRecord(row, emailByOwner.get(row.owner_user_id));
+  }
   return toBrandRecord(data as BrandRow);
 }
 
 interface OrderItemRow {
   id: string;
   product_id: string | null;
+  variant_id: string | null;
   name: string;
   brand: string;
   price: number;
@@ -209,6 +245,9 @@ interface OrderRow {
   shipping_governorate: string;
   subtotal_usd: number;
   subtotal_egp: number;
+  internal_notes: string | null;
+  coupon_code: string | null;
+  discount_amount_egp: number;
   created_at: string;
   order_items: OrderItemRow[];
 }
@@ -227,10 +266,14 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     shippingGovernorate: row.shipping_governorate,
     subtotalUsd: Number(row.subtotal_usd),
     subtotalEgp: Number(row.subtotal_egp),
+    internalNotes: row.internal_notes ?? undefined,
+    couponCode: row.coupon_code ?? undefined,
+    discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
     items: (row.order_items ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,
+      variantId: item.variant_id ?? undefined,
       name: item.name,
       brand: item.brand,
       price: Number(item.price),
@@ -336,6 +379,7 @@ interface ProfileRow {
   full_name: string | null;
   email: string | null;
   is_admin: boolean;
+  role: ProfileRole;
   created_at: string;
 }
 
@@ -345,6 +389,7 @@ function toProfileRecord(row: ProfileRow): ProfileRecord {
     fullName: row.full_name ?? undefined,
     email: row.email ?? undefined,
     isAdmin: row.is_admin,
+    role: row.role,
     createdAt: row.created_at,
   };
 }
@@ -407,4 +452,152 @@ export async function getUnreadNotificationCount(): Promise<number> {
     throw new Error(`getUnreadNotificationCount failed: ${error.message}`);
   }
   return count ?? 0;
+}
+
+interface AuditLogRow {
+  id: string;
+  actor_id: string | null;
+  actor_label: string;
+  entity_type: string;
+  entity_id: string;
+  action: string;
+  before_value: unknown;
+  after_value: unknown;
+  created_at: string;
+}
+
+function toAuditLogRecord(row: AuditLogRow): AuditLogRecord {
+  return {
+    id: row.id,
+    actorId: row.actor_id ?? undefined,
+    actorLabel: row.actor_label,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    action: row.action,
+    beforeValue: row.before_value,
+    afterValue: row.after_value,
+    createdAt: row.created_at,
+  };
+}
+
+// audit_logs has no public policy at all — admin-only, service-role reads.
+export async function getAllAuditLogsForAdmin(limit = 200): Promise<AuditLogRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("audit_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getAllAuditLogsForAdmin failed: ${error.message}`);
+  }
+  return (data as AuditLogRow[]).map(toAuditLogRecord);
+}
+
+interface LowStockVariantRow {
+  id: string;
+  product_id: string;
+  color: string | null;
+  size: string | null;
+  quantity: number;
+  low_stock_threshold: number;
+  products: { id: string; name: string; brand_name: string; image: string } | null;
+}
+
+// Small catalog, so filtering "at or below threshold" in memory after one
+// query is simpler and just as fast as a raw column-to-column comparison
+// (PostgREST filters can't compare quantity to another column directly).
+export async function getLowStockVariantsForAdmin(): Promise<LowStockVariantRecord[]> {
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("id, product_id, color, size, quantity, low_stock_threshold, products(id, name, brand_name, image)")
+    .eq("availability_status", "available")
+    .order("quantity", { ascending: true });
+
+  if (error) {
+    throw new Error(`getLowStockVariantsForAdmin failed: ${error.message}`);
+  }
+
+  return ((data as unknown as LowStockVariantRow[]) ?? [])
+    .filter((row) => row.quantity <= row.low_stock_threshold && row.products)
+    .map((row) => ({
+      variantId: row.id,
+      productId: row.product_id,
+      productName: row.products!.name,
+      brandName: row.products!.brand_name,
+      image: row.products!.image,
+      color: row.color ?? undefined,
+      size: row.size ?? undefined,
+      quantity: row.quantity,
+      lowStockThreshold: row.low_stock_threshold,
+    }));
+}
+
+export async function getAuditLogsForEntity(
+  entityType: string,
+  entityId: string
+): Promise<AuditLogRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("audit_logs")
+    .select("*")
+    .eq("entity_type", entityType)
+    .eq("entity_id", entityId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getAuditLogsForEntity(${entityType}, ${entityId}) failed: ${error.message}`);
+  }
+  return (data as AuditLogRow[]).map(toAuditLogRecord);
+}
+
+interface CouponRow {
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+function toCouponRecord(row: CouponRow): CouponRecord {
+  return {
+    code: row.code,
+    discountType: row.discount_type,
+    discountValue: Number(row.discount_value),
+    maxUses: row.max_uses ?? undefined,
+    usedCount: row.used_count,
+    expiresAt: row.expires_at ?? undefined,
+    active: row.active,
+    createdAt: row.created_at,
+  };
+}
+
+// coupons has no public policy — never exposed to the anon key (a public
+// SELECT would let anyone list every valid code), admin-only service-role reads.
+export async function getAllCouponsForAdmin(): Promise<CouponRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("coupons")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getAllCouponsForAdmin failed: ${error.message}`);
+  }
+  return (data as CouponRow[]).map(toCouponRecord);
+}
+
+export async function getCouponForAdmin(code: string): Promise<CouponRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from("coupons")
+    .select("*")
+    .eq("code", code.toUpperCase())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getCouponForAdmin(${code}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  return toCouponRecord(data as CouponRow);
 }

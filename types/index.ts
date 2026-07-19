@@ -253,6 +253,8 @@ export interface BrandRecord {
   activeTab: string;
   values: BrandValue[];
   similarBrandSlugs: string[];
+  ownerUserId?: string;
+  ownerEmail?: string;
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
@@ -262,6 +264,7 @@ export type OrderStatus = "pending" | "paid" | "shipped" | "fulfilled" | "cancel
 export interface OrderItemRecord {
   id: string;
   productId: string | null;
+  variantId?: string;
   name: string;
   brand: string;
   price: number;
@@ -285,8 +288,26 @@ export interface OrderRecord {
   shippingGovernorate: string;
   subtotalUsd: number;
   subtotalEgp: number;
+  internalNotes?: string;
+  couponCode?: string;
+  discountAmountEgp: number;
   createdAt: string;
   items: OrderItemRecord[];
+}
+
+// ── Admin (raw `coupons` row shape) ─────────────────────────────────────────
+
+export type CouponDiscountType = "percentage" | "fixed";
+
+export interface CouponRecord {
+  code: string;
+  discountType: CouponDiscountType;
+  discountValue: number;
+  maxUses?: number;
+  usedCount: number;
+  expiresAt?: string;
+  active: boolean;
+  createdAt: string;
 }
 
 // ── Admin (raw `brand_applications` row shape) ──────────────────────────────
@@ -309,11 +330,15 @@ export interface BrandApplicationRecord {
 
 // ── Admin (raw `profiles` row shape, used by the users/permissions page) ───
 
+export type StaffRole = "staff" | "manager" | "admin";
+export type ProfileRole = "customer" | StaffRole | "brand_owner";
+
 export interface ProfileRecord {
   id: string;
   fullName?: string;
   email?: string;
   isAdmin: boolean;
+  role: ProfileRole;
   createdAt: string;
 }
 
@@ -325,6 +350,34 @@ export interface NotificationRecord {
   title: string;
   body: string;
   read: boolean;
+  createdAt: string;
+}
+
+// ── Admin (low-stock dashboard row — a variant joined to its product) ──────
+
+export interface LowStockVariantRecord {
+  variantId: string;
+  productId: string;
+  productName: string;
+  brandName: string;
+  image: string;
+  color?: string;
+  size?: string;
+  quantity: number;
+  lowStockThreshold: number;
+}
+
+// ── Admin (raw `audit_logs` row shape) ──────────────────────────────────────
+
+export interface AuditLogRecord {
+  id: string;
+  actorId?: string;
+  actorLabel: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  beforeValue: unknown;
+  afterValue: unknown;
   createdAt: string;
 }
 
