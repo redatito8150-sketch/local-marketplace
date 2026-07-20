@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Heart, ShoppingBag, User, Menu, X } from "lucide-react";
+import { Heart, ShoppingBag, User, Menu, X, LayoutDashboard } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
 import DiscoverMenu from "@/components/navigation/DiscoverMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
@@ -36,7 +36,16 @@ export default function Header() {
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const { itemCount } = useCart();
   const { count: wishlistCount } = useWishlist();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  // "Dashboard" only ever needs to point at one place per account — an
+  // admin always outranks a brand link even if (rare, admin-only) an
+  // account somehow carries both, since /admin already has full access to
+  // every brand's portal from there.
+  const dashboardHref = profile?.isAdmin
+    ? "/admin"
+    : profile?.role === "brand_owner" || profile?.role === "brand_assistant"
+      ? "/brand-portal"
+      : null;
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -125,6 +134,17 @@ export default function Header() {
         {/* Right actions */}
         <div className="flex items-center gap-4">
           <SearchAutocomplete />
+
+          {dashboardHref && (
+            <Link
+              href={dashboardHref}
+              aria-label="Dashboard"
+              title="Dashboard"
+              className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+            >
+              <LayoutDashboard className="h-5 w-5" strokeWidth={1.6} />
+            </Link>
+          )}
 
           <Link
             href="/account"

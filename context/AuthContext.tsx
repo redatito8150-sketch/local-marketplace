@@ -15,8 +15,18 @@ interface AuthResult {
   needsEmailConfirmation?: boolean;
 }
 
+// Just enough to decide what the header's "Dashboard" link should point
+// at (Round 3, Phase 7) — the full role/permission picture lives in each
+// area's own server-side gate (requireAdminUser/requireBrandOwner), this
+// is a client-side hint only, not a security boundary.
+export interface AuthProfile {
+  isAdmin: boolean;
+  role: string;
+}
+
 interface AuthContextValue {
   user: User | null;
+  profile: AuthProfile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (
@@ -29,20 +39,39 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+async function fetchProfile(userId: string): Promise<AuthProfile | null> {
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_admin, role")
+    .eq("id", userId)
+    .maybeSingle();
+  if (!data) return null;
+  return { isAdmin: data.is_admin, role: data.role };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const sessionUser = data.session?.user ?? null;
+      setUser(sessionUser);
+      setProfile(sessionUser ? await fetchProfile(sessionUser.id) : null);
       setLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
+      if (sessionUser) {
+        fetchProfile(sessionUser.id).then(setProfile);
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -81,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut }}>
       {children}
     </AuthContext.Provider>
   );
