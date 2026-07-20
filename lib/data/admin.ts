@@ -243,6 +243,29 @@ export async function getAllBrandsForAdmin(): Promise<BrandRecord[]> {
   );
 }
 
+// brand_staff has no public "list everyone" policy (only `user_id =
+// auth.uid()`), so the admin Users page's "who's an assistant on which
+// brand" view needs the service-role client, same as every other
+// admin-only cross-account read in this file.
+export async function getAllBrandStaffForAdmin(): Promise<
+  { userId: string; brandSlug: string; brandName: string }[]
+> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_staff")
+    .select("user_id, brand_slug, brands(name)");
+
+  if (error) {
+    throw new Error(`getAllBrandStaffForAdmin failed: ${error.message}`);
+  }
+  return ((data ?? []) as unknown as { user_id: string; brand_slug: string; brands: { name: string } | null }[]).map(
+    (row) => ({
+      userId: row.user_id,
+      brandSlug: row.brand_slug,
+      brandName: row.brands?.name ?? row.brand_slug,
+    })
+  );
+}
+
 export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null> {
   const { data, error } = await supabase.from("brands").select("*").eq("slug", slug).maybeSingle();
 

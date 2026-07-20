@@ -5,7 +5,14 @@ import { logAudit } from "@/lib/auditLog";
 import type { StaffRole } from "@/types";
 
 const STAFF_ROLES: StaffRole[] = ["staff", "manager", "admin"];
-const ACCESS_LEVELS = ["customer", "brand_owner", "staff", "manager", "admin"] as const;
+const ACCESS_LEVELS = [
+  "customer",
+  "brand_owner",
+  "brand_assistant",
+  "staff",
+  "manager",
+  "admin",
+] as const;
 type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
 export async function PATCH(
@@ -167,6 +174,41 @@ export async function PATCH(
       }
     }
 
+    // A brand can have only one true owner (enforced by the partial unique
+    // index above) but several assistants — brand_staff is a genuinely
+    // separate junction table, not a reuse of the single owner column.
+    // Same clean-state-transition rule: switching this account to a
+    // different brand (or off brand_assistant entirely) drops the old link
+    // first.
+    const { data: staffRow } = await supabaseAdmin
+      .from("brand_staff")
+      .select("brand_slug")
+      .eq("user_id", params.id)
+      .maybeSingle();
+
+    if (staffRow && (access !== "brand_assistant" || staffRow.brand_slug !== body.brandSlug)) {
+      await supabaseAdmin.from("brand_staff").delete().eq("user_id", params.id);
+    }
+
+    if (access === "brand_assistant") {
+      if (!body.brandSlug) {
+        return NextResponse.json({ error: "Select a brand" }, { status: 400 });
+      }
+      const { error: staffLinkError } = await supabaseAdmin
+        .from("brand_staff")
+        .upsert(
+          { brand_slug: body.brandSlug, user_id: params.id },
+          { onConflict: "brand_slug,user_id" }
+        );
+
+      if (staffLinkError) {
+        return NextResponse.json(
+          { error: `Failed to link brand assistant: ${staffLinkError.message}` },
+          { status: 500 }
+        );
+      }
+    }
+
     const isAdmin = access === "staff" || access === "manager" || access === "admin";
     const role = access;
 
@@ -189,7 +231,11 @@ export async function PATCH(
       entityId: params.id,
       action: "role_change",
       before,
-      after: { access, brandSlug: access === "brand_owner" ? body.brandSlug : null },
+      after: {
+        access,
+        brandSlug:
+          access === "brand_owner" || access === "brand_assistant" ? body.brandSlug : null,
+      },
     });
 
     return NextResponse.json({ id: params.id, access });

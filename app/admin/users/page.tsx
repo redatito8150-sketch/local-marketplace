@@ -1,4 +1,8 @@
-import { getAllProfilesForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
+import {
+  getAllProfilesForAdmin,
+  getAllBrandsForAdmin,
+  getAllBrandStaffForAdmin,
+} from "@/lib/data/admin";
 import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import TestEmailButton from "@/components/admin/TestEmailButton";
 import UserAccessControl from "@/components/admin/UserAccessControl";
@@ -6,17 +10,19 @@ import UserAccessControl from "@/components/admin/UserAccessControl";
 const ACCESS_LABELS: Record<string, string> = {
   customer: "Customer",
   brand_owner: "Brand Owner",
+  brand_assistant: "Brand Assistant",
   staff: "Staff",
   manager: "Manager",
   admin: "Admin",
 };
 
 export default async function AdminUsersPage() {
-  const [profiles, currentAdmin, staff, brands] = await Promise.all([
+  const [profiles, currentAdmin, staff, brands, brandStaff] = await Promise.all([
     getAllProfilesForAdmin(),
     requireAdminUser(),
     requireStaffRole("admin"),
     getAllBrandsForAdmin(),
+    getAllBrandStaffForAdmin(),
   ]);
   const canManageRoles = Boolean(staff);
 
@@ -26,6 +32,10 @@ export default async function AdminUsersPage() {
     brands
       .filter((b) => b.ownerEmail)
       .map((b) => [b.ownerEmail!.toLowerCase(), { slug: b.slug, name: b.name }])
+  );
+  // brand_staff links by user id directly, unlike the owner column above.
+  const brandByAssistantUserId = new Map(
+    brandStaff.map((row) => [row.userId, { slug: row.brandSlug, name: row.brandName }])
   );
   const brandOptions = brands.map((b) => ({ slug: b.slug, name: b.name }));
 
@@ -55,9 +65,9 @@ export default async function AdminUsersPage() {
           <tbody className="divide-y divide-stone-150">
             {profiles.map((profile) => {
               const isSelf = profile.id === currentAdmin?.id;
-              const linkedBrand = profile.email
-                ? brandByOwnerEmail.get(profile.email.toLowerCase())
-                : undefined;
+              const linkedBrand =
+                (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ??
+                brandByAssistantUserId.get(profile.id);
 
               return (
                 <tr key={profile.id}>
@@ -84,6 +94,7 @@ export default async function AdminUsersPage() {
                         currentAccess={profile.role as
                           | "customer"
                           | "brand_owner"
+                          | "brand_assistant"
                           | "staff"
                           | "manager"
                           | "admin"}

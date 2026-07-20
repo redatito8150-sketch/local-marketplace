@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Access = "customer" | "brand_owner" | "staff" | "manager" | "admin";
+type Access = "customer" | "brand_owner" | "brand_assistant" | "staff" | "manager" | "admin";
 
 const ACCESS_OPTIONS: { value: Access; label: string }[] = [
   { value: "customer", label: "Customer" },
   { value: "brand_owner", label: "Brand Owner" },
+  { value: "brand_assistant", label: "Brand Assistant" },
   { value: "staff", label: "Staff (read-only + order status)" },
   { value: "manager", label: "Manager (day-to-day control)" },
   { value: "admin", label: "Admin (full control)" },
@@ -61,16 +62,17 @@ export default function UserAccessControl({
     const next = e.target.value as Access;
     setAccess(next);
     setError("");
-    // "Brand Owner" needs a brand picked before it means anything — wait
-    // for that second choice instead of saving an incomplete state.
-    if (next === "brand_owner") return;
+    // "Brand Owner"/"Brand Assistant" both need a brand picked before they
+    // mean anything — wait for that second choice instead of saving an
+    // incomplete state.
+    if (next === "brand_owner" || next === "brand_assistant") return;
     save(next);
   };
 
   const handleBrandChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const slug = e.target.value;
     setBrandSlug(slug);
-    if (slug) save("brand_owner", slug);
+    if (slug) save(access, slug);
   };
 
   return (
@@ -87,7 +89,7 @@ export default function UserAccessControl({
           </option>
         ))}
       </select>
-      {access === "brand_owner" && (
+      {(access === "brand_owner" || access === "brand_assistant") && (
         <select
           value={brandSlug}
           onChange={handleBrandChange}
