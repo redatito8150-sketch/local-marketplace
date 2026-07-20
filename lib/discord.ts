@@ -72,6 +72,11 @@ export async function sendToDiscord(channel: DiscordChannel, embed: DiscordEmbed
             timestamp: new Date().toISOString(),
           },
         ],
+        // Embed descriptions carry customer/applicant-typed text (shipping
+        // name, brand application fields) verbatim — without this, a value
+        // like "@everyone" would ping the whole server. Suppresses every
+        // mention type; nothing this app sends is meant to page anyone.
+        allowed_mentions: { parse: [] },
       }),
       signal: controller.signal,
     });

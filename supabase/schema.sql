@@ -777,3 +777,61 @@ create trigger trigger_prune_notifications
   after insert on notifications
   for each row
   execute function public.prune_old_notifications();
+
+-- ============================================================================
+-- BUG FIX — cancel_order() never gave back a coupon's used_count.
+-- A cancelled order that had a limited-use coupon applied was permanently
+-- burning one use of that code, even though the order itself never
+-- completed. Re-created (not altered in place) to keep every previous
+-- migration in this file untouched, same convention as every other
+-- additive fix here.
+-- ============================================================================
+create or replace function public.cancel_order(p_order_id uuid)
+returns jsonb
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_status text;
+  v_coupon_code text;
+  v_item record;
+  v_track_inventory boolean;
+  v_restocked int := 0;
+begin
+  select status, coupon_code into v_status, v_coupon_code from orders where id = p_order_id for update;
+
+  if v_status is null then
+    raise exception 'ORDER_NOT_FOUND';
+  end if;
+  if v_status = 'cancelled' then
+    raise exception 'ALREADY_CANCELLED';
+  end if;
+  if v_status = 'fulfilled' then
+    raise exception 'CANNOT_CANCEL_FULFILLED';
+  end if;
+
+  for v_item in
+    select oi.variant_id, oi.quantity, pv.product_id
+    from order_items oi
+    join product_variants pv on pv.id = oi.variant_id
+    where oi.order_id = p_order_id
+  loop
+    select track_inventory into v_track_inventory from products where id = v_item.product_id;
+
+    if coalesce(v_track_inventory, true) then
+      update product_variants
+      set quantity = quantity + v_item.quantity, updated_at = now()
+      where id = v_item.variant_id;
+      v_restocked := v_restocked + 1;
+    end if;
+  end loop;
+
+  if v_coupon_code is not null then
+    update coupons set used_count = greatest(used_count - 1, 0) where code = v_coupon_code;
+  end if;
+
+  update orders set status = 'cancelled' where id = p_order_id;
+
+  return jsonb_build_object('order_id', p_order_id, 'restocked_variants', v_restocked);
+end;
+$$;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import type { BrandApplicationInput } from "@/lib/join/submitApplication";
 
 function validateApplicationInput(body: BrandApplicationInput): string | null {
@@ -20,6 +21,13 @@ function validateApplicationInput(body: BrandApplicationInput): string | null {
 // the insert goes through the service-role client, matching every other
 // write in this project.
 export async function POST(request: NextRequest) {
+  if (!checkRateLimit(`join-apply:${getClientIp(request)}`, 5, 60 * 60 * 1000)) {
+    return NextResponse.json(
+      { error: "Too many applications from this connection — try again later" },
+      { status: 429 }
+    );
+  }
+
   let body: BrandApplicationInput;
   try {
     body = await request.json();

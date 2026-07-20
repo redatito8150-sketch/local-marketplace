@@ -5,7 +5,15 @@ export function toCsv<T extends object>(
   columns: { key: keyof T; label: string }[]
 ): string {
   const escape = (value: unknown): string => {
-    const str = value == null ? "" : String(value);
+    let str = value == null ? "" : String(value);
+    // Rows here can carry customer-typed text (shipping name/city, etc.) —
+    // a cell starting with =, +, -, or @ is interpreted as a formula by
+    // Excel/Sheets when the file is opened ("CSV/Formula Injection"), so a
+    // leading apostrophe neutralizes it as plain text without changing how
+    // the value displays.
+    if (/^[=+\-@]/.test(str)) {
+      str = `'${str}`;
+    }
     if (str.includes(",") || str.includes('"') || str.includes("\n")) {
       return `"${str.replace(/"/g, '""')}"`;
     }

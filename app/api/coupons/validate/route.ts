@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Read-only check for live checkout feedback — never mutates used_count.
 // The actual atomic redeem+increment happens inside place_order() at order
 // creation time, so this can be called repeatedly while a customer types
 // without risking a race on a limited-use code.
 export async function POST(request: NextRequest) {
+  if (!checkRateLimit(`coupon-validate:${getClientIp(request)}`, 20, 5 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many attempts — try again shortly" }, { status: 429 });
+  }
+
   const body = await request.json();
   const code: string = (body.code ?? "").trim().toUpperCase();
   const subtotalEgp: number = Number(body.subtotalEgp) || 0;

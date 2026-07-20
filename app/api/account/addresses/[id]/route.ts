@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("addresses")
     .update({
       label: body.label?.trim() || "Home",
@@ -47,10 +47,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       updated_at: new Date().toISOString(),
     })
     .eq("id", params.id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: "Address not found" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });
 }
@@ -61,14 +65,18 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("addresses")
     .delete()
     .eq("id", params.id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!data || data.length === 0) {
+    return NextResponse.json({ error: "Address not found" }, { status: 404 });
   }
   return NextResponse.json({ ok: true });
 }
