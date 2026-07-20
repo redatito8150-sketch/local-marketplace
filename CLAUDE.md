@@ -24,7 +24,7 @@ Two visual "modes" coexist intentionally:
 ## Tech stack
 
 Next.js 14 (App Router) · TypeScript (strict) · Tailwind CSS ·
-Framer Motion · Lucide icons · Supabase (Postgres + planned Auth).
+Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
 
 ## Architecture — read this before adding data or content
 
@@ -61,6 +61,11 @@ Framer Motion · Lucide icons · Supabase (Postgres + planned Auth).
   as a zip — copy `.env.local.example` and fill in real values locally,
   and set the same two `NEXT_PUBLIC_` vars in Vercel → Settings →
   Environment Variables.
+- `DISCORD_WEBHOOK_NOTIFICATIONS`/`_AUDIT_LOG`/`_ERRORS` (optional) —
+  per-channel Discord webhook URLs for the log-mirroring system above.
+  Server-only, never `NEXT_PUBLIC_`. Leave unset locally and everything
+  still works — `sendToDiscord()` just no-ops for whichever channel has
+  no URL configured.
 
 ## Security notes already handled
 
@@ -79,21 +84,53 @@ Framer Motion · Lucide icons · Supabase (Postgres + planned Auth).
 
 ## Current status (what's built vs. not)
 
-**Done:** full storefront browsing, cart, wishlist, checkout UI (not wired
-to a backend yet), live search with autocomplete, working filters
-(brand/price/size/color/availability/rating) on `/shop/[category]`,
-Supabase-backed product/brand catalog, mega menu, journal, error handling.
+**Done:**
+- Full storefront: browsing, cart, wishlist, live search with autocomplete,
+  working filters (brand/price/size/color/availability/rating) on
+  `/shop/[category]`, mega menu, journal, error boundaries.
+- **Supabase Auth** (customer accounts) + **real order persistence** —
+  checkout writes through a server-side API route with the service_role
+  key; `orders`/`order_items` are real, not just UI.
+- **Admin dashboard** (`/admin`) — products, brands, orders, users,
+  coupons, revenue analytics, homepage/journal CMS (`site_content`),
+  audit log, notification bell.
+- **Brand-owner portal** (`/brand-portal`) — `brand_owner`/`brand_assistant`
+  roles (`brands.owner_user_id` / `brand_staff` table), own-brand product
+  management, brand page content editor, stock/orders/logs views.
+- **Full account dashboard** (`/account/*`) — Overview, Orders (status
+  tabs), Wishlist (real per-account, not just localStorage), Addresses
+  (full CRUD + checkout prefill), Settings (profile/password/delete),
+  Notifications (preference toggles), Payment Methods (placeholder, no
+  gateway yet), Recently Viewed, Followed Brands.
+- Redesigned public brand pages (`/brands/[slug]`) — real Follow, stats
+  band, Shop-the-Look, brand-scoped Best Sellers, a real product
+  filter/sort (shared with `/shop/[category]` via `useProductFilters`).
+- Role-gated cross-navigation: admin ↔ brand-portal ↔ account, each link
+  only visible to accounts with the matching role/ownership.
+- **Instant-Publish**: a brand owner/assistant's product
+  create/edit/archive applies live immediately, with **no pre-approval
+  gate** — the admin gets a resolvable notification (Approve/Revert,
+  reusing `audit_logs.before_value`/`after_value` as the revert source)
+  via the bell and `/admin/products/review` ("Brand Activity" feed).
+  **Do not reintroduce a pending-review gate for brand-initiated product
+  writes** — this replaced that model on purpose.
+- **Discord log mirroring** — every `notify()`/`logAudit()` call, plus
+  every pre-existing "log it, don't throw" error site, also posts a
+  color-coded structured embed (green = added, orange = edited, red =
+  removed) to one of 3 Discord webhook channels (`#notifications`,
+  `#audit-log`, `#errors`) via `lib/discord.ts`/`lib/errorLog.ts`. The
+  `notifications` table stays capped at the most recent 50 rows via a
+  Postgres trigger (`prune_old_notifications`) — Discord is the permanent
+  archive for anything older; `audit_logs` itself stays unbounded. Wiring
+  a new write path into `notify()`/`logAudit()` gets Discord mirroring
+  for free; no separate integration needed. Webhook URLs are optional
+  env vars (`DISCORD_WEBHOOK_NOTIFICATIONS`/`_AUDIT_LOG`/`_ERRORS`) —
+  everything no-ops silently if unset, never throws.
 
-**Not done yet (roadmap, in dependency order):**
-1. **Auth** (Supabase Auth) — needed before real orders or an admin
-   dashboard make sense, since both need to know who's acting.
-2. **Real order persistence** — `orders`/`order_items` tables exist but
-   nothing writes to them yet. Needs a server-side API route using the
-   service_role key (never the browser).
-3. **Payment gateway** — Paymob or Fawry (Egypt-first) or Stripe.
-4. **Admin dashboard** for adding products without touching code/SQL —
-   blocked on Auth (can't protect `/admin` without it). Until then,
-   products can be added via the Supabase Table Editor directly.
+**Not done yet:**
+1. **Payment gateway** — Paymob or Fawry (Egypt-first) or Stripe. Checkout
+   UI and real order persistence already exist; no actual payment
+   processing is wired in yet (orders are created without a live charge).
 
 ## Conventions to keep following
 
