@@ -52,7 +52,12 @@ async function getTopSellingProductIds(
 async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
 
-  const { data, error } = await supabase.from("products").select("*").in("id", ids);
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .in("id", ids)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
   if (error) {
     throw new Error(`getProductCardsByIds failed: ${error.message}`);
   }

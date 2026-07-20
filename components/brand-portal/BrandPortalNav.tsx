@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, Package, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Package, ShoppingCart, ArrowLeft } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/brand-portal", icon: LayoutDashboard },
+  { label: "Products", href: "/brand-portal/products", icon: ShoppingCart },
   { label: "Orders", href: "/brand-portal/orders", icon: ShoppingBag },
   { label: "Stock", href: "/brand-portal/stock", icon: Package },
 ];

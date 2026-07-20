@@ -92,7 +92,12 @@ export interface FilterGroup {
 // optional everywhere it appears so every existing call site (which never
 // supplies it) keeps type-checking unchanged.
 
-export type ProductStatus = "draft" | "published" | "archived";
+export type ProductStatus =
+  | "draft"
+  | "pending_review"
+  | "changes_requested"
+  | "published"
+  | "archived";
 export type VariantAvailabilityStatus = "available" | "unavailable" | "discontinued";
 
 export interface ProductVariant {
@@ -274,6 +279,17 @@ export interface ProductRecord extends ProductTaxonomyFields {
   isNew: boolean;
   isUnisex: boolean;
   variants?: ProductVariant[];
+  // ── Brand-portal review workflow (Round 3) ────────────────────────────
+  // `pendingChanges` is a staged edit (same shape as the form submits,
+  // including variants) for an already-published product — the fields
+  // above stay the live truth until an admin approves it.
+  pendingChanges?: Record<string, unknown> | null;
+  reviewNotes?: string;
+  submittedBy?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  deletionRequestedAt?: string;
+  pausedByBrand: boolean;
 }
 
 // ── Admin (raw `brands` row shape, used by the admin CRUD form/API) ────────
@@ -373,7 +389,7 @@ export interface BrandApplicationRecord {
 // ── Admin (raw `profiles` row shape, used by the users/permissions page) ───
 
 export type StaffRole = "staff" | "manager" | "admin";
-export type ProfileRole = "customer" | StaffRole | "brand_owner";
+export type ProfileRole = "customer" | StaffRole | "brand_owner" | "brand_assistant";
 
 export interface ProfileRecord {
   id: string;

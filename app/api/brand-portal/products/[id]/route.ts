@@ -1,0 +1,269 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
+import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
+import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
+import { notify } from "@/lib/notify";
+import { logAudit } from "@/lib/auditLog";
+
+async function loadOwnedProduct(id: string, brandSlug: string) {
+  const { data } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("id", id)
+    .eq("brand_slug", brandSlug)
+    .maybeSingle();
+  return data;
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const owner = await requireBrandOwner();
+  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  const existing = await loadOwnedProduct(params.id, owner.brandSlug);
+  if (!existing) {
+    return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  }
+
+  const body = await request.json();
+
+  // Lightweight instant on/off switch — no review, no full-form
+  // validation, available to owner and assistant alike. Independent of
+  // everything below: it never touches status or pending_changes.
+  if (body.action === "toggle-pause") {
+    const paused = Boolean(body.pausedByBrand);
+    const { error } = await supabaseAdmin
+      .from("products")
+      .update({ paused_by_brand: paused })
+      .eq("id", params.id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: `Failed to update: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    await logAudit({
+      actorId: owner.user.id,
+      actorLabel: owner.user.email ?? owner.user.id,
+      entityType: "product",
+      entityId: params.id,
+      action: paused ? "pause" : "unpause",
+      before: { pausedByBrand: existing.paused_by_brand },
+      after: { pausedByBrand: paused },
+      brandSlug: owner.brandSlug,
+    });
+    await notify(
+      "product_updated",
+      `${paused ? "Paused" : "Unpaused"}: ${existing.name}`,
+      owner.brandName ?? undefined
+    );
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // Otherwise this is a full product-form submission (create-shaped edit).
+  const productBody = body as ProductInput;
+  productBody.brandSlug = owner.brandSlug;
+  productBody.brandName = owner.brandName ?? productBody.brandName;
+
+  const validationError = validateProductInput(productBody);
+  if (validationError) {
+    return NextResponse.json({ error: validationError }, { status: 400 });
+  }
+
+  const duplicateSku = await findDuplicateSku(productBody.sku, productBody.variants, params.id);
+  if (duplicateSku) {
+    return NextResponse.json(
+      { error: `SKU "${duplicateSku}" is already used by another product` },
+      { status: 400 }
+    );
+  }
+
+  // A live product's real columns stay exactly as shoppers see them until
+  // an admin approves — the submission is staged in pending_changes
+  // instead. A not-yet-live product (pending_review/changes_requested/
+  // draft) has nothing live to protect, so it's updated directly, same as
+  // the admin's own edit route.
+  if (existing.status === "published") {
+    const { error } = await supabaseAdmin
+      .from("products")
+      .update({
+        pending_changes: productBody,
+        review_notes: null,
+        submitted_by: owner.user.id,
+      })
+      .eq("id", params.id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: `Failed to submit edit: ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    await logAudit({
+      actorId: owner.user.id,
+      actorLabel: owner.user.email ?? owner.user.id,
+      entityType: "product",
+      entityId: params.id,
+      action: "update",
+      before: existing,
+      after: productBody,
+      brandSlug: owner.brandSlug,
+    });
+    await notify("product_updated", `Edit submitted for review: ${productBody.name}`, productBody.brandName);
+
+    return NextResponse.json({ id: params.id });
+  }
+
+  const legacy = deriveLegacyFieldsFromVariants(
+    productBody.variants,
+    productBody.colors,
+    productBody.trackInventory
+  );
+
+  const { error } = await supabaseAdmin
+    .from("products")
+    .update({
+      name: productBody.name,
+      brand_name: productBody.brandName,
+      brand_slug: productBody.brandSlug,
+      category: productBody.category || null,
+      product_category: productBody.productCategory || null,
+      product_type: productBody.productType || null,
+      collection: productBody.collection || null,
+      material: productBody.material || null,
+      fit: productBody.fit || null,
+      price: productBody.price,
+      compare_at_price: productBody.compareAtPrice ?? null,
+      currency: productBody.currency,
+      image: productBody.image,
+      images: productBody.images?.length ? productBody.images : [productBody.image],
+      colors: legacy.colors,
+      sizes: legacy.sizes,
+      description: productBody.description,
+      details: productBody.details,
+      care_instructions: productBody.careInstructions,
+      shipping_returns: productBody.shippingReturns,
+      model_height: productBody.modelHeight || null,
+      model_wearing: productBody.modelWearing || null,
+      sku: productBody.sku?.trim() || params.id,
+      in_stock: legacy.inStock,
+      is_new: productBody.isNew,
+      is_unisex: productBody.isUnisex,
+      unavailable_sizes: legacy.unavailableSizes,
+      track_inventory: productBody.trackInventory,
+      status: "pending_review",
+      review_notes: null,
+      submitted_by: owner.user.id,
+    })
+    .eq("id", params.id);
+
+  if (error) {
+    return NextResponse.json(
+      { error: `Failed to resubmit product: ${error.message}` },
+      { status: 500 }
+    );
+  }
+
+  // Full-form save: replace the variant set wholesale, same convention the
+  // admin edit route already uses.
+  const { error: deleteError } = await supabaseAdmin
+    .from("product_variants")
+    .delete()
+    .eq("product_id", params.id);
+
+  if (deleteError) {
+    return NextResponse.json(
+      { error: `Failed to update variants: ${deleteError.message}` },
+      { status: 500 }
+    );
+  }
+
+  if (productBody.variants.length > 0) {
+    const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
+      productBody.variants.map((v) => ({
+        product_id: params.id,
+        color: v.color || null,
+        size: v.size || null,
+        sku: v.sku?.trim() || null,
+        quantity: v.quantity,
+        low_stock_threshold: v.lowStockThreshold,
+        price_override: v.priceOverride ?? null,
+        availability_status: v.availabilityStatus,
+      }))
+    );
+
+    if (variantsError) {
+      return NextResponse.json(
+        { error: `Product resubmitted, but saving variants failed: ${variantsError.message}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  await logAudit({
+    actorId: owner.user.id,
+    actorLabel: owner.user.email ?? owner.user.id,
+    entityType: "product",
+    entityId: params.id,
+    action: "update",
+    before: existing,
+    after: productBody,
+    brandSlug: owner.brandSlug,
+  });
+  await notify("product_created", `Product resubmitted for review: ${productBody.name}`, productBody.brandName);
+
+  return NextResponse.json({ id: params.id });
+}
+
+// Never actually deletes — flags the product for an admin to review and
+// approve, same "stays visible/unaffected until decided" principle as a
+// staged edit.
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const owner = await requireBrandOwner();
+  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  const existing = await loadOwnedProduct(params.id, owner.brandSlug);
+  if (!existing) {
+    return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  }
+
+  const { error } = await supabaseAdmin
+    .from("products")
+    .update({ deletion_requested_at: new Date().toISOString() })
+    .eq("id", params.id);
+
+  if (error) {
+    return NextResponse.json(
+      { error: `Failed to request deletion: ${error.message}` },
+      { status: 500 }
+    );
+  }
+
+  await logAudit({
+    actorId: owner.user.id,
+    actorLabel: owner.user.email ?? owner.user.id,
+    entityType: "product",
+    entityId: params.id,
+    action: "request_deletion",
+    before: existing,
+    brandSlug: owner.brandSlug,
+  });
+  await notify("product_updated", `Deletion requested: ${existing.name}`, owner.brandName ?? undefined);
+
+  return NextResponse.json({ ok: true });
+}

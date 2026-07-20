@@ -45,6 +45,7 @@ export interface ProductRow {
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
+  paused_by_brand: boolean;
 }
 
 const REVIEW_AUTHORS = ["Mona K.", "Youssef A.", "Salma R.", "Karim T.", "Nadine H."];
@@ -157,11 +158,19 @@ export async function getProductsByCategory(
       .from("products")
       .select("*")
       .eq("category", category)
+      .eq("status", "published")
+      .eq("paused_by_brand", false)
       .order("created_at", { ascending: true }),
   ];
   if (pairedCategory) {
     queries.push(
-      supabase.from("products").select("*").eq("category", pairedCategory).eq("is_unisex", true)
+      supabase
+        .from("products")
+        .select("*")
+        .eq("category", pairedCategory)
+        .eq("is_unisex", true)
+        .eq("status", "published")
+        .eq("paused_by_brand", false)
     );
   }
 
@@ -192,7 +201,9 @@ export async function getProductCountLabel(
   const { count, error } = await supabase
     .from("products")
     .select("id", { count: "exact", head: true })
-    .eq("category", category);
+    .eq("category", category)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
 
   if (error) {
     throw new Error(`getProductCountLabel(${category}) failed: ${error.message}`);
@@ -208,6 +219,8 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     .from("products")
     .select("*")
     .eq("is_new", true)
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -229,11 +242,18 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
 
   // A real fetch/connection error should surface as an error page.
   // `data === null` with no error just means "no product with this id",
-  // which is a normal 404, not a failure.
+  // which is a normal 404, not a failure. A non-published row (draft,
+  // pending review, archived, etc.) is treated the same as "not found" —
+  // this is the public product page, never an authenticated preview.
   if (error) {
     throw new Error(`getProductById(${id}) failed: ${error.message}`);
   }
-  if (!data) return null;
+  if (
+    !data ||
+    (data as ProductRow).status !== "published" ||
+    (data as ProductRow).paused_by_brand
+  )
+    return null;
 
   const row = data as ProductRow;
   const detail = toProductDetail(row);
@@ -242,7 +262,13 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   detail.variants = variantsByProduct.get(id) ?? [];
 
   // Related products: same category if it's a shop item, same brand otherwise.
-  let relatedQuery = supabase.from("products").select("id").neq("id", id).limit(4);
+  let relatedQuery = supabase
+    .from("products")
+    .select("id")
+    .neq("id", id)
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .limit(4);
   relatedQuery = row.category
     ? relatedQuery.eq("category", row.category)
     : relatedQuery.eq("brand_slug", row.brand_slug ?? "__none__");
@@ -275,7 +301,12 @@ export async function getRelatedProductCards(
   ids: string[]
 ): Promise<RelatedProductCard[]> {
   if (ids.length === 0) return [];
-  const { data, error } = await supabase.from("products").select("*").in("id", ids);
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .in("id", ids)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
   // Intentionally degrade quietly here (unlike the other functions in this
   // file): related products are a secondary "you may also like" section,
   // not core content. A failure here shouldn't take down the whole
@@ -326,8 +357,20 @@ export async function searchProducts(
   // Two parameterized queries instead of one interpolated `.or()` filter
   // string — user input never gets parsed as PostgREST filter syntax.
   const [byName, byBrand] = await Promise.all([
-    supabase.from("products").select("*").ilike("name", pattern).limit(limit),
-    supabase.from("products").select("*").ilike("brand_name", pattern).limit(limit),
+    supabase
+      .from("products")
+      .select("*")
+      .ilike("name", pattern)
+      .eq("status", "published")
+      .eq("paused_by_brand", false)
+      .limit(limit),
+    supabase
+      .from("products")
+      .select("*")
+      .ilike("brand_name", pattern)
+      .eq("status", "published")
+      .eq("paused_by_brand", false)
+      .limit(limit),
   ]);
 
   if (byName.error || byBrand.error) {

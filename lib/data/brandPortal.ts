@@ -152,3 +152,65 @@ export async function getVariantsForBrand(
       lowStockThreshold: row.low_stock_threshold,
     }));
 }
+
+export interface BrandProductListItem {
+  id: string;
+  name: string;
+  image: string;
+  price: number;
+  currency: "USD" | "EGP";
+  status: string;
+  pausedByBrand: boolean;
+  hasPendingEdit: boolean;
+  reviewNotes?: string;
+  deletionRequestedAt?: string;
+}
+
+interface BrandProductRow {
+  id: string;
+  name: string;
+  image: string;
+  price: number;
+  currency: "USD" | "EGP";
+  status: string;
+  paused_by_brand: boolean;
+  pending_changes: unknown;
+  review_notes: string | null;
+  deletion_requested_at: string | null;
+}
+
+// Every status (pending_review/changes_requested/published/archived) shows
+// here — `products` has a public `using (true)` SELECT policy already
+// (needed for the storefront to read published rows with the anon client),
+// so the cookie client sees every status for this brand once scoped by
+// brand_slug; nothing extra needed to include unreviewed submissions.
+export async function getProductsForBrand(
+  brandSlug: string,
+  impersonating = false
+): Promise<BrandProductListItem[]> {
+  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, name, image, price, currency, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+    )
+    .eq("brand_slug", brandSlug)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`getProductsForBrand(${brandSlug}) failed: ${error.message}`);
+  }
+
+  return ((data as BrandProductRow[]) ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    image: row.image,
+    price: Number(row.price),
+    currency: row.currency,
+    status: row.status,
+    pausedByBrand: row.paused_by_brand,
+    hasPendingEdit: row.pending_changes != null,
+    reviewNotes: row.review_notes ?? undefined,
+    deletionRequestedAt: row.deletion_requested_at ?? undefined,
+  }));
+}

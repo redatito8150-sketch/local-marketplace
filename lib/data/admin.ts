@@ -56,6 +56,13 @@ interface ProductRow {
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
+  pending_changes: Record<string, unknown> | null;
+  review_notes: string | null;
+  submitted_by: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  deletion_requested_at: string | null;
+  paused_by_brand: boolean;
 }
 
 function toProductRecord(row: ProductRow): ProductRecord {
@@ -92,6 +99,13 @@ function toProductRecord(row: ProductRow): ProductRecord {
     featured: row.featured,
     status: row.status,
     publishDate: row.publish_date ?? undefined,
+    pendingChanges: row.pending_changes,
+    reviewNotes: row.review_notes ?? undefined,
+    submittedBy: row.submitted_by ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
+    reviewedAt: row.reviewed_at ?? undefined,
+    deletionRequestedAt: row.deletion_requested_at ?? undefined,
+    pausedByBrand: row.paused_by_brand,
   };
 }
 

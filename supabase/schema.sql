@@ -677,3 +677,60 @@ alter table site_content enable row level security;
 -- API routes, same convention as products/brands.
 create policy "Anyone can read site content"
   on site_content for select using (true);
+
+-- ============================================================================
+-- ADMIN DASHBOARD ROUND 3 — Phase 1: Schema & Role Foundation
+-- Brand-owner self-service product submission/editing with an admin review
+-- gate, plus a new brand_assistant rank. See the session's approved plan
+-- for the full design; summary of what these columns are for:
+--   - pending_changes: a full staged-edit snapshot (same shape ProductForm
+--     already submits) used only when editing an ALREADY-PUBLISHED product
+--     — the live columns stay untouched until an admin approves, so the
+--     live site never shows a half-reviewed edit.
+--   - review_notes / submitted_by / reviewed_by / reviewed_at: the
+--     approve/request-changes trail for both new submissions and staged edits.
+--   - deletion_requested_at: a brand owner/assistant can request deletion,
+--     but the row is never removed until an admin approves it here.
+--   - paused_by_brand: an instant, no-approval on/off switch (the "stop
+--     this product right now" capability) — independent of the review
+--     flow above; a published product with this true is hidden from the
+--     storefront exactly like a non-published one.
+-- ============================================================================
+
+alter table products drop constraint if exists products_status_check;
+alter table products add constraint products_status_check
+  check (status in ('draft', 'pending_review', 'changes_requested', 'published', 'archived'));
+
+alter table products add column if not exists pending_changes jsonb;
+alter table products add column if not exists review_notes text;
+alter table products add column if not exists submitted_by uuid references auth.users(id) on delete set null;
+alter table products add column if not exists reviewed_by uuid references auth.users(id) on delete set null;
+alter table products add column if not exists reviewed_at timestamptz;
+alter table products add column if not exists deletion_requested_at timestamptz;
+alter table products add column if not exists paused_by_brand boolean not null default false;
+
+alter table profiles drop constraint if exists profiles_role_check;
+alter table profiles add constraint profiles_role_check
+  check (role in ('customer', 'staff', 'manager', 'admin', 'brand_owner', 'brand_assistant'));
+
+-- A brand can have at most one true owner (brands.owner_user_id, enforced
+-- by its own partial unique index) but any number of assistants — a
+-- separate junction table, not a second single-owner column.
+create table if not exists brand_staff (
+  id uuid primary key default gen_random_uuid(),
+  brand_slug text not null references brands(slug) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (brand_slug, user_id)
+);
+
+alter table brand_staff enable row level security;
+
+create policy "Users can read their own brand_staff rows"
+  on brand_staff for select using (user_id = auth.uid());
+
+-- Denormalized at write time by every product/brand write path that knows
+-- which brand it's touching — never backfilled onto history, same
+-- "tag going forward only" principle already governing
+-- order_items.brand_slug.
+alter table audit_logs add column if not exists brand_slug text;

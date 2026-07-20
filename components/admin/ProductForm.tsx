@@ -24,6 +24,15 @@ interface ProductFormProps {
   // Admin-editable (Round 2 Phase 2) — falls back to the static defaults so
   // any caller that doesn't fetch site_content still works unchanged.
   taxonomy?: ProductTaxonomyContent;
+  // Brand-portal mode (Round 3 Phase 2): forces the brand field to one
+  // brand (shown read-only, never editable — a brand owner/assistant can
+  // never reassign their own product to a different brand), submits to a
+  // different API base path, and replaces Draft/Publish with a single
+  // "Submit for Review" action — brand-portal products always go through
+  // admin review, never straight to "published".
+  lockedBrand?: { slug: string; name: string };
+  apiBasePath?: string;
+  cancelHref?: string;
 }
 
 interface FormState {
@@ -67,11 +76,14 @@ function toDatetimeLocalValue(iso: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
-function toFormState(product?: ProductRecord): FormState {
+function toFormState(
+  product?: ProductRecord,
+  lockedBrand?: { slug: string; name: string }
+): FormState {
   return {
     name: product?.name ?? "",
-    brandName: product?.brandName ?? "",
-    brandSlug: product?.brandSlug ?? "",
+    brandName: lockedBrand?.name ?? product?.brandName ?? "",
+    brandSlug: lockedBrand?.slug ?? product?.brandSlug ?? "",
     category: product?.category ?? "",
     productCategory: product?.productCategory ?? "",
     productType: product?.productType ?? "",
@@ -116,9 +128,13 @@ export default function ProductForm({
   initial,
   brandOptions,
   taxonomy = DEFAULT_PRODUCT_TAXONOMY,
+  lockedBrand,
+  apiBasePath = "/api/admin/products",
+  cancelHref = "/admin/products",
 }: ProductFormProps) {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(() => toFormState(initial));
+  const isBrandPortal = Boolean(lockedBrand);
+  const [form, setForm] = useState<FormState>(() => toFormState(initial, lockedBrand));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
   const [error, setError] = useState("");
 
@@ -188,8 +204,8 @@ export default function ProductForm({
 
   const buildPayload = (targetStatus: ProductStatus): ProductInput => ({
     name: form.name.trim(),
-    brandName: form.brandName.trim(),
-    brandSlug: form.brandSlug || undefined,
+    brandName: (lockedBrand?.name ?? form.brandName).trim(),
+    brandSlug: lockedBrand?.slug ?? (form.brandSlug || undefined),
     category: form.category || undefined,
     productCategory: form.productCategory || undefined,
     productType: form.productType || undefined,
@@ -232,9 +248,7 @@ export default function ProductForm({
 
     try {
       const res = await fetch(
-        currentMode === "create"
-          ? "/api/admin/products"
-          : `/api/admin/products/${currentProductId}`,
+        currentMode === "create" ? apiBasePath : `${apiBasePath}/${currentProductId}`,
         {
           method: currentMode === "create" ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -263,7 +277,7 @@ export default function ProductForm({
     }
   };
 
-  const handleCancel = () => router.push("/admin/products");
+  const handleCancel = () => router.push(cancelHref);
   const handlePreview = () =>
     previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -274,14 +288,16 @@ export default function ProductForm({
 
   const ActionToolbar = (
     <div className="flex flex-wrap items-center gap-2.5">
-      <button
-        type="button"
-        onClick={() => submit("draft")}
-        disabled={submitting}
-        className="rounded-md border border-stone-150 px-4 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submittingStatus === "draft" ? "Saving…" : "Save as Draft"}
-      </button>
+      {!isBrandPortal && (
+        <button
+          type="button"
+          onClick={() => submit("draft")}
+          disabled={submitting}
+          className="rounded-md border border-stone-150 px-4 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submittingStatus === "draft" ? "Saving…" : "Save as Draft"}
+        </button>
+      )}
       <button
         type="button"
         onClick={handlePreview}
@@ -302,7 +318,13 @@ export default function ProductForm({
         disabled={submitting}
         className="rounded-md bg-ink px-5 py-2.5 text-[13.5px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {submittingStatus === "published" ? "Publishing…" : "Publish Product"}
+        {isBrandPortal
+          ? submittingStatus === "published"
+            ? "Submitting…"
+            : "Submit for Review"
+          : submittingStatus === "published"
+          ? "Publishing…"
+          : "Publish Product"}
       </button>
       {hasUnsavedChanges && !submitting && (
         <span className="text-[12.5px] font-medium text-ink-soft/50">Unsaved changes</span>
@@ -327,12 +349,21 @@ export default function ProductForm({
         <FormSection number="01" title="Basic Information">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <TextField label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
-            <TextField
-              label="Brand"
-              required
-              value={form.brandName}
-              onChange={(v) => set("brandName", v)}
-            />
+            {lockedBrand ? (
+              <div>
+                <span className="text-[12.5px] font-medium text-ink-soft/70">Brand</span>
+                <div className="mt-1.5 w-full rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5 text-[14px] text-ink-soft/70">
+                  {lockedBrand.name}
+                </div>
+              </div>
+            ) : (
+              <TextField
+                label="Brand"
+                required
+                value={form.brandName}
+                onChange={(v) => set("brandName", v)}
+              />
+            )}
             <SelectField
               label="Gender"
               value={form.category}
@@ -429,10 +460,10 @@ export default function ProductForm({
             />
             <ImageUploader
               label="Gallery Images"
-              hint="Up to 8 images"
+              hint="Up to 4 images"
               folderId={uploadFolderId}
               multiple
-              maxImages={8}
+              maxImages={4}
               value={form.images}
               onChange={(urls) => set("images", urls)}
             />
@@ -622,49 +653,54 @@ export default function ProductForm({
           </div>
         </FormSection>
 
-        {/* 07 — Visibility */}
-        <FormSection number="07" title="Visibility">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Status"
-              required
-              value={form.status}
-              onChange={(v) => set("status", v as ProductStatus)}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "published", label: "Published" },
-                { value: "archived", label: "Archived" },
-              ]}
-            />
-            <div>
-              <TextField
-                label="Publish Date (optional)"
-                type="datetime-local"
-                value={form.publishDate}
-                onChange={(v) => set("publishDate", v)}
+        {/* 07 — Visibility (admin-only: status/scheduling/featured are
+            editorial calls the brand portal never makes directly — a
+            brand-portal submission's status is always decided by the
+            review flow, never typed in here) */}
+        {!isBrandPortal && (
+          <FormSection number="07" title="Visibility">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <SelectField
+                label="Status"
+                required
+                value={form.status}
+                onChange={(v) => set("status", v as ProductStatus)}
+                options={[
+                  { value: "draft", label: "Draft" },
+                  { value: "published", label: "Published" },
+                  { value: "archived", label: "Archived" },
+                ]}
               />
+              <div>
+                <TextField
+                  label="Publish Date (optional)"
+                  type="datetime-local"
+                  value={form.publishDate}
+                  onChange={(v) => set("publishDate", v)}
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-6">
-            <label className="flex items-center gap-2 text-[13.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={form.featured}
-                onChange={(e) => set("featured", e.target.checked)}
-              />
-              Featured Product
-            </label>
-            <label className="flex items-center gap-2 text-[13.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={form.isNew}
-                onChange={(e) => set("isNew", e.target.checked)}
-              />
-              Mark as new (shows in New Arrivals)
-            </label>
-          </div>
-        </FormSection>
+            <div className="mt-4 flex flex-wrap items-center gap-6">
+              <label className="flex items-center gap-2 text-[13.5px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={form.featured}
+                  onChange={(e) => set("featured", e.target.checked)}
+                />
+                Featured Product
+              </label>
+              <label className="flex items-center gap-2 text-[13.5px] text-ink">
+                <input
+                  type="checkbox"
+                  checked={form.isNew}
+                  onChange={(e) => set("isNew", e.target.checked)}
+                />
+                Mark as new (shows in New Arrivals)
+              </label>
+            </div>
+          </FormSection>
+        )}
 
         <div className="flex items-center justify-between gap-4 border-t border-stone-150 pt-6">
           {ActionToolbar}

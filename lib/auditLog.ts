@@ -9,7 +9,14 @@ export type AuditAction =
   | "bulk_publish"
   | "bulk_delete"
   | "restock"
-  | "role_change";
+  | "role_change"
+  // Brand-portal review workflow (Round 3)
+  | "pause"
+  | "unpause"
+  | "request_deletion"
+  | "approve"
+  | "request_changes"
+  | "reject_deletion";
 
 export type AuditEntityType =
   | "product"
@@ -31,6 +38,10 @@ export async function logAudit(entry: {
   action: AuditAction;
   before?: unknown;
   after?: unknown;
+  // Denormalized tag (Round 3) so a brand's own /brand-portal/logs can
+  // filter to just its own entries — set by every product/brand write path
+  // that knows which brand it's touching. Never backfilled onto history.
+  brandSlug?: string;
 }): Promise<void> {
   const { error } = await supabaseAdmin.from("audit_logs").insert({
     actor_id: entry.actorId,
@@ -40,6 +51,7 @@ export async function logAudit(entry: {
     action: entry.action,
     before_value: entry.before ?? null,
     after_value: entry.after ?? null,
+    brand_slug: entry.brandSlug ?? null,
   });
   if (error) {
     console.error(`logAudit(${entry.entityType}/${entry.action}) failed:`, error.message);
