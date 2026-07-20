@@ -81,6 +81,50 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
 - Watch for React's `react/no-unescaped-entities` ESLint rule — plain
   apostrophes (`'`) in JSX text (e.g. "couldn't", "you're") fail
   production builds. Use `&apos;` in JSX text nodes.
+- `PATCH /api/admin/users/[id]` has exactly one branch (`body.access`),
+  gated by `requireStaffRole("admin")`. Two older branches
+  (`body.isAdmin` boolean, bare `body.role` string) were removed after a
+  security audit found the `isAdmin` one was only gated by
+  `requireAdminUser()` — which accepts *any* rank, including "staff" — so
+  a staff-rank account could grant or revoke admin access on arbitrary
+  accounts. **Never re-add a body-shape branch to this route without an
+  explicit `requireStaffRole("admin")` check of its own** — every access
+  change belongs behind the same admin-rank gate.
+- `POST/DELETE /api/admin/products/images` verify the caller's brand
+  actually owns the target product (`canAccessFolder()`) before touching
+  Storage — a brand owner could previously overwrite or delete another
+  brand's images by guessing/knowing its product id. A brand-new product
+  (no DB row yet, still using a client-generated temp folder id) is
+  allowed through since there's nothing to check ownership against yet.
+- `lib/csv.ts`'s `toCsv()` prefixes any cell starting with `=`/`+`/`-`/`@`
+  with an apostrophe — CSV/Formula Injection mitigation, since order
+  exports include customer-typed fields (shipping name/city) that get
+  opened in Excel by admins. Don't remove this even if it looks like dead
+  code — the exploit only surfaces once someone actually opens the file.
+- `lib/discord.ts`'s webhook payload always sends
+  `allowed_mentions: { parse: [] }` — embeds carry customer/applicant
+  text verbatim (shipping name, brand application fields), so without
+  this a value like "@everyone" would ping the whole Discord server.
+- `lib/rateLimit.ts` — a plain in-memory limiter (per-instance, resets on
+  cold start; not distributed) applied to the two public unauthenticated
+  write routes: `/api/coupons/validate` (20/5min per IP) and
+  `/api/join/apply` (5/hour per IP). Good enough for this project's size;
+  revisit with Upstash/Redis only if it needs to hold across many
+  serverless instances.
+- `next.config.js` sets baseline security headers (CSP, X-Frame-Options,
+  X-Content-Type-Options, Referrer-Policy, Permissions-Policy, HSTS). The
+  CSP's `script-src`/`style-src` intentionally still allow
+  `unsafe-inline`/`unsafe-eval` (Next.js hydration + dev HMR need them) —
+  its real value is restricting which *external* origins can load at
+  all, not a fully locked-down policy. Update the CSP's `img-src`/
+  `font-src`/`connect-src` allowlists here if a new external host
+  (images, fonts, APIs) is ever added elsewhere in the app.
+- **Known, deliberately deferred**: Next.js is pinned at 14.2.35, which
+  has several disclosed CVEs (DoS, cache poisoning, request smuggling,
+  SSRF via WebSocket upgrade) per `npm audit`. The fix is a major-version
+  bump to Next 16, which the owner explicitly deferred as its own
+  separate, carefully-tested task rather than bundling it into an
+  unrelated fix — don't upgrade Next.js as a side effect of another task.
 
 ## Current status (what's built vs. not)
 
