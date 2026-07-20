@@ -4,8 +4,8 @@ import { Package, CheckCircle2, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { getOrdersForUser, getOrderStats } from "@/lib/data/orders";
 import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
-import { formatPrice } from "@/lib/format";
 import ProductGrid from "@/components/category/ProductGrid";
+import OrderCard from "@/components/account/OrderCard";
 
 export default async function AccountOverviewPage() {
   const user = await requireUser();
@@ -66,23 +66,7 @@ export default async function AccountOverviewPage() {
         ) : (
           <div className="mt-4 space-y-3">
             {recentOrders.map((order) => (
-              <div
-                key={order.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-xl3 border border-stone-150 bg-white p-5"
-              >
-                <div>
-                  <p className="text-[14px] font-semibold text-ink">#{order.orderNumber}</p>
-                  <p className="text-[12.5px] text-ink-soft/50">
-                    {new Date(order.createdAt).toLocaleDateString("en-US")} ·{" "}
-                    <span className="capitalize">{order.status}</span>
-                  </p>
-                </div>
-                <p className="text-[14px] font-semibold text-ink">
-                  {order.subtotalUsd > 0 && formatPrice(order.subtotalUsd, "USD")}
-                  {order.subtotalUsd > 0 && order.subtotalEgp > 0 && " + "}
-                  {order.subtotalEgp > 0 && formatPrice(order.subtotalEgp, "EGP")}
-                </p>
-              </div>
+              <OrderCard key={order.id} order={order} showItems={false} />
             ))}
           </div>
         )}
