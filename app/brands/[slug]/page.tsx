@@ -4,6 +4,7 @@ import BrandHero from "@/components/brand/BrandHero";
 import BrandStatsBand from "@/components/brand/BrandStatsBand";
 import AboutBrand from "@/components/brand/AboutBrand";
 import CategoryNav from "@/components/brand/CategoryNav";
+import ShopTheLook from "@/components/brand/ShopTheLook";
 import BrandProductGrid from "@/components/brand/BrandProductGrid";
 import OurStory from "@/components/brand/OurStory";
 import ValuesSection from "@/components/brand/ValuesSection";
@@ -48,6 +49,7 @@ export default async function BrandPage({ params }: { params: { slug: string } }
         storeRating={brand.storeRating}
       />
       <AboutBrand brand={brand} />
+      <ShopTheLook tiles={brand.shopTheLook} />
       <CategoryNav tabs={brand.categoryTabs} defaultActive={brand.activeTab} />
       <BrandProductGrid brandName={brand.name} products={brand.products} />
       <OurStory image={brand.storyImage} body={brand.storyBody} />

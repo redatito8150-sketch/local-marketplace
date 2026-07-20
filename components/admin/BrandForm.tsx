@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import type { BrandCategoryTab, BrandInfoBadge, BrandRecord, BrandValue } from "@/types";
+import type {
+  BrandCategoryTab,
+  BrandInfoBadge,
+  BrandRecord,
+  BrandShopTheLookTile,
+  BrandValue,
+} from "@/types";
 
 interface BrandFormProps {
   mode: "create" | "edit";
@@ -37,6 +43,7 @@ interface FormState {
   activeTab: string;
   values: BrandValue[];
   similarBrandSlugs: string[];
+  shopTheLook: BrandShopTheLookTile[];
 }
 
 function toFormState(brand?: BrandRecord): FormState {
@@ -61,6 +68,9 @@ function toFormState(brand?: BrandRecord): FormState {
     activeTab: brand?.activeTab ?? "shop-all",
     values: brand?.values?.length ? brand.values : [{ icon: "flag", title: "", description: "" }],
     similarBrandSlugs: brand?.similarBrandSlugs ?? [],
+    shopTheLook: brand?.shopTheLook?.length
+      ? brand.shopTheLook
+      : [{ image: "", title: "", href: "" }],
   };
 }
 
@@ -122,6 +132,19 @@ export default function BrandForm({
         : [...f.similarBrandSlugs, slug],
     }));
 
+  const updateShopTheLookTile = (index: number, patch: Partial<BrandShopTheLookTile>) =>
+    setForm((f) => ({
+      ...f,
+      shopTheLook: f.shopTheLook.map((t, i) => (i === index ? { ...t, ...patch } : t)),
+    }));
+  const addShopTheLookTile = () =>
+    setForm((f) => ({
+      ...f,
+      shopTheLook: [...f.shopTheLook, { image: "", title: "", href: "" }],
+    }));
+  const removeShopTheLookTile = (index: number) =>
+    setForm((f) => ({ ...f, shopTheLook: f.shopTheLook.filter((_, i) => i !== index) }));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -146,6 +169,7 @@ export default function BrandForm({
       activeTab: form.activeTab.trim(),
       values: form.values.filter((v) => v.title.trim() && v.description.trim()),
       similarBrandSlugs: form.similarBrandSlugs,
+      shopTheLook: form.shopTheLook.filter((t) => t.image.trim() && t.title.trim()),
     };
 
     try {
@@ -400,6 +424,56 @@ export default function BrandForm({
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2} />
             Add value
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <span className="text-[12.5px] font-medium text-ink-soft/70">
+          Shop the Look tiles (up to 4 shown on the brand page)
+        </span>
+        <div className="mt-1.5 space-y-3">
+          {form.shopTheLook.map((tile, i) => (
+            <div key={i} className="space-y-2 rounded-md border border-stone-150 p-3">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="Image URL"
+                  value={tile.image}
+                  onChange={(e) => updateShopTheLookTile(i, { image: e.target.value })}
+                  className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
+                />
+                <button
+                  type="button"
+                  onClick={() => removeShopTheLookTile(i)}
+                  className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+                </button>
+              </div>
+              <input
+                type="text"
+                placeholder="Title (e.g. Summer Edit)"
+                value={tile.title}
+                onChange={(e) => updateShopTheLookTile(i, { title: e.target.value })}
+                className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
+              />
+              <input
+                type="text"
+                placeholder="Filter link (e.g. ?type=Dresses) — leave blank to link to Shop All"
+                value={tile.href}
+                onChange={(e) => updateShopTheLookTile(i, { href: e.target.value })}
+                className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addShopTheLookTile}
+            className="flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+            Add tile
           </button>
         </div>
       </div>
