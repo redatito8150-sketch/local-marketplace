@@ -15,10 +15,8 @@ function validate(body: Partial<JournalArticle>): string | null {
   return null;
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -77,10 +75,8 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

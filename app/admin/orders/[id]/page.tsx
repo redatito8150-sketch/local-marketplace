@@ -5,11 +5,12 @@ import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
 
-export default async function AdminOrderDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminOrderDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const [order, auditLogs] = await Promise.all([
     getOrderForAdmin(params.id),
     getAuditLogsForEntity("order", params.id),

@@ -14,8 +14,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // carries the anon key — RLS decides what it can read/write. Use this (not
 // the browser client) anywhere you need to know the current request's
 // signed-in user on the server, e.g. to attach `user_id` to a new order.
-export function createSupabaseServerClient() {
-  const cookieStore = cookies();
+// Async since Next 15+ — `cookies()` itself is now a Promise.
+export async function createSupabaseServerClient() {
+  const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl!, supabaseAnonKey!, {
     cookies: {

@@ -4,10 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateCouponInput, type CouponInput } from "@/lib/admin/couponValidation";
 import { logAudit } from "@/lib/auditLog";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { code: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -59,10 +57,8 @@ export async function PATCH(
   return NextResponse.json({ code });
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { code: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

@@ -19,11 +19,12 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   archived: { label: "Archived", className: "bg-stone-100 text-ink-soft/70" },
 };
 
-export default async function BrandPortalProductsPage({
-  searchParams,
-}: {
-  searchParams: { brand?: string };
-}) {
+export default async function BrandPortalProductsPage(
+  props: {
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 

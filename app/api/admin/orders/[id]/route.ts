@@ -15,10 +15,8 @@ const CANCEL_ERROR_MESSAGES: Record<string, string> = {
   ORDER_NOT_FOUND: "Order not found",
 };
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

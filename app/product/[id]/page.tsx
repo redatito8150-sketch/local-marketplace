@@ -18,7 +18,8 @@ export async function generateStaticParams() {
   return (data ?? []).map((row) => ({ id: row.id as string }));
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }) {
+export async function generateMetadata(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const product = await getProductById(params.id);
   if (!product) return {};
   return {
@@ -27,7 +28,8 @@ export async function generateMetadata({ params }: { params: { id: string } }) {
   };
 }
 
-export default async function ProductPage({ params }: { params: { id: string } }) {
+export default async function ProductPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const product = await getProductById(params.id);
   if (!product) notFound();
 

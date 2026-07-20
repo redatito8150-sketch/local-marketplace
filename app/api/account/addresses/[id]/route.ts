@@ -22,7 +22,8 @@ function validate(body: Partial<AddressInput>): string | null {
   return null;
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const user = await requireUser();
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
@@ -59,7 +60,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const user = await requireUser();
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });

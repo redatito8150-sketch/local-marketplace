@@ -51,10 +51,8 @@ interface BeforeProductSnapshot {
 // write path attached itself to. "Approve" is a no-op (the change already
 // happened); "Revert" undoes it using the exact before-snapshot the audit
 // log entry captured at write time.
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

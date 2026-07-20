@@ -4,10 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { APPLICATION_STATUSES } from "@/lib/admin/statuses";
 import { logAudit } from "@/lib/auditLog";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

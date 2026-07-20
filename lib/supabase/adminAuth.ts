@@ -6,7 +6,7 @@ import type { StaffRole } from "@/types";
 // the app/admin/** layout redirect is a UX nicety, not a security boundary,
 // since API routes are directly callable regardless of what the UI shows.
 export async function requireAdminUser(): Promise<User | null> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -30,7 +30,7 @@ const ROLE_RANK: Record<StaffRole, number> = { staff: 1, manager: 2, admin: 3 };
 export async function requireStaffRole(
   minRole: StaffRole
 ): Promise<{ user: User; role: StaffRole } | null> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -3,7 +3,8 @@ import { requireUser } from "@/lib/supabase/accountAuth";
 import { getAddressById } from "@/lib/data/addresses";
 import AddressForm from "@/components/account/AddressForm";
 
-export default async function EditAddressPage({ params }: { params: { id: string } }) {
+export default async function EditAddressPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const user = await requireUser();
   if (!user) redirect("/account");
 

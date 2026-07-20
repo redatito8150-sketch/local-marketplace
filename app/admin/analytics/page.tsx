@@ -15,11 +15,12 @@ function parseDays(value?: string): (typeof RANGES)[number] {
   return (RANGES as readonly number[]).includes(n) ? (n as (typeof RANGES)[number]) : 30;
 }
 
-export default async function AdminAnalyticsPage({
-  searchParams,
-}: {
-  searchParams: { days?: string };
-}) {
+export default async function AdminAnalyticsPage(
+  props: {
+    searchParams: Promise<{ days?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const days = parseDays(searchParams.days);
 
   const [trend, topProducts, topBrands, categoryRevenue] = await Promise.all([

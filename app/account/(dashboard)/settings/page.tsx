@@ -8,7 +8,7 @@ export default async function AccountSettingsPage() {
   const user = await requireUser();
   if (!user) redirect("/account");
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("full_name, phone")

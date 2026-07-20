@@ -5,7 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 // Atomic swap via the set_default_address() Postgres function (Phase 0
 // schema) — clears the old default and sets the new one in one statement,
 // so there's never a window with zero or two defaults.
-export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const user = await requireUser();
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });

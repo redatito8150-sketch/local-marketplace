@@ -3,7 +3,8 @@ import { getAllBrandsForAdmin, getBrandForAdmin } from "@/lib/data/admin";
 import BrandForm from "@/components/admin/BrandForm";
 import LinkBrandOwnerField from "@/components/admin/LinkBrandOwnerField";
 
-export default async function EditBrandPage({ params }: { params: { slug: string } }) {
+export default async function EditBrandPage(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const [brand, allBrands] = await Promise.all([
     getBrandForAdmin(params.slug),
     getAllBrandsForAdmin(),

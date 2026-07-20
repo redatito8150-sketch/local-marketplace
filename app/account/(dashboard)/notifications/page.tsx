@@ -14,7 +14,7 @@ export default async function AccountNotificationsPage() {
   const user = await requireUser();
   if (!user) redirect("/account");
 
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("notification_preferences")

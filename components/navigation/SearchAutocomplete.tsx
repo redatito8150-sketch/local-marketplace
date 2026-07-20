@@ -26,6 +26,10 @@ export default function SearchAutocomplete() {
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length < MIN_QUERY_LENGTH) {
+      // Clearing stale suggestions when the query shrinks below the
+      // minimum length — tied to the debounced fetch below, not derivable
+      // at render time.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSuggestions([]);
       setLoading(false);
       return;

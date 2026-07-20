@@ -13,10 +13,8 @@ const ACCESS_LEVELS = [
 ] as const;
 type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

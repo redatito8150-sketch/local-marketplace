@@ -164,11 +164,15 @@ export default function ProductForm({
   // selections whenever either changes, preserving already-entered data
   // for combinations that still exist (see lib/admin/variantGrid.ts).
   useEffect(() => {
+    // Reconciling the variant grid against colors/sizes typed into a text
+    // field — needs the previous variants' entered quantities/SKUs
+    // preserved, so it's a genuine cross-render sync, not something
+    // computable from props/state alone during render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm((f) => ({
       ...f,
       variants: reconcileVariants(f.colors, parseCsv(f.sizesText), f.variants),
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.colors, form.sizesText]);
 
   // A category change can leave a now-invalid product type selected.
@@ -176,6 +180,7 @@ export default function ProductForm({
     if (!form.productCategory) return;
     const validTypes = taxonomy.typesByCategory[form.productCategory];
     if (validTypes && form.productType && !validTypes.includes(form.productType)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       set("productType", "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

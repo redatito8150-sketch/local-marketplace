@@ -3,11 +3,12 @@ import { getAllOrdersForAdmin } from "@/lib/data/admin";
 import { formatPrice } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 
-export default async function AdminOrdersPage({
-  searchParams,
-}: {
-  searchParams: { status?: string };
-}) {
+export default async function AdminOrdersPage(
+  props: {
+    searchParams: Promise<{ status?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const allOrders = await getAllOrdersForAdmin();
   const activeStatus = searchParams.status;
   const orders = activeStatus ? allOrders.filter((o) => o.status === activeStatus) : allOrders;
@@ -18,6 +19,9 @@ export default async function AdminOrdersPage({
         <h1 className="text-2xl font-bold tracking-tightest text-ink">
           Orders ({orders.length})
         </h1>
+        {/* A file download from an API route, not a page — next/link's
+            prefetching/soft-navigation doesn't apply here. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/api/admin/orders/export"
           className="rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:bg-stone-50"

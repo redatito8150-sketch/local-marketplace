@@ -8,13 +8,14 @@ import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 import type { ProductRecord } from "@/types";
 
-export default async function EditBrandPortalProductPage({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams: { brand?: string };
-}) {
+export default async function EditBrandPortalProductPage(
+  props: {
+    params: Promise<{ id: string }>;
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner || !owner.brandSlug) redirect("/brand-portal/products");
 

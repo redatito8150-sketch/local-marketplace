@@ -3,7 +3,8 @@ import { getCouponForAdmin } from "@/lib/data/admin";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import CouponForm from "@/components/admin/CouponForm";
 
-export default async function EditCouponPage({ params }: { params: { code: string } }) {
+export default async function EditCouponPage(props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) redirect("/admin");
 

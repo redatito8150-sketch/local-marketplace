@@ -56,6 +56,9 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const stored = window.localStorage.getItem(STORAGE_KEY);
+      // One-time hydration from an external system (localStorage isn't
+      // available during SSR/render) — not derivable during render itself.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (stored) setItems(JSON.parse(stored));
     } catch {
       // ignore malformed storage

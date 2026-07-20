@@ -59,10 +59,8 @@ function validate(key: AllowedKey, value: unknown): string | null {
   return validateContactInfo(value);
 }
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { key: string } }
-) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -112,10 +110,8 @@ export async function PUT(
 // Resets the key back to its static content/*.ts default by removing the
 // override row — never a "delete the content" action from the owner's
 // point of view, just "stop customizing this."
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { key: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

@@ -5,11 +5,12 @@ import { describeAuditLog } from "@/lib/auditLogDescribe";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 
-export default async function BrandPortalLogsPage({
-  searchParams,
-}: {
-  searchParams: { brand?: string };
-}) {
+export default async function BrandPortalLogsPage(
+  props: {
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 

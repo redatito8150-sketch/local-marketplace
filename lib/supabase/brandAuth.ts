@@ -29,7 +29,7 @@ export interface BrandOwnerContext {
 export async function requireBrandOwner(
   overrideSlug?: string
 ): Promise<BrandOwnerContext | null> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

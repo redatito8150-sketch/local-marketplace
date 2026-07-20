@@ -5,10 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 // Toggles the caller's own follow row for this brand — no request body
 // needed, the current state is read straight from the table rather than
 // trusted from the client.
-export async function POST(
-  _request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const user = await requireUser();
   if (!user) {
     return NextResponse.json({ error: "Sign in to follow a brand" }, { status: 403 });

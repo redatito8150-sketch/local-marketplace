@@ -60,7 +60,7 @@ export async function getOrdersForBrand(
   brandSlug: string,
   impersonating = false
 ): Promise<BrandOrder[]> {
-  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
+  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("order_items")
     .select(
@@ -129,7 +129,7 @@ export async function getVariantsForBrand(
   brandSlug: string,
   impersonating = false
 ): Promise<BrandVariant[]> {
-  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
+  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("product_variants")
     .select("id, product_id, color, size, quantity, low_stock_threshold, products!inner(id, name, image, brand_slug)")
@@ -188,7 +188,7 @@ export async function getProductsForBrand(
   brandSlug: string,
   impersonating = false
 ): Promise<BrandProductListItem[]> {
-  const supabase = impersonating ? supabaseAdmin : createSupabaseServerClient();
+  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("products")
     .select(

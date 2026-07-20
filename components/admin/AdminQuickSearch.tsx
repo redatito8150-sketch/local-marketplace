@@ -31,6 +31,10 @@ export default function AdminQuickSearch() {
 
   useEffect(() => {
     if (query.trim().length < 2) {
+      // Clearing stale results when the query shrinks below the minimum
+      // length — tied to the debounced fetch below, not derivable at
+      // render time.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }

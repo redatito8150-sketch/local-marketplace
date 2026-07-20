@@ -4,10 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
 import { logAudit } from "@/lib/auditLog";
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function PATCH(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -73,10 +71,8 @@ export async function PATCH(
   return NextResponse.json({ slug: params.slug });
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

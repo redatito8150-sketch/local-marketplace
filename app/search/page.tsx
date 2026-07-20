@@ -6,11 +6,12 @@ import Footer from "@/components/Footer";
 import { searchProducts } from "@/lib/data/products";
 import { formatPrice } from "@/lib/format";
 
-export async function generateMetadata({
-  searchParams,
-}: {
-  searchParams: { q?: string };
-}) {
+export async function generateMetadata(
+  props: {
+    searchParams: Promise<{ q?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const q = searchParams.q ?? "";
   return {
     title: q ? `"${q}" — Search — Local` : "Search — Local",
@@ -18,11 +19,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function SearchPage({
-  searchParams,
-}: {
-  searchParams: { q?: string };
-}) {
+export default async function SearchPage(
+  props: {
+    searchParams: Promise<{ q?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const query = searchParams.q ?? "";
   const results = await searchProducts(query);
 

@@ -3,10 +3,8 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function POST(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("admin");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -57,10 +55,8 @@ export async function POST(
   return NextResponse.json({ ok: true, ownerEmail: profile.email });
 }
 
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { slug: string } }
-) {
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const staff = await requireStaffRole("admin");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });

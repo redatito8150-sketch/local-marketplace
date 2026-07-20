@@ -6,11 +6,12 @@ import { formatPrice } from "@/lib/format";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 
-export default async function BrandPortalOverviewPage({
-  searchParams,
-}: {
-  searchParams: { brand?: string };
-}) {
+export default async function BrandPortalOverviewPage(
+  props: {
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 

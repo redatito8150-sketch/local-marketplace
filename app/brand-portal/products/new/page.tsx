@@ -6,11 +6,12 @@ import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
-export default async function NewBrandPortalProductPage({
-  searchParams,
-}: {
-  searchParams: { brand?: string };
-}) {
+export default async function NewBrandPortalProductPage(
+  props: {
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner || !owner.brandSlug) redirect("/brand-portal/products");
 

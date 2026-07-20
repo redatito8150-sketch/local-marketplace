@@ -7,7 +7,8 @@ import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
-export default async function EditProductPage({ params }: { params: { id: string } }) {
+export default async function EditProductPage(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const [product, brandOptions, taxonomy] = await Promise.all([
     getProductForAdmin(params.id),
     getFeaturedBrands(),

@@ -4,11 +4,12 @@ import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 import { ARTICLES, type JournalArticle } from "@/content/journal";
 import JournalArticleForm from "@/components/admin/JournalArticleForm";
 
-export default async function EditJournalArticlePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function EditJournalArticlePage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const staff = await requireStaffRole("manager");
   if (!staff) redirect("/admin");
 

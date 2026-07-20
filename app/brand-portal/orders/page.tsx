@@ -8,11 +8,12 @@ import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import type { OrderStatus } from "@/types";
 
-export default async function BrandPortalOrdersPage({
-  searchParams,
-}: {
-  searchParams: { brand?: string };
-}) {
+export default async function BrandPortalOrdersPage(
+  props: {
+    searchParams: Promise<{ brand?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner) redirect("/account");
 

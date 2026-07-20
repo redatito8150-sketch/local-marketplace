@@ -3,11 +3,12 @@ import { getApplicationForAdmin } from "@/lib/data/admin";
 import { APPLICATION_STATUSES, APPLICATION_STATUS_LABELS } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 
-export default async function AdminApplicationDetailPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default async function AdminApplicationDetailPage(
+  props: {
+    params: Promise<{ id: string }>;
+  }
+) {
+  const params = await props.params;
   const application = await getApplicationForAdmin(params.id);
   if (!application) notFound();
 

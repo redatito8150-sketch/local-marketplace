@@ -13,18 +13,20 @@ export async function generateStaticParams() {
   return articles.map((a) => ({ slug: a.slug }));
 }
 
-export async function generateMetadata({ params }: { params: { slug: string } }) {
+export async function generateMetadata(props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
   const articles = await getSiteContentWithFallback("journal_articles", ARTICLES);
   const article = articles.find((a) => a.slug === params.slug);
   if (!article) return {};
   return { title: `${article.title} — Local Journal`, description: article.excerpt };
 }
 
-export default async function JournalArticlePage({
-  params,
-}: {
-  params: { slug: string };
-}) {
+export default async function JournalArticlePage(
+  props: {
+    params: Promise<{ slug: string }>;
+  }
+) {
+  const params = await props.params;
   const articles: JournalArticle[] = await getSiteContentWithFallback("journal_articles", ARTICLES);
   const article = articles.find((a) => a.slug === params.slug);
   if (!article) notFound();

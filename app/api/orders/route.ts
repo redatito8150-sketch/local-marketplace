@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
 
   // Look up the signed-in user (if any) via the cookie-backed server client;
   // guest checkout stays supported with a null user_id.
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

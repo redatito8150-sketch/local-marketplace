@@ -2,14 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  Instagram,
-  Facebook,
-  Youtube,
-  Truck,
-  CreditCard,
-  ShieldCheck,
-} from "lucide-react";
+import { Truck, CreditCard, ShieldCheck } from "lucide-react";
+import { InstagramIcon, FacebookIcon, YoutubeIcon } from "@/components/shared/SocialIcons";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_SHIPPING_SETTINGS, DEFAULT_CONTACT_INFO } from "@/content/settings";
 import { formatPrice } from "@/lib/format";
@@ -34,9 +28,9 @@ const GIFT_LINKS = ["Buy gift cards", "Terms and conditions", "Redeem a gift car
 const ABOUT_LINKS = ["Corporate Website", "Careers", "Newsroom", "Investor relations"];
 
 const SOCIALS = [
-  { icon: Instagram, label: "Instagram" },
-  { icon: Facebook, label: "Facebook" },
-  { icon: Youtube, label: "YouTube" },
+  { icon: InstagramIcon, label: "Instagram" },
+  { icon: FacebookIcon, label: "Facebook" },
+  { icon: YoutubeIcon, label: "YouTube" },
 ];
 
 function FooterColumn({

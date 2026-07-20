@@ -6,7 +6,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 // write route calls this first; the app/account layout's redirect is a UX
 // nicety, not the security boundary, same convention as the admin gate.
 export async function requireUser(): Promise<User | null> {
-  const supabase = createSupabaseServerClient();
+  const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

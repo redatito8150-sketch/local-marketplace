@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Instagram, Facebook, Music2, Send } from "lucide-react";
+import { Music2, Send } from "lucide-react";
+import { InstagramIcon, FacebookIcon } from "@/components/shared/SocialIcons";
 
 const COLUMNS: { title: string; links: string[] }[] = [
   { title: "Shop", links: ["Women", "Men", "Beauty", "Home", "New Arrivals"] },
@@ -85,14 +86,14 @@ export default function BrandFooter() {
               aria-label="Instagram"
               className="text-charcoal/60 transition-colors hover:text-charcoal"
             >
-              <Instagram className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              <InstagramIcon className="h-[18px] w-[18px]" strokeWidth={1.5} />
             </a>
             <a
               href="#"
               aria-label="Facebook"
               className="text-charcoal/60 transition-colors hover:text-charcoal"
             >
-              <Facebook className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              <FacebookIcon className="h-[18px] w-[18px]" strokeWidth={1.5} />
             </a>
             <a
               href="#"

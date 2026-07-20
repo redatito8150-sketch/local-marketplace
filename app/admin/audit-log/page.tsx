@@ -14,11 +14,12 @@ const ENTITY_LABELS: Record<string, string> = {
   site_content: "Site content",
 };
 
-export default async function AdminAuditLogPage({
-  searchParams,
-}: {
-  searchParams: { entityType?: string; actor?: string; from?: string; to?: string };
-}) {
+export default async function AdminAuditLogPage(
+  props: {
+    searchParams: Promise<{ entityType?: string; actor?: string; from?: string; to?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
   const staff = await requireStaffRole("admin");
   if (!staff) redirect("/admin");
 

@@ -26,11 +26,12 @@ async function getHero(content: { slug: CategorySlug; hero: CategoryHeroContent 
   return overrides[content.slug] ?? content.hero;
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: { category: string };
-}) {
+export async function generateMetadata(
+  props: {
+    params: Promise<{ category: string }>;
+  }
+) {
+  const params = await props.params;
   const content = getCategoryContent(params.category);
   if (!content) return {};
   const hero = await getHero(content);
@@ -40,11 +41,12 @@ export async function generateMetadata({
   };
 }
 
-export default async function CategoryPage({
-  params,
-}: {
-  params: { category: string };
-}) {
+export default async function CategoryPage(
+  props: {
+    params: Promise<{ category: string }>;
+  }
+) {
+  const params = await props.params;
   const content = getCategoryContent(params.category);
   if (!content) notFound();
 
