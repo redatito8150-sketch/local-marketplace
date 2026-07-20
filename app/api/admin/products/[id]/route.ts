@@ -120,16 +120,22 @@ export async function PATCH(
     }
   }
 
+  const notifyMeta = {
+    entityId: params.id,
+    entityIdLabel: "Product ID",
+    actorLabel: admin.email ?? admin.id,
+    detailLabel: "Brand",
+  };
   if (previousStatus !== body.status) {
     if (body.status === "published") {
-      await notify("product_published", `Product published: ${body.name}`, body.brandName);
+      await notify("product_published", `Product published: ${body.name}`, body.brandName, notifyMeta);
     } else if (body.status === "archived") {
-      await notify("product_archived", `Product archived: ${body.name}`, body.brandName);
+      await notify("product_archived", `Product archived: ${body.name}`, body.brandName, notifyMeta);
     } else {
-      await notify("product_updated", `Product updated: ${body.name}`, body.brandName);
+      await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
     }
   } else {
-    await notify("product_updated", `Product updated: ${body.name}`, body.brandName);
+    await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
   }
 
   await logAudit({

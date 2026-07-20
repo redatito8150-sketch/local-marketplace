@@ -148,7 +148,12 @@ export async function POST(request: NextRequest) {
     "product_published",
     `New product published: ${body.name}`,
     describeProductCreate(body),
-    { relatedEntityType: "product", relatedEntityId: id, auditLogId }
+    {
+      relatedEntityType: "product",
+      relatedEntityId: id,
+      auditLogId,
+      actorLabel: owner.user.email ?? owner.user.id,
+    }
   );
 
   return NextResponse.json({ id });

@@ -229,7 +229,11 @@ export async function POST(
     return NextResponse.json({ error: resolveError.message }, { status: 500 });
   }
 
-  await notify("product_updated", `Change reverted by admin`, `Product: ${productId}`);
+  await notify("product_updated", `Change reverted by admin`, "", {
+    entityId: productId,
+    entityIdLabel: "Product ID",
+    actorLabel,
+  });
 
   return NextResponse.json({ ok: true });
 }

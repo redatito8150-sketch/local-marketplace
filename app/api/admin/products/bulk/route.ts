@@ -75,7 +75,8 @@ export async function POST(request: NextRequest) {
     await notify(
       action === "publish" ? "product_published" : "product_archived",
       `Bulk ${action}: ${ids.length} product${ids.length === 1 ? "" : "s"}`,
-      (existingRows ?? []).map((r) => r.name).join(", ")
+      (existingRows ?? []).map((r) => r.name).join(", "),
+      { actorLabel: staff.user.email ?? staff.user.id, detailLabel: "Products" }
     );
   }
 

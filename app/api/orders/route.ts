@@ -192,7 +192,13 @@ export async function POST(request: NextRequest) {
   await notify(
     "order_created",
     `New order ${result?.order_number}`,
-    `${shipping.firstName} ${shipping.lastName} — ${items.length} item${items.length === 1 ? "" : "s"}`
+    `${items.length} item${items.length === 1 ? "" : "s"}`,
+    {
+      entityId: result?.order_number,
+      entityIdLabel: "Order ID",
+      actorLabel: `${shipping.firstName} ${shipping.lastName} (${shipping.email})`,
+      detailLabel: "Items",
+    }
   );
 
   if (result?.order_id) {
@@ -218,7 +224,8 @@ export async function POST(request: NextRequest) {
         await notify(
           "low_stock",
           `Low stock: ${product?.name ?? variant.product_id}`,
-          `${combo} — ${variant.quantity} left`
+          `${combo} — ${variant.quantity} left`,
+          { entityId: variant.product_id, entityIdLabel: "Product ID" }
         );
       }
     }

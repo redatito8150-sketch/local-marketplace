@@ -76,11 +76,11 @@ export async function PATCH(request: NextRequest) {
     after: body,
     brandSlug: owner.brandSlug,
   });
-  await notify(
-    "brand_updated",
-    `Brand page updated: ${body.name}`,
-    owner.user.email ?? undefined
-  );
+  await notify("brand_updated", `Brand page updated: ${body.name}`, "", {
+    entityId: owner.brandSlug,
+    entityIdLabel: "Brand ID",
+    actorLabel: owner.user.email ?? owner.user.id,
+  });
 
   return NextResponse.json({ slug: owner.brandSlug });
 }

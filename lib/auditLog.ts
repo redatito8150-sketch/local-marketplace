@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "@/lib/discord";
+import { logError } from "@/lib/errorLog";
 
 export type AuditAction =
   | "create"
@@ -31,6 +33,67 @@ export type AuditEntityType =
   | "profile"
   | "coupon"
   | "site_content";
+
+// Green = something was added, red = something was removed, orange for
+// everything else (edits, status flips, reverts). Used only for the
+// Discord embed's color strip — has no bearing on the stored row.
+const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
+  create: DISCORD_COLORS.green,
+  restock: DISCORD_COLORS.green,
+  bulk_publish: DISCORD_COLORS.green,
+  update: DISCORD_COLORS.orange,
+  status_change: DISCORD_COLORS.orange,
+  role_change: DISCORD_COLORS.orange,
+  approve: DISCORD_COLORS.orange,
+  request_changes: DISCORD_COLORS.orange,
+  pause: DISCORD_COLORS.orange,
+  unpause: DISCORD_COLORS.orange,
+  revert: DISCORD_COLORS.orange,
+  delete: DISCORD_COLORS.red,
+  bulk_delete: DISCORD_COLORS.red,
+  archive: DISCORD_COLORS.red,
+  bulk_archive: DISCORD_COLORS.red,
+  request_deletion: DISCORD_COLORS.red,
+  reject_deletion: DISCORD_COLORS.red,
+};
+
+// Plain-English past-tense verb per action, used to build the embed's bold
+// headline (e.g. "Product added", "Order status changed").
+const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
+  create: "added",
+  restock: "restocked",
+  bulk_publish: "bulk published",
+  update: "edited",
+  status_change: "status changed",
+  role_change: "role changed",
+  approve: "approved",
+  request_changes: "changes requested",
+  pause: "paused",
+  unpause: "unpaused",
+  revert: "change reverted",
+  delete: "deleted",
+  bulk_delete: "bulk deleted",
+  archive: "archived",
+  bulk_archive: "bulk archived",
+  request_deletion: "deletion requested",
+  reject_deletion: "deletion request rejected",
+};
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, " ");
+}
+
+// Best-effort human name for the entity — every ProductInput/BrandInput
+// snapshot carries a `.name`, so this reads naturally for the two entity
+// types that make up nearly all activity; anything else falls back to
+// showing the raw id twice rather than guessing at unfamiliar shapes.
+function extractEntityName(before: unknown, after: unknown): string | null {
+  const afterName = (after as { name?: unknown } | null)?.name;
+  const beforeName = (before as { name?: unknown } | null)?.name;
+  if (typeof afterName === "string" && afterName) return afterName;
+  if (typeof beforeName === "string" && beforeName) return beforeName;
+  return null;
+}
 
 // Mirrors notify()'s fire-and-forget contract in spirit — recording an
 // audit entry is supplementary to the real write it's attached to, so a
@@ -66,8 +129,27 @@ export async function logAudit(entry: {
     .select("id")
     .single();
   if (error) {
-    console.error(`logAudit(${entry.entityType}/${entry.action}) failed:`, error.message);
+    logError(`logAudit(${entry.entityType}/${entry.action}) failed`, error.message);
     return null;
   }
+
+  // A short, human-readable summary, not the full before/after payload —
+  // audit_logs itself is never pruned, so the DB (and the admin Audit Log
+  // page's filters) already stays the complete record; this is a live feed
+  // for visibility, not an archival backup.
+  const entityName = extractEntityName(entry.before, entry.after);
+  await sendToDiscord("auditLog", {
+    description: buildDiscordDescription({
+      headline: `${capitalize(entry.entityType)} ${AUDIT_ACTION_VERBS[entry.action]}`,
+      subline: entityName ?? undefined,
+      meta: [
+        { label: `${capitalize(entry.entityType)} ID`, value: entry.entityId },
+        { label: "User", value: entry.actorLabel },
+        { label: "Brand", value: entry.brandSlug ?? "" },
+      ],
+    }),
+    color: AUDIT_ACTION_COLORS[entry.action],
+  });
+
   return data.id as string;
 }

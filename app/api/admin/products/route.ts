@@ -124,7 +124,13 @@ export async function POST(request: NextRequest) {
   await notify(
     body.status === "published" ? "product_published" : "product_created",
     body.status === "published" ? `Product published: ${body.name}` : `Product created: ${body.name}`,
-    body.brandName
+    body.brandName,
+    {
+      entityId: id,
+      entityIdLabel: "Product ID",
+      actorLabel: admin.email ?? admin.id,
+      detailLabel: "Brand",
+    }
   );
 
   await logAudit({

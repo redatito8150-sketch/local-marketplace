@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { logError } from "@/lib/errorLog";
 import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { ProductRow, toProductCard } from "@/lib/data/products";
@@ -92,7 +93,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   // Similar brands are supplementary — degrade quietly rather than failing
   // the whole brand page if this secondary lookup breaks.
   if (similarError) {
-    console.error(`getBrandContent(${slug}) similar brands query failed:`, similarError.message);
+    logError(`getBrandContent(${slug}) similar brands query failed`, similarError.message);
   }
 
   const similarBrands: SimilarBrand[] = (similarRows ?? []).map((r) => ({
@@ -117,7 +118,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   // brand_follows has no public policy, so the count needs supabaseAdmin —
   // degrades quietly to 0 rather than failing the whole page if it errors.
   const followerCount = await getFollowerCountForBrand(slug).catch((err) => {
-    console.error(`getBrandContent(${slug}) follower count failed:`, err.message);
+    logError(`getBrandContent(${slug}) follower count failed`, err.message);
     return 0;
   });
 

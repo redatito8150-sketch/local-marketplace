@@ -734,3 +734,46 @@ create policy "Users can read their own brand_staff rows"
 -- "tag going forward only" principle already governing
 -- order_items.brand_slug.
 alter table audit_logs add column if not exists brand_slug text;
+
+-- ============================================================================
+-- INSTANT-PUBLISH — brand-initiated product changes apply live; a
+-- resolvable notification lets the admin Approve (leave it) or Revert
+-- (undo via the linked audit_logs before/after snapshot) right from the
+-- notification itself, without navigating elsewhere.
+-- ============================================================================
+alter table notifications add column if not exists related_entity_type text;
+alter table notifications add column if not exists related_entity_id text;
+alter table notifications add column if not exists audit_log_id uuid references audit_logs(id) on delete set null;
+alter table notifications add column if not exists resolution text not null default 'n/a'
+  check (resolution in ('pending', 'approved', 'reverted', 'n/a'));
+create index if not exists notifications_resolution_idx on notifications (resolution);
+
+-- ============================================================================
+-- DISCORD LOG MIRRORING — every notify()/logAudit() call and every existing
+-- "log, don't throw" error site also posts to a Discord webhook (see
+-- lib/discord.ts), so nothing is lost even though this table stays bounded.
+-- audit_logs is deliberately left unbounded (used by the admin Audit Log
+-- page's filters/search and the brand-portal's own /brand-portal/logs).
+-- Cap is 50, not 30 — raised once already per the site owner's own call.
+-- ============================================================================
+create or replace function public.prune_old_notifications()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  delete from notifications
+  where id in (
+    select id from notifications
+    order by created_at desc
+    offset 50
+  );
+  return new;
+end;
+$$;
+
+drop trigger if exists trigger_prune_notifications on notifications;
+create trigger trigger_prune_notifications
+  after insert on notifications
+  for each row
+  execute function public.prune_old_notifications();

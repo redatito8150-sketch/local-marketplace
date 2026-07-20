@@ -1,4 +1,5 @@
 import { resendClient, EMAIL_FROM } from "@/lib/email/resendClient";
+import { logError } from "@/lib/errorLog";
 
 // Mirrors notify()/logAudit()'s exact fire-and-forget contract — email is
 // supplementary to the real write path it's attached to (an order being
@@ -14,7 +15,7 @@ export async function sendEmail({
   html: string;
 }): Promise<void> {
   if (!resendClient) {
-    console.error(`sendEmail(${subject}) skipped: RESEND_API_KEY is not configured`);
+    logError(`sendEmail(${subject}) skipped`, "RESEND_API_KEY is not configured");
     return;
   }
 
@@ -26,6 +27,6 @@ export async function sendEmail({
   });
 
   if (error) {
-    console.error(`sendEmail(${subject}) to ${to} failed:`, error.message);
+    logError(`sendEmail(${subject}) to ${to} failed`, error.message);
   }
 }

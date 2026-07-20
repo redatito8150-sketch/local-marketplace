@@ -104,7 +104,12 @@ export async function PATCH(
   const order = await getOrderForAdmin(params.id);
   if (order && order.shippingEmail) {
     if (status === "cancelled") {
-      await notify("order_cancelled", `Order cancelled: #${order.orderNumber}`, order.shippingName);
+      await notify("order_cancelled", `Order cancelled: #${order.orderNumber}`, order.shippingName, {
+        entityId: order.orderNumber,
+        entityIdLabel: "Order ID",
+        actorLabel: admin.email ?? admin.id,
+        detailLabel: "Customer",
+      });
       await sendEmail({ to: order.shippingEmail, ...orderCancelledEmail(order) });
     } else if (status === "shipped") {
       await sendEmail({ to: order.shippingEmail, ...orderShippedEmail(order) });

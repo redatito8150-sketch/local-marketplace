@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import { logError } from "@/lib/errorLog";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import {
   CategorySlug,
@@ -277,7 +278,7 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   if (relatedError) {
     // Related products are supplementary, not critical — degrade quietly
     // rather than failing the whole product page over a secondary query.
-    console.error("Related products query failed:", relatedError.message);
+    logError("Related products query failed", relatedError.message);
     detail.relatedIds = [];
   } else {
     detail.relatedIds = (relatedRows ?? []).map((r) => r.id as string);
@@ -312,7 +313,7 @@ export async function getRelatedProductCards(
   // not core content. A failure here shouldn't take down the whole
   // product page via the error boundary.
   if (error) {
-    console.error("getRelatedProductCards failed:", error.message);
+    logError("getRelatedProductCards failed", error.message);
     return [];
   }
   if (!data) return [];

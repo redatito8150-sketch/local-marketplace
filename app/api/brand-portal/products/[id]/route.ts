@@ -64,7 +64,13 @@ export async function PATCH(
     await notify(
       "product_updated",
       `${paused ? "Paused" : "Unpaused"}: ${existing.name}`,
-      owner.brandName ?? undefined
+      owner.brandName ?? "",
+      {
+        entityId: params.id,
+        entityIdLabel: "Product ID",
+        actorLabel: owner.user.email ?? owner.user.id,
+        detailLabel: "Brand",
+      }
     );
 
     return NextResponse.json({ ok: true });
@@ -200,7 +206,13 @@ export async function PATCH(
     "product_updated",
     `Product edited: ${productBody.name}`,
     describeProductUpdate(existing, productBody),
-    { relatedEntityType: "product", relatedEntityId: params.id, auditLogId }
+    {
+      relatedEntityType: "product",
+      relatedEntityId: params.id,
+      auditLogId,
+      actorLabel: owner.user.email ?? owner.user.id,
+      detailLabel: "Before → After",
+    }
   );
 
   return NextResponse.json({ id: params.id });
@@ -251,7 +263,12 @@ export async function DELETE(
     "product_archived",
     `Product removed: ${existing.name}`,
     describeProductArchive(existing),
-    { relatedEntityType: "product", relatedEntityId: params.id, auditLogId }
+    {
+      relatedEntityType: "product",
+      relatedEntityId: params.id,
+      auditLogId,
+      actorLabel: owner.user.email ?? owner.user.id,
+    }
   );
 
   return NextResponse.json({ ok: true });

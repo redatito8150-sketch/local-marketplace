@@ -53,7 +53,8 @@ export async function POST(request: NextRequest) {
   await notify(
     "brand_application_submitted",
     `New brand application: ${body.brandName}`,
-    body.founderName
+    body.brandStory,
+    { actorLabel: `${body.founderName} (${body.email})`, detailLabel: "Brand Story" }
   );
 
   return NextResponse.json({ ok: true });
