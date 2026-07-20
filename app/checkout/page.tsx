@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, CreditCard, Truck, PartyPopper, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 import { formatSize } from "@/lib/format";
+import type { AddressRecord } from "@/types";
 
 type Step = "shipping" | "payment" | "confirmation";
 
@@ -38,11 +40,41 @@ const EMPTY_SHIPPING: ShippingForm = {
 
 export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
+  const { user } = useAuth();
   const [step, setStep] = useState<Step>("shipping");
   const [orderNumber, setOrderNumber] = useState("");
   const [shipping, setShipping] = useState<ShippingForm>(EMPTY_SHIPPING);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
+
+  // One-time prefill for a signed-in shopper with a saved default address —
+  // the shipping form stays fully editable afterward, and guest checkout
+  // (no user) is completely unaffected.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    fetch("/api/account/addresses/default")
+      .then((res) => (res.ok ? res.json() : { address: null }))
+      .then((data: { address: AddressRecord | null }) => {
+        if (cancelled || !data.address) return;
+        setShipping((s) => ({
+          ...s,
+          firstName: data.address!.firstName,
+          lastName: data.address!.lastName,
+          email: user.email ?? s.email,
+          phone: data.address!.phone,
+          address: data.address!.addressLine,
+          city: data.address!.city,
+          governorate: data.address!.governorate,
+        }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally runs once per signed-in session, not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const [couponInput, setCouponInput] = useState("");
   const [couponChecking, setCouponChecking] = useState(false);

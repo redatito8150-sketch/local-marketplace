@@ -474,3 +474,20 @@ export interface BrandShopTheLookTile {
   href: string;
 }
 
+// ── Account addresses (Supabase `addresses` table) ──────────────────────────
+// Field names mirror checkout's ShippingForm 1:1 (firstName/lastName/phone/
+// city/governorate) except `addressLine` (checkout's `address`) so a saved
+// address can prefill checkout with zero remapping beyond that one field.
+
+export interface AddressRecord {
+  id: string;
+  label: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  addressLine: string;
+  city: string;
+  governorate: string;
+  isDefault: boolean;
+}
+
