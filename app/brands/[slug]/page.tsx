@@ -5,12 +5,14 @@ import BrandStatsBand from "@/components/brand/BrandStatsBand";
 import AboutBrand from "@/components/brand/AboutBrand";
 import CategoryNav from "@/components/brand/CategoryNav";
 import ShopTheLook from "@/components/brand/ShopTheLook";
+import BrandBestSellers from "@/components/brand/BrandBestSellers";
 import BrandProductGrid from "@/components/brand/BrandProductGrid";
 import OurStory from "@/components/brand/OurStory";
 import ValuesSection from "@/components/brand/ValuesSection";
 import SimilarBrands from "@/components/brand/SimilarBrands";
 import BrandFooter from "@/components/brand/BrandFooter";
 import { getBrandContent, getAllBrandSlugs } from "@/lib/data/brands";
+import { getBestSellingProductsForBrand } from "@/lib/data/collections";
 import { isUserFollowingBrand } from "@/lib/data/follows";
 import { requireUser } from "@/lib/supabase/accountAuth";
 
@@ -36,6 +38,7 @@ export default async function BrandPage({ params }: { params: { slug: string } }
 
   const user = await requireUser();
   const isFollowing = user ? await isUserFollowingBrand(user.id, params.slug) : false;
+  const bestSellers = await getBestSellingProductsForBrand(params.slug);
 
   return (
     <main className="min-h-screen bg-white">
@@ -50,6 +53,7 @@ export default async function BrandPage({ params }: { params: { slug: string } }
       />
       <AboutBrand brand={brand} />
       <ShopTheLook tiles={brand.shopTheLook} />
+      <BrandBestSellers products={bestSellers} />
       <CategoryNav tabs={brand.categoryTabs} defaultActive={brand.activeTab} />
       <BrandProductGrid brandName={brand.name} products={brand.products} />
       <OurStory image={brand.storyImage} body={brand.storyBody} />

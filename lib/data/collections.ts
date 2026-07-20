@@ -83,3 +83,75 @@ export async function getTrendingProducts(
   const ids = await getTopSellingProductIds(limit, sinceDays);
   return getProductCardsByIds(ids);
 }
+
+// Ranks a single brand's own products by sold quantity — filters to the
+// brand's product ids first, rather than "rank globally, then keep this
+// brand's hits," which would return near-empty results for any brand
+// that isn't already a top seller site-wide.
+async function getTopSellingProductIdsForBrand(
+  brandSlug: string,
+  limit: number
+): Promise<string[]> {
+  const { data: brandProducts, error: brandProductsError } = await supabase
+    .from("products")
+    .select("id")
+    .eq("brand_slug", brandSlug)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
+
+  if (brandProductsError) {
+    throw new Error(
+      `getTopSellingProductIdsForBrand(${brandSlug}) products query failed: ${brandProductsError.message}`
+    );
+  }
+  const productIds = (brandProducts ?? []).map((p) => p.id as string);
+  if (productIds.length === 0) return [];
+
+  const { data, error } = await supabaseAdmin
+    .from("order_items")
+    .select("product_id, quantity, orders!inner(status)")
+    .in("product_id", productIds)
+    .neq("orders.status", "cancelled");
+
+  if (error) {
+    throw new Error(`getTopSellingProductIdsForBrand(${brandSlug}) failed: ${error.message}`);
+  }
+
+  const totals = new Map<string, number>();
+  for (const row of data ?? []) {
+    if (!row.product_id) continue;
+    totals.set(row.product_id, (totals.get(row.product_id) ?? 0) + row.quantity);
+  }
+
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([id]) => id);
+}
+
+// Brand-scoped "Best Sellers" row for the brand page — falls back to the
+// brand's own newest products when it has no sales history yet, so a
+// freshly onboarded brand never shows an empty section.
+export async function getBestSellingProductsForBrand(
+  brandSlug: string,
+  limit: number = 12
+): Promise<Product[]> {
+  const ids = await getTopSellingProductIdsForBrand(brandSlug, limit);
+  if (ids.length > 0) {
+    return getProductCardsByIds(ids);
+  }
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .eq("brand_slug", brandSlug)
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getBestSellingProductsForBrand(${brandSlug}) fallback failed: ${error.message}`);
+  }
+  return ((data ?? []) as ProductRow[]).map(toProductCard);
+}
