@@ -45,6 +45,7 @@ const NAV_ITEMS: NavItem[] = [
     minRole: "staff",
     children: [
       { label: "All Products", href: "/admin/products" },
+      { label: "Review Queue", href: "/admin/products/review" },
       { label: "Categories", href: "/admin/products/categories", minRole: "manager" },
     ],
   },
@@ -75,10 +76,12 @@ const canSee = (role: string, minRole: Role) => (ROLE_RANK[role] ?? 0) >= ROLE_R
 export default function AdminSidebar({
   unreadNotifications = 0,
   lowStockCount = 0,
+  reviewQueueCount = 0,
   role = "admin",
 }: {
   unreadNotifications?: number;
   lowStockCount?: number;
+  reviewQueueCount?: number;
   role?: string;
 }) {
   const pathname = usePathname();
@@ -92,6 +95,8 @@ export default function AdminSidebar({
   const badgeCounts: Record<string, number> = {
     "/admin/notifications": unreadNotifications,
     "/admin/low-stock": lowStockCount,
+    "/admin/products": reviewQueueCount,
+    "/admin/products/review": reviewQueueCount,
   };
 
   const isChildActive = (item: NavItem) =>
@@ -146,17 +151,23 @@ export default function AdminSidebar({
               <div className="ml-6 mt-0.5 flex flex-col gap-0.5 border-l border-stone-150 pl-3">
                 {item.children!.map((child) => {
                   const childActive = pathname.startsWith(child.href);
+                  const childBadge = badgeCounts[child.href] ?? 0;
                   return (
                     <Link
                       key={child.href}
                       href={child.href}
-                      className={`rounded-md px-2.5 py-2 text-[12.5px] font-medium transition-colors ${
+                      className={`flex items-center gap-2 rounded-md px-2.5 py-2 text-[12.5px] font-medium transition-colors ${
                         childActive
                           ? "bg-beige-100 text-ink"
                           : "text-ink-soft/60 hover:bg-stone-100 hover:text-ink"
                       }`}
                     >
                       {child.label}
+                      {childBadge > 0 && (
+                        <span className="ml-auto flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-ink px-1.5 text-[10.5px] font-semibold text-cream">
+                          {childBadge}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

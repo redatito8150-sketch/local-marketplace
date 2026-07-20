@@ -123,6 +123,32 @@ export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
   return (data as ProductRow[]).map(toProductRecord);
 }
 
+// Lightweight counts for the sidebar badge — a dedicated head-count query
+// per bucket rather than fetching every product's full row on every admin
+// page load (getAllProductsForAdmin is for the products list itself).
+export async function getReviewQueueCount(): Promise<number> {
+  const [newSubmissions, pendingEdits, deletionRequests] = await Promise.all([
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending_review")
+      .is("pending_changes", null),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "published")
+      .not("pending_changes", "is", null),
+    supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .not("deletion_requested_at", "is", null),
+  ]);
+
+  return (
+    (newSubmissions.count ?? 0) + (pendingEdits.count ?? 0) + (deletionRequests.count ?? 0)
+  );
+}
+
 export async function getProductForAdmin(id: string): Promise<ProductRecord | null> {
   const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
 
