@@ -479,6 +479,12 @@ export interface BrandShopTheLookTile {
 // city/governorate) except `addressLine` (checkout's `address`) so a saved
 // address can prefill checkout with zero remapping beyond that one field.
 
+export interface NotificationPreferences {
+  orderUpdates: boolean;
+  promotions: boolean;
+  newsletter: boolean;
+}
+
 export interface AddressRecord {
   id: string;
   label: string;
