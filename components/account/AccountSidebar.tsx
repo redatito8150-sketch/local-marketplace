@@ -8,7 +8,6 @@ import {
   Heart,
   MapPin,
   CreditCard,
-  Gift,
   Bell,
   Settings,
   LogOut,
@@ -21,7 +20,6 @@ const NAV_ITEMS = [
   { label: "Wishlist", href: "/account/wishlist", icon: Heart },
   { label: "Addresses", href: "/account/addresses", icon: MapPin },
   { label: "Payment Methods", href: "/account/payment-methods", icon: CreditCard },
-  { label: "Gift Cards", href: "/account/gift-cards", icon: Gift },
   { label: "Notifications", href: "/account/notifications", icon: Bell },
   { label: "Settings", href: "/account/settings", icon: Settings },
 ];
