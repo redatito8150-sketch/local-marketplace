@@ -54,6 +54,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   product_updated: "Product Updated",
   product_published: "Product Published",
   product_archived: "Product Archived",
+  brand_updated: "Brand Page Updated",
   brand_application_submitted: "Brand Application",
   low_stock: "Low Stock",
   image_upload_failed: "Image Upload Failed",

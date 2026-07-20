@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, Package, ShoppingCart, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Package, ShoppingCart, FileEdit, ArrowLeft } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/brand-portal", icon: LayoutDashboard },
@@ -16,14 +16,24 @@ const NAV_ITEMS = [
 // Component and (unlike pages) never receives searchParams, so this is
 // the only place that can keep an admin's brand selection alive while
 // they move between Overview/Orders/Stock.
-export default function BrandPortalNav() {
+export default function BrandPortalNav({
+  showPageContent = true,
+}: {
+  // Page Content is an owner-only concern (Round 3) — assistants never
+  // see it in the nav, matching the API route's own accessLevel gate.
+  showPageContent?: boolean;
+}) {
   const pathname = usePathname();
   const brand = useSearchParams().get("brand");
   const withBrand = (href: string) => (brand ? `${href}?brand=${brand}` : href);
 
+  const items = showPageContent
+    ? [...NAV_ITEMS, { label: "Page Content", href: "/brand-portal/page-content", icon: FileEdit }]
+    : NAV_ITEMS;
+
   return (
     <nav className="flex flex-col gap-1">
-      {NAV_ITEMS.map((item) => {
+      {items.map((item) => {
         const active = item.href === "/brand-portal" ? pathname === "/brand-portal" : pathname.startsWith(item.href);
         return (
           <Link

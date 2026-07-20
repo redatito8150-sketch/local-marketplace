@@ -7,6 +7,7 @@ export type NotificationType =
   | "product_updated"
   | "product_published"
   | "product_archived"
+  | "brand_updated"
   | "brand_application_submitted"
   | "low_stock"
   | "image_upload_failed"

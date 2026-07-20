@@ -28,7 +28,7 @@ export default async function BrandPortalLayout({
         </div>
       </header>
       <div className="mx-auto grid max-w-screen2xl grid-cols-1 gap-8 px-8 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-12">
-        <BrandPortalNav />
+        <BrandPortalNav showPageContent={owner.accessLevel === "owner"} />
         <main>{children}</main>
       </div>
     </div>

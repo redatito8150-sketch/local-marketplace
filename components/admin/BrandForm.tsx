@@ -9,6 +9,13 @@ interface BrandFormProps {
   mode: "create" | "edit";
   initial?: BrandRecord;
   otherBrands: { slug: string; name: string }[];
+  // Round 3: reused as-is by the brand portal's own page-content editor —
+  // "brand-portal" hides the slug field (the brand's own URL, an admin-only
+  // concern) and the similar-brands cross-link picker, and lets the caller
+  // point the submit/redirect somewhere other than /admin/brands.
+  scope?: "admin" | "brand-portal";
+  apiPath?: string;
+  redirectPath?: string;
 }
 
 interface FormState {
@@ -53,8 +60,16 @@ function toFormState(brand?: BrandRecord): FormState {
   };
 }
 
-export default function BrandForm({ mode, initial, otherBrands }: BrandFormProps) {
+export default function BrandForm({
+  mode,
+  initial,
+  otherBrands,
+  scope = "admin",
+  apiPath,
+  redirectPath,
+}: BrandFormProps) {
   const router = useRouter();
+  const isBrandPortal = scope === "brand-portal";
   const [form, setForm] = useState<FormState>(() => toFormState(initial));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -128,20 +143,20 @@ export default function BrandForm({ mode, initial, otherBrands }: BrandFormProps
     };
 
     try {
-      const res = await fetch(
-        mode === "create" ? "/api/admin/brands" : `/api/admin/brands/${initial!.slug}`,
-        {
-          method: mode === "create" ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }
-      );
+      const url =
+        apiPath ??
+        (mode === "create" ? "/api/admin/brands" : `/api/admin/brands/${initial!.slug}`);
+      const res = await fetch(url, {
+        method: mode === "create" ? "POST" : "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Something went wrong");
         return;
       }
-      router.push("/admin/brands");
+      router.push(redirectPath ?? "/admin/brands");
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
@@ -152,14 +167,16 @@ export default function BrandForm({ mode, initial, otherBrands }: BrandFormProps
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-      <TextField
-        label="Slug (used in the URL — cannot be changed later)"
-        value={form.slug}
-        onChange={(v) => set("slug", v)}
-        required
-        disabled={mode === "edit"}
-        hint="Lowercase letters, numbers, and hyphens only, e.g. marga-studio"
-      />
+      {!isBrandPortal && (
+        <TextField
+          label="Slug (used in the URL — cannot be changed later)"
+          value={form.slug}
+          onChange={(v) => set("slug", v)}
+          required
+          disabled={mode === "edit"}
+          hint="Lowercase letters, numbers, and hyphens only, e.g. marga-studio"
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <TextField label="Name" value={form.name} onChange={(v) => set("name", v)} required />
@@ -366,7 +383,7 @@ export default function BrandForm({ mode, initial, otherBrands }: BrandFormProps
         </div>
       </div>
 
-      {otherBrands.length > 0 && (
+      {!isBrandPortal && otherBrands.length > 0 && (
         <div>
           <span className="text-[12.5px] font-medium text-ink-soft/70">Similar brands</span>
           <div className="mt-1.5 flex flex-wrap gap-4">
