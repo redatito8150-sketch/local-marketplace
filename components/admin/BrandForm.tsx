@@ -37,6 +37,7 @@ interface FormState {
   aboutDescription: string;
   aboutImage: string;
   storyImage: string;
+  storyImage2: string;
   storyBody: string;
   infoBadges: BrandInfoBadge[];
   categoryTabs: BrandCategoryTab[];
@@ -60,6 +61,7 @@ function toFormState(brand?: BrandRecord): FormState {
     aboutDescription: brand?.aboutDescription ?? "",
     aboutImage: brand?.aboutImage ?? "",
     storyImage: brand?.storyImage ?? "",
+    storyImage2: brand?.storyImage2 ?? "",
     storyBody: brand?.storyBody ?? "",
     infoBadges: brand?.infoBadges?.length ? brand.infoBadges : [{ icon: "location", label: "" }],
     categoryTabs: brand?.categoryTabs?.length
@@ -163,6 +165,7 @@ export default function BrandForm({
       aboutDescription: form.aboutDescription.trim(),
       aboutImage: form.aboutImage.trim(),
       storyImage: form.storyImage.trim(),
+      storyImage2: form.storyImage2.trim(),
       storyBody: form.storyBody.trim(),
       infoBadges: form.infoBadges.filter((b) => b.label.trim()),
       categoryTabs: form.categoryTabs.filter((t) => t.id.trim() && t.label.trim()),
@@ -271,12 +274,20 @@ export default function BrandForm({
         required
       />
 
-      <TextField
-        label="Story image URL"
-        value={form.storyImage}
-        onChange={(v) => set("storyImage", v)}
-        required
-      />
+      <div className="grid grid-cols-2 gap-4">
+        <TextField
+          label="Story image URL"
+          value={form.storyImage}
+          onChange={(v) => set("storyImage", v)}
+          required
+        />
+        <TextField
+          label="Story image URL 2 (optional)"
+          value={form.storyImage2}
+          onChange={(v) => set("storyImage2", v)}
+          hint="Shows a second side-by-side image in Our Story — falls back to one image if left blank."
+        />
+      </div>
       <TextArea
         label="Story body"
         value={form.storyBody}

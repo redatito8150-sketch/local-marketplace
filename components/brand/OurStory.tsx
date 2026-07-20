@@ -3,22 +3,41 @@ import { ArrowRight } from "lucide-react";
 
 export default function OurStory({
   image,
+  image2,
   body,
 }: {
   image: string;
+  image2?: string;
   body: string;
 }) {
   return (
     <section className="mx-auto max-w-brand px-6 py-24 lg:px-10 lg:py-32">
       <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-16">
-        <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[2px] lg:col-span-7">
-          <Image
-            src={image}
-            alt="Inside MARGA Studio's atelier in Cairo"
-            fill
-            sizes="(max-width: 1024px) 100vw, 60vw"
-            className="object-cover"
-          />
+        <div
+          className={`grid grid-cols-1 gap-4 lg:col-span-7 ${
+            image2 ? "sm:grid-cols-2" : ""
+          }`}
+        >
+          <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[2px]">
+            <Image
+              src={image}
+              alt="Inside the brand's atelier"
+              fill
+              sizes="(max-width: 1024px) 100vw, 30vw"
+              className="object-cover"
+            />
+          </div>
+          {image2 && (
+            <div className="relative aspect-[4/5] w-full overflow-hidden rounded-[2px]">
+              <Image
+                src={image2}
+                alt="Inside the brand's atelier"
+                fill
+                sizes="(max-width: 1024px) 100vw, 30vw"
+                className="object-cover"
+              />
+            </div>
+          )}
         </div>
 
         <div className="lg:col-span-5">

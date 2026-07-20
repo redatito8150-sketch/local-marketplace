@@ -9,6 +9,7 @@ import BrandBestSellers from "@/components/brand/BrandBestSellers";
 import BrandShoppingArea from "@/components/brand/BrandShoppingArea";
 import OurStory from "@/components/brand/OurStory";
 import ValuesSection from "@/components/brand/ValuesSection";
+import BrandFeaturesRow from "@/components/brand/BrandFeaturesRow";
 import SimilarBrands from "@/components/brand/SimilarBrands";
 import BrandFooter from "@/components/brand/BrandFooter";
 import { getBrandContent, getAllBrandSlugs } from "@/lib/data/brands";
@@ -69,8 +70,13 @@ export default async function BrandPage({ params }: { params: { slug: string } }
           defaultActiveTab={brand.activeTab}
         />
       </Suspense>
-      <OurStory image={brand.storyImage} body={brand.storyBody} />
+      <OurStory
+        image={brand.storyImage}
+        image2={brand.storyImage2}
+        body={brand.storyBody}
+      />
       <ValuesSection values={brand.values} />
+      <BrandFeaturesRow />
       <SimilarBrands brands={brand.similarBrands} />
       <BrandFooter />
     </main>
