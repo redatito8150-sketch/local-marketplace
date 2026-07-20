@@ -180,6 +180,14 @@ export default function AdminSidebar({
       <div className="my-2 border-t border-stone-150" />
 
       <Link
+        href="/brand-portal"
+        className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-[13.5px] font-medium text-ink-soft/70 hover:bg-stone-100 hover:text-ink"
+      >
+        <Store className="h-4 w-4" strokeWidth={1.6} />
+        Brand Portal
+      </Link>
+
+      <Link
         href="/"
         className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-[13.5px] font-medium text-ink-soft/70 hover:bg-stone-100 hover:text-ink"
       >
