@@ -23,7 +23,7 @@ Two visual "modes" coexist intentionally:
 
 ## Tech stack
 
-Next.js 14 (App Router) · TypeScript (strict) · Tailwind CSS ·
+Next.js 16 (App Router) · TypeScript (strict) · Tailwind CSS ·
 Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
 
 ## Architecture — read this before adding data or content
@@ -119,12 +119,32 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   all, not a fully locked-down policy. Update the CSP's `img-src`/
   `font-src`/`connect-src` allowlists here if a new external host
   (images, fonts, APIs) is ever added elsewhere in the app.
-- **Known, deliberately deferred**: Next.js is pinned at 14.2.35, which
-  has several disclosed CVEs (DoS, cache poisoning, request smuggling,
-  SSRF via WebSocket upgrade) per `npm audit`. The fix is a major-version
-  bump to Next 16, which the owner explicitly deferred as its own
-  separate, carefully-tested task rather than bundling it into an
-  unrelated fix — don't upgrade Next.js as a side effect of another task.
+- **Next.js 16 / React 19** — upgraded from 14.2.35 (which had several
+  disclosed CVEs per `npm audit`). Every dynamic route/page now uses the
+  async `params`/`searchParams` API, and `createSupabaseServerClient()`
+  is itself `async` (awaits `cookies()`, which is a Promise as of Next
+  15+) — any new Server Component or Route Handler must `await` both.
+  `middleware.ts` is now `proxy.ts` (Next 16 renamed the convention;
+  same `export async function proxy(...)` shape). `next lint` no longer
+  exists — linting runs `eslint .` directly against `eslint.config.mjs`
+  (flat config, built from `eslint-config-next/core-web-vitals`).
+  **Local dev runs `next dev --webpack`, not the Turbopack default** —
+  Turbopack's dev server hits an environment-specific native SWC binding
+  crash on this machine (`_swc.getBindingsSync is not a function`) that
+  does not reproduce in `next build` (which already uses Turbopack
+  successfully, and is what Vercel actually runs) — keep `--webpack` on
+  the `dev` script unless that's independently confirmed fixed upstream.
+- **Known follow-up**: `/brands/[slug]` lost its ISR caching
+  (`generateStaticParams` + `revalidate = 60`) as a side effect of the
+  Next 16 upgrade — it now server-renders on every request instead of
+  serving a 60s-cached page. Cause: the page unconditionally calls
+  `requireUser()`/`requireBrandOwner()` (both read `cookies()`) for the
+  Follow-button/owner-check, and Next 15+ treats any `cookies()` read as
+  opting the *whole* route out of static generation (stricter than Next
+  14's behavior). Fixing this means moving the auth-dependent bits
+  (follow state, "Go to My Dashboard") into a client-side island so the
+  bulk of the page stays static — not done yet, flagged for a future
+  round rather than folded into the upgrade itself.
 
 ## Current status (what's built vs. not)
 
