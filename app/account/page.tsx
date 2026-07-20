@@ -2,74 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { User, Mail, Lock, LogOut, Package } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { User, Mail, Lock } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
-import { supabase } from "@/lib/supabase/client";
-import { formatPrice, formatSize } from "@/lib/format";
-import type { OrderRecord } from "@/types";
-
-interface OrderRow {
-  id: string;
-  order_number: string;
-  status: OrderRecord["status"];
-  shipping_name: string;
-  shipping_email: string;
-  shipping_phone: string;
-  shipping_address: string;
-  shipping_city: string;
-  shipping_governorate: string;
-  subtotal_usd: number;
-  subtotal_egp: number;
-  discount_amount_egp: number;
-  created_at: string;
-  order_items: {
-    id: string;
-    product_id: string | null;
-    name: string;
-    brand: string;
-    price: number;
-    currency: "USD" | "EGP";
-    size: string;
-    color: string | null;
-    quantity: number;
-    image: string;
-  }[];
-}
-
-function toOrderRecord(row: OrderRow): OrderRecord {
-  return {
-    id: row.id,
-    orderNumber: row.order_number,
-    status: row.status,
-    shippingName: row.shipping_name,
-    shippingEmail: row.shipping_email,
-    shippingPhone: row.shipping_phone,
-    shippingAddress: row.shipping_address,
-    shippingCity: row.shipping_city,
-    shippingGovernorate: row.shipping_governorate,
-    subtotalUsd: Number(row.subtotal_usd),
-    subtotalEgp: Number(row.subtotal_egp),
-    discountAmountEgp: Number(row.discount_amount_egp),
-    createdAt: row.created_at,
-    items: row.order_items.map((item) => ({
-      id: item.id,
-      productId: item.product_id,
-      name: item.name,
-      brand: item.brand,
-      price: Number(item.price),
-      currency: item.currency,
-      size: item.size,
-      color: item.color ?? undefined,
-      quantity: item.quantity,
-      image: item.image,
-    })),
-  };
-}
 
 export default function AccountPage() {
-  const { user, loading, signIn, signUp, signOut } = useAuth();
+  const { user, loading, signIn, signUp } = useAuth();
+  const router = useRouter();
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -78,36 +19,11 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
 
-  const [orders, setOrders] = useState<OrderRecord[] | null>(null);
-  const [ordersError, setOrdersError] = useState("");
-
+  // Once signed in, the dashboard shell at /account/(dashboard) takes over —
+  // this page's job is only the anonymous sign-in/sign-up form.
   useEffect(() => {
-    if (!user) {
-      setOrders(null);
-      return;
-    }
-    let cancelled = false;
-    supabase
-      .from("orders")
-      .select("*, order_items(*)")
-      // Explicit even though RLS also enforces it — RLS additionally allows
-      // a brand owner to read orders containing their brand's items (for
-      // fulfillment), which this "my purchase history" view must never
-      // surface under the customer's own name.
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          setOrdersError(error.message);
-          return;
-        }
-        setOrders((data as OrderRow[]).map(toOrderRecord));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
+    if (user) router.replace("/account/overview");
+  }, [user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,96 +59,14 @@ export default function AccountPage() {
   }
 
   if (user) {
+    // The useEffect above already kicked off the redirect — this only
+    // covers the one-tick gap before it lands.
     return (
       <main className="min-h-screen bg-cream">
         <Header />
-
-        <section className="mx-auto max-w-screen2xl px-8 py-16 lg:px-12 lg:py-24">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tightest text-ink">
-                {(user.user_metadata?.full_name as string) || "Your account"}
-              </h1>
-              <p className="mt-1 text-sm text-ink-soft/60">{user.email}</p>
-            </div>
-            <button
-              onClick={() => signOut()}
-              className="flex items-center gap-2 rounded-md border border-stone-150 px-4 py-2.5 text-[13px] font-semibold text-ink transition-colors hover:bg-stone-100"
-            >
-              <LogOut className="h-4 w-4" strokeWidth={1.8} />
-              Sign out
-            </button>
-          </div>
-
-          <div className="mt-12">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
-              <Package className="h-5 w-5" strokeWidth={1.6} />
-              My Orders
-            </h2>
-
-            {ordersError && (
-              <p className="mt-4 text-sm text-red-700">{ordersError}</p>
-            )}
-
-            {orders === null && !ordersError && (
-              <p className="mt-4 text-sm text-ink-soft/60">Loading orders…</p>
-            )}
-
-            {orders?.length === 0 && (
-              <p className="mt-4 text-sm text-ink-soft/60">
-                No orders yet.{" "}
-                <Link href="/shop/women" className="font-semibold text-ink hover:underline">
-                  Start shopping
-                </Link>
-              </p>
-            )}
-
-            <div className="mt-6 space-y-6">
-              {orders?.map((order) => (
-                <div
-                  key={order.id}
-                  className="rounded-xl3 border border-stone-150 bg-white p-6"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[14px] font-semibold text-ink">
-                        #{order.orderNumber}
-                      </p>
-                      <p className="text-[12.5px] text-ink-soft/50">
-                        {new Date(order.createdAt).toLocaleDateString("en-US")} ·{" "}
-                        <span className="capitalize">{order.status}</span>
-                      </p>
-                    </div>
-                    <p className="text-[14px] font-semibold text-ink">
-                      {order.subtotalUsd > 0 &&
-                        formatPrice(order.subtotalUsd, "USD")}
-                      {order.subtotalUsd > 0 && order.subtotalEgp > 0 && " + "}
-                      {order.subtotalEgp > 0 &&
-                        formatPrice(order.subtotalEgp, "EGP")}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 space-y-2 divide-y divide-stone-150">
-                    {order.items.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between pt-2 first:pt-0"
-                      >
-                        <p className="text-[13px] text-ink-soft/80">
-                          {item.name} · Qty {item.quantity} · {formatSize(item.size)}
-                        </p>
-                        <p className="text-[13px] font-medium text-ink">
-                          {formatPrice(item.price * item.quantity, item.currency)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
+        <div className="mx-auto max-w-screen2xl px-8 py-24 text-center text-sm text-ink-soft/60 lg:px-12">
+          Taking you to your account…
+        </div>
         <Footer />
       </main>
     );
