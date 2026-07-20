@@ -16,7 +16,12 @@ export type AuditAction =
   | "request_deletion"
   | "approve"
   | "request_changes"
-  | "reject_deletion";
+  | "reject_deletion"
+  // Instant-publish (brand changes apply live, admin reviews after the
+  // fact) — "archive" replaces the old delete-request gate, "revert"
+  // is the admin undoing a brand-initiated create/update/archive.
+  | "archive"
+  | "revert";
 
 export type AuditEntityType =
   | "product"
@@ -27,9 +32,12 @@ export type AuditEntityType =
   | "coupon"
   | "site_content";
 
-// Mirrors notify()'s fire-and-forget contract exactly — recording an audit
-// entry is supplementary to the real write it's attached to, so a failure
-// here is logged, never thrown, and never blocks that write.
+// Mirrors notify()'s fire-and-forget contract in spirit — recording an
+// audit entry is supplementary to the real write it's attached to, so a
+// failure here is logged, never thrown, and never blocks that write. Still
+// returns the inserted row's id (or null on failure) so a caller that also
+// wants to attach a resolvable notification (Instant-Publish's Approve/
+// Revert flow) can link the two together.
 export async function logAudit(entry: {
   actorId: string | null;
   actorLabel: string;
@@ -42,18 +50,24 @@ export async function logAudit(entry: {
   // filter to just its own entries — set by every product/brand write path
   // that knows which brand it's touching. Never backfilled onto history.
   brandSlug?: string;
-}): Promise<void> {
-  const { error } = await supabaseAdmin.from("audit_logs").insert({
-    actor_id: entry.actorId,
-    actor_label: entry.actorLabel,
-    entity_type: entry.entityType,
-    entity_id: entry.entityId,
-    action: entry.action,
-    before_value: entry.before ?? null,
-    after_value: entry.after ?? null,
-    brand_slug: entry.brandSlug ?? null,
-  });
+}): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("audit_logs")
+    .insert({
+      actor_id: entry.actorId,
+      actor_label: entry.actorLabel,
+      entity_type: entry.entityType,
+      entity_id: entry.entityId,
+      action: entry.action,
+      before_value: entry.before ?? null,
+      after_value: entry.after ?? null,
+      brand_slug: entry.brandSlug ?? null,
+    })
+    .select("id")
+    .single();
   if (error) {
     console.error(`logAudit(${entry.entityType}/${entry.action}) failed:`, error.message);
+    return null;
   }
+  return data.id as string;
 }

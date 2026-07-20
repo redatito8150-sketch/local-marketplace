@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Bell } from "lucide-react";
 import type { NotificationRecord } from "@/types";
+import NotificationResolveActions from "@/components/admin/NotificationResolveActions";
 
 export default function AdminNotificationBell({
   notifications,
@@ -59,6 +60,11 @@ export default function AdminNotificationBell({
               >
                 <p className="font-medium">{n.title}</p>
                 {n.body && <p className="mt-0.5 text-[11.5px] text-ink-soft/50">{n.body}</p>}
+                {n.resolution === "pending" && (
+                  <div className="mt-2">
+                    <NotificationResolveActions notificationId={n.id} />
+                  </div>
+                )}
               </div>
             ))}
             {notifications.length === 0 && (

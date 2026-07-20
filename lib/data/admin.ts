@@ -124,30 +124,39 @@ export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
   return (data as ProductRow[]).map(toProductRecord);
 }
 
-// Lightweight counts for the sidebar badge — a dedicated head-count query
-// per bucket rather than fetching every product's full row on every admin
-// page load (getAllProductsForAdmin is for the products list itself).
-export async function getReviewQueueCount(): Promise<number> {
-  const [newSubmissions, pendingEdits, deletionRequests] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending_review")
-      .is("pending_changes", null),
-    supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "published")
-      .not("pending_changes", "is", null),
-    supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .not("deletion_requested_at", "is", null),
-  ]);
+// Sidebar badge for the "Brand Activity" page — Instant-Publish means a
+// brand's create/update/archive is already live, so this counts
+// notifications still awaiting an Approve/Revert decision, not a
+// pre-publish queue. notifications has no public read policy, so this
+// needs supabaseAdmin like every other notifications read.
+export async function getUnresolvedBrandActivityCount(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("related_entity_type", "product")
+    .eq("resolution", "pending");
 
-  return (
-    (newSubmissions.count ?? 0) + (pendingEdits.count ?? 0) + (deletionRequests.count ?? 0)
-  );
+  if (error) {
+    throw new Error(`getUnresolvedBrandActivityCount failed: ${error.message}`);
+  }
+  return count ?? 0;
+}
+
+// Recent brand-initiated product changes (create/update/archive) for the
+// admin "Brand Activity" page — reuses the exact same rows the
+// notification bell/page already show, just without the "read" framing.
+export async function getBrandActivityNotifications(limit = 50): Promise<NotificationRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("notifications")
+    .select("*")
+    .eq("related_entity_type", "product")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getBrandActivityNotifications failed: ${error.message}`);
+  }
+  return (data as NotificationRow[]).map(toNotificationRecord);
 }
 
 export async function getProductForAdmin(id: string): Promise<ProductRecord | null> {
@@ -487,6 +496,10 @@ interface NotificationRow {
   body: string;
   read: boolean;
   created_at: string;
+  related_entity_type: string | null;
+  related_entity_id: string | null;
+  audit_log_id: string | null;
+  resolution: string;
 }
 
 function toNotificationRecord(row: NotificationRow): NotificationRecord {
@@ -497,6 +510,10 @@ function toNotificationRecord(row: NotificationRow): NotificationRecord {
     body: row.body,
     read: row.read,
     createdAt: row.created_at,
+    relatedEntityType: row.related_entity_type === "product" ? "product" : undefined,
+    relatedEntityId: row.related_entity_id ?? undefined,
+    auditLogId: row.audit_log_id ?? undefined,
+    resolution: (row.resolution as NotificationRecord["resolution"]) ?? "n/a",
   };
 }
 

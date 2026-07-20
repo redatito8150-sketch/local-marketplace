@@ -6,6 +6,7 @@ import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { describeProductCreate } from "@/lib/admin/describeProductChange";
 
 function slugify(value: string): string {
   return value
@@ -19,12 +20,12 @@ function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 6);
 }
 
-// New products a brand owner/assistant submits are never live on save —
-// they always land as status: "pending_review" (Phase 0's storefront
-// filter keeps them off the public site) until an admin approves them in
-// the review queue (Phase 3). An admin viewing this brand's portal
-// (isImpersonating) never creates on the brand's behalf — only the real
-// owner/assistant does.
+// Instant-Publish: a brand owner/assistant's new product goes live on save,
+// scoped strictly to their own brand — the admin is notified afterward
+// with a full description and can Approve (leave it) or Revert (archive
+// it) directly from the notification, never blocked waiting on a review
+// queue. An admin viewing this brand's portal (isImpersonating) never
+// creates on the brand's behalf — only the real owner/assistant does.
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug) {
@@ -89,8 +90,8 @@ export async function POST(request: NextRequest) {
       unavailable_sizes: legacy.unavailableSizes,
       track_inventory: body.trackInventory,
       featured: false,
-      status: "pending_review",
-      publish_date: null,
+      status: "published",
+      publish_date: new Date().toISOString(),
       submitted_by: owner.user.id,
     });
 
@@ -133,9 +134,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  await notify("product_created", `Product submitted for review: ${body.name}`, body.brandName);
-
-  await logAudit({
+  const auditLogId = await logAudit({
     actorId: owner.user.id,
     actorLabel: owner.user.email ?? owner.user.id,
     entityType: "product",
@@ -144,6 +143,13 @@ export async function POST(request: NextRequest) {
     after: body,
     brandSlug: owner.brandSlug,
   });
+
+  await notify(
+    "product_published",
+    `New product published: ${body.name}`,
+    describeProductCreate(body),
+    { relatedEntityType: "product", relatedEntityId: id, auditLogId }
+  );
 
   return NextResponse.json({ id });
 }

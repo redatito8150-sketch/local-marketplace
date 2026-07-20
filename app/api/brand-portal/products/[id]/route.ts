@@ -6,6 +6,7 @@ import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
 
 async function loadOwnedProduct(id: string, brandSlug: string) {
   const { data } = await supabaseAdmin
@@ -35,7 +36,7 @@ export async function PATCH(
 
   // Lightweight instant on/off switch — no review, no full-form
   // validation, available to owner and assistant alike. Independent of
-  // everything below: it never touches status or pending_changes.
+  // everything below.
   if (body.action === "toggle-pause") {
     const paused = Boolean(body.pausedByBrand);
     const { error } = await supabaseAdmin
@@ -69,7 +70,11 @@ export async function PATCH(
     return NextResponse.json({ ok: true });
   }
 
-  // Otherwise this is a full product-form submission (create-shaped edit).
+  // Instant-Publish: a full product-form submission applies straight to the
+  // live columns — no more staging in pending_changes. The audit log's
+  // `before` snapshot (product row + its variants) is what a later admin
+  // Revert restores, so it's captured in full here rather than relying on
+  // partial diff data.
   const productBody = body as ProductInput;
   productBody.brandSlug = owner.brandSlug;
   productBody.brandName = owner.brandName ?? productBody.brandName;
@@ -87,42 +92,10 @@ export async function PATCH(
     );
   }
 
-  // A live product's real columns stay exactly as shoppers see them until
-  // an admin approves — the submission is staged in pending_changes
-  // instead. A not-yet-live product (pending_review/changes_requested/
-  // draft) has nothing live to protect, so it's updated directly, same as
-  // the admin's own edit route.
-  if (existing.status === "published") {
-    const { error } = await supabaseAdmin
-      .from("products")
-      .update({
-        pending_changes: productBody,
-        review_notes: null,
-        submitted_by: owner.user.id,
-      })
-      .eq("id", params.id);
-
-    if (error) {
-      return NextResponse.json(
-        { error: `Failed to submit edit: ${error.message}` },
-        { status: 500 }
-      );
-    }
-
-    await logAudit({
-      actorId: owner.user.id,
-      actorLabel: owner.user.email ?? owner.user.id,
-      entityType: "product",
-      entityId: params.id,
-      action: "update",
-      before: existing,
-      after: productBody,
-      brandSlug: owner.brandSlug,
-    });
-    await notify("product_updated", `Edit submitted for review: ${productBody.name}`, productBody.brandName);
-
-    return NextResponse.json({ id: params.id });
-  }
+  const { data: existingVariants } = await supabaseAdmin
+    .from("product_variants")
+    .select("*")
+    .eq("product_id", params.id);
 
   const legacy = deriveLegacyFieldsFromVariants(
     productBody.variants,
@@ -161,7 +134,9 @@ export async function PATCH(
       is_unisex: productBody.isUnisex,
       unavailable_sizes: legacy.unavailableSizes,
       track_inventory: productBody.trackInventory,
-      status: "pending_review",
+      status: "published",
+      publish_date: existing.publish_date ?? new Date().toISOString(),
+      pending_changes: null,
       review_notes: null,
       submitted_by: owner.user.id,
     })
@@ -169,7 +144,7 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json(
-      { error: `Failed to resubmit product: ${error.message}` },
+      { error: `Failed to save edit: ${error.message}` },
       { status: 500 }
     );
   }
@@ -183,7 +158,7 @@ export async function PATCH(
 
   if (deleteError) {
     return NextResponse.json(
-      { error: `Failed to update variants: ${deleteError.message}` },
+      { error: `Product updated, but replacing variants failed: ${deleteError.message}` },
       { status: 500 }
     );
   }
@@ -204,30 +179,38 @@ export async function PATCH(
 
     if (variantsError) {
       return NextResponse.json(
-        { error: `Product resubmitted, but saving variants failed: ${variantsError.message}` },
+        { error: `Product updated, but saving variants failed: ${variantsError.message}` },
         { status: 500 }
       );
     }
   }
 
-  await logAudit({
+  const auditLogId = await logAudit({
     actorId: owner.user.id,
     actorLabel: owner.user.email ?? owner.user.id,
     entityType: "product",
     entityId: params.id,
     action: "update",
-    before: existing,
+    before: { ...existing, variants: existingVariants ?? [] },
     after: productBody,
     brandSlug: owner.brandSlug,
   });
-  await notify("product_created", `Product resubmitted for review: ${productBody.name}`, productBody.brandName);
+
+  await notify(
+    "product_updated",
+    `Product edited: ${productBody.name}`,
+    describeProductUpdate(existing, productBody),
+    { relatedEntityType: "product", relatedEntityId: params.id, auditLogId }
+  );
 
   return NextResponse.json({ id: params.id });
 }
 
-// Never actually deletes — flags the product for an admin to review and
-// approve, same "stays visible/unaffected until decided" principle as a
-// staged edit.
+// Instant-Publish: removes the product from the storefront immediately
+// (archived, not hard-deleted — a revertible action, unlike the old
+// deletion-request gate). Product ids are reused as URL slugs elsewhere,
+// so archiving instead of deleting also means a later "un-revert" doesn't
+// need to regenerate a fresh id.
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
@@ -244,26 +227,32 @@ export async function DELETE(
 
   const { error } = await supabaseAdmin
     .from("products")
-    .update({ deletion_requested_at: new Date().toISOString() })
+    .update({ status: "archived" })
     .eq("id", params.id);
 
   if (error) {
     return NextResponse.json(
-      { error: `Failed to request deletion: ${error.message}` },
+      { error: `Failed to remove product: ${error.message}` },
       { status: 500 }
     );
   }
 
-  await logAudit({
+  const auditLogId = await logAudit({
     actorId: owner.user.id,
     actorLabel: owner.user.email ?? owner.user.id,
     entityType: "product",
     entityId: params.id,
-    action: "request_deletion",
+    action: "archive",
     before: existing,
     brandSlug: owner.brandSlug,
   });
-  await notify("product_updated", `Deletion requested: ${existing.name}`, owner.brandName ?? undefined);
+
+  await notify(
+    "product_archived",
+    `Product removed: ${existing.name}`,
+    describeProductArchive(existing),
+    { relatedEntityType: "product", relatedEntityId: params.id, auditLogId }
+  );
 
   return NextResponse.json({ ok: true });
 }

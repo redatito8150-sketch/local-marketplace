@@ -396,6 +396,8 @@ export interface ProfileRecord {
 
 // ── Admin (raw `notifications` row shape) ───────────────────────────────────
 
+export type NotificationResolution = "pending" | "approved" | "reverted" | "n/a";
+
 export interface NotificationRecord {
   id: string;
   type: string;
@@ -403,6 +405,13 @@ export interface NotificationRecord {
   body: string;
   read: boolean;
   createdAt: string;
+  // Instant-Publish (brand changes go live immediately, admin reviews
+  // after) — only set on brand-initiated product notifications; every
+  // other notification type stays at resolution "n/a" with no entity link.
+  relatedEntityType?: "product";
+  relatedEntityId?: string;
+  auditLogId?: string;
+  resolution: NotificationResolution;
 }
 
 // ── Admin (low-stock dashboard row — a variant joined to its product) ──────

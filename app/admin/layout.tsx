@@ -5,7 +5,7 @@ import {
   getUnreadNotificationCount,
   getLowStockVariantsForAdmin,
   getAllNotificationsForAdmin,
-  getReviewQueueCount,
+  getUnresolvedBrandActivityCount,
 } from "@/lib/data/admin";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminQuickSearch from "@/components/admin/AdminQuickSearch";
@@ -36,7 +36,7 @@ export default async function AdminLayout({
       getUnreadNotificationCount(),
       getLowStockVariantsForAdmin(),
       getAllNotificationsForAdmin(5),
-      getReviewQueueCount(),
+      getUnresolvedBrandActivityCount(),
     ]);
 
   return (

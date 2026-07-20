@@ -45,7 +45,7 @@ const NAV_ITEMS: NavItem[] = [
     minRole: "staff",
     children: [
       { label: "All Products", href: "/admin/products" },
-      { label: "Review Queue", href: "/admin/products/review" },
+      { label: "Brand Activity", href: "/admin/products/review" },
       { label: "Categories", href: "/admin/products/categories", minRole: "manager" },
     ],
   },
