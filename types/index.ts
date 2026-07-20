@@ -441,6 +441,10 @@ export interface AuditLogRecord {
   beforeValue: unknown;
   afterValue: unknown;
   createdAt: string;
+  // Denormalized at write time (Round 3) so a brand's own /brand-portal/logs
+  // can filter to just its entries — never backfilled onto history, so
+  // undefined here just means "logged before this column existed."
+  brandSlug?: string;
 }
 
 export interface BrandPageContent {

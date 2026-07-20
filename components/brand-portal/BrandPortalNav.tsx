@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { LayoutDashboard, ShoppingBag, Package, ShoppingCart, FileEdit, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Package, ShoppingCart, FileEdit, History, ArrowLeft } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Overview", href: "/brand-portal", icon: LayoutDashboard },
@@ -19,8 +19,9 @@ const NAV_ITEMS = [
 export default function BrandPortalNav({
   showPageContent = true,
 }: {
-  // Page Content is an owner-only concern (Round 3) — assistants never
-  // see it in the nav, matching the API route's own accessLevel gate.
+  // Page Content and Logs are both owner-only concerns (Round 3) —
+  // assistants never see either in the nav, matching each route's own
+  // accessLevel gate.
   showPageContent?: boolean;
 }) {
   const pathname = usePathname();
@@ -28,7 +29,11 @@ export default function BrandPortalNav({
   const withBrand = (href: string) => (brand ? `${href}?brand=${brand}` : href);
 
   const items = showPageContent
-    ? [...NAV_ITEMS, { label: "Page Content", href: "/brand-portal/page-content", icon: FileEdit }]
+    ? [
+        ...NAV_ITEMS,
+        { label: "Page Content", href: "/brand-portal/page-content", icon: FileEdit },
+        { label: "Logs", href: "/brand-portal/logs", icon: History },
+      ]
     : NAV_ITEMS;
 
   return (

@@ -28,6 +28,7 @@ function siteContentLabel(entityId: string): string {
 const ACCESS_LABELS: Record<string, string> = {
   customer: "Customer",
   brand_owner: "Brand Owner",
+  brand_assistant: "Brand Assistant",
   staff: "Staff",
   manager: "Manager",
   admin: "Admin",
@@ -62,6 +63,20 @@ export function describeAuditLog(log: AuditLogLike): string {
         return `${actor} deleted the product "${name}".`;
       if (log.action === "bulk_publish") return `${actor} published "${name}" (bulk update).`;
       if (log.action === "bulk_archive") return `${actor} archived "${name}" (bulk update).`;
+      if (log.action === "pause") return `${actor} paused "${name}" from the storefront.`;
+      if (log.action === "unpause") return `${actor} unpaused "${name}" — it's back on the storefront.`;
+      if (log.action === "request_deletion") return `${actor} requested deletion of "${name}".`;
+      if (log.action === "approve")
+        return before?.status === "published"
+          ? `${actor} approved an edit to "${name}".`
+          : `${actor} approved and published "${name}".`;
+      if (log.action === "request_changes") {
+        const notes = after?.notes as string | undefined;
+        return notes
+          ? `${actor} requested changes on "${name}": "${notes}"`
+          : `${actor} requested changes on "${name}".`;
+      }
+      if (log.action === "reject_deletion") return `${actor} rejected the deletion request for "${name}".`;
       if (log.action === "status_change" && before?.status && after?.status)
         return `${actor} changed "${name}"'s status from ${before.status} to ${after.status}.`;
       if (before?.name && after?.name && before.name !== after.name)
@@ -112,7 +127,9 @@ export function describeAuditLog(log: AuditLogLike): string {
       if (after?.access) {
         const label = ACCESS_LABELS[after.access as string] ?? String(after.access);
         const brandNote =
-          after.access === "brand_owner" && after.brandSlug ? ` (linked to ${after.brandSlug})` : "";
+          (after.access === "brand_owner" || after.access === "brand_assistant") && after.brandSlug
+            ? ` (linked to ${after.brandSlug})`
+            : "";
         return `${actor} set ${email}'s access to ${label}${brandNote}.`;
       }
       if (after?.role && before?.role && after.role !== before.role)

@@ -527,6 +527,7 @@ interface AuditLogRow {
   before_value: unknown;
   after_value: unknown;
   created_at: string;
+  brand_slug: string | null;
 }
 
 function toAuditLogRecord(row: AuditLogRow, nameByActorId?: Map<string, string>): AuditLogRecord {
@@ -541,6 +542,7 @@ function toAuditLogRecord(row: AuditLogRow, nameByActorId?: Map<string, string>)
     beforeValue: row.before_value,
     afterValue: row.after_value,
     createdAt: row.created_at,
+    brandSlug: row.brand_slug ?? undefined,
   };
 }
 
@@ -561,16 +563,58 @@ async function getFullNamesByActorId(rows: AuditLogRow[]): Promise<Map<string, s
   return nameByActorId;
 }
 
+export interface AuditLogFilters {
+  entityType?: string;
+  actorQuery?: string;
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 // audit_logs has no public policy at all — admin-only, service-role reads.
-export async function getAllAuditLogsForAdmin(limit = 200): Promise<AuditLogRecord[]> {
-  const { data, error } = await supabaseAdmin
+export async function getAllAuditLogsForAdmin(
+  limit = 200,
+  filters?: AuditLogFilters
+): Promise<AuditLogRecord[]> {
+  let query = supabaseAdmin
     .from("audit_logs")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(limit);
 
+  if (filters?.entityType) query = query.eq("entity_type", filters.entityType);
+  if (filters?.actorQuery) query = query.ilike("actor_label", `%${filters.actorQuery}%`);
+  if (filters?.dateFrom) query = query.gte("created_at", filters.dateFrom);
+  // Inclusive of the whole "to" day, since the column is a timestamptz and
+  // a bare date would otherwise cut off at midnight.
+  if (filters?.dateTo) query = query.lte("created_at", `${filters.dateTo}T23:59:59.999Z`);
+
+  const { data, error } = await query;
+
   if (error) {
     throw new Error(`getAllAuditLogsForAdmin failed: ${error.message}`);
+  }
+  const rows = data as AuditLogRow[];
+  const nameByActorId = await getFullNamesByActorId(rows);
+  return rows.map((row) => toAuditLogRecord(row, nameByActorId));
+}
+
+// A brand's own oversight log (Round 3) — scoped to just their entries via
+// the denormalized brand_slug tag, visible to the owner only. Nothing
+// logged before that column existed will appear here, same "tag going
+// forward only" principle as order_items.brand_slug.
+export async function getAuditLogsForBrand(
+  brandSlug: string,
+  limit = 100
+): Promise<AuditLogRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("audit_logs")
+    .select("*")
+    .eq("brand_slug", brandSlug)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(`getAuditLogsForBrand(${brandSlug}) failed: ${error.message}`);
   }
   const rows = data as AuditLogRow[];
   const nameByActorId = await getFullNamesByActorId(rows);
