@@ -7,6 +7,7 @@ import ProductInfo from "@/components/product/ProductInfo";
 import ProductAccordion from "@/components/product/ProductAccordion";
 import ProductReviews from "@/components/product/ProductReviews";
 import RelatedProducts from "@/components/product/RelatedProducts";
+import RecentlyViewedTracker from "@/components/product/RecentlyViewedTracker";
 import { getProductById, getRelatedProductCards } from "@/lib/data/products";
 import { supabase } from "@/lib/supabase/client";
 
@@ -34,6 +35,7 @@ export default async function ProductPage({ params }: { params: { id: string } }
 
   return (
     <main className="min-h-screen bg-cream">
+      <RecentlyViewedTracker productId={product.id} />
       <Header />
 
       <ProductBreadcrumb

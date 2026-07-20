@@ -3,19 +3,23 @@ import { redirect } from "next/navigation";
 import { Package, CheckCircle2, XCircle } from "lucide-react";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { getOrdersForUser, getOrderStats } from "@/lib/data/orders";
-import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
+import { getTrendingProducts } from "@/lib/data/collections";
+import { getRecentlyViewedForUser } from "@/lib/data/recentlyViewed";
+import { getFollowedBrandsForUser } from "@/lib/data/follows";
 import ProductGrid from "@/components/category/ProductGrid";
 import OrderCard from "@/components/account/OrderCard";
+import FollowedBrandsRow from "@/components/account/FollowedBrandsRow";
 
 export default async function AccountOverviewPage() {
   const user = await requireUser();
   if (!user) redirect("/account");
 
-  const [orders, stats, continueShopping, recommended] = await Promise.all([
+  const [orders, stats, continueShopping, recommended, followedBrands] = await Promise.all([
     getOrdersForUser(user.id),
     getOrderStats(user.id),
-    getBestSellingProducts(4),
+    getRecentlyViewedForUser(user.id, 4),
     getTrendingProducts(4),
+    getFollowedBrandsForUser(user.id),
   ]);
 
   const recentOrders = orders.slice(0, 3);
@@ -89,6 +93,8 @@ export default async function AccountOverviewPage() {
           </div>
         </div>
       )}
+
+      <FollowedBrandsRow brands={followedBrands} />
     </div>
   );
 }
