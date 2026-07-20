@@ -25,3 +25,13 @@ export function formatPrice(price: number, currency: Currency): string {
 export function formatSize(size: string): string {
   return size || "One Size";
 }
+
+/**
+ * Compact display for a count (followers, etc.) — 1,240 -> "1.2K",
+ * 18,600 -> "18.6K". Locale pinned to "en-US" for the same hydration-
+ * mismatch reason as formatPrice.
+ */
+export function formatCompactNumber(value: number): string {
+  if (value < 1000) return value.toLocaleString("en-US");
+  return `${(value / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
+}

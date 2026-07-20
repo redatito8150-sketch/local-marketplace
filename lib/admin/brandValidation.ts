@@ -1,4 +1,4 @@
-import type { BrandInfoBadge, BrandCategoryTab, BrandValue } from "@/types";
+import type { BrandInfoBadge, BrandCategoryTab, BrandValue, BrandShopTheLookTile } from "@/types";
 
 export interface BrandInput {
   slug: string;
@@ -8,15 +8,19 @@ export interface BrandInput {
   foundedYear?: number;
   city: string;
   heroImage: string;
+  logoImage?: string;
+  websiteUrl?: string;
   aboutDescription: string;
   aboutImage: string;
   storyImage: string;
+  storyImage2?: string;
   storyBody: string;
   infoBadges: BrandInfoBadge[];
   categoryTabs: BrandCategoryTab[];
   activeTab: string;
   values: BrandValue[];
   similarBrandSlugs: string[];
+  shopTheLook: BrandShopTheLookTile[];
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;

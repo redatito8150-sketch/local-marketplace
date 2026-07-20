@@ -1,10 +1,12 @@
 import { supabase } from "@/lib/supabase/client";
+import { getFollowerCountForBrand } from "@/lib/data/follows";
 import {
   BrandPageContent,
   BrandInfoBadge,
   BrandCategoryTab,
   BrandValue,
   BrandProduct,
+  BrandShopTheLookTile,
   SimilarBrand,
 } from "@/types";
 
@@ -16,15 +18,19 @@ interface BrandRow {
   founded_year: number | null;
   city: string;
   hero_image: string;
+  logo_image: string | null;
+  website_url: string | null;
   about_description: string;
   about_image: string;
   story_image: string;
+  story_image_2: string | null;
   story_body: string;
   info_badges: BrandInfoBadge[];
   category_tabs: BrandCategoryTab[];
   active_tab: string;
   values: BrandValue[];
   similar_brand_slugs: string[];
+  shop_the_look: BrandShopTheLookTile[];
 }
 
 interface ProductRow {
@@ -35,6 +41,8 @@ interface ProductRow {
   colors: { name: string; hex: string }[];
   image: string;
   is_new: boolean;
+  rating: number | null;
+  review_count: number | null;
 }
 
 function toBrandProduct(row: ProductRow): BrandProduct {
@@ -47,6 +55,32 @@ function toBrandProduct(row: ProductRow): BrandProduct {
     image: row.image,
     isNew: row.is_new,
   };
+}
+
+// No per-brand rating aggregate column exists — weight each product's own
+// rating by its review count so a product with 1 five-star review doesn't
+// skew the brand average as much as one with 200 reviews. Every product
+// has a rating (defaults to 5) even with zero recorded reviews, same as
+// what already shows on its own product card — so when nothing in the
+// catalog has real review weight yet, fall back to a plain average of
+// those same displayed ratings instead of a misleading "0.0".
+function computeStoreRating(products: ProductRow[]): number {
+  if (products.length === 0) return 0;
+
+  let totalWeight = 0;
+  let weightedSum = 0;
+  let plainSum = 0;
+  for (const p of products) {
+    const rating = p.rating ?? 0;
+    const weight = p.review_count ?? 0;
+    plainSum += rating;
+    if (weight > 0) {
+      weightedSum += rating * weight;
+      totalWeight += weight;
+    }
+  }
+  if (totalWeight > 0) return weightedSum / totalWeight;
+  return plainSum / products.length;
 }
 
 export async function getBrandContent(slug: string): Promise<BrandPageContent | null> {
@@ -94,6 +128,14 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     image: r.hero_image,
   }));
 
+  const products = (productRows ?? []) as ProductRow[];
+  // brand_follows has no public policy, so the count needs supabaseAdmin —
+  // degrades quietly to 0 rather than failing the whole page if it errors.
+  const followerCount = await getFollowerCountForBrand(slug).catch((err) => {
+    console.error(`getBrandContent(${slug}) follower count failed:`, err.message);
+    return 0;
+  });
+
   return {
     slug: brand.slug,
     name: brand.name,
@@ -102,16 +144,22 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     foundedYear: brand.founded_year ?? 2020,
     city: brand.city,
     heroImage: brand.hero_image,
+    logoImage: brand.logo_image ?? undefined,
+    websiteUrl: brand.website_url ?? undefined,
     aboutDescription: brand.about_description,
     aboutImage: brand.about_image,
     infoBadges: brand.info_badges ?? [],
     categoryTabs: brand.category_tabs ?? [],
     activeTab: brand.active_tab ?? "shop-all",
-    products: ((productRows ?? []) as ProductRow[]).map(toBrandProduct),
+    products: products.map(toBrandProduct),
     storyImage: brand.story_image,
+    storyImage2: brand.story_image_2 ?? undefined,
     storyBody: brand.story_body,
     values: brand.values ?? [],
     similarBrands,
+    followerCount,
+    storeRating: computeStoreRating(products),
+    shopTheLook: brand.shop_the_look ?? [],
   };
 }
 

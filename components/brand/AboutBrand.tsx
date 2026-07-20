@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { MapPin, Flag, Truck, Leaf } from "lucide-react";
 import { BrandPageContent, BrandInfoBadge } from "@/types";
 
@@ -8,17 +9,35 @@ const ICONS: Record<BrandInfoBadge["icon"], React.ElementType> = {
   leaf: Leaf,
 };
 
+// Real brands rarely have a two-letter shorthand on file — falls back to
+// the first letter of up to the first two words of the actual brand name
+// (e.g. "Marga Studio" -> "MS") only when no logo image is set, instead of
+// a fixed placeholder shown for every brand regardless of identity.
+function initialsFromName(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
 export default function AboutBrand({ brand }: { brand: BrandPageContent }) {
   return (
     <section className="mx-auto max-w-brand px-6 py-24 lg:px-10 lg:py-32">
       <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-        {/* logo placeholder */}
-        <div
-          aria-hidden
-          className="flex h-16 w-16 items-center justify-center rounded-full border border-hairline text-[13px] font-semibold tracking-widest text-navy"
-        >
-          MS
-        </div>
+        {brand.logoImage ? (
+          <div className="relative h-16 w-16 overflow-hidden rounded-full border border-hairline">
+            <Image src={brand.logoImage} alt={`${brand.name} logo`} fill className="object-cover" />
+          </div>
+        ) : (
+          <div
+            aria-hidden
+            className="flex h-16 w-16 items-center justify-center rounded-full border border-hairline text-[13px] font-semibold tracking-widest text-navy"
+          >
+            {initialsFromName(brand.name)}
+          </div>
+        )}
 
         <h2 className="mt-8 text-2xl font-medium tracking-tight text-charcoal lg:text-[1.75rem]">
           {brand.name}

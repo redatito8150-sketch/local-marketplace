@@ -302,15 +302,19 @@ export interface BrandRecord {
   foundedYear?: number;
   city: string;
   heroImage: string;
+  logoImage?: string;
+  websiteUrl?: string;
   aboutDescription: string;
   aboutImage: string;
   storyImage: string;
+  storyImage2?: string;
   storyBody: string;
   infoBadges: BrandInfoBadge[];
   categoryTabs: BrandCategoryTab[];
   activeTab: string;
   values: BrandValue[];
   similarBrandSlugs: string[];
+  shopTheLook: BrandShopTheLookTile[];
   ownerUserId?: string;
   ownerEmail?: string;
 }
@@ -455,6 +459,8 @@ export interface BrandPageContent {
   foundedYear: number;
   city: string;
   heroImage: string;
+  logoImage?: string;
+  websiteUrl?: string;
   aboutDescription: string;
   aboutImage: string;
   infoBadges: BrandInfoBadge[];
@@ -462,8 +468,19 @@ export interface BrandPageContent {
   activeTab: string;
   products: BrandProduct[];
   storyImage: string;
+  storyImage2?: string;
   storyBody: string;
   values: BrandValue[];
   similarBrands: SimilarBrand[];
+  // Round 4 — real, computed stats replacing decorative content.
+  followerCount: number;
+  storeRating: number;
+  shopTheLook: BrandShopTheLookTile[];
+}
+
+export interface BrandShopTheLookTile {
+  image: string;
+  title: string;
+  href: string;
 }
 

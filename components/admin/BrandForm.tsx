@@ -26,6 +26,8 @@ interface FormState {
   foundedYear: string;
   city: string;
   heroImage: string;
+  logoImage: string;
+  websiteUrl: string;
   aboutDescription: string;
   aboutImage: string;
   storyImage: string;
@@ -46,6 +48,8 @@ function toFormState(brand?: BrandRecord): FormState {
     foundedYear: brand?.foundedYear ? String(brand.foundedYear) : "",
     city: brand?.city ?? "Cairo",
     heroImage: brand?.heroImage ?? "",
+    logoImage: brand?.logoImage ?? "",
+    websiteUrl: brand?.websiteUrl ?? "",
     aboutDescription: brand?.aboutDescription ?? "",
     aboutImage: brand?.aboutImage ?? "",
     storyImage: brand?.storyImage ?? "",
@@ -131,6 +135,8 @@ export default function BrandForm({
       foundedYear: form.foundedYear ? Number(form.foundedYear) : undefined,
       city: form.city.trim(),
       heroImage: form.heroImage.trim(),
+      logoImage: form.logoImage.trim(),
+      websiteUrl: form.websiteUrl.trim(),
       aboutDescription: form.aboutDescription.trim(),
       aboutImage: form.aboutImage.trim(),
       storyImage: form.storyImage.trim(),
@@ -211,6 +217,21 @@ export default function BrandForm({
         required
         hint="Must be on images.unsplash.com, or add the host to next.config.js remotePatterns first."
       />
+
+      <div className="grid grid-cols-2 gap-4">
+        <TextField
+          label="Logo image URL (optional)"
+          value={form.logoImage}
+          onChange={(v) => set("logoImage", v)}
+          hint="Falls back to initials from the brand name if left blank."
+        />
+        <TextField
+          label="Website URL (optional)"
+          value={form.websiteUrl}
+          onChange={(v) => set("websiteUrl", v)}
+          hint="Shown as a 'Visit Website' button — hidden if left blank."
+        />
+      </div>
 
       <TextArea
         label="About description"

@@ -8,6 +8,7 @@ import {
   BrandCategoryTab,
   BrandInfoBadge,
   BrandRecord,
+  BrandShopTheLookTile,
   BrandValue,
   CategorySlug,
   CouponRecord,
@@ -171,15 +172,19 @@ interface BrandRow {
   founded_year: number | null;
   city: string;
   hero_image: string;
+  logo_image: string | null;
+  website_url: string | null;
   about_description: string;
   about_image: string;
   story_image: string;
+  story_image_2: string | null;
   story_body: string;
   info_badges: BrandInfoBadge[];
   category_tabs: BrandCategoryTab[];
   active_tab: string;
   values: BrandValue[];
   similar_brand_slugs: string[];
+  shop_the_look: BrandShopTheLookTile[];
   owner_user_id: string | null;
 }
 
@@ -192,15 +197,19 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
     foundedYear: row.founded_year ?? undefined,
     city: row.city,
     heroImage: row.hero_image,
+    logoImage: row.logo_image ?? undefined,
+    websiteUrl: row.website_url ?? undefined,
     aboutDescription: row.about_description,
     aboutImage: row.about_image,
     storyImage: row.story_image,
+    storyImage2: row.story_image_2 ?? undefined,
     storyBody: row.story_body,
     infoBadges: row.info_badges ?? [],
     categoryTabs: row.category_tabs ?? [],
     activeTab: row.active_tab,
     values: row.values ?? [],
     similarBrandSlugs: row.similar_brand_slugs ?? [],
+    shopTheLook: row.shop_the_look ?? [],
     ownerUserId: row.owner_user_id ?? undefined,
     ownerEmail,
   };

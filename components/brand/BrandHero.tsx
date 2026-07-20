@@ -1,12 +1,16 @@
-"use client";
-
 import Image from "next/image";
-import { useState } from "react";
 import { BrandPageContent } from "@/types";
+import FollowBrandButton from "@/components/brand/FollowBrandButton";
 
-export default function BrandHero({ brand }: { brand: BrandPageContent }) {
-  const [following, setFollowing] = useState(false);
-
+export default function BrandHero({
+  brand,
+  isFollowing,
+  signedIn,
+}: {
+  brand: BrandPageContent;
+  isFollowing: boolean;
+  signedIn: boolean;
+}) {
   return (
     <section className="relative flex h-[86vh] min-h-[640px] w-full items-end overflow-hidden lg:min-h-[760px]">
       <Image
@@ -24,8 +28,7 @@ export default function BrandHero({ brand }: { brand: BrandPageContent }) {
       <div className="relative z-10 mx-auto w-full max-w-brand px-6 pb-16 lg:px-10 lg:pb-24">
         <div className="mx-auto max-w-2xl text-center">
           <span className="inline-flex items-center rounded-full bg-white/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-navy">
-            npm run build
-Egypt
+            {brand.category} · {brand.city}
           </span>
 
           <h1 className="mt-7 text-[2.75rem] font-medium leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-[5rem]">
@@ -37,18 +40,21 @@ Egypt
           </p>
 
           <div className="mt-9 flex items-center justify-center gap-3">
-            <button
-              onClick={() => setFollowing((f) => !f)}
-              className="rounded-full bg-white px-7 py-3 text-[13px] font-medium tracking-wide text-charcoal transition-all hover:bg-white/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            >
-              {following ? "Following" : "Follow Brand"}
-            </button>
-            <a
-              href="#"
-              className="rounded-full border border-white/50 px-7 py-3 text-[13px] font-medium tracking-wide text-white transition-colors hover:border-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-            >
-              Visit Website
-            </a>
+            <FollowBrandButton
+              brandSlug={brand.slug}
+              initialFollowing={isFollowing}
+              signedIn={signedIn}
+            />
+            {brand.websiteUrl && (
+              <a
+                href={brand.websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-white/50 px-7 py-3 text-[13px] font-medium tracking-wide text-white transition-colors hover:border-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                Visit Website
+              </a>
+            )}
           </div>
         </div>
       </div>
