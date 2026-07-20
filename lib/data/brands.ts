@@ -1,11 +1,12 @@
 import { supabase } from "@/lib/supabase/client";
 import { getFollowerCountForBrand } from "@/lib/data/follows";
+import { getVariantsForProducts } from "@/lib/data/variants";
+import { ProductRow, toProductCard } from "@/lib/data/products";
 import {
   BrandPageContent,
   BrandInfoBadge,
   BrandCategoryTab,
   BrandValue,
-  BrandProduct,
   BrandShopTheLookTile,
   SimilarBrand,
 } from "@/types";
@@ -33,30 +34,6 @@ interface BrandRow {
   shop_the_look: BrandShopTheLookTile[];
 }
 
-interface ProductRow {
-  id: string;
-  name: string;
-  price: number;
-  currency: "EGP" | "USD";
-  colors: { name: string; hex: string }[];
-  image: string;
-  is_new: boolean;
-  rating: number | null;
-  review_count: number | null;
-}
-
-function toBrandProduct(row: ProductRow): BrandProduct {
-  return {
-    id: row.id,
-    name: row.name,
-    price: Number(row.price),
-    currency: "EGP",
-    colors: (row.colors ?? []).map((c) => c.hex),
-    image: row.image,
-    isNew: row.is_new,
-  };
-}
-
 // No per-brand rating aggregate column exists — weight each product's own
 // rating by its review count so a product with 1 five-star review doesn't
 // skew the brand average as much as one with 200 reviews. Every product
@@ -71,12 +48,10 @@ function computeStoreRating(products: ProductRow[]): number {
   let weightedSum = 0;
   let plainSum = 0;
   for (const p of products) {
-    const rating = p.rating ?? 0;
-    const weight = p.review_count ?? 0;
-    plainSum += rating;
-    if (weight > 0) {
-      weightedSum += rating * weight;
-      totalWeight += weight;
+    plainSum += p.rating;
+    if (p.review_count > 0) {
+      weightedSum += p.rating * p.review_count;
+      totalWeight += p.review_count;
     }
   }
   if (totalWeight > 0) return weightedSum / totalWeight;
@@ -128,7 +103,17 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     image: r.hero_image,
   }));
 
-  const products = (productRows ?? []) as ProductRow[];
+  const productRowsTyped = (productRows ?? []) as ProductRow[];
+  // Full Product shape (not the old lightweight BrandProduct) so the real
+  // filter/sort system and the storefront's own ProductCard — with working
+  // Add to Cart and star ratings — can be reused verbatim on brand pages.
+  const productCards = productRowsTyped.map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(productCards.map((c) => c.id));
+  const products = productCards.map((c) => ({
+    ...c,
+    variants: variantsByProduct.get(c.id) ?? [],
+  }));
+
   // brand_follows has no public policy, so the count needs supabaseAdmin —
   // degrades quietly to 0 rather than failing the whole page if it errors.
   const followerCount = await getFollowerCountForBrand(slug).catch((err) => {
@@ -151,14 +136,14 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     infoBadges: brand.info_badges ?? [],
     categoryTabs: brand.category_tabs ?? [],
     activeTab: brand.active_tab ?? "shop-all",
-    products: products.map(toBrandProduct),
+    products,
     storyImage: brand.story_image,
     storyImage2: brand.story_image_2 ?? undefined,
     storyBody: brand.story_body,
     values: brand.values ?? [],
     similarBrands,
     followerCount,
-    storeRating: computeStoreRating(products),
+    storeRating: computeStoreRating(productRowsTyped),
     shopTheLook: brand.shop_the_look ?? [],
   };
 }

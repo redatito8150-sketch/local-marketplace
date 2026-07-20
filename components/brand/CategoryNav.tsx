@@ -1,17 +1,16 @@
-"use client";
-
-import { useState } from "react";
 import { BrandCategoryTab } from "@/types";
 
+// Controlled (Round 4) — the active tab now drives real filtering in
+// BrandShoppingArea instead of a local, disconnected useState.
 export default function CategoryNav({
   tabs,
-  defaultActive,
+  active,
+  onChange,
 }: {
   tabs: BrandCategoryTab[];
-  defaultActive: string;
+  active: string;
+  onChange: (id: string) => void;
 }) {
-  const [active, setActive] = useState(defaultActive);
-
   return (
     <nav
       aria-label="Shop categories"
@@ -23,7 +22,8 @@ export default function CategoryNav({
           return (
             <li key={tab.id} className="flex-none">
               <button
-                onClick={() => setActive(tab.id)}
+                type="button"
+                onClick={() => onChange(tab.id)}
                 className={`relative py-5 text-[13px] font-medium tracking-wide transition-colors ${
                   isActive ? "text-navy" : "text-charcoal/55 hover:text-charcoal"
                 }`}

@@ -186,16 +186,6 @@ export interface BrandInfoBadge {
   label: string;
 }
 
-export interface BrandProduct {
-  id: string;
-  name: string;
-  price: number;
-  currency: "EGP";
-  colors: string[];
-  image: string;
-  isNew?: boolean;
-}
-
 export interface BrandValue {
   icon: "flag" | "package" | "leaf" | "pen";
   title: string;
@@ -466,7 +456,7 @@ export interface BrandPageContent {
   infoBadges: BrandInfoBadge[];
   categoryTabs: BrandCategoryTab[];
   activeTab: string;
-  products: BrandProduct[];
+  products: Product[];
   storyImage: string;
   storyImage2?: string;
   storyBody: string;

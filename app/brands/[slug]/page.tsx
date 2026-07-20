@@ -1,12 +1,12 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import Header from "@/components/Header";
 import BrandHero from "@/components/brand/BrandHero";
 import BrandStatsBand from "@/components/brand/BrandStatsBand";
 import AboutBrand from "@/components/brand/AboutBrand";
-import CategoryNav from "@/components/brand/CategoryNav";
 import ShopTheLook from "@/components/brand/ShopTheLook";
 import BrandBestSellers from "@/components/brand/BrandBestSellers";
-import BrandProductGrid from "@/components/brand/BrandProductGrid";
+import BrandShoppingArea from "@/components/brand/BrandShoppingArea";
 import OurStory from "@/components/brand/OurStory";
 import ValuesSection from "@/components/brand/ValuesSection";
 import SimilarBrands from "@/components/brand/SimilarBrands";
@@ -15,6 +15,7 @@ import { getBrandContent, getAllBrandSlugs } from "@/lib/data/brands";
 import { getBestSellingProductsForBrand } from "@/lib/data/collections";
 import { isUserFollowingBrand } from "@/lib/data/follows";
 import { requireUser } from "@/lib/supabase/accountAuth";
+import { buildDynamicFilterGroups } from "@/lib/filters";
 
 export const revalidate = 60;
 
@@ -39,6 +40,11 @@ export default async function BrandPage({ params }: { params: { slug: string } }
   const user = await requireUser();
   const isFollowing = user ? await isUserFollowingBrand(user.id, params.slug) : false;
   const bestSellers = await getBestSellingProductsForBrand(params.slug);
+  // Already scoped to this one brand, so the "Brand" filter dimension
+  // would just show a single, always-checked option — drop it rather than
+  // touching buildDynamicFilterGroups's signature (keeps /shop/[category]
+  // untouched).
+  const filterGroups = buildDynamicFilterGroups(brand.products).filter((g) => g.id !== "brand");
 
   return (
     <main className="min-h-screen bg-white">
@@ -54,8 +60,15 @@ export default async function BrandPage({ params }: { params: { slug: string } }
       <AboutBrand brand={brand} />
       <ShopTheLook tiles={brand.shopTheLook} />
       <BrandBestSellers products={bestSellers} />
-      <CategoryNav tabs={brand.categoryTabs} defaultActive={brand.activeTab} />
-      <BrandProductGrid brandName={brand.name} products={brand.products} />
+      <Suspense fallback={null}>
+        <BrandShoppingArea
+          brandName={brand.name}
+          products={brand.products}
+          filterGroups={filterGroups}
+          categoryTabs={brand.categoryTabs}
+          defaultActiveTab={brand.activeTab}
+        />
+      </Suspense>
       <OurStory image={brand.storyImage} body={brand.storyBody} />
       <ValuesSection values={brand.values} />
       <SimilarBrands brands={brand.similarBrands} />
