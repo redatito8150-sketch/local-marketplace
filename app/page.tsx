@@ -1,11 +1,12 @@
 import Header from "@/components/Header";
 import Hero from "@/components/Hero";
-import ExploreBoards from "@/components/ExploreBoards";
 import NewArrivalsSection from "@/components/home/NewArrivalsSection";
+import ShopByMood from "@/components/ShopByMood";
 import Sponsored from "@/components/Sponsored";
 import Footer from "@/components/Footer";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS } from "@/content/home";
+import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import { getNewArrivals } from "@/lib/data/products";
 import { getTrendingProducts, getBestSellingProducts } from "@/lib/data/collections";
 import type { HomeProductSectionContent } from "@/types";
@@ -25,10 +26,11 @@ async function getProductSectionProducts(section: HomeProductSectionContent) {
 }
 
 export default async function Home() {
-  const [heroContent, heroTiles, productSection] = await Promise.all([
+  const [heroContent, heroTiles, productSection, moodTiles] = await Promise.all([
     getSiteContentWithFallback("home_hero", HOME_HERO),
     getSiteContentWithFallback("home_hero_tiles", HOME_HERO_TILES),
     getSiteContentWithFallback("home_new_arrivals", HOME_NEW_ARRIVALS),
+    getSiteContentWithFallback("shop_by_mood", SHOP_BY_MOOD),
   ]);
   const productSectionItems = await getProductSectionProducts(productSection);
 
@@ -41,7 +43,7 @@ export default async function Home() {
         products={productSectionItems}
         viewAllHref={VIEW_ALL_HREF[productSection.source]}
       />
-      <ExploreBoards />
+      <ShopByMood tiles={moodTiles} />
       <Sponsored />
       <Footer />
     </main>

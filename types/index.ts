@@ -60,6 +60,15 @@ export interface HomeProductSectionContent {
   limit: number;
 }
 
+export interface MoodTileContent {
+  id: string;
+  label: string;
+  image: string;
+  href: string;
+}
+
+export type ShopByMoodContent = MoodTileContent[];
+
 export interface JoinHeroContent {
   label: string;
   headingLines: string[];
