@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 160" role="img" aria-labelledby="title desc">
+  <title id="title">NABTA Kids logo</title><desc id="desc">A small sprouting leaf beside the NABTA wordmark.</desc>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M78 105V66" stroke="#748a70" stroke-width="8"/>
+    <path d="M78 70C51 68 42 48 45 29c24 1 39 14 38 36" fill="#dbe8d2" stroke="#748a70" stroke-width="6"/>
+    <path d="M80 75c27-2 40-20 38-41-24 0-38 13-40 34" fill="#f3c4b6" stroke="#d87f68" stroke-width="6"/>
+  </g>
+  <text x="146" y="91" fill="#4f6565" font-family="Georgia,serif" font-size="58" letter-spacing="8">NABTA</text>
+  <text x="151" y="124" fill="#d87f68" font-family="Arial,sans-serif" font-size="15" letter-spacing="8">KIDS</text>
+</svg>
