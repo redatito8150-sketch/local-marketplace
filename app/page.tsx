@@ -45,11 +45,17 @@ export default async function Home() {
     getBrandContent(featuredAndSponsored.featuredBrandSlug),
     getBrandSummariesBySlug(featuredAndSponsored.sponsoredBrandSlugs),
   ]);
+  const displayedHeroTiles = {
+    ...heroTiles,
+    women: { ...heroTiles.women, image: HOME_HERO_TILES.women.image },
+    men: { ...heroTiles.men, image: HOME_HERO_TILES.men.image },
+    kids: { ...heroTiles.kids, image: HOME_HERO_TILES.kids.image },
+  };
 
   return (
     <main className="min-h-screen bg-cream">
       <Header />
-      <Hero content={heroContent} tiles={heroTiles} />
+      <Hero content={heroContent} tiles={displayedHeroTiles} />
       <NewArrivalsSection
         title={productSection.title}
         products={productSectionItems}
