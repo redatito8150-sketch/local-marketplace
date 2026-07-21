@@ -17,9 +17,9 @@ export async function POST() {
 
   await sendEmail({
     to: staff.user.email,
-    subject: "LOCAL — test email",
+    subject: "Mahaly — test email",
     html: emailShell(
-      `<p style="font-size: 14px;">This is a test email from your LOCAL admin dashboard — if you're reading this, Resend is configured correctly.</p>`
+      `<p style="font-size: 14px;">This is a test email from your Mahaly admin dashboard — if you're reading this, Resend is configured correctly.</p>`
     ),
   });
 

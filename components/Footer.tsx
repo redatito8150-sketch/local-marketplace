@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Truck, CreditCard, ShieldCheck } from "lucide-react";
 import { InstagramIcon, FacebookIcon, YoutubeIcon } from "@/components/shared/SocialIcons";
+import Logo from "@/components/shared/Logo";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_SHIPPING_SETTINGS, DEFAULT_CONTACT_INFO } from "@/content/settings";
 import { formatPrice } from "@/lib/format";
@@ -83,7 +84,13 @@ export default function Footer() {
     <footer id="about" className="border-t border-stone-150 bg-stone-50">
       <div className="mx-auto max-w-screen2xl px-8 py-16 lg:px-12">
         {/* Row 1 */}
-        <div className="grid grid-cols-2 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-10 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="col-span-2 sm:col-span-2 lg:col-span-1">
+            <Logo />
+            <p className="mt-4 max-w-[220px] text-sm leading-relaxed text-ink-soft/70">
+              The marketplace designed for local brands and real stories.
+            </p>
+          </div>
           <div>
             <FooterColumn title="Help & Contact" links={HELP_LINKS} icon={ShieldCheck} />
             <p className="mt-5 text-sm text-ink-soft/70">{contactInfo.supportEmail}</p>
@@ -135,7 +142,7 @@ export default function Footer() {
         {/* Row 3 — socials + copyright */}
         <div className="mt-10 flex flex-col items-center justify-between gap-6 border-t border-stone-150 pt-10 md:flex-row">
           <p className="text-sm text-ink-soft/60">
-            © 2026 Local. All rights reserved.
+            © 2026 Mahaly. All rights reserved.
           </p>
 
           <div className="flex items-center gap-3">
@@ -145,7 +152,7 @@ export default function Footer() {
                 href="#"
                 aria-label={label}
                 whileHover={{ y: -3, scale: 1.05 }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-cream transition-colors hover:bg-ink-soft"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-mahalyred text-cream transition-colors hover:bg-mahalyred-dark"
               >
                 <Icon className="h-4 w-4" strokeWidth={1.7} />
               </motion.a>

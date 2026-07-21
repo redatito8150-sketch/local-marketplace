@@ -7,7 +7,7 @@ import { InstagramIcon, FacebookIcon } from "@/components/shared/SocialIcons";
 const COLUMNS: { title: string; links: string[] }[] = [
   { title: "Shop", links: ["Women", "Men", "Beauty", "Home", "New Arrivals"] },
   { title: "Discover", links: ["Brands", "Journal", "Edits", "Egyptian Makers"] },
-  { title: "About LOCAL", links: ["Our Story", "Careers", "Press", "Sustainability"] },
+  { title: "About Mahaly", links: ["Our Story", "Careers", "Press", "Sustainability"] },
   { title: "For Brands", links: ["Join as a Brand", "Seller Guidelines", "Brand Support"] },
   { title: "Help", links: ["Contact Us", "Shipping", "Returns", "FAQ"] },
 ];
@@ -77,7 +77,7 @@ export default function BrandFooter() {
 
         <div className="mt-16 flex flex-col items-center justify-between gap-6 border-t border-hairline pt-8 sm:flex-row">
           <p className="text-[13px] font-light text-muted">
-            LOCAL — Discover Egyptian Brands.
+            Mahaly — Discover Egyptian Brands.
           </p>
 
           <div className="flex items-center gap-4">

@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Heart, ShoppingBag, User, Menu, X, LayoutDashboard } from "lucide-react";
+import { Heart, ShoppingBag, User, Menu, X, LayoutGrid } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
 import DiscoverMenu from "@/components/navigation/DiscoverMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
+import Logo from "@/components/shared/Logo";
 import { DISCOVER_LINKS } from "@/content/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -86,12 +87,7 @@ export default function Header() {
     >
       <div className="mx-auto flex max-w-screen2xl items-center justify-between gap-8 px-8 py-5 lg:px-12">
         {/* Logo */}
-        <Link
-          href="/#home"
-          className="text-2xl font-bold tracking-tightest text-ink"
-        >
-          Local
-        </Link>
+        <Logo />
 
         {/* Center nav */}
         <nav className="hidden items-center gap-9 lg:flex">
@@ -104,7 +100,7 @@ export default function Header() {
             >
               {link.label}
               <span
-                className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
+                className={`absolute -bottom-1 left-0 h-px bg-mahalyred transition-all duration-300 ${
                   active === link.label ? "w-full" : "w-0 group-hover:w-full"
                 }`}
               />
@@ -123,7 +119,7 @@ export default function Header() {
             >
               {link.label}
               <span
-                className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
+                className={`absolute -bottom-1 left-0 h-px bg-mahalyred transition-all duration-300 ${
                   active === link.label ? "w-full" : "w-0 group-hover:w-full"
                 }`}
               />
@@ -142,7 +138,7 @@ export default function Header() {
               title="Dashboard"
               className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
             >
-              <LayoutDashboard className="h-5 w-5" strokeWidth={1.6} />
+              <LayoutGrid className="h-5 w-5" strokeWidth={1.6} />
             </Link>
           )}
 

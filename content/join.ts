@@ -8,10 +8,10 @@ export interface JoinBenefit {
 }
 
 export const JOIN_HERO = {
-  label: "JOIN LOCAL",
+  label: "JOIN MAHALY",
   headingLines: ["Join Egypt's", "next generation", "of brands."],
-  subheading: "Build your brand. Reach more customers. Grow with Local.",
-  ctaLabel: "Apply to LOCAL",
+  subheading: "Build your brand. Reach more customers. Grow with Mahaly.",
+  ctaLabel: "Apply to Mahaly",
   images: {
     left: [
       {
@@ -26,7 +26,7 @@ export const JOIN_HERO = {
     right: [
       {
         src: "https://images.unsplash.com/photo-1611085583191-a3b181a88401?w=700&q=80",
-        alt: "Local-made accessories and packaging",
+        alt: "Locally made accessories and packaging",
       },
       {
         src: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=700&q=80",
@@ -128,7 +128,7 @@ export interface Testimonial {
 
 export const SUCCESS_STORY: Testimonial = {
   quote:
-    "Joining Local doubled our online visibility. The platform is beautiful, intuitive and the team truly supports local brands.",
+    "Joining Mahaly doubled our online visibility. The platform is beautiful, intuitive and the team truly supports local brands.",
   name: "Salma E.",
   role: "Founder of NOLA",
   initial: "S",
@@ -141,7 +141,7 @@ export interface FAQItem {
 
 export const JOIN_FAQ: FAQItem[] = [
   {
-    question: "How much does it cost to sell on Local?",
+    question: "How much does it cost to sell on Mahaly?",
     answer:
       "There's no monthly subscription. Listing your products and setting up your brand page is free — we only take a small commission on completed sales.",
   },

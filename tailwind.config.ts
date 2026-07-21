@@ -24,6 +24,14 @@ const config: Config = {
           DEFAULT: "#161513",
           soft: "#2B2A27",
         },
+        // Mahaly brand red — sampled from the real logo file, main-site only
+        // (Header/Footer/homepage). Deliberately a separate token from
+        // accentred below — the brand-page palette is a different design
+        // brief and must not be merged with this one.
+        mahalyred: {
+          DEFAULT: "#D10506",
+          dark: "#AF0405",
+        },
         // Dedicated palette for the LOCAL brand-page template (navy/red editorial)
         navy: {
           DEFAULT: "#103B5C",

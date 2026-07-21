@@ -3,9 +3,9 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "Local — Local brands. Real stories. All in one place.",
+  title: "Mahaly — Local brands. Real stories. All in one place.",
   description:
-    "Local is a premium marketplace where independent local brands sell their products, connecting customers directly with creators.",
+    "Mahaly is a premium marketplace where independent local brands sell their products, connecting customers directly with creators.",
 };
 
 export default function RootLayout({
