@@ -1,20 +1,8 @@
 import Image from "next/image";
-import Link from "next/link";
-import { LayoutDashboard } from "lucide-react";
 import { BrandPageContent } from "@/types";
-import FollowBrandButton from "@/components/brand/FollowBrandButton";
+import BrandHeroActions from "@/components/brand/BrandHeroActions";
 
-export default function BrandHero({
-  brand,
-  isFollowing,
-  signedIn,
-  isOwnBrand,
-}: {
-  brand: BrandPageContent;
-  isFollowing: boolean;
-  signedIn: boolean;
-  isOwnBrand: boolean;
-}) {
+export default function BrandHero({ brand }: { brand: BrandPageContent }) {
   return (
     <section className="relative flex h-[86vh] min-h-[640px] w-full items-end overflow-hidden lg:min-h-[760px]">
       <Image
@@ -44,20 +32,7 @@ export default function BrandHero({
           </p>
 
           <div className="mt-9 flex items-center justify-center gap-3">
-            {isOwnBrand && (
-              <Link
-                href="/brand-portal"
-                className="flex items-center gap-2 rounded-full bg-white px-7 py-3 text-[13px] font-semibold tracking-wide text-navy transition-transform hover:scale-[1.03]"
-              >
-                <LayoutDashboard className="h-4 w-4" strokeWidth={1.8} />
-                Go to My Dashboard
-              </Link>
-            )}
-            <FollowBrandButton
-              brandSlug={brand.slug}
-              initialFollowing={isFollowing}
-              signedIn={signedIn}
-            />
+            <BrandHeroActions brandSlug={brand.slug} />
             {brand.websiteUrl && (
               <a
                 href={brand.websiteUrl}

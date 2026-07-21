@@ -134,17 +134,18 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   does not reproduce in `next build` (which already uses Turbopack
   successfully, and is what Vercel actually runs) — keep `--webpack` on
   the `dev` script unless that's independently confirmed fixed upstream.
-- **Known follow-up**: `/brands/[slug]` lost its ISR caching
-  (`generateStaticParams` + `revalidate = 60`) as a side effect of the
-  Next 16 upgrade — it now server-renders on every request instead of
-  serving a 60s-cached page. Cause: the page unconditionally calls
-  `requireUser()`/`requireBrandOwner()` (both read `cookies()`) for the
-  Follow-button/owner-check, and Next 15+ treats any `cookies()` read as
-  opting the *whole* route out of static generation (stricter than Next
-  14's behavior). Fixing this means moving the auth-dependent bits
-  (follow state, "Go to My Dashboard") into a client-side island so the
-  bulk of the page stays static — not done yet, flagged for a future
-  round rather than folded into the upgrade itself.
+- `/brands/[slug]`'s ISR caching (lost right after the Next 16 upgrade,
+  since `requireUser()`/`requireBrandOwner()` reading `cookies()`
+  unconditionally opts the *whole* route out of static generation under
+  Next 15+) is fixed: the Follow-button/owner-check now lives in
+  `components/brand/BrandHeroActions.tsx`, a client island that fetches
+  its own state from `GET /api/brands/[slug]/viewer-status` on mount,
+  instead of the page resolving it server-side. `BrandHero` itself takes
+  only `brand` as a prop now. **Any future per-viewer bit added to a
+  static/ISR page should follow this same pattern** (a small client
+  component + its own API route) rather than reading `cookies()` in the
+  page component directly, which would silently make the whole route
+  dynamic again.
 
 ## Current status (what's built vs. not)
 

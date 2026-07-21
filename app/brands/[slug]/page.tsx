@@ -14,9 +14,6 @@ import SimilarBrands from "@/components/brand/SimilarBrands";
 import BrandFooter from "@/components/brand/BrandFooter";
 import { getBrandContent, getAllBrandSlugs } from "@/lib/data/brands";
 import { getBestSellingProductsForBrand } from "@/lib/data/collections";
-import { isUserFollowingBrand } from "@/lib/data/follows";
-import { requireUser } from "@/lib/supabase/accountAuth";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { buildDynamicFilterGroups } from "@/lib/filters";
 
 export const revalidate = 60;
@@ -41,13 +38,6 @@ export default async function BrandPage(props: { params: Promise<{ slug: string 
   const brand = await getBrandContent(params.slug);
   if (!brand) notFound();
 
-  const user = await requireUser();
-  const isFollowing = user ? await isUserFollowingBrand(user.id, params.slug) : false;
-  // Resolves the CURRENT viewer's own brand (if any) regardless of which
-  // brand page they're on — an admin with no owned brand of their own
-  // simply never matches here, same as a plain customer.
-  const ownerContext = user ? await requireBrandOwner() : null;
-  const isOwnBrand = ownerContext?.brandSlug === params.slug;
   const bestSellers = await getBestSellingProductsForBrand(params.slug);
   // Already scoped to this one brand, so the "Brand" filter dimension
   // would just show a single, always-checked option — drop it rather than
@@ -58,12 +48,7 @@ export default async function BrandPage(props: { params: Promise<{ slug: string 
   return (
     <main className="min-h-screen bg-white">
       <Header />
-      <BrandHero
-        brand={brand}
-        isFollowing={isFollowing}
-        signedIn={Boolean(user)}
-        isOwnBrand={isOwnBrand}
-      />
+      <BrandHero brand={brand} />
       <BrandStatsBand
         foundedYear={brand.foundedYear}
         city={brand.city}
