@@ -9,7 +9,7 @@ export function emailShell(bodyHtml: string): string {
   return `
 <div style="font-family: Arial, Helvetica, sans-serif; max-width: 560px; margin: 0 auto; color: #1a1a1a;">
   <div style="padding: 24px 0; border-bottom: 1px solid #e5e0d8;">
-    <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: #D10506;">Mahaly</span>
+    <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.02em; color: #B71F1A;">Mahaly</span>
   </div>
   <div style="padding: 24px 0;">
     ${bodyHtml}

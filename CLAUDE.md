@@ -16,9 +16,12 @@ not something left unfinished.
 
 Two visual "modes" coexist intentionally:
 - **Main site** (homepage, `/shop/[category]`, `/product/[id]`, `/cart`, etc.)
-  — cream/black/beige palette plus a dark red brand accent
-  (`mahalyred` in `tailwind.config.ts`, sampled from the real logo file:
-  `#D10506`), `Header.tsx`/`Logo.tsx` with the Brands mega menu.
+  — cream/black/beige palette plus a dark red brand accent (`mahalyred` in
+  `tailwind.config.ts`: `#B71F1A`, hover `#941713`, soft `#E8B8B2` — the
+  owner's official palette values), `Header.tsx`/`Logo.tsx` with the Brands
+  mega menu. The same drop also added `sand`/`blue.light`/`blue.grey`/
+  `card`/`border`/`textmuted` tokens (the rest of that palette) — available
+  now, not yet swept across the whole site (see "Not done yet").
 - **Brand pages** (`/brands`, `/brands/[slug]`) — a separate navy/red/white
   editorial palette (see `tailwind.config.ts`: `navy`, `accentred`,
   `charcoal`, `muted`, `hairline` vs. the main site's `ink`, `cream`,
