@@ -17,7 +17,7 @@ The model assets were generated on a flat chroma background, converted locally t
 
 ## Safe database setup
 
-No production database write is performed by this feature.
+The feature does not run database writes automatically. The production seed was run manually after explicit approval on 2026-07-21; future runs still require both confirmation flags.
 
 1. Apply `supabase/migrations/20260721_collection_brand_content.sql` to a local, development, or preview Supabase project.
 2. Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` locally. Never commit either value.
@@ -29,7 +29,9 @@ No production database write is performed by this feature.
    node scripts/seed-men-kids-collections.mjs
    ```
 
-The seed refuses a target other than `local`, `development`, or `preview`. Brands and products use stable slugs/IDs; variants use deterministic UUIDs. Re-running the seed updates the same records rather than creating duplicates.
+The seed accepts `local`, `development`, or `preview` with the standard confirmation. Production is additionally protected by `ALLOW_PRODUCTION_COLLECTION_SEED=true` and should only be used after explicit approval. Brands and products use stable slugs/IDs; variants use deterministic UUIDs. Re-running the seed updates the same records rather than creating duplicates.
+
+For an explicitly approved production run, set `SEED_TARGET=production` and `ALLOW_PRODUCTION_COLLECTION_SEED=true` in addition to the standard confirmation. The production flag must never be stored in `.env.local` or CI.
 
 ## Review note
 

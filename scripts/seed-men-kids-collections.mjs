@@ -1,5 +1,6 @@
 // Review-only seed for the Men + Kids collection launch.
-// This script never runs as part of build/CI and refuses production targets.
+// This script never runs as part of build/CI. Production requires a second,
+// explicit ALLOW_PRODUCTION_COLLECTION_SEED=true confirmation.
 //
 // Explicit preview/development usage:
 //   SEED_TARGET=preview ALLOW_COLLECTION_SEED=true \
@@ -10,11 +11,22 @@
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
-const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SEED_TARGET, ALLOW_COLLECTION_SEED } = process.env;
+const {
+  SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY,
+  SEED_TARGET,
+  ALLOW_COLLECTION_SEED,
+  ALLOW_PRODUCTION_COLLECTION_SEED,
+} = process.env;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
 if (ALLOW_COLLECTION_SEED !== "true") throw new Error("Set ALLOW_COLLECTION_SEED=true to confirm this manual seed.");
-if (!new Set(["local", "development", "preview"]).has(SEED_TARGET ?? "")) {
-  throw new Error("SEED_TARGET must be local, development, or preview. Production is intentionally blocked.");
+const allowedNonProductionTargets = new Set(["local", "development", "preview"]);
+const productionApproved =
+  SEED_TARGET === "production" && ALLOW_PRODUCTION_COLLECTION_SEED === "true";
+if (!allowedNonProductionTargets.has(SEED_TARGET ?? "") && !productionApproved) {
+  throw new Error(
+    "SEED_TARGET must be local, development, or preview. Production additionally requires ALLOW_PRODUCTION_COLLECTION_SEED=true."
+  );
 }
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -83,8 +95,15 @@ const shared = {
 };
 
 function product(input) {
-  const image = `/images/products/${input.id}/main.webp`;
-  return { ...shared, ...input, image, images: [image, input.campaign], sku: input.sku, details: input.details, care_instructions: input.care };
+  const { campaign, care, ...row } = input;
+  const image = `/images/products/${row.id}/main.webp`;
+  return {
+    ...shared,
+    ...row,
+    image,
+    images: [image, campaign],
+    care_instructions: care,
+  };
 }
 
 const MEN = [
