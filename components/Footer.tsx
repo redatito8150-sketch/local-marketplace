@@ -2,31 +2,45 @@
 
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Truck, CreditCard, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { Truck, Compass, ShieldCheck, ShoppingBag } from "lucide-react";
 import { InstagramIcon, FacebookIcon, YoutubeIcon } from "@/components/shared/SocialIcons";
 import Logo from "@/components/shared/Logo";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_SHIPPING_SETTINGS, DEFAULT_CONTACT_INFO } from "@/content/settings";
+import { DISCOVER_LINKS } from "@/content/navigation";
 import { formatPrice } from "@/lib/format";
 
-const HELP_LINKS = [
-  "Frequently asked questions",
-  "Payment methods",
-  "Refunds",
-  "Track your parcel",
-  "Subscribe to the newsletter",
+interface FooterLink {
+  label: string;
+  href?: string;
+}
+
+const SHOP_LINKS: FooterLink[] = [
+  { label: "Women", href: "/shop/women" },
+  { label: "Men", href: "/shop/men" },
+  { label: "Kids", href: "/shop/kids" },
+  { label: "Brands", href: "/brands" },
 ];
 
-const PAYMENT_LINKS = [
-  "Payment by invoice",
-  "Returns",
-  "Delivery time",
-  "Product Safety",
+const DISCOVER_FOOTER_LINKS: FooterLink[] = DISCOVER_LINKS.map(({ label, href }) => ({
+  label,
+  href,
+}));
+
+const HELP_LINKS: FooterLink[] = [
+  { label: "Frequently asked questions" },
+  { label: "Payment methods" },
+  { label: "Refunds" },
+  { label: "Track your parcel" },
 ];
 
-const GIFT_LINKS = ["Buy gift cards", "Terms and conditions", "Redeem a gift card"];
-
-const ABOUT_LINKS = ["Corporate Website", "Careers", "Newsroom", "Investor relations"];
+const ABOUT_LINKS: FooterLink[] = [
+  { label: "Corporate Website" },
+  { label: "Careers" },
+  { label: "Newsroom" },
+  { label: "Join as a Brand", href: "/join-as-a-brand" },
+];
 
 const SOCIALS = [
   { icon: InstagramIcon, label: "Instagram" },
@@ -40,7 +54,7 @@ function FooterColumn({
   icon: Icon,
 }: {
   title: string;
-  links: string[];
+  links: FooterLink[];
   icon: React.ElementType;
 }) {
   return (
@@ -51,13 +65,13 @@ function FooterColumn({
       </div>
       <ul className="space-y-3">
         {links.map((link) => (
-          <li key={link}>
-            <a
-              href="#"
+          <li key={link.label}>
+            <Link
+              href={link.href ?? "#"}
               className="text-sm text-ink-soft/70 transition-colors hover:text-ink"
             >
-              {link}
-            </a>
+              {link.label}
+            </Link>
           </li>
         ))}
       </ul>
@@ -90,27 +104,21 @@ export default function Footer() {
             <p className="mt-4 max-w-[220px] text-sm leading-relaxed text-ink-soft/70">
               The marketplace designed for local brands and real stories.
             </p>
+            <p className="mt-4 max-w-[220px] text-xs leading-relaxed text-ink-soft/50">
+              Free delivery on orders over{" "}
+              {formatPrice(shippingSettings.freeShippingThresholdEgp, "EGP")} ·{" "}
+              {shippingSettings.returnPolicyDays}-day returns
+            </p>
           </div>
+          <FooterColumn title="Shop" links={SHOP_LINKS} icon={ShoppingBag} />
+          <FooterColumn title="Discover" links={DISCOVER_FOOTER_LINKS} icon={Compass} />
           <div>
             <FooterColumn title="Help & Contact" links={HELP_LINKS} icon={ShieldCheck} />
             <p className="mt-5 text-sm text-ink-soft/70">{contactInfo.supportEmail}</p>
             <p className="mt-1 text-sm text-ink-soft/70">{contactInfo.supportPhone}</p>
             <p className="mt-1 text-sm text-ink-soft/70">{contactInfo.address}</p>
           </div>
-          <FooterColumn title="Gift Cards" links={GIFT_LINKS} icon={CreditCard} />
           <FooterColumn title="About Us" links={ABOUT_LINKS} icon={Truck} />
-          <FooterColumn
-            title="Delivery Options"
-            links={[
-              `Free delivery on orders over ${formatPrice(
-                shippingSettings.freeShippingThresholdEgp,
-                "EGP"
-              )}`,
-              `${shippingSettings.returnPolicyDays}-day return policy`,
-              "Secure payments",
-            ]}
-            icon={Truck}
-          />
         </div>
 
         {/* Row 2 — payment + promises */}
