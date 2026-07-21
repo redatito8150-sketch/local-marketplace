@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Home, LayoutGrid, Newspaper, Store } from "lucide-react";
+import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal } from "lucide-react";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 
@@ -18,6 +18,13 @@ const SECTIONS = [
     icon: LayoutGrid,
     title: "Category Heroes",
     description: "The banner text and image at the top of Women/Men/Kids.",
+  },
+  {
+    key: "home_hero_tiles",
+    href: "/admin/content/hero-tiles",
+    icon: GalleryHorizontal,
+    title: "Homepage Hero Tiles",
+    description: "The 4 image tiles (Women/Men/Kids/Home) on the homepage.",
   },
   {
     key: "journal_articles",

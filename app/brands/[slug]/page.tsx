@@ -28,7 +28,7 @@ export async function generateMetadata(props: { params: Promise<{ slug: string }
   const brand = await getBrandContent(params.slug);
   if (!brand) return {};
   return {
-    title: `${brand.name} — LOCAL`,
+    title: `${brand.name} — Mahaly`,
     description: brand.tagline,
   };
 }

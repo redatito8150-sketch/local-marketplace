@@ -7,7 +7,7 @@ import { getTrendingProducts } from "@/lib/data/collections";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Trending — Local",
+  title: "Trending — Mahaly",
   description: "What's picking up the most orders on Local right now.",
 };
 

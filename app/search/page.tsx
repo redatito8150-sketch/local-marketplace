@@ -14,7 +14,7 @@ export async function generateMetadata(
   const searchParams = await props.searchParams;
   const q = searchParams.q ?? "";
   return {
-    title: q ? `"${q}" — Search — Local` : "Search — Local",
+    title: q ? `"${q}" — Search — Mahaly` : "Search — Mahaly",
     description: "Search Local's marketplace of independent local brands.",
   };
 }

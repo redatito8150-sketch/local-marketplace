@@ -8,7 +8,7 @@ import { getFeaturedBrands } from "@/lib/data/brands";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Brands — Local",
+  title: "Brands — Mahaly",
   description:
     "Discover independent local brands curated by Local. Support creators, wear what matters.",
 };

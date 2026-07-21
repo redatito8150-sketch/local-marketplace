@@ -40,6 +40,17 @@ export interface HomeHeroContent {
   ctaLabel: string;
 }
 
+// Round 5 homepage sections — unlike HomeHeroContent above, these carry
+// images too: the owner explicitly asked to control tile pictures, not
+// just copy, from Site Content.
+export interface HeroTileContent {
+  label: string;
+  href: string;
+  image: string;
+}
+
+export type HomeHeroTilesContent = Record<"women" | "men" | "kids" | "home", HeroTileContent>;
+
 export interface JoinHeroContent {
   label: string;
   headingLines: string[];

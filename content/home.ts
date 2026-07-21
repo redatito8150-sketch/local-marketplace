@@ -2,11 +2,37 @@
 // the fallback used whenever no admin-edited "home_hero" row exists in
 // site_content (see lib/data/siteContent.ts).
 
-import type { HomeHeroContent } from "@/types";
+import type { HomeHeroContent, HomeHeroTilesContent } from "@/types";
 
 export const HOME_HERO: HomeHeroContent = {
   headingLines: ["Local brands.", "Real stories.", "All in one place."],
   subheading:
     "Discover and shop from the best local brands. Support creators. Wear what matters.",
   ctaLabel: "Join As Brand",
+};
+
+// Fallback for the "home_hero_tiles" CMS key — the 4 equal-size hero tiles
+// (Women/Men/Kids/Home). "Home" has no real category yet, so it points at
+// a static coming-soon page instead of /shop/home data.
+export const HOME_HERO_TILES: HomeHeroTilesContent = {
+  women: {
+    label: "Women",
+    href: "/shop/women",
+    image: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=800&q=80",
+  },
+  men: {
+    label: "Men",
+    href: "/shop/men",
+    image: "https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=800&q=80",
+  },
+  kids: {
+    label: "Kids",
+    href: "/shop/kids",
+    image: "https://images.unsplash.com/photo-1503919545889-aef636e10ad4?w=800&q=80",
+  },
+  home: {
+    label: "Home",
+    href: "/shop/home",
+    image: "https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=80",
+  },
 };

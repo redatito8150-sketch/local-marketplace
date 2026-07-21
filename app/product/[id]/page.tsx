@@ -23,7 +23,7 @@ export async function generateMetadata(props: { params: Promise<{ id: string }> 
   const product = await getProductById(params.id);
   if (!product) return {};
   return {
-    title: `${product.name} — ${product.brandName} — Local`,
+    title: `${product.name} — ${product.brandName} — Mahaly`,
     description: product.description,
   };
 }

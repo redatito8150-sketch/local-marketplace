@@ -7,7 +7,7 @@ import { getBestSellingProducts } from "@/lib/data/collections";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Best Sellers — Local",
+  title: "Best Sellers — Mahaly",
   description: "Local's most popular products, ranked by total units sold.",
 };
 

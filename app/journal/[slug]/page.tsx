@@ -18,7 +18,7 @@ export async function generateMetadata(props: { params: Promise<{ slug: string }
   const articles = await getSiteContentWithFallback("journal_articles", ARTICLES);
   const article = articles.find((a) => a.slug === params.slug);
   if (!article) return {};
-  return { title: `${article.title} — Local Journal`, description: article.excerpt };
+  return { title: `${article.title} — Mahaly Journal`, description: article.excerpt };
 }
 
 export default async function JournalArticlePage(

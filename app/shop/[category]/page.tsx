@@ -36,7 +36,7 @@ export async function generateMetadata(
   if (!content) return {};
   const hero = await getHero(content);
   return {
-    title: `${hero.title} — Local`,
+    title: `${hero.title} — Mahaly`,
     description: hero.description,
   };
 }

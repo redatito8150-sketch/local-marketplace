@@ -7,7 +7,7 @@ import { getNewArrivals } from "@/lib/data/products";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "New Arrivals — Local",
+  title: "New Arrivals — Mahaly",
   description: "The newest pieces from Local's independent Egyptian brands.",
 };
 
