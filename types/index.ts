@@ -21,6 +21,7 @@ export interface FeaturedBrandContent {
   description: string;
   ctaLabel: string;
   image: string;
+  href?: string;
 }
 
 export interface CategoryContent {
@@ -539,4 +540,3 @@ export interface AddressRecord {
   governorate: string;
   isDefault: boolean;
 }
-
