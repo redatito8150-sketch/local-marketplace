@@ -5,10 +5,16 @@ import ShopByMood from "@/components/ShopByMood";
 import Sponsored from "@/components/Sponsored";
 import Footer from "@/components/Footer";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
-import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS } from "@/content/home";
+import {
+  HOME_HERO,
+  HOME_HERO_TILES,
+  HOME_NEW_ARRIVALS,
+  FEATURED_BRAND_AND_SPONSORED,
+} from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import { getNewArrivals } from "@/lib/data/products";
 import { getTrendingProducts, getBestSellingProducts } from "@/lib/data/collections";
+import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
 import type { HomeProductSectionContent } from "@/types";
 
 export const revalidate = 60; // re-fetch site_content from Supabase at most once a minute
@@ -26,13 +32,19 @@ async function getProductSectionProducts(section: HomeProductSectionContent) {
 }
 
 export default async function Home() {
-  const [heroContent, heroTiles, productSection, moodTiles] = await Promise.all([
-    getSiteContentWithFallback("home_hero", HOME_HERO),
-    getSiteContentWithFallback("home_hero_tiles", HOME_HERO_TILES),
-    getSiteContentWithFallback("home_new_arrivals", HOME_NEW_ARRIVALS),
-    getSiteContentWithFallback("shop_by_mood", SHOP_BY_MOOD),
+  const [heroContent, heroTiles, productSection, moodTiles, featuredAndSponsored] =
+    await Promise.all([
+      getSiteContentWithFallback("home_hero", HOME_HERO),
+      getSiteContentWithFallback("home_hero_tiles", HOME_HERO_TILES),
+      getSiteContentWithFallback("home_new_arrivals", HOME_NEW_ARRIVALS),
+      getSiteContentWithFallback("shop_by_mood", SHOP_BY_MOOD),
+      getSiteContentWithFallback("featured_brand_and_sponsored", FEATURED_BRAND_AND_SPONSORED),
+    ]);
+  const [productSectionItems, featuredBrand, sponsoredBrands] = await Promise.all([
+    getProductSectionProducts(productSection),
+    getBrandContent(featuredAndSponsored.featuredBrandSlug),
+    getBrandSummariesBySlug(featuredAndSponsored.sponsoredBrandSlugs),
   ]);
-  const productSectionItems = await getProductSectionProducts(productSection);
 
   return (
     <main className="min-h-screen bg-cream">
@@ -44,7 +56,7 @@ export default async function Home() {
         viewAllHref={VIEW_ALL_HREF[productSection.source]}
       />
       <ShopByMood tiles={moodTiles} />
-      <Sponsored />
+      <Sponsored featuredBrand={featuredBrand} sponsoredBrands={sponsoredBrands} />
       <Footer />
     </main>
   );

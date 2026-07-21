@@ -2,7 +2,12 @@
 // the fallback used whenever no admin-edited "home_hero" row exists in
 // site_content (see lib/data/siteContent.ts).
 
-import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent } from "@/types";
+import type {
+  FeaturedBrandAndSponsoredContent,
+  HomeHeroContent,
+  HomeHeroTilesContent,
+  HomeProductSectionContent,
+} from "@/types";
 
 export const HOME_HERO: HomeHeroContent = {
   headingLines: ["Local brands.", "Real stories.", "All in one place."],
@@ -44,4 +49,12 @@ export const HOME_NEW_ARRIVALS: HomeProductSectionContent = {
   title: "New Arrivals",
   source: "new",
   limit: 8,
+};
+
+// Fallback for the "featured_brand_and_sponsored" CMS key. Real brand
+// slugs from the seeded catalog — the admin form only lets the owner pick
+// from real brands, never a typo'd or fabricated slug.
+export const FEATURED_BRAND_AND_SPONSORED: FeaturedBrandAndSponsoredContent = {
+  featuredBrandSlug: "studio-nile",
+  sponsoredBrandSlugs: ["nola", "kai", "sahara-form", "remady-star"],
 };

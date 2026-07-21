@@ -163,6 +163,33 @@ export interface FeaturedBrandSummary {
   thumbnail: string;
 }
 
+export interface BrandSummary {
+  slug: string;
+  name: string;
+  logoImage: string | null;
+}
+
+// Lightweight — no product/variant joins — for spots that only need a
+// brand's name/logo (e.g. the homepage Sponsored pills), so we don't pull
+// each brand's full catalog just to render a logo chip.
+export async function getBrandSummariesBySlug(slugs: string[]): Promise<BrandSummary[]> {
+  if (slugs.length === 0) return [];
+  const { data, error } = await supabase
+    .from("brands")
+    .select("slug, name, logo_image")
+    .in("slug", slugs);
+
+  if (error) {
+    throw new Error(`getBrandSummariesBySlug failed: ${error.message}`);
+  }
+  const bySlug = new Map((data ?? []).map((r) => [r.slug as string, r]));
+  // Preserve the admin-chosen order rather than whatever order Postgres returns.
+  return slugs
+    .map((slug) => bySlug.get(slug))
+    .filter((r): r is { slug: string; name: string; logo_image: string | null } => Boolean(r))
+    .map((r) => ({ slug: r.slug, name: r.name as string, logoImage: r.logo_image }));
+}
+
 export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
   const { data, error } = await supabase
     .from("brands")

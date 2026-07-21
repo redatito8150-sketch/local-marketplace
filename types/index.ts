@@ -69,6 +69,11 @@ export interface MoodTileContent {
 
 export type ShopByMoodContent = MoodTileContent[];
 
+export interface FeaturedBrandAndSponsoredContent {
+  featuredBrandSlug: string;
+  sponsoredBrandSlugs: string[];
+}
+
 export interface JoinHeroContent {
   label: string;
   headingLines: string[];

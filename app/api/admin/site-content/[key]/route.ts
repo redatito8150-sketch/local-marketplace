@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import type {
   ContactInfoContent,
+  FeaturedBrandAndSponsoredContent,
   HomeHeroContent,
   HomeProductSectionContent,
   JoinHeroContent,
@@ -19,6 +20,7 @@ const ALLOWED_KEYS = [
   "shipping_settings",
   "contact_info",
   "home_new_arrivals",
+  "featured_brand_and_sponsored",
 ] as const;
 const PRODUCT_SECTION_SOURCES: HomeProductSectionContent["source"][] = [
   "new",
@@ -78,10 +80,22 @@ function validateHomeProductSection(value: unknown): string | null {
   return null;
 }
 
+function validateFeaturedBrandAndSponsored(value: unknown): string | null {
+  if (!value || typeof value !== "object") return "Missing content";
+  const v = value as Partial<FeaturedBrandAndSponsoredContent>;
+  if (!v.featuredBrandSlug?.trim()) return "A featured brand is required";
+  if (!Array.isArray(v.sponsoredBrandSlugs)) return "Sponsored brands must be a list";
+  if (v.sponsoredBrandSlugs.some((s) => typeof s !== "string" || !s.trim())) {
+    return "Every sponsored brand needs a valid slug";
+  }
+  return null;
+}
+
 function validate(key: AllowedKey, value: unknown): string | null {
   if (key === "home_hero" || key === "join_hero") return validateHero(key, value);
   if (key === "shipping_settings") return validateShippingSettings(value);
   if (key === "home_new_arrivals") return validateHomeProductSection(value);
+  if (key === "featured_brand_and_sponsored") return validateFeaturedBrandAndSponsored(value);
   return validateContactInfo(value);
 }
 

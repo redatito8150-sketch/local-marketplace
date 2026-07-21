@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal, Sparkles, Waves } from "lucide-react";
+import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal, Sparkles, Waves, Award } from "lucide-react";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 
@@ -39,6 +39,13 @@ const SECTIONS = [
     icon: Waves,
     title: "Shop by Mood",
     description: "The 5 lifestyle tiles on the homepage (Cairo Summer, After Dark, etc).",
+  },
+  {
+    key: "featured_brand_and_sponsored",
+    href: "/admin/content/featured-sponsored",
+    icon: Award,
+    title: "Featured Brand & Sponsored",
+    description: "Which real brands appear in the homepage's spotlight section.",
   },
   {
     key: "journal_articles",
