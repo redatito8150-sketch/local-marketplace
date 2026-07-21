@@ -23,6 +23,7 @@ export default async function EditBrandPortalProductPage(
   if (!product || product.brandSlug !== owner.brandSlug) notFound();
 
   const taxonomy = await getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY);
+  const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
   // If there's already a staged edit awaiting review, continue from that
   // draft instead of the live data — otherwise a second edit before the
@@ -34,7 +35,7 @@ export default async function EditBrandPortalProductPage(
   return (
     <div>
       <Link
-        href="/brand-portal/products"
+        href={productsHref}
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-soft/60 transition-colors hover:text-ink"
       >
         <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -60,7 +61,7 @@ export default async function EditBrandPortalProductPage(
         taxonomy={taxonomy}
         lockedBrand={{ slug: owner.brandSlug, name: owner.brandName ?? owner.brandSlug }}
         apiBasePath="/api/brand-portal/products"
-        cancelHref="/brand-portal/products"
+        cancelHref={productsHref}
       />
     </div>
   );

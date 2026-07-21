@@ -50,9 +50,9 @@ export default function BulkProductActions({ products }: { products: ProductReco
   };
 
   return (
-    <div className="mt-8 overflow-x-auto rounded-xl3 border border-stone-150 bg-white">
+    <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       {selected.size > 0 && (
-        <div className="flex items-center justify-between gap-4 border-b border-stone-150 bg-beige-50/60 px-5 py-3">
+        <div className="flex min-w-[920px] items-center justify-between gap-4 border-b border-slate-200 bg-red-50/60 px-5 py-3">
           <span className="text-[13px] font-medium text-ink">{selected.size} selected</span>
           <div className="flex items-center gap-2">
             <button
@@ -83,8 +83,8 @@ export default function BulkProductActions({ products }: { products: ProductReco
         </div>
       )}
 
-      <table className="w-full text-left text-[13.5px]">
-        <thead className="border-b border-stone-150 text-[12px] uppercase tracking-wide text-ink-soft/50">
+      <table className="w-full min-w-[920px] text-left text-[13px]">
+        <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[10.5px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur">
           <tr>
             <th className="w-10 px-5 py-3">
               <input
@@ -104,7 +104,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
         </thead>
         <tbody className="divide-y divide-stone-150">
           {products.map((product) => (
-            <tr key={product.id}>
+            <tr key={product.id} className="transition-colors hover:bg-slate-50/70">
               <td className="px-5 py-3">
                 <input
                   type="checkbox"
@@ -122,7 +122,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
                     className="h-full w-full object-cover"
                   />
                 </div>
-                <span className="font-medium text-ink">{product.name}</span>
+                <div><p className="font-bold text-slate-900">{product.name}</p><p className="mt-0.5 text-[10.5px] text-slate-400">{product.sku}</p></div>
               </td>
               <td className="px-5 py-3 text-ink-soft/70">{product.brandName}</td>
               <td className="px-5 py-3 capitalize text-ink-soft/70">

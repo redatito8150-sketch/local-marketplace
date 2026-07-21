@@ -159,6 +159,12 @@ export interface BrandProductListItem {
   image: string;
   price: number;
   currency: "USD" | "EGP";
+  category?: string;
+  productType?: string;
+  collection?: string;
+  featured: boolean;
+  inStock: boolean;
+  createdAt: string;
   status: string;
   pausedByBrand: boolean;
   hasPendingEdit: boolean;
@@ -172,6 +178,12 @@ interface BrandProductRow {
   image: string;
   price: number;
   currency: "USD" | "EGP";
+  product_category: string | null;
+  product_type: string | null;
+  collection: string | null;
+  featured: boolean;
+  in_stock: boolean;
+  created_at: string;
   status: string;
   paused_by_brand: boolean;
   pending_changes: unknown;
@@ -192,7 +204,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, image, price, currency, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_category, product_type, collection, featured, in_stock, created_at, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
     )
     .eq("brand_slug", brandSlug)
     .order("created_at", { ascending: false });
@@ -207,6 +219,12 @@ export async function getProductsForBrand(
     image: row.image,
     price: Number(row.price),
     currency: row.currency,
+    category: row.product_category ?? undefined,
+    productType: row.product_type ?? undefined,
+    collection: row.collection ?? undefined,
+    featured: row.featured,
+    inStock: row.in_stock,
+    createdAt: row.created_at,
     status: row.status,
     pausedByBrand: row.paused_by_brand,
     hasPendingEdit: row.pending_changes != null,

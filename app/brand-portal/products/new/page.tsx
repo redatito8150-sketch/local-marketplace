@@ -16,11 +16,12 @@ export default async function NewBrandPortalProductPage(
   if (!owner || !owner.brandSlug) redirect("/brand-portal/products");
 
   const taxonomy = await getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY);
+  const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
   return (
     <div>
       <Link
-        href="/brand-portal/products"
+        href={productsHref}
         className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-soft/60 transition-colors hover:text-ink"
       >
         <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
@@ -33,7 +34,7 @@ export default async function NewBrandPortalProductPage(
         taxonomy={taxonomy}
         lockedBrand={{ slug: owner.brandSlug, name: owner.brandName ?? owner.brandSlug }}
         apiBasePath="/api/brand-portal/products"
-        cancelHref="/brand-portal/products"
+        cancelHref={productsHref}
       />
     </div>
   );

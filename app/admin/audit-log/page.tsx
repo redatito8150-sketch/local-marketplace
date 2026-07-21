@@ -1,147 +1,39 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAllAuditLogsForAdmin } from "@/lib/data/admin";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
+import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 
-const ENTITY_LABELS: Record<string, string> = {
-  product: "Product",
-  brand: "Brand",
-  order: "Order",
-  application: "Application",
-  profile: "User",
-  coupon: "Coupon",
-  site_content: "Site content",
-};
+const ENTITY_LABELS: Record<string, string> = { product: "Product", brand: "Brand", order: "Order", application: "Application", profile: "User", coupon: "Coupon", site_content: "Site content" };
+const ACTION_LABELS: Record<string, string> = { create: "Created", update: "Updated", delete: "Deleted", status_change: "Status changed", bulk_archive: "Bulk archived", bulk_publish: "Bulk published", bulk_delete: "Bulk deleted", restock: "Restocked", role_change: "Role changed", pause: "Paused", unpause: "Unpaused", request_deletion: "Deletion requested", approve: "Approved", request_changes: "Changes requested", reject_deletion: "Deletion rejected", archive: "Archived", revert: "Reverted" };
 
-export default async function AdminAuditLogPage(
-  props: {
-    searchParams: Promise<{ entityType?: string; actor?: string; from?: string; to?: string }>;
-  }
-) {
-  const searchParams = await props.searchParams;
+export default async function AdminAuditLogPage(props: { searchParams: Promise<{ entityType?: string; action?: string; actor?: string; from?: string; to?: string }> }) {
+  const params = await props.searchParams;
   const staff = await requireStaffRole("admin");
   if (!staff) redirect("/admin");
-
-  const { entityType, actor, from, to } = searchParams;
-  const logs = await getAllAuditLogsForAdmin(200, {
-    entityType,
-    actorQuery: actor,
-    dateFrom: from,
-    dateTo: to,
-  });
-  const hasFilters = Boolean(entityType || actor || from || to);
+  const logs = await getAllAuditLogsForAdmin(200, { entityType: params.entityType, action: params.action, actorQuery: params.actor, dateFrom: params.from, dateTo: params.to });
+  const activeCount = [params.entityType, params.action, params.actor, params.from, params.to].filter(Boolean).length;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">
-        Audit Log ({logs.length})
-      </h1>
-      <p className="mt-1 text-sm text-ink-soft/60">
-        Every admin and brand-portal action — who did it, what changed, and when.
-      </p>
-
-      <form className="mt-5 flex flex-wrap items-end gap-3 rounded-xl3 border border-stone-150 bg-white p-4">
-        <label className="flex flex-col gap-1">
-          <span className="text-[11.5px] font-medium text-ink-soft/60">Type</span>
-          <select
-            name="entityType"
-            defaultValue={entityType ?? ""}
-            className="rounded-md border border-stone-150 bg-white px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink/30"
-          >
-            <option value="">All</option>
-            {Object.entries(ENTITY_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11.5px] font-medium text-ink-soft/60">Actor</span>
-          <input
-            type="text"
-            name="actor"
-            defaultValue={actor ?? ""}
-            placeholder="name or email"
-            className="rounded-md border border-stone-150 bg-white px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink/30"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11.5px] font-medium text-ink-soft/60">From</span>
-          <input
-            type="date"
-            name="from"
-            defaultValue={from ?? ""}
-            className="rounded-md border border-stone-150 bg-white px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink/30"
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[11.5px] font-medium text-ink-soft/60">To</span>
-          <input
-            type="date"
-            name="to"
-            defaultValue={to ?? ""}
-            className="rounded-md border border-stone-150 bg-white px-2.5 py-1.5 text-[12.5px] text-ink outline-none focus:border-ink/30"
-          />
-        </label>
-        <button
-          type="submit"
-          className="rounded-md bg-ink px-4 py-2 text-[12.5px] font-semibold text-cream transition-transform hover:scale-[1.02]"
-        >
-          Filter
-        </button>
-        {hasFilters && (
-          <Link
-            href="/admin/audit-log"
-            className="text-[12.5px] font-medium text-ink-soft/60 hover:text-ink hover:underline"
-          >
-            Clear filters
-          </Link>
-        )}
-      </form>
-
-      <div className="mt-6 divide-y divide-stone-150 rounded-xl3 border border-stone-150 bg-white">
-        {logs.map((log) => (
-          <details key={log.id} className="group px-5 py-4">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="rounded-full bg-beige-100 px-2.5 py-1 text-[11px] font-semibold text-ink">
-                  {ENTITY_LABELS[log.entityType] ?? log.entityType}
-                </span>
-                <span className="text-[13.5px] text-ink">{describeAuditLog(log)}</span>
-              </div>
-              <span className="whitespace-nowrap text-[12px] text-ink-soft/50">
-                {new Date(log.createdAt).toLocaleString("en-US")}
-              </span>
-            </summary>
-            <div className="mt-3 grid grid-cols-1 gap-3 text-[12px] md:grid-cols-2">
-              <div>
-                <p className="mb-1 font-semibold uppercase tracking-wide text-ink-soft/40">
-                  Before
-                </p>
-                <pre className="max-h-64 overflow-auto rounded-md bg-stone-50 p-3 text-ink-soft/70">
-                  {JSON.stringify(log.beforeValue, null, 2) ?? "—"}
-                </pre>
-              </div>
-              <div>
-                <p className="mb-1 font-semibold uppercase tracking-wide text-ink-soft/40">
-                  After
-                </p>
-                <pre className="max-h-64 overflow-auto rounded-md bg-stone-50 p-3 text-ink-soft/70">
-                  {JSON.stringify(log.afterValue, null, 2) ?? "—"}
-                </pre>
-              </div>
-            </div>
-          </details>
-        ))}
-
-        {logs.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-ink-soft/60">
-            {hasFilters ? "No actions match these filters." : "No actions recorded yet."}
-          </p>
-        )}
-      </div>
+      <DashboardPageHeader eyebrow="Operations" title={`Audit log (${logs.length})`} description="A read-only record of administrative and brand-portal activity, including who acted and what changed." />
+      <DashboardFilters action="/admin/audit-log" clearHref="/admin/audit-log" activeCount={activeCount}>
+        <DashboardFilterField label="Actor" className="lg:flex-1"><input name="actor" defaultValue={params.actor ?? ""} placeholder="Name or email" className={`${dashboardFilterControl} w-full lg:min-w-[220px]`} /></DashboardFilterField>
+        <DashboardFilterField label="Entity"><select name="entityType" defaultValue={params.entityType ?? ""} className={dashboardFilterControl}><option value="">All entities</option>{Object.entries(ENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
+        <DashboardFilterField label="Action"><select name="action" defaultValue={params.action ?? ""} className={dashboardFilterControl}><option value="">All actions</option>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
+        <DashboardFilterField label="From"><input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
+        <DashboardFilterField label="To"><input type="date" name="to" defaultValue={params.to ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
+      </DashboardFilters>
+      <DashboardPanel className="mt-6">
+        {logs.length ? <div className="divide-y divide-slate-100">{logs.map((log) => (
+          <details key={log.id} className="group px-5 py-4 open:bg-slate-50/60"><summary className="flex cursor-pointer list-none flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex min-w-0 items-start gap-3"><span className="mt-0.5 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{ENTITY_LABELS[log.entityType] ?? log.entityType}</span><div className="min-w-0"><p className="text-[12.5px] leading-5 text-slate-800">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] font-medium uppercase tracking-[0.06em] text-slate-400">{ACTION_LABELS[log.action] ?? log.action}</p></div></div><time className="whitespace-nowrap pl-0 text-[11px] text-slate-400 sm:pl-4">{new Date(log.createdAt).toLocaleString("en-US")}</time></summary><div className="mt-4 grid gap-3 text-[11.5px] md:grid-cols-2"><AuditValue title="Before" value={log.beforeValue} /><AuditValue title="After" value={log.afterValue} /></div></details>
+        ))}</div> : <DashboardEmptyState title="No matching activity" description={activeCount ? "Clear or adjust the filters to find more audit entries." : "Recorded administrative and brand activity will appear here."} />}
+      </DashboardPanel>
     </div>
   );
+}
+
+function AuditValue({ title, value }: { title: string; value: unknown }) {
+  return <div><p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">{title}</p><pre className="max-h-64 overflow-auto rounded-xl border border-slate-200 bg-white p-3 text-slate-600">{JSON.stringify(value, null, 2) ?? "—"}</pre></div>;
 }
