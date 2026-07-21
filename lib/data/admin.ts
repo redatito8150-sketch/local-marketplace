@@ -591,6 +591,7 @@ async function getFullNamesByActorId(rows: AuditLogRow[]): Promise<Map<string, s
 
 export interface AuditLogFilters {
   entityType?: string;
+  action?: string;
   actorQuery?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -608,6 +609,7 @@ export async function getAllAuditLogsForAdmin(
     .limit(limit);
 
   if (filters?.entityType) query = query.eq("entity_type", filters.entityType);
+  if (filters?.action) query = query.eq("action", filters.action);
   if (filters?.actorQuery) query = query.ilike("actor_label", `%${filters.actorQuery}%`);
   if (filters?.dateFrom) query = query.gte("created_at", filters.dateFrom);
   // Inclusive of the whole "to" day, since the column is a timestamptz and
