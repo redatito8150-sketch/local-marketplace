@@ -1,4 +1,4 @@
-# LOCAL — Project Context for Claude Code
+# Mahaly (formerly LOCAL) — Project Context for Claude Code
 
 This file is auto-loaded by Claude Code at the start of every session in this
 repo. It exists so a new session has the same context as our full build
@@ -6,20 +6,29 @@ history, without needing it re-explained.
 
 ## What this project is
 
-**LOCAL** is a premium marketplace connecting customers with independent
-local (Egyptian) brands — fashion, beauty, accessories, home. Think
-Zalando/Farfetch-style browsing, but every brand is small and curated.
+**Mahaly** (renamed from "Local" in Round 5) is a premium marketplace
+connecting customers with independent local (Egyptian) brands — fashion,
+beauty, accessories, home. Think Zalando/Farfetch-style browsing, but every
+brand is small and curated. The codebase, folder names, and some internal
+identifiers still say "Local" in places — only user-facing text and the
+brand color were swept in the rename; that's an intentional scope boundary,
+not something left unfinished.
 
 Two visual "modes" coexist intentionally:
 - **Main site** (homepage, `/shop/[category]`, `/product/[id]`, `/cart`, etc.)
-  — cream/black/beige palette, `Header.tsx` with the Brands mega menu.
+  — cream/black/beige palette plus a dark red brand accent
+  (`mahalyred` in `tailwind.config.ts`, sampled from the real logo file:
+  `#D10506`), `Header.tsx`/`Logo.tsx` with the Brands mega menu.
 - **Brand pages** (`/brands`, `/brands/[slug]`) — a separate navy/red/white
   editorial palette (see `tailwind.config.ts`: `navy`, `accentred`,
   `charcoal`, `muted`, `hairline` vs. the main site's `ink`, `cream`,
-  `beige`, `stone`). **Do not merge these palettes** — this was a deliberate
-  choice from two different design briefs, not an inconsistency to fix.
-  `Header.tsx`/`Footer.tsx` (main site) ARE reused on brand pages though —
-  only the content palette below the header differs.
+  `beige`, `stone`, `mahalyred`). **Do not merge these palettes** — this was
+  a deliberate choice from two different design briefs, not an
+  inconsistency to fix. `mahalyred` and `accentred` are two different reds
+  on purpose — close in hue, but separate tokens; never point one at the
+  other. `Header.tsx`/`Footer.tsx` (main site) ARE reused on brand pages
+  though — only the content palette below the header differs, so brand
+  pages do show the new red in that shared chrome.
 
 ## Tech stack
 
@@ -192,10 +201,31 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   env vars (`DISCORD_WEBHOOK_NOTIFICATIONS`/`_AUDIT_LOG`/`_ERRORS`) —
   everything no-ops silently if unset, never throws.
 
+- **Homepage redesign + Mahaly rebrand (Round 5)** — logo + `mahalyred`
+  accent in Header/Footer; Hero rebuilt from 3 rotated tiles to 4 equal
+  tiles (Women/Men/Kids/Home, the last pointing at a static `/shop/home`
+  "coming soon" page — no real Home category exists yet); a homepage
+  "New Arrivals" product grid using `CompactProductCard` (deliberately no
+  Add to Cart/wishlist — that only exists on `/product/[id]`); "Shop by
+  Mood" (5 named lifestyle tiles, replacing the old 9-tile "Explore
+  boards"); `Sponsored.tsx` rebuilt into a real 2-column Featured
+  Brand/Sponsored-brands layout (`getBrandContent`/`getBrandSummariesBySlug`,
+  never fabricated brand data). All 4 of these are **new `site_content`
+  keys** (`home_hero_tiles`, `home_new_arrivals`, `shop_by_mood`,
+  `featured_brand_and_sponsored`) with their own `/admin/content/*` pages —
+  `home_new_arrivals`'s `source` field is exactly how the owner swaps
+  "New Arrivals" for "Trending"/"Best Sellers" without touching code.
+
 **Not done yet:**
 1. **Payment gateway** — Paymob or Fawry (Egypt-first) or Stripe. Checkout
    UI and real order persistence already exist; no actual payment
    processing is wired in yet (orders are created without a live charge).
+2. **Sitewide `mahalyred` sweep** — Round 5 only re-themed the shared
+   Header/Footer/homepage to the new red; other pages' primary buttons
+   (`/shop/[category]`, `/product/[id]`, `/cart`, `/checkout`, `/account`,
+   `/admin`) still use the original `bg-ink` primary-button styling.
+   Intentionally deferred to whichever round redesigns those pages next,
+   not an oversight.
 
 ## Conventions to keep following
 
