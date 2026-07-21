@@ -74,9 +74,35 @@ All filters use URL query parameters, preserve unrelated values represented by t
 - Next.js production build: passed with live Supabase access
 - Unauthenticated `/admin` redirect: passed
 - Unauthenticated `/brand-portal` redirect: passed
+- Authenticated Admin overview and navigation: passed
+- Admin Products URL-filter persistence after refresh: passed
+- Admin Orders, Brands, and Brand Activity filters: passed
+- Admin preview of NOLA Brand Portal: passed
+- Brand Products URL-filter persistence with `brand=nola`: passed
+- Brand Orders, Inventory, Activity, and Profile: passed
+- Responsive checks at 1440, 768, and 390 pixels: passed with no page-level horizontal overflow
+- Browser console errors across tested routes: none
 - Storefront files changed: none
 - Production data/schema changes: none
 
-## Manual QA still required
+## Authenticated QA screenshots
 
-Authenticated screenshots and role-by-role visual checks require active Admin, Brand Owner, and Brand Assistant sessions. Test these routes at 1920, 1440, 1280, 1024, 768, and 390 pixels before merging the draft PR.
+### Admin desktop overview
+
+![Admin desktop overview](screenshots/dashboard-qa/admin-desktop-overview.png)
+
+### Admin mobile navigation
+
+![Admin mobile navigation](screenshots/dashboard-qa/admin-mobile-menu.png)
+
+### Brand Portal desktop overview
+
+![Brand Portal desktop overview](screenshots/dashboard-qa/brand-portal-desktop-overview.png)
+
+### Brand Portal mobile navigation
+
+![Brand Portal mobile navigation](screenshots/dashboard-qa/brand-portal-mobile-menu.png)
+
+## Manual QA remaining before merge
+
+Admin access and Admin brand impersonation are verified. A direct Brand Owner session and a Brand Assistant session are still required to confirm their restricted navigation and write permissions before merging the draft PR. Wider 1920 and intermediate 1280/1024 pixel visual checks remain recommended for the deployment preview.
