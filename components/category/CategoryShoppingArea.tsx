@@ -29,7 +29,7 @@ export default function CategoryShoppingArea({
     <section className={`${compact ? "mx-auto max-w-[1680px] px-5 pb-16 pt-5 sm:px-8 lg:px-[60px]" : "mx-auto max-w-screen3xl px-8 pb-20 pt-10 lg:px-[60px]"}`}>
       {compact && (
         <div className="mb-5 flex items-center justify-between gap-4 border-b border-stone-150 pb-4">
-          <HorizontalFilters groups={filterGroups} selected={selected} onToggle={toggleFilter} onClear={clearFilters} />
+          <HorizontalFilters groups={filterGroups} products={products} selected={selected} onToggle={toggleFilter} onClear={clearFilters} />
           <ProductsToolbar productCount={sortedProducts.length} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={setSort} compact />
         </div>
       )}

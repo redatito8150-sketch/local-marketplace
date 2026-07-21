@@ -10,7 +10,7 @@ export default function FeaturedBrand({
   compact?: boolean;
 }) {
   return (
-    <div className={`relative w-full overflow-hidden bg-beige-100 ${compact ? "h-[150px] rounded-[10px]" : "h-[150px] rounded-[18px] lg:h-[150px]"}`}>
+    <div className={`relative w-full overflow-hidden bg-beige-100 ${compact ? "h-[210px] rounded-[10px]" : "h-[150px] rounded-[18px] lg:h-[150px]"}`}>
       <Image
         src={content.image}
         alt={content.heading}
