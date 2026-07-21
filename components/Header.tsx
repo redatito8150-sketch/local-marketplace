@@ -85,12 +85,12 @@ export default function Header() {
           : "bg-cream/60 backdrop-blur-sm"
       }`}
     >
-      <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-8 px-6 md:px-10 xl:px-12">
+      <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">
         {/* Logo */}
         <Logo />
 
         {/* Center nav */}
-        <nav className="hidden items-center gap-10 lg:flex">
+        <nav className="hidden items-center gap-10 xl:flex">
           {NAV_LINKS.slice(0, 1).map((link) => (
             <Link
               key={link.label}
@@ -128,7 +128,7 @@ export default function Header() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <SearchAutocomplete />
 
           {dashboardHref && (
@@ -182,7 +182,7 @@ export default function Header() {
           <button
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             onClick={() => setMobileMenuOpen((o) => !o)}
-            className="rounded-full p-2 text-ink transition-colors hover:bg-stone-100 lg:hidden"
+            className="rounded-full p-2 text-ink transition-colors hover:bg-stone-100 xl:hidden"
           >
             {mobileMenuOpen ? (
               <X className="h-5 w-5" strokeWidth={1.6} />
@@ -194,7 +194,7 @@ export default function Header() {
       </div>
 
       {mobileMenuOpen && (
-        <nav className="border-t border-stone-150 lg:hidden">
+        <nav className="border-t border-stone-150 xl:hidden">
           <ul className="flex flex-col px-8 py-2">
             {MOBILE_NAV_LINKS.map((link) => (
               <li key={link.label}>

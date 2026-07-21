@@ -12,9 +12,11 @@ import StarRating from "@/components/shared/StarRating";
 export default function ProductCard({
   product,
   viewMode = "grid",
+  compact = false,
 }: {
   product: Product;
   viewMode?: ViewMode;
+  compact?: boolean;
 }) {
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
@@ -40,7 +42,7 @@ export default function ProductCard({
     >
       <div
         className={`relative overflow-hidden rounded-[16px] bg-beige-50 ${
-          viewMode === "list" ? "h-[140px] w-[110px] flex-none" : "aspect-[3/3.9] w-full"
+          viewMode === "list" ? "h-[140px] w-[110px] flex-none" : compact ? "aspect-[1.28] w-full rounded-[8px]" : "aspect-[3/3.9] w-full"
         }`}
       >
         <Image
@@ -65,7 +67,7 @@ export default function ProductCard({
               image: product.image,
             });
           }}
-          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-soft backdrop-blur-sm transition-transform hover:scale-105"
+          className={`absolute flex items-center justify-center rounded-full bg-white/90 shadow-soft backdrop-blur-sm transition-transform hover:scale-105 ${compact ? "right-2 top-2 h-7 w-7" : "right-3 top-3 h-8 w-8"}`}
         >
           <Heart
             className="h-4 w-4"
@@ -76,24 +78,25 @@ export default function ProductCard({
         </button>
       </div>
 
-      <div className={viewMode === "list" ? "flex-1" : "mt-3.5"}>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
+      <div className={viewMode === "list" ? "flex-1" : compact ? "rounded-b-[8px] border border-t-0 border-stone-150 px-3 pb-2.5 pt-2" : "mt-3.5"}>
+        <p className={`${compact ? "hidden" : "block"} text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50`}>
           {product.brand}
         </p>
-        <h3 className="mt-1 text-[14px] font-medium leading-snug text-ink">
+        <h3 className={`${compact ? "truncate text-[11px]" : "mt-1 text-[14px]"} font-medium leading-snug text-ink`}>
           {product.name}
         </h3>
-        <p className="mt-1.5 text-[14px] font-semibold text-ink">
+        <p className={`${compact ? "mt-1 text-[11px]" : "mt-1.5 text-[14px]"} font-semibold text-ink`}>
           {formatPrice(product.price, product.currency)}
         </p>
 
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className={`${compact ? "hidden" : "flex"} mt-1.5 items-center gap-1.5`}>
           <StarRating rating={product.rating} size="xs" />
           <span className="text-[12px] text-ink-soft/45">
             ({product.reviewCount})
           </span>
         </div>
 
+        {!compact && (
         <button
           onClick={(e) => {
             e.preventDefault();
@@ -112,14 +115,15 @@ export default function ProductCard({
             });
           }}
           disabled={!product.inStock}
-          className={`rounded-md bg-ink text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 ${
-            viewMode === "list"
-              ? "mt-3 px-5 py-2"
-              : "mt-3.5 w-full py-2.5"
-          }`}
+          className={
+            "rounded-md bg-ink text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 " +
+            (viewMode === "list" ? "mt-3 px-5 py-2" : "mt-3.5 w-full py-2.5")
+          }
         >
           {product.inStock ? "Add to Cart" : "Sold Out"}
         </button>
+        )}
+        {compact && product.colors.length > 0 && <div className="mt-2 flex gap-1">{product.colors.slice(0, 4).map((color) => <span key={color.name} title={color.name} className="h-2.5 w-2.5 rounded-full border border-black/10" style={{ backgroundColor: color.hex }} />)}</div>}
       </div>
     </Link>
   );

@@ -17,27 +17,29 @@ export default function ProductsToolbar({
   onViewModeChange,
   sort,
   onSortChange,
+  compact = false,
 }: {
   productCount: number;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
   sort: SortOption;
   onSortChange: (sort: SortOption) => void;
+  compact?: boolean;
 }) {
   const [sortOpen, setSortOpen] = useState(false);
 
   return (
     <div
       id="products"
-      className="mb-6 flex items-center justify-between scroll-mt-24"
+      className={`${compact ? "flex shrink-0 items-center justify-end" : "mb-6 flex items-center justify-between scroll-mt-24"}`}
     >
-      <p className="text-sm text-ink-soft/70">{productCount} Products</p>
+      {!compact && <p className="text-sm text-ink-soft/70">{productCount} Products</p>}
 
       <div className="flex items-center gap-3">
         <div className="relative">
           <button
             onClick={() => setSortOpen((o) => !o)}
-            className="flex items-center gap-2 rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[13px] font-medium text-ink transition-colors hover:border-ink/30"
+            className={`flex items-center gap-2 border border-stone-150 bg-white text-[12px] font-medium text-ink transition-colors hover:border-ink/30 ${compact ? "h-9 rounded-full px-4" : "rounded-md px-3.5 py-2"}`}
           >
             {SORT_LABELS[sort]}
             <ChevronDown
@@ -68,7 +70,7 @@ export default function ProductsToolbar({
           )}
         </div>
 
-        <div className="flex items-center gap-1 rounded-md border border-stone-150 p-1">
+        <div className={`${compact ? "hidden" : "flex"} items-center gap-1 rounded-md border border-stone-150 p-1`}>
           <button
             aria-label="Grid view"
             onClick={() => onViewModeChange("grid")}
