@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal } from "lucide-react";
+import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal, Sparkles } from "lucide-react";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 
@@ -25,6 +25,13 @@ const SECTIONS = [
     icon: GalleryHorizontal,
     title: "Homepage Hero Tiles",
     description: "The 4 image tiles (Women/Men/Kids/Home) on the homepage.",
+  },
+  {
+    key: "home_new_arrivals",
+    href: "/admin/content/new-arrivals",
+    icon: Sparkles,
+    title: "New Arrivals Section",
+    description: "The homepage product grid — title and which products power it.",
   },
   {
     key: "journal_articles",

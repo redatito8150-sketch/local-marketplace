@@ -5,6 +5,7 @@ import { logAudit } from "@/lib/auditLog";
 import type {
   ContactInfoContent,
   HomeHeroContent,
+  HomeProductSectionContent,
   JoinHeroContent,
   ShippingSettingsContent,
 } from "@/types";
@@ -12,7 +13,18 @@ import type {
 // Single-value keys handled generically here. category-heroes, journal, and
 // product-taxonomy (list-shaped, needing per-item patch/add/remove
 // semantics) get their own dedicated routes instead.
-const ALLOWED_KEYS = ["home_hero", "join_hero", "shipping_settings", "contact_info"] as const;
+const ALLOWED_KEYS = [
+  "home_hero",
+  "join_hero",
+  "shipping_settings",
+  "contact_info",
+  "home_new_arrivals",
+] as const;
+const PRODUCT_SECTION_SOURCES: HomeProductSectionContent["source"][] = [
+  "new",
+  "trending",
+  "bestsellers",
+];
 type AllowedKey = (typeof ALLOWED_KEYS)[number];
 
 function validateHero(key: "home_hero" | "join_hero", value: unknown): string | null {
@@ -53,9 +65,23 @@ function validateContactInfo(value: unknown): string | null {
   return null;
 }
 
+function validateHomeProductSection(value: unknown): string | null {
+  if (!value || typeof value !== "object") return "Missing content";
+  const v = value as Partial<HomeProductSectionContent>;
+  if (!v.title?.trim()) return "Title is required";
+  if (!v.source || !PRODUCT_SECTION_SOURCES.includes(v.source)) {
+    return "Source must be one of: new, trending, bestsellers";
+  }
+  if (typeof v.limit !== "number" || v.limit <= 0) {
+    return "Limit must be a positive number";
+  }
+  return null;
+}
+
 function validate(key: AllowedKey, value: unknown): string | null {
   if (key === "home_hero" || key === "join_hero") return validateHero(key, value);
   if (key === "shipping_settings") return validateShippingSettings(value);
+  if (key === "home_new_arrivals") return validateHomeProductSection(value);
   return validateContactInfo(value);
 }
 

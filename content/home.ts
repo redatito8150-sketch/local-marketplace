@@ -2,7 +2,7 @@
 // the fallback used whenever no admin-edited "home_hero" row exists in
 // site_content (see lib/data/siteContent.ts).
 
-import type { HomeHeroContent, HomeHeroTilesContent } from "@/types";
+import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent } from "@/types";
 
 export const HOME_HERO: HomeHeroContent = {
   headingLines: ["Local brands.", "Real stories.", "All in one place."],
@@ -35,4 +35,13 @@ export const HOME_HERO_TILES: HomeHeroTilesContent = {
     href: "/shop/home",
     image: "https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=80",
   },
+};
+
+// Fallback for the "home_new_arrivals" CMS key. Changing "source" to
+// "trending" or "bestsellers" (and "title" to match) is exactly how the
+// owner renames this whole section from Site Content — no code change.
+export const HOME_NEW_ARRIVALS: HomeProductSectionContent = {
+  title: "New Arrivals",
+  source: "new",
+  limit: 8,
 };

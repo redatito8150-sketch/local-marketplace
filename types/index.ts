@@ -51,6 +51,15 @@ export interface HeroTileContent {
 
 export type HomeHeroTilesContent = Record<"women" | "men" | "kids" | "home", HeroTileContent>;
 
+// Backs the homepage's product-grid section — "source" is what lets the
+// owner swap "New Arrivals" for "Trending"/"Best Sellers" from Site Content
+// without any code change.
+export interface HomeProductSectionContent {
+  title: string;
+  source: "new" | "trending" | "bestsellers";
+  limit: number;
+}
+
 export interface JoinHeroContent {
   label: string;
   headingLines: string[];
