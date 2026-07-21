@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import BrandPortalNav from "@/components/brand-portal/BrandPortalNav";
+import DashboardShell from "@/components/dashboard/DashboardShell";
 
 export default async function BrandPortalLayout({
   children,
@@ -16,21 +16,14 @@ export default async function BrandPortalLayout({
   if (!owner) redirect("/account");
 
   return (
-    <div className="min-h-screen bg-cream">
-      <header className="border-b border-stone-150 bg-white">
-        <div className="mx-auto flex max-w-screen2xl items-center justify-between px-8 py-5 lg:px-12">
-          <Link href="/brand-portal" className="text-lg font-bold tracking-tightest text-ink">
-            {owner.brandName ?? "Brand Portal"}
-          </Link>
-          <span className="text-[12px] font-medium text-ink-soft/50">
-            {owner.isAdmin && !owner.brandSlug ? "Admin View" : "Brand Portal"}
-          </span>
-        </div>
-      </header>
-      <div className="mx-auto grid max-w-screen2xl grid-cols-1 gap-8 px-8 py-10 lg:grid-cols-[220px_minmax(0,1fr)] lg:px-12">
-        <BrandPortalNav showPageContent={owner.accessLevel === "owner"} />
-        <main>{children}</main>
-      </div>
-    </div>
+    <DashboardShell
+      variant="brand"
+      title={owner.brandName ?? "Mahaly Brand Portal"}
+      subtitle={owner.isAdmin && !owner.brandSlug ? "Admin brand workspace" : "Brand owner workspace"}
+      sidebar={<BrandPortalNav showPageContent={owner.accessLevel === "owner"} />}
+      headerTools={<span className="hidden rounded-full border border-[#e3dcd3] bg-[#fffdf9] px-3 py-1.5 text-[11px] font-semibold text-[#6f6259] sm:inline-flex">{owner.accessLevel === "owner" ? "Owner access" : "Assistant access"}</span>}
+    >
+      {children}
+    </DashboardShell>
   );
 }

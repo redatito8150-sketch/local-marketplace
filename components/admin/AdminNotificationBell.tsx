@@ -32,7 +32,7 @@ export default function AdminNotificationBell({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"
-        className="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"
       >
         <Bell className="h-4.5 w-4.5" strokeWidth={1.8} />
         {unreadCount > 0 && (
@@ -41,7 +41,7 @@ export default function AdminNotificationBell({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-md border border-stone-150 bg-white shadow-card">
+        <div className="absolute right-0 top-full z-20 mt-2 w-[min(88vw,360px)] rounded-xl border border-slate-200 bg-white shadow-xl">
           <div className="flex items-center justify-between border-b border-stone-150 px-4 py-3">
             <p className="text-[13px] font-semibold text-ink">Notifications</p>
             {unreadCount > 0 && (
