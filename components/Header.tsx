@@ -79,18 +79,18 @@ export default function Header() {
       initial={{ y: -24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6, ease: "easeOut" }}
-      className={`sticky top-0 z-50 transition-all duration-300 ${
+      className={`sticky top-0 z-50 border-b border-stone-150/70 transition-all duration-300 ${
         scrolled
           ? "bg-cream/90 backdrop-blur-md shadow-soft"
           : "bg-cream/60 backdrop-blur-sm"
       }`}
     >
-      <div className="mx-auto flex max-w-screen2xl items-center justify-between gap-8 px-8 py-5 lg:px-12">
+      <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-8 px-6 md:px-10 xl:px-12">
         {/* Logo */}
         <Logo />
 
         {/* Center nav */}
-        <nav className="hidden items-center gap-9 lg:flex">
+        <nav className="hidden items-center gap-10 lg:flex">
           {NAV_LINKS.slice(0, 1).map((link) => (
             <Link
               key={link.label}

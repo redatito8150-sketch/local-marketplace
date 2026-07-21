@@ -48,7 +48,7 @@ export const HOME_HERO_TILES: HomeHeroTilesContent = {
 export const HOME_NEW_ARRIVALS: HomeProductSectionContent = {
   title: "New Arrivals",
   source: "new",
-  limit: 8,
+  limit: 12,
 };
 
 // Fallback for the "featured_brand_and_sponsored" CMS key. Real brand

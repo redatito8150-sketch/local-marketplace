@@ -3,7 +3,7 @@ import Link from "next/link";
 
 const SIZES = {
   sm: { icon: 24, text: "text-lg" },
-  md: { icon: 32, text: "text-2xl" },
+  md: { icon: 42, text: "text-[34px]" },
 } as const;
 
 export default function Logo({
@@ -17,7 +17,7 @@ export default function Logo({
   return (
     <Link href={href} className="flex items-center gap-2">
       <Image src="/logo.png" alt="Mahaly" width={icon} height={icon} priority className="shrink-0" />
-      <span className={`${text} font-bold tracking-tightest text-mahalyred`}>Mahaly</span>
+      <span className={`${text} font-serif font-semibold tracking-tightest text-mahalyred`}>Mahaly</span>
     </Link>
   );
 }
