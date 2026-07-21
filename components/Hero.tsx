@@ -18,7 +18,10 @@ const benefits = [
 export default function Hero({ content, tiles }: { content: HomeHeroContent; tiles: HomeHeroTilesContent }) {
   return (
     <>
-      <section id="home" className="relative overflow-hidden border-b border-stone-150/60">
+      <section
+        id="home"
+        className="relative overflow-hidden border-b border-sky-100/70 bg-[linear-gradient(120deg,#f6fcff_0%,#def2ff_42%,#c8e9fb_72%,#edf8ff_100%)]"
+      >
         <div className="hero-leaf" aria-hidden />
         <div className="mx-auto grid max-w-[1920px] gap-10 px-6 py-6 md:px-10 lg:grid-cols-[minmax(430px,0.92fr)_minmax(0,1.78fr)] lg:items-center lg:px-12 lg:py-6 xl:px-16">
           <div className="relative z-10 mx-auto w-full max-w-[510px] py-6 lg:mx-0 lg:pl-20">
