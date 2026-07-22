@@ -53,25 +53,39 @@ const FEATURED_GROUP: FilterGroup = {
   options: [{ id: "featured-only", label: "Featured Products" }],
 };
 
+const DISCOUNTED_GROUP: FilterGroup = {
+  id: "discounted",
+  title: "Discounted",
+  options: [{ id: "discounted-only", label: "On Sale" }],
+};
+
+export type ProductFacet = Pick<Product, "brand" | "category" | "sizes" | "colors" | "productCategory" | "productType" | "collection" | "material" | "fit" | "compareAtPrice">;
+
+export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGroup[] {
+  const groups: FilterGroup[] = [
+    countedGroup("audience", "Audience", products.map((product) => product.category)),
+    countedGroup("brand", "Brand", products.map((product) => product.brand)),
+    PRICE_GROUP,
+    countedGroup("size", "Size", products.flatMap((product) => product.sizes)),
+    countedGroup("color", "Color", products.flatMap((product) => product.colors.map((color) => color.name))),
+    countedGroup("productCategory", "Category", products.map((product) => product.productCategory)),
+    countedGroup("productType", "Product Type", products.map((product) => product.productType)),
+    countedGroup("collection", "Collection", products.map((product) => product.collection)),
+    countedGroup("material", "Material", products.map((product) => product.material)),
+    countedGroup("fit", "Fit", products.map((product) => product.fit)),
+    AVAILABILITY_GROUP,
+    RATING_GROUP,
+    FEATURED_GROUP,
+    ...(products.some((product) => product.compareAtPrice != null) ? [DISCOUNTED_GROUP] : []),
+  ];
+  return groups.filter((group) => group.options.length > 0);
+}
+
 // Filter options are derived from whatever products are actually being
 // shown on this page (real brand names, real taxonomy values, real
 // sizes/colors) instead of a hardcoded list disconnected from the catalog.
 // Groups with no real options on this page (e.g. nothing has a Fit set
 // yet) are dropped so the sidebar doesn't show empty sections.
 export function buildDynamicFilterGroups(products: Product[]): FilterGroup[] {
-  const groups: FilterGroup[] = [
-    countedGroup("brand", "Brand", products.map((p) => p.brand)),
-    PRICE_GROUP,
-    countedGroup("size", "Size", products.flatMap((p) => p.sizes)),
-    countedGroup("color", "Color", products.flatMap((p) => p.colors.map((c) => c.name))),
-    countedGroup("productCategory", "Category", products.map((p) => p.productCategory)),
-    countedGroup("productType", "Product Type", products.map((p) => p.productType)),
-    countedGroup("collection", "Collection", products.map((p) => p.collection)),
-    countedGroup("material", "Material", products.map((p) => p.material)),
-    countedGroup("fit", "Fit", products.map((p) => p.fit)),
-    AVAILABILITY_GROUP,
-    RATING_GROUP,
-    FEATURED_GROUP,
-  ];
-  return groups.filter((g) => g.options.length > 0);
+  return buildMarketplaceFilterGroups(products);
 }

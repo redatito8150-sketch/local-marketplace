@@ -36,7 +36,7 @@ const SECTION_BASE_COLUMNS = [
   "is_required",
   "updated_at",
   "published_at",
-].join(",");
+];
 
 function toSection(row: PageSectionRow, mode: "draft" | "published"): PageSectionRecord {
   return {

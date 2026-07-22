@@ -33,6 +33,9 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Added a manager-only Page Studio UI with structured section fields, visibility controls, drag/drop plus keyboard-accessible ordering, draft save, preview, publish, discard, and restore actions.
 - Replaced the homepage read path with a published Page Studio renderer while preserving a safe legacy-content fallback until the migration is deployed.
 - Added the configurable `Explore All Products` homepage preview with bounded active-product queries.
+- Added `/shop/all` with server-side search, sorting, URL-persistent filters, conditional Product Type, 24-item pagination, product count, SEO metadata, and loading/error/empty states.
+- Generalized the shared catalog filters with marketplace Audience and Discounted controls and safe product-type relationship data.
+- Added eager loading for above-the-fold catalog images after runtime LCP diagnostics.
 
 ## Pending tasks
 
@@ -40,7 +43,6 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Complete all customer, brand-owner, and admin flow verification.
 - Add the Page Studio media asset upload/selection workflow and storefront Edit Mode overlays.
 - Add safe custom-section creation, duplication, and removal controls.
-- Complete `/shop/all` with pagination, shared filters, query persistence, metadata, loading, and empty/error states.
 - Complete responsive QA, preview verification, PR review, and final merge.
 
 ## Files changed
@@ -72,6 +74,10 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - `app/api/admin/page-studio/**`
 - `supabase/migrations/20260722_page_studio_foundation.sql`
 - `tests/pageStudioRegistry.test.ts`
+- `app/shop/all/**`
+- `components/category/AllProductsShoppingArea.tsx`
+- `lib/catalogQuery.ts`
+- `tests/catalogQuery.test.ts`
 
 ## Database changes
 
@@ -94,13 +100,14 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
-- Twenty-one validation/security tests pass (eight order-request, three image-upload, three product-persistence, and seven Page Studio registry tests).
+- Twenty-four validation/security tests pass (eight order-request, three image-upload, three product-persistence, seven Page Studio registry, and three catalog-query tests).
 - TypeScript and lint pass after the first security and upload-hardening implementation.
 - Browser QA: Women desktop filter layout, conditional Clothing → Product Type behavior, Studio Nile brand catalog, mobile full-filter drawer, and 390px horizontal-overflow check.
 
 - TypeScript passes.
 - ESLint passes with no warnings.
-- Production build passes: 138 static/dynamic routes generated after connecting to Supabase.
+- Production build passes: 139 static/dynamic routes generated after connecting to Supabase.
+- Browser QA: `/shop/all` desktop catalog/pagination, URL search results, Clothing → Product Type insertion, complete desktop filter panel, mobile filter drawer, and 390px no-overflow verification.
 
 ## Known limitations
 

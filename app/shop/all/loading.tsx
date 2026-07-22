@@ -1,0 +1,3 @@
+export default function ShopAllLoading() {
+  return <div className="min-h-screen bg-cream"><div className="mx-auto max-w-[1680px] animate-pulse px-5 py-24 sm:px-8 lg:px-[60px]"><div className="h-4 w-24 rounded bg-stone-200" /><div className="mt-5 h-12 w-80 max-w-full rounded bg-stone-200" /><div className="mt-10 h-12 rounded-full bg-stone-200" /><div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">{Array.from({ length: 12 }, (_, index) => <div key={index}><div className="aspect-[3/4] rounded-xl bg-stone-200" /><div className="mt-3 h-3 rounded bg-stone-200" /><div className="mt-2 h-3 w-1/2 rounded bg-stone-200" /></div>)}</div></div></div>;
+}

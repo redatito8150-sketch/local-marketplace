@@ -13,8 +13,8 @@ export default function ProductGrid({
   if (viewMode === "list") {
     return (
       <div className="flex flex-col gap-6">
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} viewMode="list" compact={compact} />
+        {products.map((product, index) => (
+          <ProductCard key={product.id} product={product} viewMode="list" compact={compact} eager={index < 2} />
         ))}
       </div>
     );
@@ -22,8 +22,8 @@ export default function ProductGrid({
 
   return (
     <div className={`grid grid-cols-2 ${compact ? "gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6" : "gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4"}`}>
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} viewMode="grid" compact={compact} />
+      {products.map((product, index) => (
+        <ProductCard key={product.id} product={product} viewMode="grid" compact={compact} eager={index < 6} />
       ))}
     </div>
   );

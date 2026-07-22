@@ -15,6 +15,7 @@ export default function CatalogControls({
   onViewModeChange,
   sort,
   onSortChange,
+  productTypeRelations,
 }: {
   groups: FilterGroup[];
   products: Product[];
@@ -26,6 +27,7 @@ export default function CatalogControls({
   onViewModeChange: (mode: ViewMode) => void;
   sort: SortOption;
   onSortChange: (sort: SortOption) => void;
+  productTypeRelations?: { productCategory?: string; productType?: string }[];
 }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-stone-150 pb-4">
@@ -35,6 +37,7 @@ export default function CatalogControls({
         selected={selected}
         onToggle={onToggle}
         onClear={onClear}
+        productTypeRelations={productTypeRelations}
       />
       <ProductsToolbar
         productCount={productCount}
