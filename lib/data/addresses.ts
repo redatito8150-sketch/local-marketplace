@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import type { AddressRecord } from "@/types";
+import type { AddressLabel, AddressRecord } from "@/types";
 
 interface AddressRow {
   id: string;
@@ -10,19 +10,31 @@ interface AddressRow {
   address_line: string;
   city: string;
   governorate: string;
+  building_number: string | null;
+  floor: string | null;
+  apartment: string | null;
+  landmark: string | null;
+  delivery_instructions: string | null;
+  postal_code: string | null;
   is_default: boolean;
 }
 
 function toAddressRecord(row: AddressRow): AddressRecord {
   return {
     id: row.id,
-    label: row.label,
+    label: row.label as AddressLabel,
     firstName: row.first_name,
     lastName: row.last_name,
     phone: row.phone,
     addressLine: row.address_line,
     city: row.city,
     governorate: row.governorate,
+    buildingNumber: row.building_number ?? undefined,
+    floor: row.floor ?? undefined,
+    apartment: row.apartment ?? undefined,
+    landmark: row.landmark ?? undefined,
+    deliveryInstructions: row.delivery_instructions ?? undefined,
+    postalCode: row.postal_code ?? undefined,
     isDefault: row.is_default,
   };
 }

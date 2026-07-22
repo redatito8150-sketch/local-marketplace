@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getAddressesForUser } from "@/lib/data/addresses";
+import type { AddressLabel } from "@/types";
+
+const VALID_LABELS: AddressLabel[] = ["Home", "Work", "Other"];
 
 interface AddressInput {
   label?: string;
@@ -10,6 +14,12 @@ interface AddressInput {
   addressLine: string;
   city: string;
   governorate: string;
+  buildingNumber?: string;
+  floor?: string;
+  apartment?: string;
+  landmark?: string;
+  deliveryInstructions?: string;
+  postalCode?: string;
 }
 
 function validate(body: Partial<AddressInput>): string | null {
@@ -19,7 +29,20 @@ function validate(body: Partial<AddressInput>): string | null {
   if (!body.addressLine?.trim()) return "Address is required";
   if (!body.city?.trim()) return "City is required";
   if (!body.governorate?.trim()) return "Governorate is required";
+  if (body.label && !VALID_LABELS.includes(body.label as AddressLabel)) return "Invalid label";
   return null;
+}
+
+// Used by checkout's address selector to list every saved address for a
+// signed-in shopper (default/[id] only ever returned a single address).
+export async function GET() {
+  const user = await requireUser();
+  if (!user) {
+    return NextResponse.json({ addresses: [] });
+  }
+
+  const addresses = await getAddressesForUser(user.id);
+  return NextResponse.json({ addresses });
 }
 
 export async function POST(request: NextRequest) {
@@ -53,6 +76,12 @@ export async function POST(request: NextRequest) {
       address_line: body.addressLine.trim(),
       city: body.city.trim(),
       governorate: body.governorate.trim(),
+      building_number: body.buildingNumber?.trim() || null,
+      floor: body.floor?.trim() || null,
+      apartment: body.apartment?.trim() || null,
+      landmark: body.landmark?.trim() || null,
+      delivery_instructions: body.deliveryInstructions?.trim() || null,
+      postal_code: body.postalCode?.trim() || null,
       is_default: (existingCount ?? 0) === 0,
     })
     .select("id")

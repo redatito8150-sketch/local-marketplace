@@ -8,7 +8,7 @@ import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { formatSize } from "@/lib/format";
-import type { AddressRecord } from "@/types";
+import type { AddressLabel, AddressRecord } from "@/types";
 
 type Step = "shipping" | "payment" | "confirmation";
 
@@ -38,6 +38,20 @@ const EMPTY_SHIPPING: ShippingForm = {
   governorate: "",
 };
 
+function addressToShipping(address: AddressRecord, fallbackEmail: string): ShippingForm {
+  return {
+    firstName: address.firstName,
+    lastName: address.lastName,
+    email: fallbackEmail,
+    phone: address.phone,
+    address: address.addressLine,
+    city: address.city,
+    governorate: address.governorate,
+  };
+}
+
+const NEW_ADDRESS = "__new__";
+
 export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
@@ -47,34 +61,54 @@ export default function CheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
 
-  // One-time prefill for a signed-in shopper with a saved default address —
-  // the shipping form stays fully editable afterward, and guest checkout
-  // (no user) is completely unaffected.
+  // Saved addresses for a signed-in shopper — lets checkout offer a real
+  // selector instead of just prefilling the default into a flat form.
+  const [savedAddresses, setSavedAddresses] = useState<AddressRecord[]>([]);
+  const [addressesLoaded, setAddressesLoaded] = useState(false);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>(NEW_ADDRESS);
+  const [saveNewAddress, setSaveNewAddress] = useState(false);
+  const [newAddressLabel, setNewAddressLabel] = useState<AddressLabel>("Home");
+
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setAddressesLoaded(true);
+      return;
+    }
     let cancelled = false;
-    fetch("/api/account/addresses/default")
-      .then((res) => (res.ok ? res.json() : { address: null }))
-      .then((data: { address: AddressRecord | null }) => {
-        if (cancelled || !data.address) return;
-        setShipping((s) => ({
-          ...s,
-          firstName: data.address!.firstName,
-          lastName: data.address!.lastName,
-          email: user.email ?? s.email,
-          phone: data.address!.phone,
-          address: data.address!.addressLine,
-          city: data.address!.city,
-          governorate: data.address!.governorate,
-        }));
+    fetch("/api/account/addresses")
+      .then((res) => (res.ok ? res.json() : { addresses: [] }))
+      .then((data: { addresses: AddressRecord[] }) => {
+        if (cancelled) return;
+        const addresses = data.addresses ?? [];
+        setSavedAddresses(addresses);
+        const defaultAddress = addresses.find((a) => a.isDefault) ?? addresses[0];
+        if (defaultAddress) {
+          setSelectedAddressId(defaultAddress.id);
+          setShipping(addressToShipping(defaultAddress, user.email ?? ""));
+        } else {
+          setShipping((s) => ({ ...s, email: user.email ?? s.email }));
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setAddressesLoaded(true);
+      });
     return () => {
       cancelled = true;
     };
     // Intentionally runs once per signed-in session, not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  const selectSavedAddress = (address: AddressRecord) => {
+    setSelectedAddressId(address.id);
+    setShipping((s) => addressToShipping(address, s.email));
+  };
+
+  const selectNewAddress = () => {
+    setSelectedAddressId(NEW_ADDRESS);
+    setShipping((s) => ({ ...EMPTY_SHIPPING, email: s.email }));
+  };
 
   const [couponInput, setCouponInput] = useState("");
   const [couponChecking, setCouponChecking] = useState(false);
@@ -120,6 +154,34 @@ export default function CheckoutPage() {
     setError("");
 
     try {
+      // Using a saved address as-is → pass its id straight through.
+      // Typing a brand-new one with "save to my account" checked → create
+      // it first so the order can reference a real address id; left
+      // unchecked (or for guests, who have nowhere to save to) the order
+      // just uses the flat shipping fields with no addressId at all.
+      let addressId: string | undefined =
+        selectedAddressId !== NEW_ADDRESS ? selectedAddressId : undefined;
+
+      if (selectedAddressId === NEW_ADDRESS && user && saveNewAddress) {
+        const saveRes = await fetch("/api/account/addresses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label: newAddressLabel,
+            firstName: shipping.firstName,
+            lastName: shipping.lastName,
+            phone: shipping.phone,
+            addressLine: shipping.address,
+            city: shipping.city,
+            governorate: shipping.governorate,
+          }),
+        });
+        if (saveRes.ok) {
+          const saved = await saveRes.json();
+          addressId = saved.id;
+        }
+      }
+
       const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,6 +194,7 @@ export default function CheckoutPage() {
           })),
           shipping,
           couponCode: appliedCoupon?.code,
+          addressId,
         }),
       });
 
@@ -210,22 +273,57 @@ export default function CheckoutPage() {
                 <h1 className="text-2xl font-bold tracking-tightest text-ink">
                   Shipping Information
                 </h1>
-                <div className="grid grid-cols-2 gap-4">
-                  <Field
-                    label="First name"
-                    placeholder="Nour"
-                    required
-                    value={shipping.firstName}
-                    onChange={(v) => setShipping((s) => ({ ...s, firstName: v }))}
-                  />
-                  <Field
-                    label="Last name"
-                    placeholder="Ahmed"
-                    required
-                    value={shipping.lastName}
-                    onChange={(v) => setShipping((s) => ({ ...s, lastName: v }))}
-                  />
-                </div>
+
+                {user && addressesLoaded && savedAddresses.length > 0 && (
+                  <div className="space-y-2.5">
+                    {savedAddresses.map((address) => (
+                      <label
+                        key={address.id}
+                        className={`flex cursor-pointer items-start gap-3 rounded-md border px-4 py-3 transition-colors ${
+                          selectedAddressId === address.id
+                            ? "border-ink bg-white"
+                            : "border-stone-150 bg-white/60 hover:border-ink/30"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="savedAddress"
+                          className="mt-1"
+                          checked={selectedAddressId === address.id}
+                          onChange={() => selectSavedAddress(address)}
+                        />
+                        <span className="text-[13px] text-ink">
+                          <span className="font-semibold">{address.label}</span>
+                          {address.isDefault && (
+                            <span className="ml-2 text-[11px] font-medium text-ink-soft/50">
+                              Default
+                            </span>
+                          )}
+                          <br />
+                          {address.firstName} {address.lastName} · {address.phone}
+                          <br />
+                          {address.addressLine}, {address.city}, {address.governorate}
+                        </span>
+                      </label>
+                    ))}
+                    <label
+                      className={`flex cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-[13px] font-medium transition-colors ${
+                        selectedAddressId === NEW_ADDRESS
+                          ? "border-ink bg-white text-ink"
+                          : "border-dashed border-stone-150 bg-white/60 text-ink-soft/70 hover:border-ink/30"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="savedAddress"
+                        checked={selectedAddressId === NEW_ADDRESS}
+                        onChange={selectNewAddress}
+                      />
+                      Use a new address
+                    </label>
+                  </div>
+                )}
+
                 <Field
                   label="Email"
                   type="email"
@@ -234,37 +332,90 @@ export default function CheckoutPage() {
                   value={shipping.email}
                   onChange={(v) => setShipping((s) => ({ ...s, email: v }))}
                 />
-                <Field
-                  label="Phone"
-                  type="tel"
-                  placeholder="+20 10 000 0000"
-                  required
-                  value={shipping.phone}
-                  onChange={(v) => setShipping((s) => ({ ...s, phone: v }))}
-                />
-                <Field
-                  label="Address"
-                  placeholder="Street, building, apartment"
-                  required
-                  value={shipping.address}
-                  onChange={(v) => setShipping((s) => ({ ...s, address: v }))}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <Field
-                    label="City"
-                    placeholder="Cairo"
-                    required
-                    value={shipping.city}
-                    onChange={(v) => setShipping((s) => ({ ...s, city: v }))}
-                  />
-                  <Field
-                    label="Governorate"
-                    placeholder="Cairo"
-                    required
-                    value={shipping.governorate}
-                    onChange={(v) => setShipping((s) => ({ ...s, governorate: v }))}
-                  />
-                </div>
+
+                {selectedAddressId === NEW_ADDRESS && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field
+                        label="First name"
+                        placeholder="Nour"
+                        required
+                        value={shipping.firstName}
+                        onChange={(v) => setShipping((s) => ({ ...s, firstName: v }))}
+                      />
+                      <Field
+                        label="Last name"
+                        placeholder="Ahmed"
+                        required
+                        value={shipping.lastName}
+                        onChange={(v) => setShipping((s) => ({ ...s, lastName: v }))}
+                      />
+                    </div>
+                    <Field
+                      label="Phone"
+                      type="tel"
+                      placeholder="+20 10 000 0000"
+                      required
+                      value={shipping.phone}
+                      onChange={(v) => setShipping((s) => ({ ...s, phone: v }))}
+                    />
+                    <Field
+                      label="Address"
+                      placeholder="Street, building, apartment"
+                      required
+                      value={shipping.address}
+                      onChange={(v) => setShipping((s) => ({ ...s, address: v }))}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <Field
+                        label="City"
+                        placeholder="Cairo"
+                        required
+                        value={shipping.city}
+                        onChange={(v) => setShipping((s) => ({ ...s, city: v }))}
+                      />
+                      <Field
+                        label="Governorate"
+                        placeholder="Cairo"
+                        required
+                        value={shipping.governorate}
+                        onChange={(v) => setShipping((s) => ({ ...s, governorate: v }))}
+                      />
+                    </div>
+
+                    {user && (
+                      <div className="space-y-2 rounded-md border border-stone-150 bg-white p-4">
+                        <label className="flex items-center gap-2 text-[13px] font-medium text-ink">
+                          <input
+                            type="checkbox"
+                            checked={saveNewAddress}
+                            onChange={(e) => setSaveNewAddress(e.target.checked)}
+                          />
+                          Save this address to my account
+                        </label>
+                        {saveNewAddress && (
+                          <label className="block max-w-[160px]">
+                            <span className="text-[12px] text-ink-soft/60">Label</span>
+                            <select
+                              value={newAddressLabel}
+                              onChange={(e) => setNewAddressLabel(e.target.value as AddressLabel)}
+                              className="mt-1 w-full rounded-md border border-stone-150 bg-white px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-ink/30"
+                            >
+                              <option value="Home">Home</option>
+                              <option value="Work">Work</option>
+                              <option value="Other">Other</option>
+                            </select>
+                          </label>
+                        )}
+                        <p className="text-[12px] text-ink-soft/50">
+                          {saveNewAddress
+                            ? "This will be added to your saved addresses."
+                            : "Leave unchecked to use this address for this order only."}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <button
                   type="submit"

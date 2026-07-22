@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
-  const { items, shipping, couponCode } = validation.value;
+  const { items, shipping, couponCode, addressId } = validation.value;
 
   // Re-fetch prices/details/variants from the DB rather than trusting
   // client-submitted values — the client only sends product id +
@@ -174,6 +174,21 @@ export async function POST(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // A client-supplied addressId is only ever a traceability hint — never
+  // trust it blindly. Confirm it actually belongs to the signed-in user
+  // before passing it through, otherwise silently drop it (order still
+  // places fine with the flat shipping snapshot alone).
+  let verifiedAddressId: string | null = null;
+  if (addressId && user) {
+    const { data: ownedAddress } = await supabaseAdmin
+      .from("addresses")
+      .select("id")
+      .eq("id", addressId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    verifiedAddressId = ownedAddress?.id ?? null;
+  }
+
   // One RPC call does the whole checkout atomically: unique order number,
   // order row, per-variant stock check + decrement, and order_items — all
   // in a single transaction, so two concurrent purchases of the last unit
@@ -188,6 +203,7 @@ export async function POST(request: NextRequest) {
     p_user_id: user?.id ?? null,
     p_items: rpcItems,
     p_coupon_code: couponCode?.trim() || null,
+    p_address_id: verifiedAddressId,
   });
 
   if (placeOrderError) {

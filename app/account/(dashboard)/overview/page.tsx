@@ -15,6 +15,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrdersForUser } from "@/lib/data/orders";
 import { getAddressesForUser } from "@/lib/data/addresses";
 import { getWishlistForUser } from "@/lib/data/wishlist";
+import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
 import { formatPrice } from "@/lib/format";
 import OrderCard from "@/components/account/OrderCard";
 import {
@@ -40,7 +41,7 @@ export default async function AccountOverviewPage() {
   const [{ data: profile }, orders, addresses, wishlist] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name, phone, notification_preferences")
+      .select("full_name, phone, phone_verified_at, notification_preferences")
       .eq("id", user.id)
       .maybeSingle(),
     getOrdersForUser(user.id),
@@ -53,12 +54,16 @@ export default async function AccountOverviewPage() {
   const avatarUrl = typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : "";
   const preferences = (profile?.notification_preferences ?? DEFAULT_PREFERENCES) as NotificationPreferences;
   const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
+  // Phone verification is only a real, checkable thing once an SMS provider
+  // is actually configured — otherwise every account would show "phone not
+  // verified" forever with no way to fix it, which isn't a useful signal.
   const completionChecks = [
     Boolean(profile?.full_name?.trim()),
     Boolean(profile?.phone?.trim()),
     Boolean(user.email_confirmed_at),
     Boolean(avatarUrl),
     Boolean(defaultAddress),
+    ...(SMS_VERIFICATION_ENABLED ? [Boolean(profile?.phone_verified_at)] : []),
   ];
   const completeCount = completionChecks.filter(Boolean).length;
   const completion = Math.round((completeCount / completionChecks.length) * 100);
@@ -67,6 +72,9 @@ export default async function AccountOverviewPage() {
   if (!avatarUrl) missing.push("profile photo");
   if (!defaultAddress) missing.push("saved address");
   if (!user.email_confirmed_at) missing.push("email verification");
+  if (SMS_VERIFICATION_ENABLED && profile?.phone?.trim() && !profile?.phone_verified_at) {
+    missing.push("phone verification");
+  }
 
   return (
     <div className="space-y-7">

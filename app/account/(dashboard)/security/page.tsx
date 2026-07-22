@@ -1,7 +1,12 @@
 import { redirect } from "next/navigation";
 import { CheckCircle2, CircleAlert, KeyRound, MailCheck, Phone } from "lucide-react";
 import { requireUser } from "@/lib/supabase/accountAuth";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
 import SecuritySettingsForm from "@/components/account/SecuritySettingsForm";
+import PhoneVerificationForm from "@/components/account/PhoneVerificationForm";
+import MfaSettingsForm from "@/components/account/MfaSettingsForm";
+import SessionsList from "@/components/account/SessionsList";
 import DeleteAccountButton from "@/components/account/DeleteAccountButton";
 import { AccountPageHeader, AccountPanel } from "@/components/account/AccountUI";
 
@@ -9,7 +14,14 @@ export default async function AccountSecurityPage() {
   const user = await requireUser();
   if (!user) redirect("/account");
   const emailVerified = Boolean(user.email_confirmed_at);
-  const phoneVerified = Boolean(user.phone_confirmed_at);
+
+  const supabase = await createSupabaseServerClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("phone, phone_verified_at")
+    .eq("id", user.id)
+    .maybeSingle();
+  const phoneVerified = Boolean(profile?.phone_verified_at);
 
   return (
     <div className="space-y-7">
@@ -29,14 +41,34 @@ export default async function AccountSecurityPage() {
         <SecurityStatus
           icon={Phone}
           title="Phone"
-          value={user.phone ?? "No verified phone"}
+          value={profile?.phone ?? "No phone on file"}
           verified={phoneVerified}
         />
       </div>
 
+      {SMS_VERIFICATION_ENABLED && !phoneVerified && (
+        <AccountPanel title="Verify your phone" description="Confirm your phone number with a one-time code sent by SMS.">
+          <div className="max-w-xl p-5 sm:p-6">
+            <PhoneVerificationForm initialPhone={profile?.phone ?? ""} />
+          </div>
+        </AccountPanel>
+      )}
+
       <AccountPanel title="Change password" description="Use at least 8 characters and avoid reusing an old password.">
         <div className="max-w-xl p-5 sm:p-6">
           <SecuritySettingsForm />
+        </div>
+      </AccountPanel>
+
+      <AccountPanel title="Two-factor authentication" description="Add an extra step at sign-in using an authenticator app. Optional — never required to use your account.">
+        <div className="max-w-xl p-5 sm:p-6">
+          <MfaSettingsForm />
+        </div>
+      </AccountPanel>
+
+      <AccountPanel title="Devices" description="Browsers and devices that have signed in to your account.">
+        <div className="max-w-xl p-5 sm:p-6">
+          <SessionsList />
         </div>
       </AccountPanel>
 

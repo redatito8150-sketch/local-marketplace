@@ -533,14 +533,22 @@ export interface NotificationPreferences {
 
 export type AccountTheme = "warm_sand" | "soft_rose" | "olive_stone";
 
+export type AddressLabel = "Home" | "Work" | "Other";
+
 export interface AddressRecord {
   id: string;
-  label: string;
+  label: AddressLabel;
   firstName: string;
   lastName: string;
   phone: string;
   addressLine: string;
   city: string;
   governorate: string;
+  buildingNumber?: string;
+  floor?: string;
+  apartment?: string;
+  landmark?: string;
+  deliveryInstructions?: string;
+  postalCode?: string;
   isDefault: boolean;
 }

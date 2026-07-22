@@ -2,17 +2,23 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AddressRecord } from "@/types";
+import type { AddressLabel, AddressRecord } from "@/types";
 import { accountInputClass, accountPrimaryButton } from "@/components/account/AccountUI";
 
 interface FormState {
-  label: string;
+  label: AddressLabel;
   firstName: string;
   lastName: string;
   phone: string;
   addressLine: string;
   city: string;
   governorate: string;
+  buildingNumber: string;
+  floor: string;
+  apartment: string;
+  landmark: string;
+  deliveryInstructions: string;
+  postalCode: string;
 }
 
 function toFormState(address?: AddressRecord): FormState {
@@ -24,6 +30,12 @@ function toFormState(address?: AddressRecord): FormState {
     addressLine: address?.addressLine ?? "",
     city: address?.city ?? "",
     governorate: address?.governorate ?? "",
+    buildingNumber: address?.buildingNumber ?? "",
+    floor: address?.floor ?? "",
+    apartment: address?.apartment ?? "",
+    landmark: address?.landmark ?? "",
+    deliveryInstructions: address?.deliveryInstructions ?? "",
+    postalCode: address?.postalCode ?? "",
   };
 }
 
@@ -71,7 +83,18 @@ export default function AddressForm({
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-4">
-      <TextField label="Label" value={form.label} onChange={(v) => set("label", v)} placeholder="Home" />
+      <label className="block">
+        <span className="text-[12.5px] font-medium text-[var(--account-text-muted)]">Label</span>
+        <select
+          value={form.label}
+          onChange={(e) => set("label", e.target.value as AddressLabel)}
+          className={accountInputClass}
+        >
+          <option value="Home">Home</option>
+          <option value="Work">Work</option>
+          <option value="Other">Other</option>
+        </select>
+      </label>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
@@ -90,10 +113,10 @@ export default function AddressForm({
 
       <TextField label="Phone" value={form.phone} onChange={(v) => set("phone", v)} required />
       <TextField
-        label="Address"
+        label="Street"
         value={form.addressLine}
         onChange={(v) => set("addressLine", v)}
-        placeholder="Street, building, apartment"
+        placeholder="Street name"
         required
       />
 
@@ -106,6 +129,37 @@ export default function AddressForm({
           required
         />
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <TextField
+          label="Building number"
+          value={form.buildingNumber}
+          onChange={(v) => set("buildingNumber", v)}
+        />
+        <TextField label="Floor" value={form.floor} onChange={(v) => set("floor", v)} />
+        <TextField
+          label="Apartment"
+          value={form.apartment}
+          onChange={(v) => set("apartment", v)}
+        />
+      </div>
+
+      <TextField
+        label="Landmark (optional)"
+        value={form.landmark}
+        onChange={(v) => set("landmark", v)}
+        placeholder="Near a well-known place"
+      />
+      <TextField
+        label="Delivery instructions (optional)"
+        value={form.deliveryInstructions}
+        onChange={(v) => set("deliveryInstructions", v)}
+      />
+      <TextField
+        label="Postal code (optional)"
+        value={form.postalCode}
+        onChange={(v) => set("postalCode", v)}
+      />
 
       {error && (
         <p role="alert" className="rounded-xl bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-danger)]">

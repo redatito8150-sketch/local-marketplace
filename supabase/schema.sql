@@ -73,6 +73,9 @@ create table if not exists profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   full_name text,
   email text,
+  phone text,
+  phone_verified_at timestamptz,
+  onboarding_completed_at timestamptz,
   is_admin boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -97,6 +100,12 @@ create table if not exists orders (
   created_at timestamptz not null default now()
 );
 
+-- Non-authoritative link from an order back to the saved address it came
+-- from (admin traceability only — the shipping_* columns above stay the
+-- authoritative, immutable snapshot; this FK may go null if the address is
+-- later deleted, and that's fine).
+alter table orders add column if not exists address_id uuid;
+
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references orders (id) on delete cascade,
@@ -112,6 +121,89 @@ create table if not exists order_items (
 );
 
 create index if not exists order_items_order_id_idx on order_items (order_id);
+
+-- ============================================================================
+-- ADDRESSES
+-- Saved delivery addresses (account/checkout). Shape matches what
+-- lib/data/addresses.ts and app/api/account/addresses/* already read/write.
+-- ============================================================================
+create table if not exists addresses (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  label text not null default 'Home' check (label in ('Home', 'Work', 'Other')),
+  first_name text not null,
+  last_name text not null,
+  phone text not null,
+  address_line text not null,
+  city text not null,
+  governorate text not null,
+  building_number text,
+  floor text,
+  apartment text,
+  landmark text,
+  delivery_instructions text,
+  postal_code text,
+  is_default boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists addresses_user_id_idx on addresses (user_id);
+
+-- OTP tracking for phone verification (app/api/account/phone/*). Phone is a
+-- secondary claim on profiles here, not a second auth.users identifier —
+-- email stays the sole login identity.
+create table if not exists phone_verifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  phone text not null,
+  otp_hash text not null,
+  expires_at timestamptz not null,
+  attempts int not null default 0,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists phone_verifications_user_id_idx on phone_verifications (user_id);
+
+-- Self-reported device registry for the security page's "your devices"
+-- list (app/api/account/sessions/*) — not a live session store, Supabase
+-- Auth itself owns real session/token validity.
+create table if not exists user_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  device_id text not null,
+  user_agent text,
+  ip_address text,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  unique (user_id, device_id)
+);
+
+create index if not exists user_sessions_user_id_idx on user_sessions (user_id);
+
+alter table orders drop constraint if exists orders_address_id_fkey;
+alter table orders add constraint orders_address_id_fkey
+  foreign key (address_id) references addresses (id) on delete set null;
+
+-- Atomic default-address swap — clears is_default on the user's other
+-- addresses and sets it on the target row in one statement, so there's
+-- never a window with zero or two defaults. Ownership (p_user_id must
+-- match the row) is checked inside the function itself, not just trusted
+-- from the caller.
+create or replace function public.set_default_address(p_user_id uuid, p_address_id uuid)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  update addresses
+  set is_default = (id = p_address_id), updated_at = now()
+  where user_id = p_user_id
+    and (is_default = true or id = p_address_id);
+end;
+$$;
 
 -- Checkout currently supports cash on delivery only. Store the real method
 -- and state explicitly so orders never imply an unprocessed card payment.
@@ -156,6 +248,15 @@ alter table profiles enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table brand_applications enable row level security;
+alter table addresses enable row level security;
+alter table phone_verifications enable row level security;
+-- Never read from the browser at all — send-otp/verify-otp both go through
+-- service_role, no select policy for anon/authenticated, same as audit_logs.
+alter table user_sessions enable row level security;
+
+create policy "Users can read their own sessions"
+  on user_sessions for select
+  using (auth.uid() = user_id);
 
 create policy "Public can read brands"
   on brands for select
@@ -171,6 +272,13 @@ create policy "Users can read their own profile"
 
 create policy "Users can read their own orders"
   on orders for select
+  using (auth.uid() = user_id);
+
+-- No public "list everyone" policy — only the owning user can read their
+-- own addresses. All writes go through service_role in
+-- app/api/account/addresses/*, same convention as orders/order_items below.
+create policy "Users can read their own addresses"
+  on addresses for select
   using (auth.uid() = user_id);
 
 create policy "Users can read their own order items"
@@ -202,11 +310,12 @@ language plpgsql
 security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, email)
+  insert into public.profiles (id, full_name, email, phone)
   values (
     new.id,
     new.raw_user_meta_data ->> 'full_name',
-    new.email
+    new.email,
+    new.raw_user_meta_data ->> 'phone'
   );
   return new;
 end;
@@ -486,7 +595,8 @@ create or replace function public.place_order(
   p_shipping_governorate text,
   p_user_id uuid,
   p_items jsonb,
-  p_coupon_code text default null
+  p_coupon_code text default null,
+  p_address_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -515,10 +625,12 @@ begin
     begin
       insert into orders (
         order_number, user_id, shipping_name, shipping_email, shipping_phone,
-        shipping_address, shipping_city, shipping_governorate, subtotal_usd, subtotal_egp
+        shipping_address, shipping_city, shipping_governorate, subtotal_usd, subtotal_egp,
+        address_id
       ) values (
         v_order_number, p_user_id, p_shipping_name, p_shipping_email, p_shipping_phone,
-        p_shipping_address, p_shipping_city, p_shipping_governorate, 0, 0
+        p_shipping_address, p_shipping_city, p_shipping_governorate, 0, 0,
+        p_address_id
       )
       returning id into v_order_id;
       exit;
@@ -864,11 +976,20 @@ revoke all on function public.cancel_order(uuid) from public;
 revoke all on function public.cancel_order(uuid) from anon, authenticated;
 grant execute on function public.cancel_order(uuid) to service_role;
 
-revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+revoke all on function public.set_default_address(uuid, uuid) from public;
+revoke all on function public.set_default_address(uuid, uuid) from anon, authenticated;
+grant execute on function public.set_default_address(uuid, uuid) to service_role;
+
+-- place_order gained p_address_id (a new trailing parameter) — that's a
+-- different signature to Postgres, so the old 9-arg overload is dropped
+-- explicitly rather than left behind alongside this one.
+drop function if exists public.place_order(text, text, text, text, text, text, uuid, jsonb, text);
+
+revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text, uuid)
   from public;
-revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text, uuid)
   from anon, authenticated;
-grant execute on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+grant execute on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text, uuid)
   to service_role;
 
 -- Atomic product + variant replacement. Route handlers perform authorization

@@ -24,6 +24,7 @@ export interface ValidatedOrderRequest {
   items: ValidatedOrderItem[];
   shipping: ValidatedShipping;
   couponCode?: string;
+  addressId?: string;
 }
 
 type ValidationResult =
@@ -115,6 +116,15 @@ export function validateOrderRequest(input: unknown): ValidationResult {
     couponCode = input.couponCode.trim().toUpperCase();
   }
 
+  let addressId: string | undefined;
+  if (input.addressId != null && input.addressId !== "") {
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (typeof input.addressId !== "string" || !UUID_RE.test(input.addressId)) {
+      return { ok: false, error: "Invalid address selection" };
+    }
+    addressId = input.addressId;
+  }
+
   return {
     ok: true,
     value: {
@@ -129,6 +139,7 @@ export function validateOrderRequest(input: unknown): ValidationResult {
         governorate: shippingFields.governorate.value!,
       },
       couponCode,
+      addressId,
     },
   };
 }
