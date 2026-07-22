@@ -98,7 +98,7 @@ export default function AdminSidebar({
         if (!items.length) return null;
         return (
           <div key={group.label ?? index}>
-            {group.label && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>}
+            {group.label && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-text-muted)]/75">{group.label}</p>}
             <div className="space-y-1">
               {items.map((item) => {
                 const active = activeHref === item.href;
@@ -108,11 +108,11 @@ export default function AdminSidebar({
                     key={item.href}
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${active ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"}`}
+                    className={`group flex min-h-10 items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
                   >
-                    <item.icon className={`h-[17px] w-[17px] ${active ? "text-white" : "text-slate-400 group-hover:text-slate-700"}`} strokeWidth={1.8} />
+                    <item.icon className={`h-[17px] w-[17px] ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {count > 0 && <span className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${active ? "bg-white/15 text-white" : "bg-red-50 text-mahalyred"}`}>{count}</span>}
+                    {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold text-[var(--admin-primary)]">{count}</span>}
                   </Link>
                 );
               })}
@@ -121,12 +121,12 @@ export default function AdminSidebar({
         );
       })}
 
-      <div className="border-t border-slate-200 pt-4">
-        <Link href="/brand-portal" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950">
-          <Store className="h-[17px] w-[17px] text-slate-400" /> Brand Portal
+      <div className="border-t border-[var(--admin-border)] pt-4">
+        <Link href="/brand-portal" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]">
+          <Store className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> Brand Portal
         </Link>
-        <Link href="/" className="mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-950">
-          <ArrowLeft className="h-[17px] w-[17px] text-slate-400" /> Storefront
+        <Link href="/" className="mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]">
+          <ArrowLeft className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> Storefront
         </Link>
       </div>
     </nav>

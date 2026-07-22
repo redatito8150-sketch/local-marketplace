@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { getAddressesForUser } from "@/lib/data/addresses";
 import AddressCard from "@/components/account/AddressCard";
+import { AccountEmptyState, AccountPageHeader, accountPrimaryButton } from "@/components/account/AccountUI";
 
 export default async function AccountAddressesPage() {
   const user = await requireUser();
@@ -12,29 +13,24 @@ export default async function AccountAddressesPage() {
   const addresses = await getAddressesForUser(user.id);
 
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tightest text-ink">Addresses</h1>
-          <p className="mt-1 text-[13.5px] text-ink-soft/60">
-            Manage the addresses used at checkout.
-          </p>
-        </div>
-        <Link
+    <div className="space-y-7">
+      <AccountPageHeader
+        eyebrow="Delivery details"
+        title="Saved addresses"
+        description="Keep your delivery locations organized and choose the one you use most often."
+        action={<Link
           href="/account/addresses/new"
-          className="flex items-center gap-2 rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02]"
+          className={accountPrimaryButton}
         >
           <Plus className="h-4 w-4" strokeWidth={2} />
-          Add Address
-        </Link>
-      </div>
+          Add address
+        </Link>}
+      />
 
       {addresses.length === 0 ? (
-        <p className="mt-8 text-[13px] text-ink-soft/60">
-          No saved addresses yet. Add one to speed up checkout.
-        </p>
+        <AccountEmptyState title="No saved addresses" description="Add your first address to make checkout quicker next time." action={<Link href="/account/addresses/new" className={accountPrimaryButton}>Add your first address</Link>} />
       ) : (
-        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {addresses.map((address) => (
             <AddressCard key={address.id} address={address} />
           ))}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
+import { accountInputClass, accountPrimaryButton } from "@/components/account/AccountUI";
 
 export default function SettingsForm({
   initialFullName,
@@ -25,12 +26,6 @@ export default function SettingsForm({
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailMessage, setEmailMessage] = useState("");
   const [emailError, setEmailError] = useState("");
-
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordSaving, setPasswordSaving] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState("");
-  const [passwordError, setPasswordError] = useState("");
 
   const handleProfileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,34 +66,13 @@ export default function SettingsForm({
     setEmailSaving(false);
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError("");
-    setPasswordMessage("");
-    if (password.length < 6) {
-      setPasswordError("Password must be at least 6 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setPasswordError("Passwords do not match.");
-      return;
-    }
-    setPasswordSaving(true);
-    const { error } = await supabase.auth.updateUser({ password });
-    if (error) {
-      setPasswordError(error.message);
-    } else {
-      setPasswordMessage("Password updated.");
-      setPassword("");
-      setConfirmPassword("");
-    }
-    setPasswordSaving(false);
-  };
-
   return (
-    <div className="max-w-lg space-y-10">
+    <div className="space-y-8">
       <form onSubmit={handleProfileSubmit} className="space-y-4">
-        <h2 className="text-[15px] font-semibold text-ink">Profile</h2>
+        <div>
+          <h2 className="text-[15px] font-semibold text-[var(--account-text)]">Your details</h2>
+          <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">Used for your account and order communication.</p>
+        </div>
         <TextField label="Full name" value={fullName} onChange={setFullName} required />
         <TextField label="Phone" value={phone} onChange={setPhone} />
         {profileError && <FieldMessage tone="error">{profileError}</FieldMessage>}
@@ -106,33 +80,15 @@ export default function SettingsForm({
         <SubmitButton saving={profileSaving} label="Save Profile" />
       </form>
 
-      <form onSubmit={handleEmailSubmit} className="space-y-4 border-t border-stone-150 pt-8">
-        <h2 className="text-[15px] font-semibold text-ink">Email</h2>
+      <form onSubmit={handleEmailSubmit} className="space-y-4 border-t border-[var(--account-border)] pt-8">
+        <div>
+          <h2 className="text-[15px] font-semibold text-[var(--account-text)]">Email address</h2>
+          <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">Changing your email requires confirmation from your inbox.</p>
+        </div>
         <TextField label="Email address" type="email" value={email} onChange={setEmail} required />
         {emailError && <FieldMessage tone="error">{emailError}</FieldMessage>}
         {emailMessage && <FieldMessage tone="success">{emailMessage}</FieldMessage>}
         <SubmitButton saving={emailSaving} label="Update Email" />
-      </form>
-
-      <form onSubmit={handlePasswordSubmit} className="space-y-4 border-t border-stone-150 pt-8">
-        <h2 className="text-[15px] font-semibold text-ink">Password</h2>
-        <TextField
-          label="New password"
-          type="password"
-          value={password}
-          onChange={setPassword}
-          required
-        />
-        <TextField
-          label="Confirm new password"
-          type="password"
-          value={confirmPassword}
-          onChange={setConfirmPassword}
-          required
-        />
-        {passwordError && <FieldMessage tone="error">{passwordError}</FieldMessage>}
-        {passwordMessage && <FieldMessage tone="success">{passwordMessage}</FieldMessage>}
-        <SubmitButton saving={passwordSaving} label="Update Password" />
       </form>
     </div>
   );
@@ -153,13 +109,13 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <span className="text-[12.5px] font-medium text-[var(--account-text-muted)]">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
-        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+        className={accountInputClass}
       />
     </label>
   );
@@ -169,7 +125,9 @@ function FieldMessage({ tone, children }: { tone: "error" | "success"; children:
   return (
     <p
       className={`rounded-md px-3.5 py-2.5 text-[13px] font-medium ${
-        tone === "error" ? "bg-red-50 text-red-700" : "bg-stone-100 text-ink"
+        tone === "error"
+          ? "bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] text-[var(--account-danger)]"
+          : "bg-[color-mix(in_srgb,var(--account-success)_12%,transparent)] text-[var(--account-success)]"
       }`}
     >
       {children}
@@ -182,7 +140,7 @@ function SubmitButton({ saving, label }: { saving: boolean; label: string }) {
     <button
       type="submit"
       disabled={saving}
-      className="rounded-md bg-ink px-6 py-3 text-[13.5px] font-semibold text-cream transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+      className={accountPrimaryButton}
     >
       {saving ? "Saving…" : label}
     </button>

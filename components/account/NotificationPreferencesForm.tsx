@@ -3,7 +3,9 @@
 import { useState } from "react";
 import type { NotificationPreferences } from "@/types";
 
-const TOGGLES: { key: keyof NotificationPreferences; label: string; description: string }[] = [
+type NotificationToggleKey = "orderUpdates" | "promotions" | "newsletter";
+
+const TOGGLES: { key: NotificationToggleKey; label: string; description: string }[] = [
   {
     key: "orderUpdates",
     label: "Order updates",
@@ -31,7 +33,7 @@ export default function NotificationPreferencesForm({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const toggle = async (key: keyof NotificationPreferences) => {
+  const toggle = async (key: NotificationToggleKey) => {
     const next = { ...preferences, [key]: !preferences[key] };
     setPreferences(next);
     setSaving(true);
@@ -59,15 +61,15 @@ export default function NotificationPreferencesForm({
   };
 
   return (
-    <div className="max-w-lg space-y-4">
+    <div className="max-w-2xl space-y-3">
       {TOGGLES.map((item) => (
         <div
           key={item.key}
-          className="flex items-center justify-between gap-4 rounded-xl3 border border-stone-150 bg-white p-5"
+          className="flex items-center justify-between gap-4 rounded-2xl border border-[var(--account-border)] bg-[var(--account-surface)] p-5"
         >
           <div>
-            <p className="text-[14px] font-medium text-ink">{item.label}</p>
-            <p className="mt-0.5 text-[12.5px] text-ink-soft/60">{item.description}</p>
+            <p className="text-[14px] font-medium text-[var(--account-text)]">{item.label}</p>
+            <p className="mt-0.5 text-[12.5px] text-[var(--account-text-muted)]">{item.description}</p>
           </div>
           <button
             type="button"
@@ -77,11 +79,11 @@ export default function NotificationPreferencesForm({
             disabled={saving}
             onClick={() => toggle(item.key)}
             className={`relative h-6 w-11 flex-none rounded-full transition-colors disabled:opacity-60 ${
-              preferences[item.key] ? "bg-ink" : "bg-stone-200"
+              preferences[item.key] ? "bg-[var(--account-accent)]" : "bg-[var(--account-border)]"
             }`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--account-surface)] shadow-sm transition-transform ${
                 preferences[item.key] ? "translate-x-[22px]" : "translate-x-0.5"
               }`}
             />
@@ -90,12 +92,12 @@ export default function NotificationPreferencesForm({
       ))}
 
       {error && (
-        <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+        <p role="alert" className="rounded-xl bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-danger)]">
           {error}
         </p>
       )}
       {message && !error && (
-        <p className="rounded-md bg-stone-100 px-3.5 py-2.5 text-[13px] font-medium text-ink">
+        <p role="status" className="rounded-xl bg-[color-mix(in_srgb,var(--account-success)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-success)]">
           {message}
         </p>
       )}

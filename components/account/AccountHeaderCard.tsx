@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AccountAvatar from "@/components/account/AccountAvatar";
 
 const ROLE_LABELS: Record<string, string> = {
   customer: "Customer",
@@ -9,40 +10,36 @@ const ROLE_LABELS: Record<string, string> = {
   brand_assistant: "Brand Assistant",
 };
 
-function initialsFromName(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  return parts
-    .slice(0, 2)
-    .map((p) => p[0]!.toUpperCase())
-    .join("");
-}
-
 export default function AccountHeaderCard({
   fullName,
   email,
   role,
+  avatarUrl,
 }: {
   fullName: string;
   email: string;
   role: string;
+  avatarUrl?: string | null;
 }) {
+  const displayName = fullName || email || "Your account";
   return (
-    <div className="rounded-xl3 border border-stone-150 bg-white p-6 text-center">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-beige-100 text-lg font-semibold text-ink">
-        {initialsFromName(fullName || email)}
+    <div className="rounded-[24px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)]">
+      <div className="flex items-center gap-4 lg:flex-col lg:text-center">
+        <AccountAvatar name={displayName} imageUrl={avatarUrl} />
+        <div className="min-w-0">
+          <p className="truncate text-[16px] font-semibold text-[var(--account-text)]">{fullName || "Your account"}</p>
+          <p className="mt-0.5 truncate text-[12px] text-[var(--account-text-muted)]">{email}</p>
+          <span className="mt-2 inline-flex items-center rounded-full bg-[var(--account-surface-muted)] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[var(--account-text-muted)]">
+            {ROLE_LABELS[role] ?? role}
+          </span>
+          <Link
+            href="/account/settings"
+            className="mt-2 block text-[12px] font-semibold text-[var(--account-accent)] hover:underline"
+          >
+            Personal information
+          </Link>
+        </div>
       </div>
-      <p className="mt-4 text-[15px] font-semibold text-ink">{fullName || "Your account"}</p>
-      <p className="mt-0.5 text-[12.5px] text-ink-soft/60">{email}</p>
-      <span className="mt-3 inline-flex items-center rounded-full bg-stone-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft/70">
-        {ROLE_LABELS[role] ?? role}
-      </span>
-      <Link
-        href="/account/settings"
-        className="mt-4 block text-[12.5px] font-medium text-ink-soft/70 hover:text-ink hover:underline"
-      >
-        Edit Profile
-      </Link>
     </div>
   );
 }

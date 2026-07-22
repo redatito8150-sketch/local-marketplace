@@ -10,11 +10,11 @@ export default function OrderCard({
   showItems?: boolean;
 }) {
   return (
-    <div className="rounded-xl3 border border-stone-150 bg-white p-6">
+    <div className="rounded-[20px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)] sm:p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="text-[14px] font-semibold text-ink">#{order.orderNumber}</p>
-          <p className="mt-1 text-[12.5px] text-ink-soft/50">
+          <p className="text-[14px] font-semibold text-[var(--account-text)]">#{order.orderNumber}</p>
+          <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">
             {new Date(order.createdAt).toLocaleDateString("en-US")}
           </p>
         </div>
@@ -24,7 +24,7 @@ export default function OrderCard({
           >
             {ORDER_STATUS_LABELS[order.status]}
           </span>
-          <p className="text-[14px] font-semibold text-ink">
+          <p className="text-[14px] font-semibold text-[var(--account-text)]">
             {order.subtotalUsd > 0 && formatPrice(order.subtotalUsd, "USD")}
             {order.subtotalUsd > 0 && order.subtotalEgp > 0 && " + "}
             {order.subtotalEgp > 0 && formatPrice(order.subtotalEgp, "EGP")}
@@ -33,13 +33,13 @@ export default function OrderCard({
       </div>
 
       {showItems && (
-        <div className="mt-4 space-y-2 divide-y divide-stone-150">
+        <div className="mt-4 space-y-2 divide-y divide-[var(--account-border)]">
           {order.items.map((item) => (
             <div key={item.id} className="flex items-center justify-between pt-2 first:pt-0">
-              <p className="text-[13px] text-ink-soft/80">
+              <p className="text-[13px] text-[var(--account-text-muted)]">
                 {item.name} · Qty {item.quantity} · {formatSize(item.size)}
               </p>
-              <p className="text-[13px] font-medium text-ink">
+              <p className="text-[13px] font-medium text-[var(--account-text)]">
                 {formatPrice(item.price * item.quantity, item.currency)}
               </p>
             </div>

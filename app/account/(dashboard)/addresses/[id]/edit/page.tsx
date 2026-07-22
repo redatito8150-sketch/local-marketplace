@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { getAddressById } from "@/lib/data/addresses";
 import AddressForm from "@/components/account/AddressForm";
+import { AccountPageHeader, AccountPanel } from "@/components/account/AccountUI";
 
 export default async function EditAddressPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -12,11 +13,9 @@ export default async function EditAddressPage(props: { params: Promise<{ id: str
   if (!address) notFound();
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">Edit Address</h1>
-      <div className="mt-8">
-        <AddressForm mode="edit" initial={address} />
-      </div>
+    <div className="space-y-7">
+      <AccountPageHeader eyebrow="Delivery details" title="Edit address" description={`Update the details saved as ${address.label}.`} />
+      <AccountPanel><div className="p-5 sm:p-6"><AddressForm mode="edit" initial={address} /></div></AccountPanel>
     </div>
   );
 }

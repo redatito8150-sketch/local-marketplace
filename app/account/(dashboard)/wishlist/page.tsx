@@ -1,12 +1,10 @@
 import WishlistGrid from "@/components/wishlist/WishlistGrid";
+import { AccountPageHeader } from "@/components/account/AccountUI";
 
 export default function AccountWishlistPage() {
   return (
-    <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">Wishlist</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft/60">
-        Everything you&apos;ve saved for later.
-      </p>
+    <div className="space-y-7">
+      <AccountPageHeader eyebrow="Saved for later" title="Wishlist" description="A personal collection of pieces you love and may want to revisit." />
       <WishlistGrid />
     </div>
   );

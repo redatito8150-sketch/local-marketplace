@@ -26,32 +26,32 @@ export default function AddressCard({ address }: { address: AddressRecord }) {
   };
 
   return (
-    <div className="rounded-xl3 border border-stone-150 bg-white p-5">
+    <div className="rounded-[20px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <p className="text-[14px] font-semibold text-ink">{address.label}</p>
+            <p className="text-[14px] font-semibold text-[var(--account-text)]">{address.label}</p>
             {address.isDefault && (
-              <span className="flex items-center gap-1 rounded-full bg-beige-100 px-2.5 py-0.5 text-[10.5px] font-semibold text-ink">
+              <span className="flex items-center gap-1 rounded-full bg-[var(--account-accent-soft)] px-2.5 py-0.5 text-[10.5px] font-semibold text-[var(--account-accent)]">
                 <Star className="h-3 w-3 fill-current" strokeWidth={0} />
                 Default
               </span>
             )}
           </div>
-          <p className="mt-2 text-[13px] text-ink-soft/80">
+          <p className="mt-2 text-[13px] text-[var(--account-text)]">
             {address.firstName} {address.lastName}
           </p>
-          <p className="text-[13px] text-ink-soft/70">{address.phone}</p>
-          <p className="mt-1 text-[13px] text-ink-soft/70">
+          <p className="text-[13px] text-[var(--account-text-muted)]">{address.phone}</p>
+          <p className="mt-1 text-[13px] text-[var(--account-text-muted)]">
             {address.addressLine}, {address.city}, {address.governorate}
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-stone-150 pt-3">
+      <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-[var(--account-border)] pt-3">
         <Link
           href={`/account/addresses/${address.id}/edit`}
-          className="text-[12.5px] font-medium text-ink-soft/70 hover:text-ink hover:underline"
+          className="text-[12.5px] font-semibold text-[var(--account-accent)] hover:underline"
         >
           Edit
         </Link>
@@ -60,7 +60,7 @@ export default function AddressCard({ address }: { address: AddressRecord }) {
             type="button"
             disabled={busy}
             onClick={handleSetDefault}
-            className="text-[12.5px] font-medium text-ink-soft/70 hover:text-ink hover:underline disabled:opacity-50"
+            className="text-[12.5px] font-semibold text-[var(--account-text-muted)] hover:text-[var(--account-accent)] hover:underline disabled:opacity-50"
           >
             Set as default
           </button>
@@ -69,7 +69,7 @@ export default function AddressCard({ address }: { address: AddressRecord }) {
           type="button"
           disabled={busy}
           onClick={handleDelete}
-          className="text-[12.5px] font-medium text-red-600/80 hover:text-red-700 hover:underline disabled:opacity-50"
+          className="text-[12.5px] font-semibold text-[var(--account-danger)] hover:underline disabled:opacity-50"
         >
           Delete
         </button>
