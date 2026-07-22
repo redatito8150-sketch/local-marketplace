@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { CheckCircle2, CircleAlert, KeyRound, MailCheck, Phone } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clock, KeyRound, MailCheck, Phone } from "lucide-react";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
@@ -43,15 +43,31 @@ export default async function AccountSecurityPage() {
           title="Phone"
           value={profile?.phone ?? "No phone on file"}
           verified={phoneVerified}
+          pendingLabel={!SMS_VERIFICATION_ENABLED ? "Verification coming soon" : undefined}
         />
       </div>
 
-      {SMS_VERIFICATION_ENABLED && !phoneVerified && (
-        <AccountPanel title="Verify your phone" description="Confirm your phone number with a one-time code sent by SMS.">
-          <div className="max-w-xl p-5 sm:p-6">
-            <PhoneVerificationForm initialPhone={profile?.phone ?? ""} />
-          </div>
-        </AccountPanel>
+      {SMS_VERIFICATION_ENABLED ? (
+        !phoneVerified && (
+          <AccountPanel title="Verify your phone" description="Confirm your phone number with a one-time code sent by SMS.">
+            <div className="max-w-xl p-5 sm:p-6">
+              <PhoneVerificationForm initialPhone={profile?.phone ?? ""} />
+            </div>
+          </AccountPanel>
+        )
+      ) : (
+        !phoneVerified && (
+          <AccountPanel title="Verify your phone" description="SMS verification is coming soon.">
+            <div className="flex items-start gap-3 p-5 sm:p-6">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--account-text-muted)]" strokeWidth={1.7} />
+              <p className="text-[13px] text-[var(--account-text-muted)]">
+                Phone verification will be available soon. You can keep using your account —
+                signing in, browsing, checking out, and everything else — without it in the
+                meantime.
+              </p>
+            </div>
+          </AccountPanel>
+        )
       )}
 
       <AccountPanel title="Change password" description="Use at least 8 characters and avoid reusing an old password.">
@@ -81,7 +97,20 @@ export default async function AccountSecurityPage() {
   );
 }
 
-function SecurityStatus({ icon: Icon, title, value, verified }: { icon: typeof KeyRound; title: string; value: string; verified: boolean }) {
+function SecurityStatus({
+  icon: Icon,
+  title,
+  value,
+  verified,
+  pendingLabel,
+}: {
+  icon: typeof KeyRound;
+  title: string;
+  value: string;
+  verified: boolean;
+  /** Overrides the "Not verified" copy when verification isn't offered yet at all. */
+  pendingLabel?: string;
+}) {
   return (
     <div className="rounded-[20px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)]">
       <div className="flex items-start gap-3">
@@ -91,9 +120,9 @@ function SecurityStatus({ icon: Icon, title, value, verified }: { icon: typeof K
         <div className="min-w-0">
           <p className="text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--account-text-muted)]">{title}</p>
           <p className="mt-1 truncate text-sm font-semibold text-[var(--account-text)]">{value}</p>
-          <p className={`mt-2 flex items-center gap-1.5 text-[12px] font-semibold ${verified ? "text-[var(--account-success)]" : "text-[var(--account-warning)]"}`}>
-            {verified ? <CheckCircle2 className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
-            {verified ? "Verified" : "Not verified"}
+          <p className={`mt-2 flex items-center gap-1.5 text-[12px] font-semibold ${verified ? "text-[var(--account-success)]" : pendingLabel ? "text-[var(--account-text-muted)]" : "text-[var(--account-warning)]"}`}>
+            {verified ? <CheckCircle2 className="h-4 w-4" /> : pendingLabel ? <Clock className="h-4 w-4" /> : <CircleAlert className="h-4 w-4" />}
+            {verified ? "Verified" : pendingLabel ?? "Not verified"}
           </p>
         </div>
       </div>

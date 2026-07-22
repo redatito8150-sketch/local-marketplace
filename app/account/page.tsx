@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Mail, Lock, Phone } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
-import CaptchaWidget from "@/components/account/CaptchaWidget";
+import CaptchaWidget, { type CaptchaWidgetHandle } from "@/components/account/CaptchaWidget";
 
 const CAPTCHA_REQUIRED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
@@ -25,6 +25,7 @@ export default function AccountPage() {
   const [error, setError] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [mfaCode, setMfaCode] = useState("");
+  const captchaRef = useRef<CaptchaWidgetHandle>(null);
 
   // Once signed in, the dashboard shell at /account/(dashboard) takes over —
   // this page's job is only the anonymous sign-in/sign-up form. A brand-new
@@ -66,6 +67,13 @@ export default function AccountPage() {
 
     if (result.error) {
       setError(result.error);
+      // A Turnstile token is single-use — whether signUp succeeded or
+      // failed, the token just spent is no longer valid, so the widget
+      // must issue a fresh one before the user can retry.
+      if (mode === "create") {
+        captchaRef.current?.reset();
+        setCaptchaToken("");
+      }
     } else if (result.needsEmailConfirmation) {
       setConfirmationMessage(
         "Check your inbox to confirm your account before signing in."
@@ -250,7 +258,7 @@ export default function AccountPage() {
                   .
                 </span>
               </label>
-              <CaptchaWidget onToken={setCaptchaToken} />
+              <CaptchaWidget ref={captchaRef} onToken={setCaptchaToken} />
             </>
           )}
 
