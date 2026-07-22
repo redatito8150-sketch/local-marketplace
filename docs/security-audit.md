@@ -7,8 +7,8 @@ Status: Initial static review complete; live database and runtime verification i
 
 | Severity | Confirmed findings | Fixed |
 |---|---:|---:|
-| Critical | 2 | 0 |
-| High | 4 | 0 |
+| Critical | 2 | 2 implemented, deployment verification pending |
+| High | 4 | 1 implemented, deployment verification pending |
 | Medium | 5 | 0 |
 | Low | 2 | 0 |
 
@@ -19,7 +19,7 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** Critical
 - **Attack scenario:** An anonymous or ordinary authenticated client calls Supabase RPC directly for `cancel_order` or `place_order`. Because the functions are `SECURITY DEFINER`, the call can execute with the function owner's privileges rather than the caller's RLS rights. No `REVOKE EXECUTE` is present in the checked-in schema.
 - **Affected code:** `supabase/schema.sql` function declarations around `cancel_order`, `place_order`, `handle_new_user`, and notification pruning.
-- **Fix applied:** None yet. Live `pg_proc`/ACL verification is required first.
+- **Fix applied:** `20260722_security_boundaries.sql` revokes execution from public API roles and grants mutation RPCs only to `service_role`. It has not been applied to production yet.
 - **Planned fix:** Revoke execution from `PUBLIC`, `anon`, and `authenticated` for mutation/trigger functions; grant only to `service_role` where server RPC access is required. Keep the RLS helper callable only by the minimum role required by its policy.
 - **Verification required:** Direct anon/authenticated RPC calls must fail; service-role API order/cancel paths must still pass; triggers must still execute.
 - **Remaining risk:** Until live privileges are verified and corrected, direct RPC bypass must be treated as exposed.
@@ -29,7 +29,7 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** Critical
 - **Attack scenario:** A caller submits a real product ID with an invalid size/color. The API fails to find a variant, emits an empty variant ID, and the database order function skips inventory decrement. A caller can also reference a draft, archived, or paused product because the lookup lacks storefront-status predicates.
 - **Affected code:** `app/api/orders/route.ts`; `public.place_order` in `supabase/schema.sql`.
-- **Fix applied:** None yet.
+- **Fix applied:** Centralized validation, body/line/quantity caps, active-product checks, exact variant enforcement, rate limiting, and safe errors are implemented in the order route. Database privilege migration is pending deployment.
 - **Planned fix:** Typed request schema, maximum line/quantity limits, published/unpaused/in-stock predicate, exact variant enforcement, database-owned price lookup, and regression tests.
 - **Verification required:** Invalid variant, hidden product, excessive quantity, duplicate lines, and malformed shipping tests; concurrent stock test.
 - **Remaining risk:** Guest checkout remains a public abuse surface and also requires distributed rate limiting.
@@ -41,7 +41,7 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** High
 - **Attack scenario:** An anonymous Supabase client queries `products` directly and receives draft, pending-review, archived, or brand-paused rows because the policy is `using (true)`.
 - **Affected code:** `supabase/schema.sql` policy `Public can read products`.
-- **Fix applied:** None yet.
+- **Fix applied:** The migration replaces public product/variant policies with published/non-paused policies and adds authenticated brand-member policies. Admin catalog reads now use the server-only service-role client. Deployment verification is pending.
 - **Planned fix:** Replace the policy with published/non-paused storefront predicates and verify dashboards use authorized service-role paths where broader visibility is needed.
 - **Verification required:** Anon cannot read hidden states; admin and authorized brand owners retain required access.
 - **Remaining risk:** Public RLS is row-level, not column-level; exposed product/brand columns also require review.

@@ -4,7 +4,7 @@ Last updated: 2026-07-22
 
 ## Current phase
 
-Phase 1 — repository, runtime, data-model, and security audit. The baseline inventory and first security pass are complete; database privilege verification and end-to-end flow verification remain in progress.
+Phase 2 — security-critical boundary fixes. The baseline audit is documented; the first RPC/RLS and checkout hardening changes are implemented locally and awaiting migration/preview verification.
 
 ## Completed tasks
 
@@ -17,6 +17,10 @@ Phase 1 — repository, runtime, data-model, and security audit. The baseline in
 - Ran the first dependency audit. It reports one moderate PostCSS advisory and one high Sharp/libvips advisory through Next.js; the suggested npm fix is an invalid downgrade and will not be applied blindly.
 - Confirmed the repository has no automated test command or test framework configured.
 - Created the initial full-platform and security audit documents.
+- Added an additive security migration that restricts privileged RPC execution and separates public product visibility from brand-member access.
+- Moved admin catalog reads to the server-only privileged data client so stricter storefront RLS does not break admin workflows.
+- Added centralized order-request validation, request/quantity caps, active-product checks, exact variant enforcement, safer errors, and checkout rate limiting.
+- Added the first eight automated regression tests using Node's built-in test runner.
 
 ## Pending tasks
 
@@ -41,11 +45,14 @@ Phase 1 — repository, runtime, data-model, and security audit. The baseline in
 
 ## Database changes
 
-None yet. The audit has identified required privilege/RLS changes, but no migration will be written until the live grants and schema drift are verified.
+- Added `supabase/migrations/20260722_security_boundaries.sql` (not applied to production yet).
+- The migration revokes public execution from privileged mutation/trigger functions and narrows product/variant SELECT policies.
+- Rollback requires restoring the previous policies and function grants; no table rows or columns are deleted.
 
 ## Security fixes
 
-None applied in the audit-only checkpoint. Confirmed findings and proposed fixes are tracked in `docs/security-audit.md`.
+- Implemented code and migration fixes for SEC-001, SEC-002, and SEC-003; deployment verification remains pending.
+- Added stable public checkout errors and request abuse caps.
 
 ## Tests performed
 
@@ -54,6 +61,8 @@ None applied in the audit-only checkpoint. Confirmed findings and proposed fixes
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
+- Eight order-request validation tests: all passing.
+- TypeScript and lint after the first security implementation: lint passes; final TypeScript rerun pending after test-runner compiler configuration.
 
 Baseline TypeScript, lint, production build, and runtime flow tests are pending for this phase.
 

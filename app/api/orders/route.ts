@@ -5,61 +5,44 @@ import { notify } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
 import { getOrderForAdmin } from "@/lib/data/admin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { logError } from "@/lib/errorLog";
+import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
 
-interface OrderItemInput {
-  productId: string;
+interface RpcOrderItem {
+  product_id: string;
+  variant_id: string;
+  name: string;
+  brand: string;
+  brand_slug: string;
+  price: number;
+  currency: string;
   size: string;
-  color?: string;
+  color: string;
   quantity: number;
-}
-
-interface ShippingInput {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  governorate: string;
-}
-
-interface OrderRequestBody {
-  items: OrderItemInput[];
-  shipping: ShippingInput;
-  couponCode?: string;
+  image: string;
 }
 
 export async function POST(request: NextRequest) {
-  let body: OrderRequestBody;
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_ORDER_BODY_BYTES) {
+    return NextResponse.json({ error: "Request is too large" }, { status: 413 });
+  }
+  if (!checkRateLimit(`order-create:${getClientIp(request)}`, 12, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many checkout attempts — try again shortly" }, { status: 429 });
+  }
+
+  let rawBody: unknown;
   try {
-    body = await request.json();
+    rawBody = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
-
-  const { items, shipping, couponCode } = body;
-
-  if (!Array.isArray(items) || items.length === 0) {
-    return NextResponse.json({ error: "Cart is empty" }, { status: 400 });
+  const validation = validateOrderRequest(rawBody);
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: 400 });
   }
-
-  const requiredShippingFields: (keyof ShippingInput)[] = [
-    "firstName",
-    "lastName",
-    "email",
-    "phone",
-    "address",
-    "city",
-    "governorate",
-  ];
-  for (const field of requiredShippingFields) {
-    if (!shipping?.[field]?.trim()) {
-      return NextResponse.json(
-        { error: `Missing shipping field: ${field}` },
-        { status: 400 }
-      );
-    }
-  }
+  const { items, shipping, couponCode } = validation.value;
 
   // Re-fetch prices/details/variants from the DB rather than trusting
   // client-submitted values — the client only sends product id +
@@ -71,23 +54,25 @@ export async function POST(request: NextRequest) {
   ] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, price, currency, image, unavailable_sizes")
+      .select("id, name, brand_name, brand_slug, price, currency, image, sizes, unavailable_sizes, status, paused_by_brand, in_stock, track_inventory")
       .in("id", productIds),
     supabaseAdmin
       .from("product_variants")
-      .select("id, product_id, color, size, price_override")
+      .select("id, product_id, color, size, price_override, quantity, availability_status")
       .in("product_id", productIds),
   ]);
 
   if (productsError) {
+    logError("Order product lookup failed", productsError.message);
     return NextResponse.json(
-      { error: `Failed to look up products: ${productsError.message}` },
+      { error: "We couldn't validate your cart. Please try again." },
       { status: 500 }
     );
   }
   if (variantsError) {
+    logError("Order variant lookup failed", variantsError.message);
     return NextResponse.json(
-      { error: `Failed to look up variants: ${variantsError.message}` },
+      { error: "We couldn't validate your cart. Please try again." },
       { status: 500 }
     );
   }
@@ -95,19 +80,18 @@ export async function POST(request: NextRequest) {
   const productById = new Map((products ?? []).map((p) => [p.id, p]));
 
   for (const item of items) {
-    if (!productById.has(item.productId)) {
+    const product = productById.get(item.productId);
+    if (
+      !product ||
+      product.status !== "published" ||
+      product.paused_by_brand ||
+      !product.in_stock
+    ) {
       return NextResponse.json(
-        { error: `Product not found: ${item.productId}` },
+        { error: "An item in your cart is no longer available" },
         { status: 400 }
       );
     }
-    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
-      return NextResponse.json(
-        { error: `Invalid quantity for product: ${item.productId}` },
-        { status: 400 }
-      );
-    }
-    const product = productById.get(item.productId)!;
     // Legacy per-size flag — still enforced for any product not yet using
     // variants; place_order does the precise per-variant stock check below.
     if (product.unavailable_sizes?.includes(item.size)) {
@@ -121,29 +105,67 @@ export async function POST(request: NextRequest) {
   // Resolve each item to its real variant by product+color+size — never by
   // trusting a client-supplied variant id — so the price and stock check
   // place_order runs are both grounded in the DB, not the request body.
-  const rpcItems = items.map((item) => {
-    const product = productById.get(item.productId)!;
-    const variant = (variantRows ?? []).find(
-      (v) =>
-        v.product_id === item.productId &&
-        (v.color ?? undefined) === (item.color || undefined) &&
-        (v.size ?? undefined) === (item.size || undefined)
-    );
+  let rpcItems: RpcOrderItem[];
+  try {
+    rpcItems = items.map((item) => {
+      const product = productById.get(item.productId)!;
+      const productVariants = (variantRows ?? []).filter(
+        (variant) => variant.product_id === item.productId
+      );
+      const normalizeOption = (value: string | null | undefined) =>
+        value?.trim().toLowerCase() ?? "";
+      const variant = productVariants.find(
+        (candidate) =>
+          normalizeOption(candidate.color) === normalizeOption(item.color) &&
+          normalizeOption(candidate.size) === normalizeOption(item.size)
+      );
 
-    return {
-      product_id: product.id,
-      variant_id: variant?.id ?? "",
-      name: product.name,
-      brand: product.brand_name,
-      brand_slug: product.brand_slug ?? "",
-      price: variant?.price_override ?? Number(product.price),
-      currency: product.currency,
-      size: item.size,
-      color: item.color ?? "",
-      quantity: item.quantity,
-      image: product.image,
-    };
-  });
+      if (productVariants.length > 0 && !variant) {
+        throw new Error(`INVALID_VARIANT:${product.name}`);
+      }
+      if (variant && variant.availability_status !== "available") {
+        throw new Error(`UNAVAILABLE_VARIANT:${product.name}`);
+      }
+      if (product.track_inventory && productVariants.length === 0) {
+        throw new Error(`MISSING_INVENTORY_VARIANT:${product.name}`);
+      }
+      if (product.track_inventory && variant && variant.quantity < item.quantity) {
+        throw new Error(`INSUFFICIENT_STOCK:${product.name}`);
+      }
+      if (
+        productVariants.length === 0 &&
+        product.sizes?.length &&
+        !product.sizes.includes(item.size)
+      ) {
+        throw new Error(`INVALID_VARIANT:${product.name}`);
+      }
+
+      return {
+        product_id: product.id,
+        variant_id: variant?.id ?? "",
+        name: product.name,
+        brand: product.brand_name,
+        brand_slug: product.brand_slug ?? "",
+        price: variant?.price_override ?? Number(product.price),
+        currency: product.currency,
+        size: item.size,
+        color: item.color ?? "",
+        quantity: item.quantity,
+        image: product.image,
+      };
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "INVALID_VARIANT";
+    const [code, productName = "An item"] = message.split(":", 2);
+    const status = code === "INSUFFICIENT_STOCK" ? 409 : 400;
+    const publicMessage =
+      code === "INSUFFICIENT_STOCK"
+        ? `${productName} no longer has enough stock — please update your cart.`
+        : code === "MISSING_INVENTORY_VARIANT"
+          ? `${productName} is temporarily unavailable while its inventory is updated.`
+          : `${productName} no longer offers the selected options.`;
+    return NextResponse.json({ error: publicMessage }, { status });
+  }
 
   // Look up the signed-in user (if any) via the cookie-backed server client;
   // guest checkout stays supported with a null user_id.
@@ -183,8 +205,9 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    logError("Order placement failed", message || "Unknown database error");
     return NextResponse.json(
-      { error: `Failed to place order: ${message}` },
+      { error: "We couldn't place your order. Please try again." },
       { status: 500 }
     );
   }

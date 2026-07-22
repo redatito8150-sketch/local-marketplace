@@ -1,4 +1,3 @@
-import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import {
@@ -113,7 +112,7 @@ function toProductRecord(row: ProductRow): ProductRecord {
 // Public SELECT policy on `products` already allows this — no service role
 // needed for reads, only for the create/update/delete routes.
 export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("products")
     .select("*")
     .order("created_at", { ascending: false });
@@ -160,7 +159,11 @@ export async function getBrandActivityNotifications(limit = 50): Promise<Notific
 }
 
 export async function getProductForAdmin(id: string): Promise<ProductRecord | null> {
-  const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
 
   if (error) {
     throw new Error(`getProductForAdmin(${id}) failed: ${error.message}`);
@@ -168,7 +171,7 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
   if (!data) return null;
 
   const record = toProductRecord(data as ProductRow);
-  const variantsByProduct = await getVariantsForProducts([id]);
+  const variantsByProduct = await getVariantsForProducts([id], supabaseAdmin);
   record.variants = variantsByProduct.get(id) ?? [];
   return record;
 }
@@ -246,7 +249,7 @@ async function getOwnerEmailsByUserId(rows: BrandRow[]): Promise<Map<string, str
 // Public SELECT policy on `brands` already allows this — no service role
 // needed for reads, only for the create/update/delete routes.
 export async function getAllBrandsForAdmin(): Promise<BrandRecord[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("brands")
     .select("*")
     .order("created_at", { ascending: false });
@@ -285,7 +288,11 @@ export async function getAllBrandStaffForAdmin(): Promise<
 }
 
 export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null> {
-  const { data, error } = await supabase.from("brands").select("*").eq("slug", slug).maybeSingle();
+  const { data, error } = await supabaseAdmin
+    .from("brands")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
 
   if (error) {
     throw new Error(`getBrandForAdmin(${slug}) failed: ${error.message}`);
@@ -663,7 +670,7 @@ interface LowStockVariantRow {
 // query is simpler and just as fast as a raw column-to-column comparison
 // (PostgREST filters can't compare quantity to another column directly).
 export async function getLowStockVariantsForAdmin(): Promise<LowStockVariantRecord[]> {
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("product_variants")
     .select("id, product_id, color, size, quantity, low_stock_threshold, products(id, name, brand_name, image)")
     .eq("availability_status", "available")

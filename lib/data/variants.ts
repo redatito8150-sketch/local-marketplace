@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProductVariant, VariantAvailabilityStatus } from "@/types";
 
 interface ProductVariantRow {
@@ -36,12 +37,13 @@ function toProductVariant(row: ProductVariantRow): ProductVariant {
 // page (search results, category grid, brand page) fetch every product's
 // variants in one round trip instead of one query per product.
 export async function getVariantsForProducts(
-  productIds: string[]
+  productIds: string[],
+  client: SupabaseClient = supabase
 ): Promise<Map<string, ProductVariant[]>> {
   const byProduct = new Map<string, ProductVariant[]>();
   if (productIds.length === 0) return byProduct;
 
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("product_variants")
     .select("*")
     .in("product_id", productIds);
