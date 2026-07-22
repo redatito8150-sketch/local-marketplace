@@ -3,6 +3,11 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
+import {
+  hasExpectedImageSignature,
+  isCanonicalProductFolderId,
+  isUuid,
+} from "@/lib/uploads/imageValidation";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -18,7 +23,9 @@ function sanitizeFileName(name: string): string {
   );
 }
 
-type Uploader = { kind: "admin" } | { kind: "owner"; brandSlug: string };
+type Uploader =
+  | { kind: "admin"; userId: string }
+  | { kind: "owner"; brandSlug: string; userId: string };
 
 // Shared by both the admin product form and the brand-portal one (Round
 // 3) — a real owner/assistant uploading their own product's photos isn't
@@ -26,10 +33,10 @@ type Uploader = { kind: "admin" } | { kind: "owner"; brandSlug: string };
 // accepts either caller rather than admin-only.
 async function requireUploader(): Promise<Uploader | null> {
   const admin = await requireAdminUser();
-  if (admin) return { kind: "admin" };
+  if (admin) return { kind: "admin", userId: admin.id };
   const owner = await requireBrandOwner();
   if (owner && !owner.isImpersonating && owner.brandSlug) {
-    return { kind: "owner", brandSlug: owner.brandSlug };
+    return { kind: "owner", brandSlug: owner.brandSlug, userId: owner.user.id };
   }
   return null;
 }
@@ -39,15 +46,40 @@ async function requireUploader(): Promise<Uploader | null> {
 // temporary id (creating a new product before it has a real id) — a temp
 // id has no matching row yet, so it's allowed through rather than guessed
 // at; once a real product row exists, its brand_slug is the source of truth.
-async function canAccessFolder(folderId: string, uploader: Uploader): Promise<boolean> {
-  if (uploader.kind === "admin") return true;
+async function getProductFolderAccess(folderId: string, uploader: Uploader) {
   const { data } = await supabaseAdmin
     .from("products")
     .select("brand_slug")
     .eq("id", folderId)
     .maybeSingle();
-  if (!data) return true;
-  return data.brand_slug === uploader.brandSlug;
+  if (uploader.kind === "admin") return { allowed: true, exists: Boolean(data) };
+  return { allowed: data?.brand_slug === uploader.brandSlug, exists: Boolean(data) };
+}
+
+async function uploadPathFor(folderId: string, fileName: string, uploader: Uploader) {
+  const access = await getProductFolderAccess(folderId, uploader);
+  if (access.exists) return access.allowed ? `products/${folderId}/${fileName}` : null;
+  if (uploader.kind === "owner") {
+    return isUuid(folderId) ? `product-drafts/${uploader.userId}/${folderId}/${fileName}` : null;
+  }
+  return `products/${folderId}/${fileName}`;
+}
+
+async function canDeletePath(path: string, uploader: Uploader): Promise<boolean> {
+  const segments = path.split("/");
+  if (segments.some((segment) => !segment || segment === "." || segment === "..")) return false;
+  if (segments[0] === "products" && segments.length === 3) {
+    const folderId = segments[1];
+    if (!isCanonicalProductFolderId(folderId)) return false;
+    if (uploader.kind === "admin") return true;
+    const access = await getProductFolderAccess(folderId, uploader);
+    return access.exists && access.allowed;
+  }
+  if (segments[0] === "product-drafts" && segments.length === 4) {
+    if (uploader.kind === "admin") return true;
+    return segments[1] === uploader.userId && isUuid(segments[2]);
+  }
+  return false;
 }
 
 // Uploads always go through this server-only route with the service-role
@@ -72,17 +104,24 @@ export async function POST(request: NextRequest) {
   if (typeof folderId !== "string" || !folderId.trim()) {
     return NextResponse.json({ error: "Missing folderId" }, { status: 400 });
   }
+  if (!isCanonicalProductFolderId(folderId)) {
+    return NextResponse.json({ error: "Invalid upload folder" }, { status: 400 });
+  }
   if (!ALLOWED_MIME_TYPES.includes(file.type)) {
     return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
   }
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: "Image is larger than 5MB" }, { status: 400 });
   }
-  if (!(await canAccessFolder(folderId, uploader))) {
-    return NextResponse.json({ error: "Not authorized for this product" }, { status: 403 });
+  if (!(await hasExpectedImageSignature(file))) {
+    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
   }
 
-  const path = `products/${folderId}/${Date.now()}-${sanitizeFileName(file.name)}`;
+  const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+  const path = await uploadPathFor(folderId, fileName, uploader);
+  if (!path) {
+    return NextResponse.json({ error: "Not authorized for this product" }, { status: 403 });
+  }
   const { error: uploadError } = await supabaseAdmin.storage
     .from(BUCKET)
     .upload(path, file, { contentType: file.type, upsert: false });
@@ -107,14 +146,13 @@ export async function DELETE(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const path = body?.path;
-  if (typeof path !== "string" || !path.startsWith("products/")) {
+  if (typeof path !== "string") {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
   // path shape is always "products/{folderId}/{filename}" — reject
   // anything that doesn't carry a folder segment to check ownership on.
-  const folderId = path.split("/")[1];
-  if (!folderId || !(await canAccessFolder(folderId, uploader))) {
+  if (!(await canDeletePath(path, uploader))) {
     return NextResponse.json({ error: "Not authorized for this product" }, { status: 403 });
   }
 

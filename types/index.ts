@@ -39,6 +39,7 @@ export interface HomeHeroContent {
   headingLines: string[];
   subheading: string;
   ctaLabel: string;
+  ctaHref?: string;
 }
 
 // Round 5 homepage sections — unlike HomeHeroContent above, these carry
@@ -490,7 +491,7 @@ export interface BrandPageContent {
   name: string;
   tagline: string;
   category: string;
-  foundedYear: number;
+  foundedYear?: number;
   city: string;
   heroImage: string;
   logoImage?: string;

@@ -234,6 +234,141 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
 
+export async function getAllActiveProducts(
+  limit: number = 12,
+  sorting: "newest" | "price-asc" | "price-desc" | "top-rated" = "newest",
+  featuredOnly = false
+): Promise<Product[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 24));
+  let query = supabase
+    .from("products")
+    .select("*")
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .eq("in_stock", true);
+
+  if (featuredOnly) query = query.eq("featured", true);
+  if (sorting === "price-asc") query = query.order("price", { ascending: true });
+  else if (sorting === "price-desc") query = query.order("price", { ascending: false });
+  else if (sorting === "top-rated") query = query.order("rating", { ascending: false }).order("review_count", { ascending: false });
+  else query = query.order("created_at", { ascending: false });
+
+  const { data, error } = await query.limit(safeLimit);
+  if (error) throw new Error(`getAllActiveProducts failed: ${error.message}`);
+  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+}
+
+export async function getActiveProductsByIds(ids: string[], limit = 20): Promise<Product[]> {
+  const selected = [...new Set(ids.filter(Boolean))].slice(0, Math.max(1, Math.min(limit, 20)));
+  if (!selected.length) return [];
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .in("id", selected)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
+  if (error) throw new Error(`getActiveProductsByIds failed: ${error.message}`);
+  const byId = new Map(((data as ProductRow[]) ?? []).map((row) => [row.id, toProductCard(row)]));
+  const cards = selected.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+}
+
+export type MarketplaceCatalogFilters = Partial<Record<
+  "audience" | "brand" | "productCategory" | "productType" | "collection" | "material" | "fit" | "size" | "color" | "price" | "availability" | "rating" | "featured" | "discounted",
+  string[]
+>>;
+
+export type MarketplaceCatalogOptions = {
+  search?: string;
+  sort?: "newest" | "price-asc" | "price-desc" | "top-rated";
+  page?: number;
+  pageSize?: number;
+  filters?: MarketplaceCatalogFilters;
+};
+
+export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptions = {}) {
+  const pageSize = Math.max(1, Math.min(options.pageSize ?? 24, 48));
+  const page = Math.max(1, options.page ?? 1);
+  const filters = options.filters ?? {};
+  let query = supabase
+    .from("products")
+    .select("*", { count: "exact" })
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
+
+  const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
+  if (search) query = query.or(`name.ilike.%${search}%,brand_name.ilike.%${search}%`);
+  if (filters.audience?.length) query = query.in("category", filters.audience);
+  if (filters.brand?.length) query = query.in("brand_name", filters.brand);
+  if (filters.productCategory?.length) query = query.in("product_category", filters.productCategory);
+  if (filters.productType?.length) query = query.in("product_type", filters.productType);
+  if (filters.collection?.length) query = query.in("collection", filters.collection);
+  if (filters.material?.length) query = query.in("material", filters.material);
+  if (filters.fit?.length) query = query.in("fit", filters.fit);
+  if (filters.size?.length) query = query.overlaps("sizes", filters.size);
+  if (filters.color?.length) {
+    query = query.or(filters.color.map((color) => `colors.cs.${JSON.stringify([{ name: color }])}`).join(","));
+  }
+  if (filters.price?.length) {
+    const clauses: Record<string, string> = {
+      "under-500": "price.lt.500",
+      "500-1000": "and(price.gte.500,price.lte.1000)",
+      "1000-2000": "and(price.gt.1000,price.lte.2000)",
+      "2000-5000": "and(price.gt.2000,price.lte.5000)",
+      "above-5000": "price.gt.5000",
+    };
+    const selected = filters.price.map((id) => clauses[id]).filter(Boolean);
+    if (selected.length) query = query.or(selected.join(","));
+  }
+  if (filters.availability?.length === 1) query = query.eq("in_stock", filters.availability[0] === "in-stock");
+  if (filters.rating?.length) query = query.gte("rating", filters.rating.includes("3-plus") ? 3 : 4);
+  if (filters.featured?.length) query = query.eq("featured", true);
+  if (filters.discounted?.length) query = query.not("compare_at_price", "is", null);
+
+  const sort = options.sort ?? "newest";
+  if (sort === "price-asc") query = query.order("price", { ascending: true });
+  else if (sort === "price-desc") query = query.order("price", { ascending: false });
+  else if (sort === "top-rated") query = query.order("rating", { ascending: false }).order("review_count", { ascending: false });
+  else query = query.order("created_at", { ascending: false });
+
+  const from = (page - 1) * pageSize;
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
+  if (error) throw new Error(`getMarketplaceCatalogPage failed: ${error.message}`);
+  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return {
+    products: cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] })),
+    total: count ?? 0,
+    page,
+    pageSize,
+  };
+}
+
+export async function getMarketplaceCatalogFacets() {
+  const { data, error } = await supabase
+    .from("products")
+    .select("brand_name, category, product_category, product_type, collection, material, fit, sizes, colors, compare_at_price")
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .limit(2000);
+  if (error) throw new Error(`getMarketplaceCatalogFacets failed: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    brand: row.brand_name as string,
+    category: (row.category ?? "women") as CategorySlug,
+    productCategory: (row.product_category as string | null) ?? undefined,
+    productType: (row.product_type as string | null) ?? undefined,
+    collection: (row.collection as string | null) ?? undefined,
+    material: (row.material as string | null) ?? undefined,
+    fit: (row.fit as string | null) ?? undefined,
+    sizes: (row.sizes as string[] | null) ?? [],
+    colors: (row.colors as ProductColorOption[] | null) ?? [],
+    compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
+  }));
+}
+
 export async function getProductById(id: string): Promise<ProductDetail | null> {
   const { data, error } = await supabase
     .from("products")

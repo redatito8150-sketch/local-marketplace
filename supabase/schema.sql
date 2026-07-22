@@ -113,6 +113,17 @@ create table if not exists order_items (
 
 create index if not exists order_items_order_id_idx on order_items (order_id);
 
+-- Checkout currently supports cash on delivery only. Store the real method
+-- and state explicitly so orders never imply an unprocessed card payment.
+alter table orders add column if not exists payment_method text not null default 'cash_on_delivery';
+alter table orders drop constraint if exists orders_payment_method_check;
+alter table orders add constraint orders_payment_method_check
+  check (payment_method in ('cash_on_delivery'));
+alter table orders add column if not exists payment_status text not null default 'unpaid';
+alter table orders drop constraint if exists orders_payment_status_check;
+alter table orders add constraint orders_payment_status_check
+  check (payment_status in ('unpaid', 'paid', 'refunded'));
+
 -- ============================================================================
 -- BRAND APPLICATIONS
 -- Submissions from app/join-as-a-brand/apply (app/api/join/apply/route.ts).
@@ -835,3 +846,772 @@ begin
   return jsonb_build_object('order_id', p_order_id, 'restocked_variants', v_restocked);
 end;
 $$;
+-- ============================================================================
+-- PLATFORM SECURITY AUDIT — public RPC and storefront visibility boundaries
+-- ============================================================================
+-- Security boundary hardening for public PostgREST access.
+-- Additive and idempotent: it does not delete business data.
+
+-- Trigger-only and privileged mutation functions must not be callable through
+-- the public API roles. Server routes use the service-role client explicitly.
+revoke all on function public.handle_new_user() from public;
+revoke all on function public.handle_new_user() from anon, authenticated;
+
+revoke all on function public.prune_old_notifications() from public;
+revoke all on function public.prune_old_notifications() from anon, authenticated;
+
+revoke all on function public.cancel_order(uuid) from public;
+revoke all on function public.cancel_order(uuid) from anon, authenticated;
+grant execute on function public.cancel_order(uuid) to service_role;
+
+revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+  from public;
+revoke all on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+  from anon, authenticated;
+grant execute on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
+  to service_role;
+
+-- Atomic product + variant replacement. Route handlers perform authorization
+-- and validation; this service-role-only function guarantees all-or-nothing
+-- persistence when an admin or brand owner saves a full product form.
+create or replace function public.replace_product_with_variants(
+  p_product_id text,
+  p_product jsonb,
+  p_variants jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if jsonb_typeof(p_product) <> 'object'
+     or jsonb_typeof(p_variants) <> 'array' then
+    raise exception 'Invalid product payload';
+  end if;
+
+  update public.products
+  set
+    name = p_product->>'name',
+    brand_name = p_product->>'brand_name',
+    brand_slug = nullif(p_product->>'brand_slug', ''),
+    category = nullif(p_product->>'category', ''),
+    product_category = nullif(p_product->>'product_category', ''),
+    product_type = nullif(p_product->>'product_type', ''),
+    collection = nullif(p_product->>'collection', ''),
+    material = nullif(p_product->>'material', ''),
+    fit = nullif(p_product->>'fit', ''),
+    price = (p_product->>'price')::numeric,
+    compare_at_price = nullif(p_product->>'compare_at_price', '')::numeric,
+    currency = p_product->>'currency',
+    image = p_product->>'image',
+    images = array(select jsonb_array_elements_text(p_product->'images')),
+    colors = p_product->'colors',
+    sizes = array(select jsonb_array_elements_text(p_product->'sizes')),
+    description = p_product->>'description',
+    details = array(select jsonb_array_elements_text(p_product->'details')),
+    care_instructions = array(select jsonb_array_elements_text(p_product->'care_instructions')),
+    shipping_returns = p_product->>'shipping_returns',
+    model_height = nullif(p_product->>'model_height', ''),
+    model_wearing = nullif(p_product->>'model_wearing', ''),
+    sku = p_product->>'sku',
+    in_stock = (p_product->>'in_stock')::boolean,
+    is_new = (p_product->>'is_new')::boolean,
+    is_unisex = (p_product->>'is_unisex')::boolean,
+    unavailable_sizes = array(select jsonb_array_elements_text(p_product->'unavailable_sizes')),
+    track_inventory = (p_product->>'track_inventory')::boolean,
+    featured = case when p_product ? 'featured' then (p_product->>'featured')::boolean else featured end,
+    status = p_product->>'status',
+    publish_date = nullif(p_product->>'publish_date', '')::timestamptz,
+    submitted_by = case when p_product ? 'submitted_by' then nullif(p_product->>'submitted_by', '')::uuid else submitted_by end,
+    pending_changes = case
+      when p_product ? 'pending_changes' and p_product->'pending_changes' = 'null'::jsonb then null
+      when p_product ? 'pending_changes' then p_product->'pending_changes'
+      else pending_changes
+    end,
+    review_notes = case when p_product ? 'review_notes' then p_product->>'review_notes' else review_notes end
+  where id = p_product_id;
+
+  if not found then raise exception 'Product not found'; end if;
+
+  delete from public.product_variants where product_id = p_product_id;
+  insert into public.product_variants (
+    product_id, color, size, sku, quantity, low_stock_threshold,
+    price_override, availability_status
+  )
+  select p_product_id, nullif(v.color, ''), nullif(v.size, ''), nullif(v.sku, ''),
+    v.quantity, v.low_stock_threshold, v.price_override, v.availability_status
+  from jsonb_to_recordset(p_variants) as v(
+    color text, size text, sku text, quantity int, low_stock_threshold int,
+    price_override numeric, availability_status text
+  );
+end;
+$$;
+
+revoke all on function public.replace_product_with_variants(text, jsonb, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.replace_product_with_variants(text, jsonb, jsonb)
+  to service_role;
+
+-- Atomic profile role + brand membership transition.
+create or replace function public.set_user_access(
+  p_user_id uuid,
+  p_access text,
+  p_brand_slug text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_is_admin boolean;
+begin
+  if p_access not in ('customer', 'brand_owner', 'brand_assistant', 'staff', 'manager', 'admin') then
+    raise exception 'Invalid access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant') and nullif(p_brand_slug, '') is null then
+    raise exception 'A brand is required for this access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant')
+     and not exists (select 1 from public.brands where slug = p_brand_slug) then
+    raise exception 'Brand not found';
+  end if;
+
+  update public.brands set owner_user_id = null
+  where owner_user_id = p_user_id
+    and (p_access <> 'brand_owner' or slug <> p_brand_slug);
+  if p_access = 'brand_owner' then
+    update public.brands set owner_user_id = p_user_id where slug = p_brand_slug;
+  end if;
+
+  delete from public.brand_staff where user_id = p_user_id;
+  if p_access = 'brand_assistant' then
+    insert into public.brand_staff (brand_slug, user_id)
+    values (p_brand_slug, p_user_id)
+    on conflict (brand_slug, user_id) do nothing;
+  end if;
+
+  v_is_admin := p_access in ('staff', 'manager', 'admin');
+  update public.profiles set is_admin = v_is_admin, role = p_access where id = p_user_id;
+  if not found then raise exception 'User profile not found'; end if;
+end;
+$$;
+
+revoke all on function public.set_user_access(uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.set_user_access(uuid, text, text)
+  to service_role;
+
+-- This helper participates in an authenticated order policy. Keep it
+-- unavailable to anonymous callers while retaining the minimum policy role.
+revoke all on function public.brand_owns_order_item(uuid) from public;
+revoke all on function public.brand_owns_order_item(uuid) from anon;
+grant execute on function public.brand_owns_order_item(uuid) to authenticated, service_role;
+
+drop policy if exists "Brand owners can read orders containing their items" on public.orders;
+create policy "Brand owners can read orders containing their items"
+  on public.orders for select
+  to authenticated
+  using (public.brand_owns_order_item(orders.id));
+
+-- Public storefront reads see only live products. Authenticated brand members
+-- receive a separate owner-scoped policy for their workflow states.
+drop policy if exists "Public can read products" on public.products;
+drop policy if exists "Public can read published products" on public.products;
+create policy "Public can read published products"
+  on public.products for select
+  to anon, authenticated
+  using (status = 'published' and coalesce(paused_by_brand, false) = false);
+
+drop policy if exists "Brand members can read their products" on public.products;
+create policy "Brand members can read their products"
+  on public.products for select
+  to authenticated
+  using (
+    brand_slug in (
+      select b.slug from public.brands b where b.owner_user_id = auth.uid()
+    )
+    or brand_slug in (
+      select bs.brand_slug from public.brand_staff bs where bs.user_id = auth.uid()
+    )
+  );
+
+-- Variant visibility follows the parent product. This prevents anonymous
+-- inventory reads for draft/archived products while preserving storefront
+-- variant selection and brand-portal inventory access.
+drop policy if exists "Public can read product variants" on public.product_variants;
+drop policy if exists "Public can read published product variants" on public.product_variants;
+create policy "Public can read published product variants"
+  on public.product_variants for select
+  to anon, authenticated
+  using (
+    exists (
+      select 1
+      from public.products p
+      where p.id = product_variants.product_id
+        and p.status = 'published'
+        and coalesce(p.paused_by_brand, false) = false
+    )
+  );
+
+drop policy if exists "Brand members can read their product variants" on public.product_variants;
+create policy "Brand members can read their product variants"
+  on public.product_variants for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.products p
+      where p.id = product_variants.product_id
+        and (
+          p.brand_slug in (
+            select b.slug from public.brands b where b.owner_user_id = auth.uid()
+          )
+          or p.brand_slug in (
+            select bs.brand_slug from public.brand_staff bs where bs.user_id = auth.uid()
+          )
+        )
+    )
+  );
+
+-- ============================================================================
+-- PAGE STUDIO — typed drafts, explicit publishing, and version history
+-- ============================================================================
+-- Page Studio foundation: drafts are private, publishing is explicit, and
+-- every release is restorable. No arbitrary code or component names are stored.
+create table if not exists public.page_sections (
+  id uuid primary key default gen_random_uuid(),
+  page_key text not null,
+  section_key text not null,
+  section_type text not null check (section_type in (
+    'hero', 'category_cards', 'benefits_strip', 'product_carousel',
+    'product_grid', 'mood_tiles', 'featured_brand', 'brand_carousel',
+    'promotional_banner', 'editorial_image', 'text_block', 'newsletter',
+    'sponsored_brands', 'custom_product_collection', 'all_products_preview'
+  )),
+  draft_position integer not null check (draft_position >= 0),
+  published_position integer not null check (published_position >= 0),
+  is_required boolean not null default false,
+  draft_config jsonb not null default '{}'::jsonb,
+  published_config jsonb not null default '{}'::jsonb,
+  draft_visible boolean not null default true,
+  published_visible boolean not null default true,
+  draft_deleted boolean not null default false,
+  published_deleted boolean not null default false,
+  created_by uuid references public.profiles(id) on delete set null,
+  updated_by uuid references public.profiles(id) on delete set null,
+  published_by uuid references public.profiles(id) on delete set null,
+  published_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (page_key, section_key),
+  unique (page_key, draft_position) deferrable initially deferred,
+  unique (page_key, published_position) deferrable initially deferred
+);
+
+create index if not exists page_sections_page_draft_position_idx
+  on public.page_sections (page_key, draft_position);
+create index if not exists page_sections_page_published_position_idx
+  on public.page_sections (page_key, published_position);
+
+create table if not exists public.page_versions (
+  id uuid primary key default gen_random_uuid(),
+  page_key text not null,
+  version integer not null check (version > 0),
+  snapshot jsonb not null,
+  created_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  unique (page_key, version)
+);
+
+create index if not exists page_versions_page_created_idx
+  on public.page_versions (page_key, created_at desc);
+
+alter table public.page_sections enable row level security;
+alter table public.page_versions enable row level security;
+-- Deliberately no browser policies. Storefront reads use the server-only
+-- data layer so draft_config and version history can never leak to anon.
+
+-- Existing installations may already have the first Page Studio prototype.
+-- Move its homepage positions out of the target range before the idempotent
+-- seed so the new All Products section cannot collide with an old slot.
+update public.page_sections
+set draft_position = draft_position + 100000,
+    published_position = published_position + 100000
+where page_key = 'home';
+
+insert into public.page_sections (
+  page_key, section_key, section_type, draft_position, published_position, is_required,
+  draft_config, published_config, draft_visible, published_visible
+)
+values
+  ('home', 'home_hero', 'hero', 10, 10, true,
+    coalesce((select value from public.site_content where key = 'home_hero'), '{"headingLines":["Local brands.","Real stories.","All in one place."],"subheading":"Discover and shop from the best local brands. Support creators. Wear what matters.","ctaLabel":"Join As Brand","ctaHref":"/join-as-a-brand"}'::jsonb),
+    coalesce((select value from public.site_content where key = 'home_hero'), '{"headingLines":["Local brands.","Real stories.","All in one place."],"subheading":"Discover and shop from the best local brands. Support creators. Wear what matters.","ctaLabel":"Join As Brand","ctaHref":"/join-as-a-brand"}'::jsonb), true, true),
+  ('home', 'home_hero_tiles', 'category_cards', 20, 20, true,
+    coalesce((select value from public.site_content where key = 'home_hero_tiles'), '{"women":{"label":"Women","href":"/shop/women","image":"/images/home/women-category-v2.png"},"men":{"label":"Men","href":"/shop/men","image":"/images/home/men-category-v2.png"},"kids":{"label":"Kids","href":"/shop/kids","image":"/images/home/kids-category-v2.png"},"home":{"label":"Home","href":"/shop/home","image":"https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=80"}}'::jsonb),
+    coalesce((select value from public.site_content where key = 'home_hero_tiles'), '{"women":{"label":"Women","href":"/shop/women","image":"/images/home/women-category-v2.png"},"men":{"label":"Men","href":"/shop/men","image":"/images/home/men-category-v2.png"},"kids":{"label":"Kids","href":"/shop/kids","image":"/images/home/kids-category-v2.png"},"home":{"label":"Home","href":"/shop/home","image":"https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=80"}}'::jsonb), true, true),
+  ('home', 'home_benefits', 'benefits_strip', 30, 30, true,
+    '{"items":[{"title":"Curated with purpose","detail":"Handpicked local brands"},{"title":"Secure payments","detail":"Safe & trusted checkout"},{"title":"Fast delivery","detail":"Across Egypt"},{"title":"Easy returns","detail":"14 days to return"},{"title":"Support local","detail":"Empowering creators"}]}'::jsonb,
+    '{"items":[{"title":"Curated with purpose","detail":"Handpicked local brands"},{"title":"Secure payments","detail":"Safe & trusted checkout"},{"title":"Fast delivery","detail":"Across Egypt"},{"title":"Easy returns","detail":"14 days to return"},{"title":"Support local","detail":"Empowering creators"}]}'::jsonb, true, true),
+  ('home', 'home_new_arrivals', 'product_carousel', 40, 40, false,
+    coalesce((select value from public.site_content where key = 'home_new_arrivals'), '{"title":"New Arrivals","source":"new","limit":12,"displayStyle":"carousel"}'::jsonb),
+    coalesce((select value from public.site_content where key = 'home_new_arrivals'), '{"title":"New Arrivals","source":"new","limit":12,"displayStyle":"carousel"}'::jsonb), true, true),
+  ('home', 'home_all_products', 'all_products_preview', 50, 50, false,
+    '{"title":"Explore All Products","itemCount":10,"sorting":"newest","featuredOnly":false,"displayStyle":"carousel"}'::jsonb,
+    '{"title":"Explore All Products","itemCount":10,"sorting":"newest","featuredOnly":false,"displayStyle":"carousel"}'::jsonb, true, true),
+  ('home', 'shop_by_mood', 'mood_tiles', 60, 60, false,
+    coalesce((select value from public.site_content where key = 'shop_by_mood'), '[{"id":"cairo-summer","label":"Cairo Summer","image":"https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&q=80","href":"/shop/women"},{"id":"weekend-escape","label":"Weekend Escape","image":"https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=600&q=80","href":"/shop/women"},{"id":"everyday-linen","label":"Everyday Linen","image":"https://images.unsplash.com/photo-1503341504253-dff4815485f1?w=600&q=80","href":"/shop/women"},{"id":"after-dark","label":"After Dark","image":"https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=600&q=80","href":"/shop/women"},{"id":"made-for-movement","label":"Made for Movement","image":"https://images.unsplash.com/photo-1483721310020-03333e577078?w=600&q=80","href":"/shop/men"}]'::jsonb),
+    coalesce((select value from public.site_content where key = 'shop_by_mood'), '[{"id":"cairo-summer","label":"Cairo Summer","image":"https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&q=80","href":"/shop/women"},{"id":"weekend-escape","label":"Weekend Escape","image":"https://images.unsplash.com/photo-1473496169904-658ba7c44d8a?w=600&q=80","href":"/shop/women"},{"id":"everyday-linen","label":"Everyday Linen","image":"https://images.unsplash.com/photo-1503341504253-dff4815485f1?w=600&q=80","href":"/shop/women"},{"id":"after-dark","label":"After Dark","image":"https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=600&q=80","href":"/shop/women"},{"id":"made-for-movement","label":"Made for Movement","image":"https://images.unsplash.com/photo-1483721310020-03333e577078?w=600&q=80","href":"/shop/men"}]'::jsonb), true, true),
+  ('home', 'featured_brand_and_sponsored', 'featured_brand', 70, 70, false,
+    coalesce((select value from public.site_content where key = 'featured_brand_and_sponsored'), '{"featuredBrandSlug":"studio-nile","sponsoredBrandSlugs":["nola","kai","sahara-form","remady-star"]}'::jsonb),
+    coalesce((select value from public.site_content where key = 'featured_brand_and_sponsored'), '{"featuredBrandSlug":"studio-nile","sponsoredBrandSlugs":["nola","kai","sahara-form","remady-star"]}'::jsonb), true, true)
+on conflict (page_key, section_key) do nothing;
+
+update public.page_sections
+set draft_position = case section_key
+      when 'home_hero' then 10 when 'home_hero_tiles' then 20
+      when 'home_benefits' then 30 when 'home_new_arrivals' then 40
+      when 'home_all_products' then 50 when 'shop_by_mood' then 60
+      when 'featured_brand_and_sponsored' then 70 else draft_position end,
+    published_position = case section_key
+      when 'home_hero' then 10 when 'home_hero_tiles' then 20
+      when 'home_benefits' then 30 when 'home_new_arrivals' then 40
+      when 'home_all_products' then 50 when 'shop_by_mood' then 60
+      when 'featured_brand_and_sponsored' then 70 else published_position end
+where page_key = 'home'
+  and section_key in (
+    'home_hero', 'home_hero_tiles', 'home_benefits', 'home_new_arrivals',
+    'home_all_products', 'shop_by_mood', 'featured_brand_and_sponsored'
+  );
+
+update public.page_sections
+set draft_config = case
+      when jsonb_typeof(draft_config->'items') = 'array'
+        and jsonb_array_length(draft_config->'items') > 0 then draft_config
+      else '{"items":[{"title":"Curated with purpose","detail":"Handpicked local brands"},{"title":"Secure payments","detail":"Safe & trusted checkout"},{"title":"Fast delivery","detail":"Across Egypt"},{"title":"Easy returns","detail":"14 days to return"},{"title":"Support local","detail":"Empowering creators"}]}'::jsonb end,
+    published_config = case
+      when jsonb_typeof(published_config->'items') = 'array'
+        and jsonb_array_length(published_config->'items') > 0 then published_config
+      else '{"items":[{"title":"Curated with purpose","detail":"Handpicked local brands"},{"title":"Secure payments","detail":"Safe & trusted checkout"},{"title":"Fast delivery","detail":"Across Egypt"},{"title":"Easy returns","detail":"14 days to return"},{"title":"Support local","detail":"Empowering creators"}]}'::jsonb end
+where page_key = 'home' and section_key = 'home_benefits';
+
+create or replace function public.publish_page_draft(
+  p_page_key text,
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_version integer;
+  v_before jsonb;
+  v_after jsonb;
+begin
+  -- Serialize releases for the same page so max(version) + 1 remains unique.
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+
+  if not exists (select 1 from public.page_sections where page_key = p_page_key) then
+    raise exception 'Page not found';
+  end if;
+
+  select coalesce(max(version), 0) + 1 into v_version
+  from public.page_versions where page_key = p_page_key;
+
+  select jsonb_agg(jsonb_build_object(
+    'sectionKey', section_key, 'sectionType', section_type, 'position', published_position,
+    'visible', published_visible, 'deleted', published_deleted, 'config', published_config
+  ) order by published_position) into v_before
+  from public.page_sections where page_key = p_page_key;
+
+  update public.page_sections
+  set published_config = draft_config,
+      published_visible = draft_visible,
+      published_position = draft_position,
+      published_deleted = draft_deleted,
+      published_by = p_actor_id,
+      published_at = now(),
+      updated_at = now()
+  where page_key = p_page_key;
+
+  select jsonb_agg(jsonb_build_object(
+    'sectionKey', section_key, 'sectionType', section_type, 'position', published_position,
+    'visible', published_visible, 'deleted', published_deleted, 'config', published_config
+  ) order by published_position) into v_after
+  from public.page_sections where page_key = p_page_key;
+
+  insert into public.page_versions (page_key, version, snapshot, created_by)
+  values (p_page_key, v_version, v_after, p_actor_id);
+
+  insert into public.audit_logs (
+    actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
+  ) values (
+    p_actor_id, p_actor_label, 'page', p_page_key, 'publish', v_before,
+    jsonb_build_object('version', v_version, 'sections', v_after)
+  );
+
+  return v_version;
+end;
+$$;
+
+create or replace function public.restore_page_version_to_draft(
+  p_page_key text,
+  p_version integer,
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_snapshot jsonb;
+  v_before jsonb;
+begin
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+
+  select snapshot into v_snapshot from public.page_versions
+  where page_key = p_page_key and version = p_version;
+  if v_snapshot is null then raise exception 'Page version not found'; end if;
+
+  select jsonb_agg(jsonb_build_object(
+    'sectionKey', section_key, 'position', draft_position,
+    'visible', draft_visible, 'deleted', draft_deleted, 'config', draft_config
+  ) order by draft_position) into v_before
+  from public.page_sections where page_key = p_page_key;
+
+  -- Move every draft position out of the published range first. This keeps
+  -- restoring an older order safe even when newer sections occupy an old slot.
+  update public.page_sections
+  set draft_position = draft_position + 1000000
+  where page_key = p_page_key;
+
+  update public.page_sections section
+  set draft_config = item.config,
+      draft_visible = item.visible,
+      draft_deleted = coalesce(item.deleted, false),
+      draft_position = item.position,
+      updated_by = p_actor_id,
+      updated_at = now()
+  from jsonb_to_recordset(v_snapshot) as item(
+    "sectionKey" text, "sectionType" text, position integer,
+    visible boolean, deleted boolean, config jsonb
+  )
+  where section.page_key = p_page_key and section.section_key = item."sectionKey";
+
+  with snapshot_max as (
+    select coalesce(max(item.position), 0) as max_position
+    from jsonb_to_recordset(v_snapshot) as item(position integer)
+  ), absent as (
+    select section.id,
+      row_number() over (order by section.created_at, section.id) as row_number
+    from public.page_sections section
+    where section.page_key = p_page_key
+      and not exists (
+        select 1 from jsonb_to_recordset(v_snapshot) as item("sectionKey" text)
+        where item."sectionKey" = section.section_key
+      )
+  )
+  update public.page_sections section
+  set draft_visible = section.is_required,
+      draft_deleted = not section.is_required,
+      draft_position = snapshot_max.max_position + (absent.row_number * 10),
+      updated_by = p_actor_id,
+      updated_at = now()
+  from absent, snapshot_max
+  where section.page_key = p_page_key
+    and section.id = absent.id;
+
+  insert into public.audit_logs (
+    actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
+  ) values (
+    p_actor_id, p_actor_label, 'page', p_page_key, 'restore', v_before,
+    jsonb_build_object('restoredVersion', p_version)
+  );
+end;
+$$;
+
+create or replace function public.save_page_section_draft(
+  p_section_id uuid,
+  p_config jsonb,
+  p_visible boolean,
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_before jsonb;
+  v_page_key text;
+begin
+  select page_key, jsonb_build_object('config', draft_config, 'visible', draft_visible)
+  into v_page_key, v_before
+  from public.page_sections
+  where id = p_section_id
+  for update;
+
+  if v_page_key is null then raise exception 'Page section not found'; end if;
+  if p_config is null or jsonb_typeof(p_config) <> 'object' then
+    raise exception 'Section configuration must be an object';
+  end if;
+
+  update public.page_sections
+  set draft_config = p_config,
+      draft_visible = case when is_required then true else p_visible end,
+      updated_by = p_actor_id,
+      updated_at = now()
+  where id = p_section_id;
+
+  insert into public.audit_logs (
+    actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
+  )
+  select p_actor_id, p_actor_label, 'page', v_page_key, 'save_draft', v_before,
+    jsonb_build_object(
+      'sectionId', id, 'sectionKey', section_key,
+      'config', draft_config, 'visible', draft_visible
+    )
+  from public.page_sections where id = p_section_id;
+end;
+$$;
+
+create or replace function public.reorder_page_draft(
+  p_page_key text,
+  p_section_ids uuid[],
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_page_count integer;
+  v_distinct_count integer;
+  v_before jsonb;
+begin
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+
+  select count(*) into v_page_count from public.page_sections where page_key = p_page_key and not draft_deleted;
+  select count(distinct id) into v_distinct_count from unnest(p_section_ids) as ids(id);
+  if v_page_count = 0 then raise exception 'Page not found'; end if;
+  if coalesce(array_length(p_section_ids, 1), 0) <> v_page_count
+    or v_distinct_count <> v_page_count
+    or exists (
+      select 1 from unnest(p_section_ids) as ids(id)
+      where not exists (
+        select 1 from public.page_sections section
+        where section.id = ids.id and section.page_key = p_page_key and not section.draft_deleted
+      )
+    ) then
+    raise exception 'Section order must contain every page section exactly once';
+  end if;
+
+  select jsonb_agg(jsonb_build_object('id', id, 'position', draft_position) order by draft_position)
+  into v_before from public.page_sections where page_key = p_page_key;
+
+  update public.page_sections
+  set draft_position = draft_position + 1000000
+  where page_key = p_page_key;
+
+  update public.page_sections section
+  set draft_position = ordered.ordinality * 10,
+      updated_by = p_actor_id,
+      updated_at = now()
+  from unnest(p_section_ids) with ordinality as ordered(id, ordinality)
+  where section.id = ordered.id and section.page_key = p_page_key and not section.draft_deleted;
+
+  with removed as (
+    select id, row_number() over (order by created_at, id) as row_number
+    from public.page_sections where page_key = p_page_key and draft_deleted
+  )
+  update public.page_sections section
+  set draft_position = (v_page_count + removed.row_number) * 10
+  from removed where section.id = removed.id;
+
+  insert into public.audit_logs (
+    actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
+  ) values (
+    p_actor_id, p_actor_label, 'page', p_page_key, 'reorder', v_before,
+    to_jsonb(p_section_ids)
+  );
+end;
+$$;
+
+create or replace function public.discard_page_draft(
+  p_page_key text,
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_before jsonb;
+begin
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+  if not exists (select 1 from public.page_sections where page_key = p_page_key) then
+    raise exception 'Page not found';
+  end if;
+
+  select jsonb_agg(jsonb_build_object(
+    'sectionKey', section_key, 'position', draft_position,
+    'visible', draft_visible, 'deleted', draft_deleted, 'config', draft_config
+  ) order by draft_position) into v_before
+  from public.page_sections where page_key = p_page_key;
+
+  update public.page_sections
+  set draft_config = published_config,
+      draft_visible = published_visible,
+      draft_position = published_position,
+      draft_deleted = published_deleted,
+      updated_by = p_actor_id,
+      updated_at = now()
+  where page_key = p_page_key;
+
+  insert into public.audit_logs (
+    actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
+  ) values (
+    p_actor_id, p_actor_label, 'page', p_page_key, 'discard_draft', v_before, null
+  );
+end;
+$$;
+
+create or replace function public.create_page_section_draft(
+  p_page_key text, p_section_type text, p_config jsonb,
+  p_actor_id uuid, p_actor_label text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id uuid := gen_random_uuid();
+  v_draft_position integer;
+  v_published_position integer;
+begin
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+  if p_page_key !~ '^[a-z][a-z0-9-]{0,39}$' then raise exception 'Invalid page key'; end if;
+  if p_config is null or jsonb_typeof(p_config) <> 'object' then raise exception 'Section configuration must be an object'; end if;
+  select coalesce(max(draft_position), 0) + 10, coalesce(max(published_position), 0) + 10
+    into v_draft_position, v_published_position
+  from public.page_sections where page_key = p_page_key;
+  insert into public.page_sections (
+    id, page_key, section_key, section_type, draft_position, published_position,
+    is_required, draft_config, published_config, draft_visible, published_visible,
+    draft_deleted, published_deleted, created_by, updated_by
+  ) values (
+    v_id, p_page_key, p_section_type || '_' || replace(v_id::text, '-', ''), p_section_type,
+    v_draft_position, v_published_position, false, p_config, p_config, true, false,
+    false, true, p_actor_id, p_actor_id
+  );
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, after_value)
+  values (p_actor_id, p_actor_label, 'page', p_page_key, 'create',
+    jsonb_build_object('sectionId', v_id, 'sectionType', p_section_type));
+  return v_id;
+end;
+$$;
+
+create or replace function public.duplicate_page_section_draft(
+  p_section_id uuid, p_actor_id uuid, p_actor_label text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_source public.page_sections%rowtype;
+  v_id uuid := gen_random_uuid();
+  v_draft_position integer;
+  v_published_position integer;
+begin
+  select * into v_source from public.page_sections where id = p_section_id and not draft_deleted;
+  if v_source.id is null then raise exception 'Page section not found'; end if;
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || v_source.page_key));
+  select * into v_source from public.page_sections where id = p_section_id and not draft_deleted for update;
+  if v_source.id is null then raise exception 'Page section not found'; end if;
+  select coalesce(max(draft_position), 0) + 10, coalesce(max(published_position), 0) + 10
+    into v_draft_position, v_published_position
+  from public.page_sections where page_key = v_source.page_key;
+  insert into public.page_sections (
+    id, page_key, section_key, section_type, draft_position, published_position,
+    is_required, draft_config, published_config, draft_visible, published_visible,
+    draft_deleted, published_deleted, created_by, updated_by
+  ) values (
+    v_id, v_source.page_key, v_source.section_type || '_' || replace(v_id::text, '-', ''),
+    v_source.section_type, v_draft_position, v_published_position, false,
+    v_source.draft_config, v_source.draft_config, v_source.draft_visible, false,
+    false, true, p_actor_id, p_actor_id
+  );
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, after_value)
+  values (p_actor_id, p_actor_label, 'page', v_source.page_key, 'create',
+    jsonb_build_object('sectionId', v_id, 'duplicatedFrom', p_section_id));
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_page_section_draft(
+  p_section_id uuid, p_actor_id uuid, p_actor_label text
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_section public.page_sections%rowtype;
+  v_position integer;
+begin
+  select * into v_section from public.page_sections where id = p_section_id and not draft_deleted;
+  if v_section.id is null then raise exception 'Page section not found'; end if;
+  if v_section.is_required then raise exception 'Required sections cannot be removed'; end if;
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || v_section.page_key));
+  select * into v_section from public.page_sections where id = p_section_id and not draft_deleted for update;
+  if v_section.id is null then raise exception 'Page section not found'; end if;
+  if v_section.is_required then raise exception 'Required sections cannot be removed'; end if;
+  select coalesce(max(draft_position), 0) + 10 into v_position
+  from public.page_sections where page_key = v_section.page_key;
+  update public.page_sections
+  set draft_deleted = true, draft_visible = false, draft_position = v_position,
+      updated_by = p_actor_id, updated_at = now()
+  where id = p_section_id;
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, before_value)
+  values (p_actor_id, p_actor_label, 'page', v_section.page_key, 'delete',
+    jsonb_build_object('sectionId', p_section_id, 'sectionKey', v_section.section_key));
+  return v_section.page_key;
+end;
+$$;
+
+revoke all on function public.publish_page_draft(text, uuid, text)
+  from public, anon, authenticated;
+revoke all on function public.restore_page_version_to_draft(text, integer, uuid, text)
+  from public, anon, authenticated;
+revoke all on function public.save_page_section_draft(uuid, jsonb, boolean, uuid, text)
+  from public, anon, authenticated;
+revoke all on function public.reorder_page_draft(text, uuid[], uuid, text)
+  from public, anon, authenticated;
+revoke all on function public.discard_page_draft(text, uuid, text)
+  from public, anon, authenticated;
+grant execute on function public.publish_page_draft(text, uuid, text) to service_role;
+grant execute on function public.restore_page_version_to_draft(text, integer, uuid, text) to service_role;
+grant execute on function public.save_page_section_draft(uuid, jsonb, boolean, uuid, text) to service_role;
+grant execute on function public.reorder_page_draft(text, uuid[], uuid, text) to service_role;
+grant execute on function public.discard_page_draft(text, uuid, text) to service_role;
+revoke all on function public.create_page_section_draft(text, text, jsonb, uuid, text) from public, anon, authenticated;
+revoke all on function public.duplicate_page_section_draft(uuid, uuid, text) from public, anon, authenticated;
+revoke all on function public.delete_page_section_draft(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.create_page_section_draft(text, text, jsonb, uuid, text) to service_role;
+grant execute on function public.duplicate_page_section_draft(uuid, uuid, text) to service_role;
+grant execute on function public.delete_page_section_draft(uuid, uuid, text) to service_role;

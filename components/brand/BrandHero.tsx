@@ -19,6 +19,17 @@ export default function BrandHero({ brand }: { brand: BrandPageContent }) {
 
       <div className="relative z-10 mx-auto w-full max-w-brand px-6 pb-16 lg:px-10 lg:pb-24">
         <div className="mx-auto max-w-2xl text-center">
+          {brand.logoImage && (
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-white/95 p-1.5 shadow-soft">
+              <Image
+                src={brand.logoImage}
+                alt={`${brand.name} logo`}
+                width={52}
+                height={52}
+                className="h-full w-full rounded-full object-cover"
+              />
+            </div>
+          )}
           <span className="inline-flex items-center rounded-full bg-white/95 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-navy">
             {brand.category} · {brand.city}
           </span>

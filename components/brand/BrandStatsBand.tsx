@@ -8,18 +8,20 @@ export default function BrandStatsBand({
   followerCount,
   storeRating,
 }: {
-  foundedYear: number;
+  foundedYear?: number;
   city: string;
   productCount: number;
   followerCount: number;
   storeRating: number;
 }) {
   const stats = [
-    { icon: Calendar, label: "Founded", value: String(foundedYear) },
+    ...(foundedYear ? [{ icon: Calendar, label: "Founded", value: String(foundedYear) }] : []),
     { icon: MapPin, label: "Based in", value: city },
-    { icon: ShoppingBag, label: "Products", value: `${productCount}+` },
+    { icon: ShoppingBag, label: "Products", value: String(productCount) },
     { icon: Users, label: "Followers", value: formatCompactNumber(followerCount) },
-    { icon: Star, label: "Store Rating", value: `${storeRating.toFixed(1)} / 5.0` },
+    ...(storeRating > 0
+      ? [{ icon: Star, label: "Store Rating", value: `${storeRating.toFixed(1)} / 5.0` }]
+      : []),
   ];
 
   return (

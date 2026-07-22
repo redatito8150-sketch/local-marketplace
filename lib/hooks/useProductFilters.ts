@@ -80,8 +80,13 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
     const selectedAvailabilityIds = selected.availability ?? [];
     const selectedRatingIds = selected.rating ?? [];
     const selectedFeaturedIds = selected.featured ?? [];
+    const selectedAudienceIds = selected.audience ?? [];
+    const selectedDiscountedIds = selected.discounted ?? [];
 
     return products.filter((product) => {
+      if (selectedAudienceIds.length > 0 && !selectedAudienceIds.includes(product.category)) {
+        return false;
+      }
       if (selectedBrandIds.length > 0 && !selectedBrandIds.includes(product.brand)) {
         return false;
       }
@@ -160,6 +165,10 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
       }
 
       if (selectedFeaturedIds.length > 0 && !product.featured) {
+        return false;
+      }
+
+      if (selectedDiscountedIds.length > 0 && product.compareAtPrice == null) {
         return false;
       }
 

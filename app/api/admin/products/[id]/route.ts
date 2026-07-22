@@ -6,6 +6,10 @@ import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import {
+  buildProductPersistencePayload,
+  buildVariantPersistencePayload,
+} from "@/lib/admin/productPersistence";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -37,42 +41,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     .maybeSingle();
   const previousStatus = existing?.status;
 
-  const { error } = await supabaseAdmin
-    .from("products")
-    .update({
-      name: body.name,
-      brand_name: body.brandName,
-      brand_slug: body.brandSlug || null,
-      category: body.category || null,
-      product_category: body.productCategory || null,
-      product_type: body.productType || null,
-      collection: body.collection || null,
-      material: body.material || null,
-      fit: body.fit || null,
-      price: body.price,
-      compare_at_price: body.compareAtPrice ?? null,
-      currency: body.currency,
-      image: body.image,
-      images: body.images?.length ? body.images : [body.image],
-      colors: legacy.colors,
-      sizes: legacy.sizes,
-      description: body.description,
-      details: body.details,
-      care_instructions: body.careInstructions,
-      shipping_returns: body.shippingReturns,
-      model_height: body.modelHeight || null,
-      model_wearing: body.modelWearing || null,
-      sku: body.sku?.trim() || params.id,
-      in_stock: legacy.inStock,
-      is_new: body.isNew,
-      is_unisex: body.isUnisex,
-      unavailable_sizes: legacy.unavailableSizes,
-      track_inventory: body.trackInventory,
-      featured: body.featured,
-      status: body.status,
-      publish_date: body.publishDate ?? null,
-    })
-    .eq("id", params.id);
+  const productPayload = buildProductPersistencePayload(body, legacy);
+  productPayload.sku ||= params.id;
+  const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
+    p_product_id: params.id,
+    p_product: productPayload,
+    p_variants: buildVariantPersistencePayload(body),
+  });
 
   if (error) {
     return NextResponse.json(
@@ -81,43 +56,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
-  // Full-form save: replace the variant set wholesale rather than diffing
-  // individual rows — simpler and correct for "the form is the source of
-  // truth for this product's variants on every save."
-  const { error: deleteError } = await supabaseAdmin
-    .from("product_variants")
-    .delete()
-    .eq("product_id", params.id);
-
-  if (deleteError) {
-    return NextResponse.json(
-      { error: `Failed to update variants: ${deleteError.message}` },
-      { status: 500 }
-    );
-  }
-
-  if (body.variants.length > 0) {
-    const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
-      body.variants.map((v) => ({
-        product_id: params.id,
-        color: v.color || null,
-        size: v.size || null,
-        sku: v.sku?.trim() || null,
-        quantity: v.quantity,
-        low_stock_threshold: v.lowStockThreshold,
-        price_override: v.priceOverride ?? null,
-        availability_status: v.availabilityStatus,
-      }))
-    );
-
-    if (variantsError) {
-      return NextResponse.json(
-        { error: `Product updated, but saving variants failed: ${variantsError.message}` },
-        { status: 500 }
-      );
-    }
-  }
-
+  // Product and variants were committed by one database transaction.
   const notifyMeta = {
     entityId: params.id,
     entityIdLabel: "Product ID",

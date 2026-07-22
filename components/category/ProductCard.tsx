@@ -13,10 +13,12 @@ export default function ProductCard({
   product,
   viewMode = "grid",
   compact = false,
+  eager = false,
 }: {
   product: Product;
   viewMode?: ViewMode;
   compact?: boolean;
+  eager?: boolean;
 }) {
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
@@ -49,6 +51,7 @@ export default function ProductCard({
           src={product.image}
           alt={`${product.brand} ${product.name}`}
           fill
+          loading={eager ? "eager" : "lazy"}
           sizes={viewMode === "list" ? "110px" : "(max-width: 1024px) 50vw, 25vw"}
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />

@@ -128,7 +128,7 @@ export default function Header() {
         </nav>
 
         {/* Right actions */}
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex shrink-0 items-center gap-0 sm:gap-4">
           <SearchAutocomplete />
 
           {dashboardHref && (
@@ -136,7 +136,7 @@ export default function Header() {
               href={dashboardHref}
               aria-label="Dashboard"
               title="Dashboard"
-              className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+              className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
             >
               <LayoutGrid className="h-5 w-5" strokeWidth={1.6} />
             </Link>
@@ -145,7 +145,7 @@ export default function Header() {
           <Link
             href="/account"
             aria-label="Account"
-            className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+            className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
           >
             <User className="h-5 w-5" strokeWidth={1.6} />
             {user && (
@@ -156,7 +156,7 @@ export default function Header() {
           <Link
             href="/wishlist"
             aria-label="Wishlist"
-            className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+            className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
           >
             <Heart className="h-5 w-5" strokeWidth={1.6} />
             {wishlistCount > 0 && (
@@ -169,7 +169,7 @@ export default function Header() {
           <Link
             href="/cart"
             aria-label="Shopping bag"
-            className="relative rounded-full p-2 text-ink transition-colors hover:bg-stone-100"
+            className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
           >
             <ShoppingBag className="h-5 w-5" strokeWidth={1.6} />
             {itemCount > 0 && (
@@ -182,7 +182,7 @@ export default function Header() {
           <button
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             onClick={() => setMobileMenuOpen((o) => !o)}
-            className="rounded-full p-2 text-ink transition-colors hover:bg-stone-100 xl:hidden"
+            className="rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2 xl:hidden"
           >
             {mobileMenuOpen ? (
               <X className="h-5 w-5" strokeWidth={1.6} />

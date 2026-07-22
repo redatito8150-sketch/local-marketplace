@@ -127,7 +127,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     name: brand.name,
     tagline: brand.tagline,
     category: brand.category,
-    foundedYear: brand.founded_year ?? 2020,
+    foundedYear: brand.founded_year ?? undefined,
     city: brand.city,
     heroImage: brand.hero_image,
     logoImage: brand.logo_image ?? undefined,

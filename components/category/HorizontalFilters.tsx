@@ -50,12 +50,14 @@ export default function HorizontalFilters({
   selected,
   onToggle,
   onClear,
+  productTypeRelations,
 }: {
   groups: FilterGroup[];
   products: Product[];
   selected: Record<string, string[]>;
   onToggle: (groupId: string, optionId: string) => void;
   onClear: () => void;
+  productTypeRelations?: { productCategory?: string; productType?: string }[];
 }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const [fullPanelOpen, setFullPanelOpen] = useState(false);
@@ -70,13 +72,13 @@ export default function HorizontalFilters({
     if (selectedCategories.length === 0) return [];
     return Array.from(
       new Set(
-        products
+        (productTypeRelations ?? products)
           .filter((product) => product.productCategory && selectedCategories.includes(product.productCategory))
           .map((product) => product.productType)
           .filter((type): type is string => Boolean(type))
       )
     );
-  }, [products, selectedCategories]);
+  }, [products, productTypeRelations, selectedCategories]);
 
   const productTypeGroup = groups.find((group) => group.id === "productType");
   const contextualProductTypeGroup = productTypeGroup && supportedProductTypes.length > 0
@@ -106,6 +108,8 @@ export default function HorizontalFilters({
     "availability",
     "rating",
     "featured",
+    "audience",
+    "discounted",
   ];
   const fullPanelGroups = fullPanelIds
     .map((id) => id === "productType" && contextualProductTypeGroup ? contextualProductTypeGroup : groups.find((group) => group.id === id))
@@ -118,7 +122,7 @@ export default function HorizontalFilters({
         ? current.filter((id) => id !== optionId)
         : [...current, optionId];
       const nextTypes = new Set(
-        products
+        (productTypeRelations ?? products)
           .filter((product) => product.productCategory && nextCategories.includes(product.productCategory))
           .map((product) => product.productType)
           .filter((type): type is string => Boolean(type))
@@ -209,7 +213,9 @@ export default function HorizontalFilters({
           <button aria-label="Close filters" onClick={() => setMobileOpen(false)} className="absolute inset-0 bg-black/30" />
           <aside role="dialog" aria-modal="true" aria-label="Product filters" className="absolute bottom-0 left-0 right-0 max-h-[86vh] overflow-y-auto rounded-t-3xl bg-white p-6 shadow-card">
             <div className="mb-5 flex items-center justify-between"><div><h2 className="font-serif text-2xl font-semibold">Filters</h2><p className="mt-1 text-xs text-ink-soft/55">{activeCount} active</p></div><button onClick={() => setMobileOpen(false)} aria-label="Close filters" className="rounded-full border border-stone-150 p-2"><X className="h-4 w-4" /></button></div>
-            {groups.map((group) => <details key={group.id} className="border-b border-stone-150 py-3"><summary className="cursor-pointer list-none text-sm font-semibold">{group.title}</summary><FilterOptions group={group} selectedIds={selected[group.id] ?? []} onToggle={(id) => handleToggle(group.id, id)} /></details>)}
+            <div className="pb-20">
+              {groups.map((group) => <details key={group.id} className="border-b border-stone-150 py-3"><summary className="cursor-pointer list-none text-sm font-semibold">{group.title}</summary><FilterOptions group={group} selectedIds={selected[group.id] ?? []} onToggle={(id) => handleToggle(group.id, id)} /></details>)}
+            </div>
             <div className="sticky bottom-0 mt-5 flex gap-3 bg-white pt-3"><button onClick={onClear} className="flex-1 rounded-lg border border-stone-150 py-3 text-sm font-semibold">Clear all</button><button onClick={() => setMobileOpen(false)} className="flex-1 rounded-lg bg-mahalyred py-3 text-sm font-semibold text-white">Show products</button></div>
           </aside>
         </div>
