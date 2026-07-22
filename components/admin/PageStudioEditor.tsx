@@ -15,12 +15,14 @@ import {
   GripVertical,
   History,
   Loader2,
+  Pencil,
   RotateCcw,
   Save,
   Send,
 } from "lucide-react";
 import type { PageVersionRecord } from "@/lib/data/pageStudio";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
+import PageStudioImageField from "@/components/admin/PageStudioImageField";
 
 type Config = Record<string, unknown>;
 type Item = Record<string, unknown>;
@@ -55,7 +57,7 @@ function TextField({ label, value, onChange, multiline = false }: { label: strin
   );
 }
 
-function SectionFields({ section, onChange }: { section: PageSectionRecord; onChange: (config: Config) => void }) {
+function SectionFields({ pageKey, section, onChange }: { pageKey: string; section: PageSectionRecord; onChange: (config: Config) => void }) {
   const config = section.config;
   const patch = (next: Config) => onChange({ ...config, ...next });
 
@@ -70,6 +72,7 @@ function SectionFields({ section, onChange }: { section: PageSectionRecord; onCh
         <div className="sm:col-span-2"><TextField label="Subheading" value={config.subheading} onChange={(value) => patch({ subheading: value })} multiline /></div>
         <TextField label="Button label" value={config.ctaLabel} onChange={(value) => patch({ ctaLabel: value })} />
         <TextField label="Button link" value={config.ctaHref ?? "/brands"} onChange={(value) => patch({ ctaHref: value })} />
+        {config.image != null && <div className="sm:col-span-2"><PageStudioImageField pageKey={pageKey} label="Hero image" value={String(config.image ?? "")} onChange={(value) => patch({ image: value })} /></div>}
       </div>
     );
   }
@@ -115,7 +118,7 @@ function SectionFields({ section, onChange }: { section: PageSectionRecord; onCh
           <div key={keyed?.[index] ?? String(item.id ?? index)} className="grid gap-3 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface-muted)] p-3 sm:grid-cols-2">
             <TextField label={`Card ${index + 1} label`} value={item.label ?? item.title} onChange={(value) => updateItem(index, { label: value })} />
             <TextField label="Link" value={item.href} onChange={(value) => updateItem(index, { href: value })} />
-            <TextField label="Image URL" value={item.image} onChange={(value) => updateItem(index, { image: value })} />
+            <PageStudioImageField pageKey={pageKey} label="Image" value={typeof item.image === "string" ? item.image : ""} onChange={(value) => updateItem(index, { image: value })} />
             <TextField label="Image alt text" value={item.imageAlt ?? ""} onChange={(value) => updateItem(index, { imageAlt: value })} />
           </div>
         ))}
@@ -200,6 +203,7 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={() => setHistoryOpen((open) => !open)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 text-[12px] font-semibold"><History className="h-4 w-4" /> History</button>
             <Link href={`/admin/page-studio/${pageKey}/preview`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 text-[12px] font-semibold"><Eye className="h-4 w-4" /> Preview</Link>
+            <Link href={`/admin/page-studio/${pageKey}/edit`} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 text-[12px] font-semibold"><Pencil className="h-4 w-4" /> Edit Mode</Link>
             <button type="button" disabled={Boolean(busy)} onClick={() => void pageAction("discard")} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-border)] px-3 text-[12px] font-semibold disabled:opacity-50"><RotateCcw className="h-4 w-4" /> Discard draft</button>
             <button type="button" disabled={Boolean(busy)} onClick={() => void pageAction("publish")} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--admin-primary)] px-4 text-[12px] font-bold text-white disabled:opacity-50">{busy === "publish" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish</button>
           </div>
@@ -212,7 +216,7 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
       <div className="mt-6 space-y-3">
         {sections.map((section, index) => {
           const isExpanded = expanded === section.id;
-          return <section key={section.id} draggable={!busy} onDragStart={(event) => event.dataTransfer.setData("text/page-section", section.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const draggedId = event.dataTransfer.getData("text/page-section"); const from = sections.findIndex((row) => row.id === draggedId); if (from < 0 || from === index || busy) return; const next = [...sections]; const [dragged] = next.splice(from, 1); next.splice(index, 0, dragged); void persistOrder(next, sections); }} className={`overflow-hidden rounded-2xl border bg-[var(--admin-surface)] shadow-sm ${section.visible ? "border-[var(--admin-border)]" : "border-dashed border-[var(--admin-text-muted)]/35 opacity-75"}`}>
+          return <section id={`section-${section.id}`} key={section.id} draggable={!busy} onDragStart={(event) => event.dataTransfer.setData("text/page-section", section.id)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const draggedId = event.dataTransfer.getData("text/page-section"); const from = sections.findIndex((row) => row.id === draggedId); if (from < 0 || from === index || busy) return; const next = [...sections]; const [dragged] = next.splice(from, 1); next.splice(index, 0, dragged); void persistOrder(next, sections); }} className={`overflow-hidden rounded-2xl border bg-[var(--admin-surface)] shadow-sm ${section.visible ? "border-[var(--admin-border)]" : "border-dashed border-[var(--admin-text-muted)]/35 opacity-75"}`}>
             <div className="flex min-h-16 items-center gap-2 px-3 sm:px-4">
               <GripVertical className="hidden h-5 w-5 cursor-grab text-[var(--admin-text-muted)]/55 sm:block" aria-hidden="true" />
               <button type="button" onClick={() => setExpanded(isExpanded ? null : section.id)} aria-expanded={isExpanded} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">{isExpanded ? <ChevronDown className="h-4 w-4 flex-none" /> : <ChevronRight className="h-4 w-4 flex-none" />}<span className="min-w-0"><span className="block truncate text-[13.5px] font-bold text-[var(--admin-text)]">{PAGE_SECTION_REGISTRY[section.sectionType].label}</span><span className="block text-[10.5px] text-[var(--admin-text-muted)]">{section.sectionKey}{section.isRequired ? " · Required" : ""}</span></span></button>
@@ -220,7 +224,7 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
               <button type="button" disabled={index === sections.length - 1 || Boolean(busy)} onClick={() => move(index, 1)} aria-label={`Move ${PAGE_SECTION_REGISTRY[section.sectionType].label} down`} className="rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25"><ArrowDown className="h-4 w-4" /></button>
               <button type="button" disabled={section.isRequired || Boolean(busy)} onClick={() => { const next = { ...section, visible: !section.visible }; setSections((rows) => rows.map((row) => row.id === section.id ? next : row)); void save(next); }} aria-label={section.visible ? "Hide section" : "Show section"} className="rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25">{section.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}</button>
             </div>
-            {isExpanded && <div className="border-t border-[var(--admin-border)] px-4 py-5 sm:px-6"><SectionFields section={section} onChange={(config) => updateConfig(section.id, config)} /><div className="mt-5 flex justify-end"><button type="button" disabled={Boolean(busy)} onClick={() => void save(section)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--admin-primary)] px-4 text-[12px] font-bold text-white disabled:opacity-50">{busy === `save:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : message?.kind === "ok" ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />} Save draft</button></div></div>}
+            {isExpanded && <div className="border-t border-[var(--admin-border)] px-4 py-5 sm:px-6"><SectionFields pageKey={pageKey} section={section} onChange={(config) => updateConfig(section.id, config)} /><div className="mt-5 flex justify-end"><button type="button" disabled={Boolean(busy)} onClick={() => void save(section)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--admin-primary)] px-4 text-[12px] font-bold text-white disabled:opacity-50">{busy === `save:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : message?.kind === "ok" ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />} Save draft</button></div></div>}
           </section>;
         })}
       </div>

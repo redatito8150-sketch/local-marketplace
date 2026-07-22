@@ -4,12 +4,14 @@ import NewArrivalsSection from "@/components/home/NewArrivalsSection";
 import ShopByMood from "@/components/ShopByMood";
 import Sponsored from "@/components/Sponsored";
 import Footer from "@/components/Footer";
+import EditableSectionFrame from "@/components/admin/EditableSectionFrame";
 import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS, FEATURED_BRAND_AND_SPONSORED } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import { getAllActiveProducts, getNewArrivals } from "@/lib/data/products";
 import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
 import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
-import type { PageSectionRecord } from "@/lib/pageStudio/registry";
+import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
+import type { ReactNode } from "react";
 import type { FeaturedBrandAndSponsoredContent, HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, ShopByMoodContent } from "@/types";
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
@@ -45,7 +47,7 @@ async function productRows(config: Record<string, unknown>, allProducts: boolean
   return getNewArrivals(limit);
 }
 
-export default async function PageStudioHomepage({ sections }: { sections: PageSectionRecord[] }) {
+export default async function PageStudioHomepage({ sections, editMode = false }: { sections: PageSectionRecord[]; editMode?: boolean }) {
   const heroSection = section(sections, "home_hero");
   const tileSection = section(sections, "home_hero_tiles");
   const benefitsSection = section(sections, "home_benefits");
@@ -74,19 +76,39 @@ export default async function PageStudioHomepage({ sections }: { sections: PageS
     return { item };
   }));
 
-  return <main className="min-h-screen bg-cream"><Header /><Hero content={heroContent} tiles={heroTiles} benefits={benefits} />{prepared.map((entry) => {
+  const sectionIds = sections.filter((item) => item.visible).map((item) => item.id);
+  const frame = (item: PageSectionRecord, node: ReactNode) => editMode ? (
+    <EditableSectionFrame
+      key={item.id}
+      pageKey={item.pageKey}
+      sectionId={item.id}
+      label={PAGE_SECTION_REGISTRY[item.sectionType].label}
+      editorHref={`/admin/page-studio/${item.pageKey}#section-${item.id}`}
+      sectionIds={sectionIds}
+      index={sectionIds.indexOf(item.id)}
+      canHide={!item.isRequired}
+      config={item.config}
+      visible={item.visible}
+    >
+      {node}
+    </EditableSectionFrame>
+  ) : node;
+
+  const hero = <Hero content={heroContent} tiles={heroTiles} benefits={benefits} />;
+
+  return <main className="min-h-screen bg-cream"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
     const { item } = entry;
     if ("products" in entry && entry.products) {
       const config = item.config as unknown as HomeProductSectionContent & { itemCount?: number };
       const isAll = item.sectionType === "all_products_preview";
-      return <NewArrivalsSection key={item.id} title={config.title ?? HOME_NEW_ARRIVALS.title} products={entry.products} viewAllHref={isAll ? "/shop/all" : (VIEW_ALL_HREF[config.source] ?? "/shop/all")} />;
+      return frame(item, <NewArrivalsSection key={item.id} title={config.title ?? HOME_NEW_ARRIVALS.title} products={entry.products} viewAllHref={isAll ? "/shop/all" : (VIEW_ALL_HREF[config.source] ?? "/shop/all")} />);
     }
     if (item.sectionType === "mood_tiles") {
       const value = item.config.items;
       const tiles = Array.isArray(value) ? value as ShopByMoodContent : SHOP_BY_MOOD;
-      return <ShopByMood key={item.id} tiles={tiles} />;
+      return frame(item, <ShopByMood key={item.id} tiles={tiles} />);
     }
-    if ("featuredBrand" in entry) return <Sponsored key={item.id} featuredBrand={entry.featuredBrand ?? null} sponsoredBrands={entry.sponsoredBrands ?? []} />;
+    if ("featuredBrand" in entry) return frame(item, <Sponsored key={item.id} featuredBrand={entry.featuredBrand ?? null} sponsoredBrands={entry.sponsoredBrands ?? []} />);
     return null;
   })}<Footer /></main>;
 }

@@ -36,12 +36,13 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Added `/shop/all` with server-side search, sorting, URL-persistent filters, conditional Product Type, 24-item pagination, product count, SEO metadata, and loading/error/empty states.
 - Generalized the shared catalog filters with marketplace Audience and Discounted controls and safe product-type relationship data.
 - Added eager loading for above-the-fold catalog images after runtime LCP diagnostics.
+- Added a manager-only Page Studio media library with validated JPEG, PNG, WebP, and AVIF uploads, binary signature checks, 5 MB limits, scoped storage paths, previews, and asset selection.
+- Added a storefront Edit Mode for the homepage with contextual controls for editing, keyboard-accessible ordering, and hiding optional sections while preserving the draft/publish boundary.
 
 ## Pending tasks
 
 - Verify live database function grants, policies, indexes, and schema drift read-only against the connected Supabase project.
 - Complete all customer, brand-owner, and admin flow verification.
-- Add the Page Studio media asset upload/selection workflow and storefront Edit Mode overlays.
 - Add safe custom-section creation, duplication, and removal controls.
 - Complete responsive QA, preview verification, PR review, and final merge.
 
@@ -70,6 +71,8 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - `lib/data/pageStudio.ts`
 - `components/admin/PageStudioEditor.tsx`
 - `components/home/PageStudioHomepage.tsx`
+- `components/admin/PageStudioImageField.tsx`
+- `components/admin/EditableSectionFrame.tsx`
 - `app/admin/page-studio/**`
 - `app/api/admin/page-studio/**`
 - `supabase/migrations/20260722_page_studio_foundation.sql`
@@ -108,6 +111,9 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - ESLint passes with no warnings.
 - Production build passes: 139 static/dynamic routes generated after connecting to Supabase.
 - Browser QA: `/shop/all` desktop catalog/pagination, URL search results, Clothing → Product Type insertion, complete desktop filter panel, mobile filter drawer, and 390px no-overflow verification.
+
+- TypeScript, ESLint, and all 24 tests pass after the Page Studio media-library and Edit Mode integration.
+- Production build passes with 140 generated routes, including `/admin/page-studio/[pageKey]/edit` and `/api/admin/page-studio/assets`.
 
 ## Known limitations
 

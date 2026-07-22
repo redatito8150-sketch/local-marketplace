@@ -28,7 +28,8 @@ export type AuditAction =
   | "discard_draft"
   | "reorder"
   | "publish"
-  | "restore";
+  | "restore"
+  | "upload_asset";
 
 export type AuditEntityType =
   | "product"
@@ -60,6 +61,7 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   reorder: DISCORD_COLORS.orange,
   publish: DISCORD_COLORS.green,
   restore: DISCORD_COLORS.orange,
+  upload_asset: DISCORD_COLORS.green,
   delete: DISCORD_COLORS.red,
   bulk_delete: DISCORD_COLORS.red,
   archive: DISCORD_COLORS.red,
@@ -87,6 +89,7 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   reorder: "sections reordered",
   publish: "published",
   restore: "version restored",
+  upload_asset: "asset uploaded",
   delete: "deleted",
   bulk_delete: "bulk deleted",
   archive: "archived",
