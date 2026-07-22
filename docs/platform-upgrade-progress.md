@@ -24,6 +24,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Hardened product image uploads with canonical folder IDs, account-scoped temporary namespaces, ownership-safe deletion, and binary image signature checks.
 - Made full product/variant saves and user role/brand-link transitions atomic through locked-down database RPC functions.
 - Centralized product persistence payload mapping and added regression tests.
+- Replaced the disconnected demo card form with explicit cash-on-delivery checkout and persisted the real payment method/state on orders.
 
 ## Pending tasks
 
@@ -58,6 +59,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Added `supabase/migrations/20260722_security_boundaries.sql` (not applied to production yet).
 - The migration revokes public execution from privileged mutation/trigger functions and narrows product/variant SELECT policies.
 - Added service-role-only transactional RPC migrations for product/variant replacement and user access/brand membership transitions.
+- Added an additive migration for explicit cash-on-delivery method and unpaid/paid/refunded order payment state.
 - Rollback requires restoring the previous policies and function grants; no table rows or columns are deleted.
 
 ## Security fixes

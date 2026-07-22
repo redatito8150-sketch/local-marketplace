@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, CreditCard, Truck, PartyPopper, ArrowLeft } from "lucide-react";
+import { Check, Banknote, Truck, PartyPopper, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
@@ -289,19 +289,18 @@ export default function CheckoutPage() {
                   Payment
                 </h1>
 
-                <div className="flex items-center gap-2 rounded-md border border-stone-150 bg-white p-3.5">
-                  <CreditCard className="h-4 w-4 text-ink-soft/60" strokeWidth={1.6} />
-                  <span className="text-[13px] font-medium text-ink">
-                    Card payment (demo — no real charge will be made)
-                  </span>
+                <div className="rounded-md border border-stone-150 bg-white p-4">
+                  <div className="flex items-center gap-2">
+                    <Banknote className="h-4 w-4 text-ink-soft/60" strokeWidth={1.6} />
+                    <span className="text-[13px] font-semibold text-ink">
+                      Cash on delivery
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[12.5px] leading-relaxed text-ink-soft/65">
+                    Pay when your order arrives. Online card payments are not available yet,
+                    and no payment details are collected on this page.
+                  </p>
                 </div>
-
-                <Field label="Card number" placeholder="4242 4242 4242 4242" required />
-                <div className="grid grid-cols-2 gap-4">
-                  <Field label="Expiry" placeholder="MM/YY" required />
-                  <Field label="CVC" placeholder="123" required />
-                </div>
-                <Field label="Name on card" placeholder="Nour Ahmed" required />
 
                 {error && (
                   <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
@@ -314,7 +313,7 @@ export default function CheckoutPage() {
                   disabled={placing}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {placing ? "Placing Order…" : "Place Order"}
+                  {placing ? "Placing Order…" : "Place Cash on Delivery Order"}
                 </button>
               </form>
             )}

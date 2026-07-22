@@ -113,6 +113,17 @@ create table if not exists order_items (
 
 create index if not exists order_items_order_id_idx on order_items (order_id);
 
+-- Checkout currently supports cash on delivery only. Store the real method
+-- and state explicitly so orders never imply an unprocessed card payment.
+alter table orders add column if not exists payment_method text not null default 'cash_on_delivery';
+alter table orders drop constraint if exists orders_payment_method_check;
+alter table orders add constraint orders_payment_method_check
+  check (payment_method in ('cash_on_delivery'));
+alter table orders add column if not exists payment_status text not null default 'unpaid';
+alter table orders drop constraint if exists orders_payment_status_check;
+alter table orders add constraint orders_payment_status_check
+  check (payment_status in ('unpaid', 'paid', 'refunded'));
+
 -- ============================================================================
 -- BRAND APPLICATIONS
 -- Submissions from app/join-as-a-brand/apply (app/api/join/apply/route.ts).

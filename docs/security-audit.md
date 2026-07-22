@@ -115,8 +115,8 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** Medium security / High product risk
 - **Attack scenario:** Customers enter card-like information into a UI that does not use a payment processor. Future changes could accidentally transmit raw card data or mark unpaid orders as paid.
 - **Affected code:** `app/checkout/page.tsx`, `app/api/orders/route.ts`.
-- **Fix applied:** Current order request does not transmit the displayed card fields.
-- **Planned fix:** Remove/disable misleading raw card fields until a PCI-compliant hosted provider flow exists, or explicitly support a non-card payment method.
+- **Fix applied:** Removed the disconnected card fields, made cash on delivery the explicit checkout method, and added constrained `payment_method` and `payment_status` order fields with safe defaults.
+- **Remaining risk:** Online card payment remains unavailable until a PCI-compliant hosted provider is integrated and verified.
 
 ## Low findings
 
