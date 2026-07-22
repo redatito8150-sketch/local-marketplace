@@ -7,7 +7,7 @@ import type { HomeHeroContent, HomeHeroTilesContent } from "@/types";
 
 const TILE_ORDER: (keyof HomeHeroTilesContent)[] = ["women", "men", "kids", "home"];
 
-const benefits = [
+export const DEFAULT_HOME_BENEFITS = [
   { icon: Leaf, title: "Curated with purpose", detail: "Handpicked local brands" },
   { icon: ShieldCheck, title: "Secure payments", detail: "Safe & trusted checkout" },
   { icon: Truck, title: "Fast delivery", detail: "Across Egypt" },
@@ -15,7 +15,9 @@ const benefits = [
   { icon: Headphones, title: "Support local", detail: "Empowering creators" },
 ];
 
-export default function Hero({ content, tiles }: { content: HomeHeroContent; tiles: HomeHeroTilesContent }) {
+export type HomeBenefit = { title: string; detail: string };
+
+export default function Hero({ content, tiles, benefits = DEFAULT_HOME_BENEFITS }: { content: HomeHeroContent; tiles: HomeHeroTilesContent; benefits?: HomeBenefit[] }) {
   return (
     <>
       <section
@@ -34,8 +36,8 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
               <Link href="/brands" className="inline-flex h-12 items-center gap-8 rounded-full bg-mahalyred px-7 text-[13px] font-semibold text-white transition-colors hover:bg-mahalyred-dark">
                 Explore brands <ArrowRight className="h-4 w-4" />
               </Link>
-              <Link href="/join-as-a-brand" className="inline-flex h-12 items-center rounded-full border border-stone-150 bg-white/40 px-10 text-[13px] font-semibold text-ink transition-colors hover:bg-white">
-                Join as a Brand
+              <Link href={content.ctaHref ?? "/join-as-a-brand"} className="inline-flex h-12 items-center rounded-full border border-stone-150 bg-white/40 px-10 text-[13px] font-semibold text-ink transition-colors hover:bg-white">
+                {content.ctaLabel}
               </Link>
             </div>
           </div>
@@ -60,12 +62,14 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
 
       <section className="border-b border-stone-150">
         <div className="mx-auto grid max-w-[1840px] grid-cols-2 px-5 py-5 sm:grid-cols-3 lg:grid-cols-5 lg:px-12">
-          {benefits.map(({ icon: Icon, title, detail }, index) => (
+          {benefits.map(({ title, detail }, index) => {
+            const Icon = DEFAULT_HOME_BENEFITS[index]?.icon ?? Leaf;
+            return (
             <div key={title} className={`flex items-center justify-center gap-4 px-4 py-2 ${index ? "lg:border-l lg:border-stone-150" : ""}`}>
               <Icon className="h-7 w-7 shrink-0 text-ink" strokeWidth={1.45} />
               <div><p className="text-[11px] font-semibold text-ink">{title}</p><p className="mt-1 text-[10px] text-ink-soft/65">{detail}</p></div>
             </div>
-          ))}
+          )})}
         </div>
       </section>
     </>

@@ -23,7 +23,12 @@ export type AuditAction =
   // fact) — "archive" replaces the old delete-request gate, "revert"
   // is the admin undoing a brand-initiated create/update/archive.
   | "archive"
-  | "revert";
+  | "revert"
+  | "save_draft"
+  | "discard_draft"
+  | "reorder"
+  | "publish"
+  | "restore";
 
 export type AuditEntityType =
   | "product"
@@ -32,7 +37,8 @@ export type AuditEntityType =
   | "application"
   | "profile"
   | "coupon"
-  | "site_content";
+  | "site_content"
+  | "page";
 
 // Green = something was added, red = something was removed, orange for
 // everything else (edits, status flips, reverts). Used only for the
@@ -49,6 +55,11 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   pause: DISCORD_COLORS.orange,
   unpause: DISCORD_COLORS.orange,
   revert: DISCORD_COLORS.orange,
+  save_draft: DISCORD_COLORS.orange,
+  discard_draft: DISCORD_COLORS.orange,
+  reorder: DISCORD_COLORS.orange,
+  publish: DISCORD_COLORS.green,
+  restore: DISCORD_COLORS.orange,
   delete: DISCORD_COLORS.red,
   bulk_delete: DISCORD_COLORS.red,
   archive: DISCORD_COLORS.red,
@@ -71,6 +82,11 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   pause: "paused",
   unpause: "unpaused",
   revert: "change reverted",
+  save_draft: "draft saved",
+  discard_draft: "draft discarded",
+  reorder: "sections reordered",
+  publish: "published",
+  restore: "version restored",
   delete: "deleted",
   bulk_delete: "bulk deleted",
   archive: "archived",

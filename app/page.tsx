@@ -1,69 +1,36 @@
-import Header from "@/components/Header";
-import Hero from "@/components/Hero";
-import NewArrivalsSection from "@/components/home/NewArrivalsSection";
-import ShopByMood from "@/components/ShopByMood";
-import Sponsored from "@/components/Sponsored";
-import Footer from "@/components/Footer";
-import { getSiteContentWithFallback } from "@/lib/data/siteContent";
-import {
-  HOME_HERO,
-  HOME_HERO_TILES,
-  HOME_NEW_ARRIVALS,
-  FEATURED_BRAND_AND_SPONSORED,
-} from "@/content/home";
+import PageStudioHomepage from "@/components/home/PageStudioHomepage";
+import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS, FEATURED_BRAND_AND_SPONSORED } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
-import { getNewArrivals } from "@/lib/data/products";
-import { getTrendingProducts, getBestSellingProducts } from "@/lib/data/collections";
-import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
-import type { HomeProductSectionContent } from "@/types";
+import { getPublishedPageSections } from "@/lib/data/pageStudio";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import type { PageSectionRecord, PageSectionType } from "@/lib/pageStudio/registry";
 
-export const revalidate = 60; // re-fetch site_content from Supabase at most once a minute
+export const revalidate = 60;
 
-const VIEW_ALL_HREF: Record<HomeProductSectionContent["source"], string> = {
-  new: "/new-arrivals",
-  trending: "/trending",
-  bestsellers: "/best-sellers",
-};
+function fallbackSection(sectionKey: string, sectionType: PageSectionType, position: number, config: Record<string, unknown>): PageSectionRecord {
+  return { id: `fallback-${sectionKey}`, pageKey: "home", sectionKey, sectionType, position, isRequired: position <= 30, config, visible: true, updatedAt: new Date(0).toISOString() };
+}
 
-async function getProductSectionProducts(section: HomeProductSectionContent) {
-  if (section.source === "trending") return getTrendingProducts(section.limit);
-  if (section.source === "bestsellers") return getBestSellingProducts(section.limit);
-  return getNewArrivals(section.limit);
+async function legacyHomepageSections(): Promise<PageSectionRecord[]> {
+  const [hero, tiles, arrivals, moods, featured] = await Promise.all([
+    getSiteContentWithFallback("home_hero", HOME_HERO),
+    getSiteContentWithFallback("home_hero_tiles", HOME_HERO_TILES),
+    getSiteContentWithFallback("home_new_arrivals", HOME_NEW_ARRIVALS),
+    getSiteContentWithFallback("shop_by_mood", SHOP_BY_MOOD),
+    getSiteContentWithFallback("featured_brand_and_sponsored", FEATURED_BRAND_AND_SPONSORED),
+  ]);
+  return [
+    fallbackSection("home_hero", "hero", 10, hero as unknown as Record<string, unknown>),
+    fallbackSection("home_hero_tiles", "category_cards", 20, tiles as unknown as Record<string, unknown>),
+    fallbackSection("home_benefits", "benefits_strip", 30, { items: [] }),
+    fallbackSection("home_new_arrivals", "product_carousel", 40, arrivals as unknown as Record<string, unknown>),
+    fallbackSection("home_all_products", "all_products_preview", 50, { title: "Explore All Products", itemCount: 10, sorting: "newest", featuredOnly: false, displayStyle: "carousel" }),
+    fallbackSection("shop_by_mood", "mood_tiles", 60, { items: moods }),
+    fallbackSection("featured_brand_and_sponsored", "featured_brand", 70, featured as unknown as Record<string, unknown>),
+  ];
 }
 
 export default async function Home() {
-  const [heroContent, heroTiles, productSection, moodTiles, featuredAndSponsored] =
-    await Promise.all([
-      getSiteContentWithFallback("home_hero", HOME_HERO),
-      getSiteContentWithFallback("home_hero_tiles", HOME_HERO_TILES),
-      getSiteContentWithFallback("home_new_arrivals", HOME_NEW_ARRIVALS),
-      getSiteContentWithFallback("shop_by_mood", SHOP_BY_MOOD),
-      getSiteContentWithFallback("featured_brand_and_sponsored", FEATURED_BRAND_AND_SPONSORED),
-    ]);
-  const [productSectionItems, featuredBrand, sponsoredBrands] = await Promise.all([
-    getProductSectionProducts(productSection),
-    getBrandContent(featuredAndSponsored.featuredBrandSlug),
-    getBrandSummariesBySlug(featuredAndSponsored.sponsoredBrandSlugs),
-  ]);
-  const displayedHeroTiles = {
-    ...heroTiles,
-    women: { ...heroTiles.women, image: HOME_HERO_TILES.women.image },
-    men: { ...heroTiles.men, image: HOME_HERO_TILES.men.image },
-    kids: { ...heroTiles.kids, image: HOME_HERO_TILES.kids.image },
-  };
-
-  return (
-    <main className="min-h-screen bg-cream">
-      <Header />
-      <Hero content={heroContent} tiles={displayedHeroTiles} />
-      <NewArrivalsSection
-        title={productSection.title}
-        products={productSectionItems}
-        viewAllHref={VIEW_ALL_HREF[productSection.source]}
-      />
-      <ShopByMood tiles={moodTiles} />
-      <Sponsored featuredBrand={featuredBrand} sponsoredBrands={sponsoredBrands} />
-      <Footer />
-    </main>
-  );
+  const published = await getPublishedPageSections("home").catch(() => []);
+  return <PageStudioHomepage sections={published.length ? published : await legacyHomepageSections()} />;
 }

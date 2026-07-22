@@ -234,6 +234,32 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
 
+export async function getAllActiveProducts(
+  limit: number = 12,
+  sorting: "newest" | "price-asc" | "price-desc" | "top-rated" = "newest",
+  featuredOnly = false
+): Promise<Product[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 24));
+  let query = supabase
+    .from("products")
+    .select("*")
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .eq("in_stock", true);
+
+  if (featuredOnly) query = query.eq("featured", true);
+  if (sorting === "price-asc") query = query.order("price", { ascending: true });
+  else if (sorting === "price-desc") query = query.order("price", { ascending: false });
+  else if (sorting === "top-rated") query = query.order("rating", { ascending: false }).order("review_count", { ascending: false });
+  else query = query.order("created_at", { ascending: false });
+
+  const { data, error } = await query.limit(safeLimit);
+  if (error) throw new Error(`getAllActiveProducts failed: ${error.message}`);
+  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+}
+
 export async function getProductById(id: string): Promise<ProductDetail | null> {
   const { data, error } = await supabase
     .from("products")

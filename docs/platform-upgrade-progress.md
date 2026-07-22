@@ -4,7 +4,7 @@ Last updated: 2026-07-22
 
 ## Current phase
 
-Phase 2 — security-critical boundary fixes. The baseline audit is documented; the first RPC/RLS and checkout hardening changes are implemented locally and awaiting migration/preview verification.
+Phase 6 — Page Studio and storefront publishing. Security-critical boundaries, shared catalog controls, and the first brand-experience pass are complete on the feature branch. The typed Page Studio foundation, private draft preview, explicit publishing, version history, restoration, and homepage renderer are implemented; migration and preview-environment verification remain pending.
 
 ## Completed tasks
 
@@ -28,20 +28,19 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Extracted shared catalog controls/empty state and migrated brand shopping from the legacy sidebar to the approved horizontal filter system.
 - Fixed authenticated mobile-header overflow at 390px by applying responsive logo/action sizing.
 - Removed fabricated brand founding-year and product-count presentation, hid unavailable stats, and added real brand-logo placement to premium heroes.
+- Added a typed Page Studio registry that rejects executable configuration, unsafe links, oversized trees, and invalid product-section limits.
+- Added private draft and published page states, atomic publish/reorder/discard/restore functions, version snapshots, and page audit events.
+- Added a manager-only Page Studio UI with structured section fields, visibility controls, drag/drop plus keyboard-accessible ordering, draft save, preview, publish, discard, and restore actions.
+- Replaced the homepage read path with a published Page Studio renderer while preserving a safe legacy-content fallback until the migration is deployed.
+- Added the configurable `Explore All Products` homepage preview with bounded active-product queries.
 
 ## Pending tasks
 
 - Verify live database function grants, policies, indexes, and schema drift read-only against the connected Supabase project.
-- Revoke public execution from privileged database functions while preserving required server and policy behavior.
-- Restrict public product reads to published, non-paused records and review public brand column exposure.
-- Harden order creation, variant resolution, quantity limits, product visibility checks, validation, rate limiting, and safe error handling.
-- Harden storage upload namespaces and file-content verification.
-- Add a real automated test foundation and security regression tests.
 - Complete all customer, brand-owner, and admin flow verification.
-- Refactor shared validation/authorization boundaries incrementally.
-- Redesign brand pages using real brand data.
-- Design and implement the typed visual CMS, draft/publish workflow, preview, history, restoration, and audit logs.
-- Add the homepage marketplace preview and `/shop/all` catalog.
+- Add the Page Studio media asset upload/selection workflow and storefront Edit Mode overlays.
+- Add safe custom-section creation, duplication, and removal controls.
+- Complete `/shop/all` with pagination, shared filters, query persistence, metadata, loading, and empty/error states.
 - Complete responsive QA, preview verification, PR review, and final merge.
 
 ## Files changed
@@ -65,6 +64,14 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - `components/brand/BrandStatsBand.tsx`
 - `components/brand/AboutBrand.tsx`
 - `lib/data/brands.ts`
+- `lib/pageStudio/registry.ts`
+- `lib/data/pageStudio.ts`
+- `components/admin/PageStudioEditor.tsx`
+- `components/home/PageStudioHomepage.tsx`
+- `app/admin/page-studio/**`
+- `app/api/admin/page-studio/**`
+- `supabase/migrations/20260722_page_studio_foundation.sql`
+- `tests/pageStudioRegistry.test.ts`
 
 ## Database changes
 
@@ -72,6 +79,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - The migration revokes public execution from privileged mutation/trigger functions and narrows product/variant SELECT policies.
 - Added service-role-only transactional RPC migrations for product/variant replacement and user access/brand membership transitions.
 - Added an additive migration for explicit cash-on-delivery method and unpaid/paid/refunded order payment state.
+- Added the additive Page Studio schema with separate draft/published order, configuration, and visibility; private version history; service-role-only mutation RPCs; and an idempotent homepage seed compatible with the earlier content prototype.
 - Rollback requires restoring the previous policies and function grants; no table rows or columns are deleted.
 
 ## Security fixes
@@ -86,17 +94,20 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
-- Fourteen validation/security tests: all passing (eight order-request, three image-upload, and three product-persistence tests).
+- Twenty-one validation/security tests pass (eight order-request, three image-upload, three product-persistence, and seven Page Studio registry tests).
 - TypeScript and lint pass after the first security and upload-hardening implementation.
 - Browser QA: Women desktop filter layout, conditional Clothing → Product Type behavior, Studio Nile brand catalog, mobile full-filter drawer, and 390px horizontal-overflow check.
 
-TypeScript, lint, tests, and the earlier production build pass. A fresh production build and runtime database verification remain pending for this checkpoint.
+- TypeScript passes.
+- ESLint passes with no warnings.
+- Production build passes: 138 static/dynamic routes generated after connecting to Supabase.
 
 ## Known limitations
 
 - The checked-in `supabase/schema.sql` is cumulative while only one file exists in `supabase/migrations`; deployment history and schema drift are not yet reproducible from migrations alone.
 - No second customer or second brand-owner test identity has yet been used, so cross-account and cross-brand isolation are not fully runtime-verified.
-- Payment processing is not integrated; the checkout UI currently presents card fields but order creation is not backed by a payment provider.
+- Payment processing is not integrated; checkout accurately presents and stores cash on delivery rather than collecting disconnected card details.
+- Page Studio migrations are checked in but have not been applied to production; the public homepage retains its legacy-content fallback until preview migration validation succeeds.
 - The in-memory rate limiter is not distributed across Vercel instances.
 
 ## Rollback notes

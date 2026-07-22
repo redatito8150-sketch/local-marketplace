@@ -39,6 +39,7 @@ export interface HomeHeroContent {
   headingLines: string[];
   subheading: string;
   ctaLabel: string;
+  ctaHref?: string;
 }
 
 // Round 5 homepage sections — unlike HomeHeroContent above, these carry
