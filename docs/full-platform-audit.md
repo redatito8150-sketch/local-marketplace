@@ -1,6 +1,6 @@
 # Mahaly Full Platform Audit
 
-Audit started: 2026-07-22  
+Audit started: 2026-07-22
 Branch: `feature/platform-audit-visual-cms-brand-experience`
 
 ## Executive baseline

@@ -1,6 +1,6 @@
 # Mahaly Security Audit
 
-Audit started: 2026-07-22  
+Audit started: 2026-07-22
 Status: Initial static review complete; live database and runtime verification in progress.
 
 ## Severity summary

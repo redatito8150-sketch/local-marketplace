@@ -40,10 +40,12 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Added a storefront Edit Mode for the homepage with contextual controls for editing, keyboard-accessible ordering, and hiding optional sections while preserving the draft/publish boundary.
 - Added draft-safe section creation, duplication, and removal with required-section protection, service-role-only transactional RPCs, audit events, and soft deletion that reaches the storefront only after publishing.
 - Added structured editing and storefront renderers for product grids, custom product collections, promotional banners, editorial images, text blocks, newsletters, and brand/sponsor carousels.
+- Opened Draft PR #6; Vercel built the branch successfully and marked the protected Preview deployment ready.
+- Verified the connected Supabase project read-only: anonymous storefront access returns 31 published products and zero non-published products; Page Studio tables are not deployed yet.
 
 ## Pending tasks
 
-- Verify live database function grants, policies, indexes, and schema drift read-only against the connected Supabase project.
+- Apply the additive migrations to an isolated Preview database, then verify function grants, policies, indexes, Page Studio lifecycle operations, and rollback behavior there.
 - Complete all customer, brand-owner, and admin flow verification.
 - Complete responsive QA, preview verification, PR review, and final merge.
 
@@ -126,6 +128,7 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - No second customer or second brand-owner test identity has yet been used, so cross-account and cross-brand isolation are not fully runtime-verified.
 - Payment processing is not integrated; checkout accurately presents and stores cash on delivery rather than collecting disconnected card details.
 - Page Studio migrations are checked in but have not been applied to production; the public homepage retains its legacy-content fallback until preview migration validation succeeds.
+- The Vercel Preview deployment is protected by Vercel SSO and currently points at an environment where the Page Studio tables do not exist, so authenticated interactive Page Studio QA remains blocked until an isolated Preview database is configured and migrated.
 - The in-memory rate limiter is not distributed across Vercel instances.
 
 ## Rollback notes

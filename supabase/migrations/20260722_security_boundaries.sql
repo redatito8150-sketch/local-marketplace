@@ -53,7 +53,6 @@ create policy "Brand members can read their products"
       select bs.brand_slug from public.brand_staff bs where bs.user_id = auth.uid()
     )
   );
-
 -- Variant visibility follows the parent product. This prevents anonymous
 -- inventory reads for draft/archived products while preserving storefront
 -- variant selection and brand-portal inventory access.
@@ -91,4 +90,3 @@ create policy "Brand members can read their product variants"
         )
     )
   );
-
