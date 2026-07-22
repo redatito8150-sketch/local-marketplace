@@ -8,7 +8,7 @@ Status: Initial static review complete; live database and runtime verification i
 | Severity | Confirmed findings | Fixed |
 |---|---:|---:|
 | Critical | 2 | 2 implemented, deployment verification pending |
-| High | 4 | 1 implemented, deployment verification pending |
+| High | 4 | 2 implemented, deployment verification pending |
 | Medium | 5 | 0 |
 | Low | 2 | 0 |
 
@@ -51,7 +51,7 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** High
 - **Attack scenario:** A brand user supplies a crafted or guessed nonexistent `folderId`. The route treats any nonexistent product folder as accessible, allowing arbitrary temporary folder creation and potentially deletion if a path is known.
 - **Affected code:** `app/api/admin/products/images/route.ts`.
-- **Fix applied:** MIME and size checks already exist, but namespace binding is incomplete.
+- **Fix applied:** Canonical folder validation, per-user draft namespaces, ownership-safe deletion, and binary signature verification are implemented with regression tests.
 - **Planned fix:** Canonical identifier validation, brand/user-scoped temporary upload tokens or prefixes, exact deletion prefix validation, and content signature verification.
 - **Verification required:** Cross-brand edit/delete attempts, traversal-like IDs, mismatched MIME/signature, oversize files.
 - **Remaining risk:** Existing public bucket objects remain world-readable by design.

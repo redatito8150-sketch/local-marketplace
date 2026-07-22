@@ -21,6 +21,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Moved admin catalog reads to the server-only privileged data client so stricter storefront RLS does not break admin workflows.
 - Added centralized order-request validation, request/quantity caps, active-product checks, exact variant enforcement, safer errors, and checkout rate limiting.
 - Added the first eight automated regression tests using Node's built-in test runner.
+- Hardened product image uploads with canonical folder IDs, account-scoped temporary namespaces, ownership-safe deletion, and binary image signature checks.
 
 ## Pending tasks
 
@@ -61,8 +62,8 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
-- Eight order-request validation tests: all passing.
-- TypeScript and lint after the first security implementation: lint passes; final TypeScript rerun pending after test-runner compiler configuration.
+- Eleven validation/security tests: all passing (eight order-request and three image-upload tests).
+- TypeScript and lint pass after the first security and upload-hardening implementation.
 
 Baseline TypeScript, lint, production build, and runtime flow tests are pending for this phase.
 
