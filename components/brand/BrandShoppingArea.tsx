@@ -5,9 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { BrandCategoryTab, FilterGroup, Product, ViewMode } from "@/types";
 import { useProductFilters } from "@/lib/hooks/useProductFilters";
 import CategoryNav from "@/components/brand/CategoryNav";
-import FilterSidebar from "@/components/category/FilterSidebar";
-import ProductsToolbar from "@/components/category/ProductsToolbar";
 import ProductGrid from "@/components/category/ProductGrid";
+import CatalogControls, { CatalogEmptyState } from "@/components/category/CatalogControls";
 
 // Maps a Shop-the-Look tile's query string (e.g. "?type=Dresses") onto the
 // matching filter group id, so clicking a tile lands with that filter
@@ -78,37 +77,25 @@ export default function BrandShoppingArea({
           Shop {brandName}
         </h2>
 
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <FilterSidebar
+        <div>
+          <CatalogControls
             groups={filterGroups}
+            products={products}
             selected={selected}
             onToggle={toggleFilter}
             onClear={clearFilters}
+            productCount={tabFilteredProducts.length}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            sort={sort}
+            onSortChange={setSort}
           />
 
-          <div className="border-t border-stone-150 pt-8 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">
-            <ProductsToolbar
-              productCount={tabFilteredProducts.length}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              sort={sort}
-              onSortChange={setSort}
-            />
-
+          <div className="pt-7">
             {tabFilteredProducts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <p className="text-[15px] font-medium text-ink">
-                  No products match these filters
-                </p>
-                <button
-                  onClick={clearFilters}
-                  className="mt-3 text-[13px] font-medium text-ink-soft/60 underline-offset-2 hover:text-ink hover:underline"
-                >
-                  Clear all filters
-                </button>
-              </div>
+              <CatalogEmptyState onClear={clearFilters} />
             ) : (
-              <ProductGrid products={tabFilteredProducts} viewMode={viewMode} />
+              <ProductGrid products={tabFilteredProducts} viewMode={viewMode} compact />
             )}
           </div>
         </div>

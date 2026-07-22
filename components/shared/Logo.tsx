@@ -14,10 +14,12 @@ export default function Logo({
   href?: string;
 }) {
   const { icon, text } = SIZES[size];
+  const responsiveIcon = size === "md" ? "h-8 w-8 sm:h-[42px] sm:w-[42px]" : "";
+  const responsiveText = size === "md" ? "text-[26px] sm:text-[34px]" : text;
   return (
-    <Link href={href} className="flex items-center gap-2">
-      <Image src="/logo.png" alt="Mahaly" width={icon} height={icon} priority className="shrink-0" />
-      <span className={`${text} font-serif font-semibold tracking-tightest text-mahalyred`}>Mahaly</span>
+    <Link href={href} className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+      <Image src="/logo.png" alt="Mahaly" width={icon} height={icon} priority className={`shrink-0 ${responsiveIcon}`} />
+      <span className={`${responsiveText} font-serif font-semibold tracking-tightest text-mahalyred`}>Mahaly</span>
     </Link>
   );
 }

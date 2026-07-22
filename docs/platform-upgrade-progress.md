@@ -25,6 +25,8 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Made full product/variant saves and user role/brand-link transitions atomic through locked-down database RPC functions.
 - Centralized product persistence payload mapping and added regression tests.
 - Replaced the disconnected demo card form with explicit cash-on-delivery checkout and persisted the real payment method/state on orders.
+- Extracted shared catalog controls/empty state and migrated brand shopping from the legacy sidebar to the approved horizontal filter system.
+- Fixed authenticated mobile-header overflow at 390px by applying responsive logo/action sizing.
 
 ## Pending tasks
 
@@ -53,6 +55,11 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - `supabase/migrations/20260722_atomic_product_updates.sql`
 - `supabase/migrations/20260722_atomic_user_access.sql`
 - `tests/productPersistence.test.ts`
+- `components/category/CatalogControls.tsx`
+- `components/category/CategoryShoppingArea.tsx`
+- `components/brand/BrandShoppingArea.tsx`
+- `components/Header.tsx`
+- `components/shared/Logo.tsx`
 
 ## Database changes
 
@@ -76,6 +83,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - `npm audit --json` with registry access.
 - Fourteen validation/security tests: all passing (eight order-request, three image-upload, and three product-persistence tests).
 - TypeScript and lint pass after the first security and upload-hardening implementation.
+- Browser QA: Women desktop filter layout, conditional Clothing → Product Type behavior, Studio Nile brand catalog, mobile full-filter drawer, and 390px horizontal-overflow check.
 
 TypeScript, lint, tests, and the earlier production build pass. A fresh production build and runtime database verification remain pending for this checkpoint.
 
