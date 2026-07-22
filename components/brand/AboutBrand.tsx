@@ -28,7 +28,7 @@ export default function AboutBrand({ brand }: { brand: BrandPageContent }) {
       <div className="mx-auto flex max-w-xl flex-col items-center text-center">
         {brand.logoImage ? (
           <div className="relative h-16 w-16 overflow-hidden rounded-full border border-hairline">
-            <Image src={brand.logoImage} alt={`${brand.name} logo`} fill className="object-cover" />
+            <Image src={brand.logoImage} alt={`${brand.name} logo`} fill sizes="64px" className="object-cover" />
           </div>
         ) : (
           <div
@@ -43,7 +43,9 @@ export default function AboutBrand({ brand }: { brand: BrandPageContent }) {
           {brand.name}
         </h2>
         <p className="mt-2 text-[13px] font-medium uppercase tracking-[0.12em] text-muted">
-          Founded in {brand.city} in {brand.foundedYear}
+          {brand.foundedYear
+            ? `Founded in ${brand.city} in ${brand.foundedYear}`
+            : `Made in ${brand.city}`}
         </p>
 
         <p className="mt-7 text-[15px] font-light leading-[1.85] text-charcoal/75 lg:text-base">

@@ -27,6 +27,7 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Replaced the disconnected demo card form with explicit cash-on-delivery checkout and persisted the real payment method/state on orders.
 - Extracted shared catalog controls/empty state and migrated brand shopping from the legacy sidebar to the approved horizontal filter system.
 - Fixed authenticated mobile-header overflow at 390px by applying responsive logo/action sizing.
+- Removed fabricated brand founding-year and product-count presentation, hid unavailable stats, and added real brand-logo placement to premium heroes.
 
 ## Pending tasks
 
@@ -60,6 +61,10 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - `components/brand/BrandShoppingArea.tsx`
 - `components/Header.tsx`
 - `components/shared/Logo.tsx`
+- `components/brand/BrandHero.tsx`
+- `components/brand/BrandStatsBand.tsx`
+- `components/brand/AboutBrand.tsx`
+- `lib/data/brands.ts`
 
 ## Database changes
 

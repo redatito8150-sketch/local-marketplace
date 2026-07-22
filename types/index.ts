@@ -490,7 +490,7 @@ export interface BrandPageContent {
   name: string;
   tagline: string;
   category: string;
-  foundedYear: number;
+  foundedYear?: number;
   city: string;
   heroImage: string;
   logoImage?: string;
