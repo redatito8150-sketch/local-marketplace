@@ -71,10 +71,10 @@ Status: Initial static review complete; live database and runtime verification i
 - **Severity:** High
 - **Attack scenario:** A product update succeeds, existing variants are deleted, and replacement insertion fails; or a user role/link transition fails halfway. The platform is left in a security or inventory-inconsistent state.
 - **Affected code:** Brand product update route; admin user access route.
-- **Fix applied:** None yet.
-- **Planned fix:** Transactional RPCs with typed inputs and explicit ownership/role checks, or compensating rollback where RPC is inappropriate.
-- **Verification required:** Forced failure tests at each mutation stage.
-- **Remaining risk:** Service-role bypass means application validation is the only current mutation boundary.
+- **Fix applied:** Product/variant replacement now uses `replace_product_with_variants`, and profile/brand membership transitions use `set_user_access`. Both functions are transactional, search-path pinned, and executable only by `service_role`; routes retain server-side authorization and validation.
+- **Verification performed:** TypeScript, lint, payload unit tests, and migration/diff inspection pass.
+- **Verification required:** Forced rollback tests against the preview database after migrations are applied.
+- **Remaining risk:** The RPC behavior is not considered deployed until preview migration verification succeeds.
 
 ## Medium findings
 

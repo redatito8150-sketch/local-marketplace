@@ -22,6 +22,8 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - Added centralized order-request validation, request/quantity caps, active-product checks, exact variant enforcement, safer errors, and checkout rate limiting.
 - Added the first eight automated regression tests using Node's built-in test runner.
 - Hardened product image uploads with canonical folder IDs, account-scoped temporary namespaces, ownership-safe deletion, and binary image signature checks.
+- Made full product/variant saves and user role/brand-link transitions atomic through locked-down database RPC functions.
+- Centralized product persistence payload mapping and added regression tests.
 
 ## Pending tasks
 
@@ -43,16 +45,24 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - `docs/platform-upgrade-progress.md`
 - `docs/full-platform-audit.md`
 - `docs/security-audit.md`
+- `lib/admin/productPersistence.ts`
+- `app/api/admin/products/[id]/route.ts`
+- `app/api/brand-portal/products/[id]/route.ts`
+- `app/api/admin/users/[id]/route.ts`
+- `supabase/migrations/20260722_atomic_product_updates.sql`
+- `supabase/migrations/20260722_atomic_user_access.sql`
+- `tests/productPersistence.test.ts`
 
 ## Database changes
 
 - Added `supabase/migrations/20260722_security_boundaries.sql` (not applied to production yet).
 - The migration revokes public execution from privileged mutation/trigger functions and narrows product/variant SELECT policies.
+- Added service-role-only transactional RPC migrations for product/variant replacement and user access/brand membership transitions.
 - Rollback requires restoring the previous policies and function grants; no table rows or columns are deleted.
 
 ## Security fixes
 
-- Implemented code and migration fixes for SEC-001, SEC-002, and SEC-003; deployment verification remains pending.
+- Implemented code and migration fixes for SEC-001, SEC-002, SEC-003, SEC-004, and SEC-006; deployment verification remains pending.
 - Added stable public checkout errors and request abuse caps.
 
 ## Tests performed
@@ -62,10 +72,10 @@ Phase 2 — security-critical boundary fixes. The baseline audit is documented; 
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
-- Eleven validation/security tests: all passing (eight order-request and three image-upload tests).
+- Fourteen validation/security tests: all passing (eight order-request, three image-upload, and three product-persistence tests).
 - TypeScript and lint pass after the first security and upload-hardening implementation.
 
-Baseline TypeScript, lint, production build, and runtime flow tests are pending for this phase.
+TypeScript, lint, tests, and the earlier production build pass. A fresh production build and runtime database verification remain pending for this checkpoint.
 
 ## Known limitations
 
@@ -76,7 +86,7 @@ Baseline TypeScript, lint, production build, and runtime flow tests are pending 
 
 ## Rollback notes
 
-- This checkpoint changes documentation only.
+- This checkpoint adds application code and additive migrations but does not apply them to production.
 - Future database migrations must be additive and include explicit down/rollback instructions.
 - Security privilege changes will preserve service-role access and will be validated in preview before production merge.
 - All implementation remains isolated on `feature/platform-audit-visual-cms-brand-experience` until final checks pass.

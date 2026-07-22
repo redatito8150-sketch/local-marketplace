@@ -860,6 +860,138 @@ revoke all on function public.place_order(text, text, text, text, text, text, uu
 grant execute on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text)
   to service_role;
 
+-- Atomic product + variant replacement. Route handlers perform authorization
+-- and validation; this service-role-only function guarantees all-or-nothing
+-- persistence when an admin or brand owner saves a full product form.
+create or replace function public.replace_product_with_variants(
+  p_product_id text,
+  p_product jsonb,
+  p_variants jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if jsonb_typeof(p_product) <> 'object'
+     or jsonb_typeof(p_variants) <> 'array' then
+    raise exception 'Invalid product payload';
+  end if;
+
+  update public.products
+  set
+    name = p_product->>'name',
+    brand_name = p_product->>'brand_name',
+    brand_slug = nullif(p_product->>'brand_slug', ''),
+    category = nullif(p_product->>'category', ''),
+    product_category = nullif(p_product->>'product_category', ''),
+    product_type = nullif(p_product->>'product_type', ''),
+    collection = nullif(p_product->>'collection', ''),
+    material = nullif(p_product->>'material', ''),
+    fit = nullif(p_product->>'fit', ''),
+    price = (p_product->>'price')::numeric,
+    compare_at_price = nullif(p_product->>'compare_at_price', '')::numeric,
+    currency = p_product->>'currency',
+    image = p_product->>'image',
+    images = array(select jsonb_array_elements_text(p_product->'images')),
+    colors = p_product->'colors',
+    sizes = array(select jsonb_array_elements_text(p_product->'sizes')),
+    description = p_product->>'description',
+    details = array(select jsonb_array_elements_text(p_product->'details')),
+    care_instructions = array(select jsonb_array_elements_text(p_product->'care_instructions')),
+    shipping_returns = p_product->>'shipping_returns',
+    model_height = nullif(p_product->>'model_height', ''),
+    model_wearing = nullif(p_product->>'model_wearing', ''),
+    sku = p_product->>'sku',
+    in_stock = (p_product->>'in_stock')::boolean,
+    is_new = (p_product->>'is_new')::boolean,
+    is_unisex = (p_product->>'is_unisex')::boolean,
+    unavailable_sizes = array(select jsonb_array_elements_text(p_product->'unavailable_sizes')),
+    track_inventory = (p_product->>'track_inventory')::boolean,
+    featured = case when p_product ? 'featured' then (p_product->>'featured')::boolean else featured end,
+    status = p_product->>'status',
+    publish_date = nullif(p_product->>'publish_date', '')::timestamptz,
+    submitted_by = case when p_product ? 'submitted_by' then nullif(p_product->>'submitted_by', '')::uuid else submitted_by end,
+    pending_changes = case
+      when p_product ? 'pending_changes' and p_product->'pending_changes' = 'null'::jsonb then null
+      when p_product ? 'pending_changes' then p_product->'pending_changes'
+      else pending_changes
+    end,
+    review_notes = case when p_product ? 'review_notes' then p_product->>'review_notes' else review_notes end
+  where id = p_product_id;
+
+  if not found then raise exception 'Product not found'; end if;
+
+  delete from public.product_variants where product_id = p_product_id;
+  insert into public.product_variants (
+    product_id, color, size, sku, quantity, low_stock_threshold,
+    price_override, availability_status
+  )
+  select p_product_id, nullif(v.color, ''), nullif(v.size, ''), nullif(v.sku, ''),
+    v.quantity, v.low_stock_threshold, v.price_override, v.availability_status
+  from jsonb_to_recordset(p_variants) as v(
+    color text, size text, sku text, quantity int, low_stock_threshold int,
+    price_override numeric, availability_status text
+  );
+end;
+$$;
+
+revoke all on function public.replace_product_with_variants(text, jsonb, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.replace_product_with_variants(text, jsonb, jsonb)
+  to service_role;
+
+-- Atomic profile role + brand membership transition.
+create or replace function public.set_user_access(
+  p_user_id uuid,
+  p_access text,
+  p_brand_slug text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_is_admin boolean;
+begin
+  if p_access not in ('customer', 'brand_owner', 'brand_assistant', 'staff', 'manager', 'admin') then
+    raise exception 'Invalid access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant') and nullif(p_brand_slug, '') is null then
+    raise exception 'A brand is required for this access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant')
+     and not exists (select 1 from public.brands where slug = p_brand_slug) then
+    raise exception 'Brand not found';
+  end if;
+
+  update public.brands set owner_user_id = null
+  where owner_user_id = p_user_id
+    and (p_access <> 'brand_owner' or slug <> p_brand_slug);
+  if p_access = 'brand_owner' then
+    update public.brands set owner_user_id = p_user_id where slug = p_brand_slug;
+  end if;
+
+  delete from public.brand_staff where user_id = p_user_id;
+  if p_access = 'brand_assistant' then
+    insert into public.brand_staff (brand_slug, user_id)
+    values (p_brand_slug, p_user_id)
+    on conflict (brand_slug, user_id) do nothing;
+  end if;
+
+  v_is_admin := p_access in ('staff', 'manager', 'admin');
+  update public.profiles set is_admin = v_is_admin, role = p_access where id = p_user_id;
+  if not found then raise exception 'User profile not found'; end if;
+end;
+$$;
+
+revoke all on function public.set_user_access(uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.set_user_access(uuid, text, text)
+  to service_role;
+
 -- This helper participates in an authenticated order policy. Keep it
 -- unavailable to anonymous callers while retaining the minimum policy role.
 revoke all on function public.brand_owns_order_item(uuid) from public;
