@@ -37,14 +37,13 @@ export default function DeleteAccountButton() {
   };
 
   return (
-    <div className="border-t border-stone-150 pt-8">
-      <h2 className="text-[15px] font-semibold text-red-700">Delete Account</h2>
-      <p className="mt-1.5 max-w-lg text-[13px] text-ink-soft/60">
+    <div>
+      <p className="max-w-lg text-[13px] text-[var(--account-text-muted)]">
         Permanently deletes your account, wishlist, addresses, and saved
         preferences. This cannot be undone.
       </p>
       {error && (
-        <p className="mt-3 max-w-lg rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+        <p role="alert" className="mt-3 max-w-lg rounded-xl bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-danger)]">
           {error}
         </p>
       )}
@@ -52,7 +51,7 @@ export default function DeleteAccountButton() {
         type="button"
         disabled={busy}
         onClick={handleDelete}
-        className="mt-4 rounded-md border border-red-200 px-5 py-2.5 text-[13px] font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-4 rounded-xl border border-[var(--account-danger)]/30 px-5 py-2.5 text-[13px] font-semibold text-[var(--account-danger)] transition-colors hover:bg-[color-mix(in_srgb,var(--account-danger)_10%,transparent)] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {busy ? "Deleting…" : "Delete Account"}
       </button>

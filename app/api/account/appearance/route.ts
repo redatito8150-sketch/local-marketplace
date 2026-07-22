@@ -1,29 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isAccountTheme } from "@/lib/account/themes";
 import type { NotificationPreferences } from "@/types";
 
 export async function PATCH(request: NextRequest) {
   const user = await requireUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+
+  const body = await request.json().catch(() => null);
+  if (!isAccountTheme(body?.theme)) {
+    return NextResponse.json({ error: "Unknown account theme" }, { status: 400 });
   }
 
-  const body: NotificationPreferences = await request.json();
   const { data: profile, error: readError } = await supabaseAdmin
     .from("profiles")
     .select("notification_preferences")
     .eq("id", user.id)
     .maybeSingle();
-  if (readError) {
-    return NextResponse.json({ error: readError.message }, { status: 500 });
-  }
+
+  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+
   const current = (profile?.notification_preferences ?? {}) as Partial<NotificationPreferences>;
   const preferences: NotificationPreferences = {
-    orderUpdates: Boolean(body.orderUpdates),
-    promotions: Boolean(body.promotions),
-    newsletter: Boolean(body.newsletter),
-    accountTheme: current.accountTheme,
+    orderUpdates: current.orderUpdates ?? true,
+    promotions: current.promotions ?? false,
+    newsletter: current.newsletter ?? false,
+    accountTheme: body.theme,
   };
 
   const { error } = await supabaseAdmin
@@ -31,8 +34,6 @@ export async function PATCH(request: NextRequest) {
     .update({ notification_preferences: preferences })
     .eq("id", user.id);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, theme: body.theme });
 }

@@ -16,16 +16,16 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2 border-b border-stone-150 pb-4">
+      <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-[var(--account-border)] pb-4">
         {ORDER_STATUS_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className={`rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
+            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--account-accent)]/30 ${
               activeTab === tab.id
-                ? "bg-ink text-cream"
-                : "bg-stone-100 text-ink-soft/70 hover:bg-stone-150"
+                ? "bg-[var(--account-accent)] text-[var(--account-accent-foreground)]"
+                : "bg-[var(--account-surface-muted)] text-[var(--account-text-muted)] hover:text-[var(--account-text)]"
             }`}
           >
             {tab.label}
@@ -34,9 +34,9 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
       </div>
 
       {filteredOrders.length === 0 ? (
-        <p className="mt-6 text-[13px] text-ink-soft/60">
+        <p className="mt-6 text-[13px] text-[var(--account-text-muted)]">
           No orders here yet.{" "}
-          <Link href="/shop/women" className="font-semibold text-ink hover:underline">
+          <Link href="/shop/women" className="font-semibold text-[var(--account-accent)] hover:underline">
             Start shopping
           </Link>
         </p>

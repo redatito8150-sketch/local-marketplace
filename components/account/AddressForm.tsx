@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AddressRecord } from "@/types";
+import { accountInputClass, accountPrimaryButton } from "@/components/account/AccountUI";
 
 interface FormState {
   label: string;
@@ -69,10 +70,10 @@ export default function AddressForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-lg space-y-4">
+    <form onSubmit={handleSubmit} className="max-w-2xl space-y-4">
       <TextField label="Label" value={form.label} onChange={(v) => set("label", v)} placeholder="Home" />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           label="First name"
           value={form.firstName}
@@ -96,7 +97,7 @@ export default function AddressForm({
         required
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="City" value={form.city} onChange={(v) => set("city", v)} required />
         <TextField
           label="Governorate"
@@ -107,7 +108,7 @@ export default function AddressForm({
       </div>
 
       {error && (
-        <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+        <p role="alert" className="rounded-xl bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-danger)]">
           {error}
         </p>
       )}
@@ -115,7 +116,7 @@ export default function AddressForm({
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-md bg-ink px-6 py-3 text-[13.5px] font-semibold text-cream transition-transform hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+        className={accountPrimaryButton}
       >
         {submitting ? "Saving…" : mode === "create" ? "Save Address" : "Save Changes"}
       </button>
@@ -138,14 +139,14 @@ function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <span className="text-[12.5px] font-medium text-[var(--account-text-muted)]">{label}</span>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         required={required}
-        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+        className={accountInputClass}
       />
     </label>
   );

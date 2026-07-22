@@ -527,7 +527,10 @@ export interface NotificationPreferences {
   orderUpdates: boolean;
   promotions: boolean;
   newsletter: boolean;
+  accountTheme?: AccountTheme;
 }
+
+export type AccountTheme = "warm_sand" | "soft_rose" | "olive_stone";
 
 export interface AddressRecord {
   id: string;

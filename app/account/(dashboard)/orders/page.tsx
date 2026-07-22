@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { getOrdersForUser } from "@/lib/data/orders";
 import OrdersTabs from "@/components/account/OrdersTabs";
+import { AccountPageHeader } from "@/components/account/AccountUI";
 
 export default async function AccountOrdersPage() {
   const user = await requireUser();
@@ -10,13 +11,9 @@ export default async function AccountOrdersPage() {
   const orders = await getOrdersForUser(user.id);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">Orders</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft/60">
-        Track and review your order history.
-      </p>
-
-      <div className="mt-8">
+    <div className="space-y-7">
+      <AccountPageHeader eyebrow="Your purchases" title="Orders" description="Track current purchases and revisit everything you have ordered from Mahaly." />
+      <div>
         <OrdersTabs orders={orders} />
       </div>
     </div>

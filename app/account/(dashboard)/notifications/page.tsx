@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/supabase/accountAuth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import NotificationPreferencesForm from "@/components/account/NotificationPreferencesForm";
 import type { NotificationPreferences } from "@/types";
+import { AccountPageHeader, AccountPanel } from "@/components/account/AccountUI";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   orderUpdates: true,
@@ -22,17 +23,15 @@ export default async function AccountNotificationsPage() {
     .maybeSingle();
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold tracking-tightest text-ink">Notifications</h1>
-      <p className="mt-1 text-[13.5px] text-ink-soft/60">
-        Choose what LOCAL emails you about.
-      </p>
-
-      <div className="mt-8">
+    <div className="space-y-7">
+      <AccountPageHeader eyebrow="Stay in the loop" title="Notifications" description="Choose the Mahaly emails that are useful to you. Essential account and security messages are always sent." />
+      <AccountPanel title="Email preferences" description="Changes are saved as soon as you switch an option.">
+        <div className="p-4 sm:p-5">
         <NotificationPreferencesForm
           initial={profile?.notification_preferences ?? DEFAULT_PREFERENCES}
         />
+        </div>
+      </AccountPanel>
       </div>
-    </div>
   );
 }
