@@ -5,9 +5,11 @@ import ShopByMood from "@/components/ShopByMood";
 import Sponsored from "@/components/Sponsored";
 import Footer from "@/components/Footer";
 import EditableSectionFrame from "@/components/admin/EditableSectionFrame";
+import PageStudioFlexibleSection from "@/components/home/PageStudioFlexibleSection";
+import PageStudioProductGridSection from "@/components/home/PageStudioProductGridSection";
 import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS, FEATURED_BRAND_AND_SPONSORED } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
-import { getAllActiveProducts, getNewArrivals } from "@/lib/data/products";
+import { getActiveProductsByIds, getAllActiveProducts, getNewArrivals } from "@/lib/data/products";
 import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
 import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
@@ -39,6 +41,7 @@ function normalizeTiles(config: Record<string, unknown> | undefined): HomeHeroTi
 
 async function productRows(config: Record<string, unknown>, allProducts: boolean) {
   const limit = Number(config.itemCount ?? config.limit ?? 10);
+  if (Array.isArray(config.productIds)) return getActiveProductsByIds(config.productIds.filter((id): id is string => typeof id === "string"), limit);
   if (allProducts) return getAllActiveProducts(limit, (config.sorting as "newest" | "price-asc" | "price-desc" | "top-rated") ?? "newest", Boolean(config.featuredOnly));
   const source = String(config.source ?? "new");
   if (source === "trending") return getTrendingProducts(limit);
@@ -65,13 +68,17 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
 
   const renderable = sections.filter((item) => item.visible && !["home_hero", "home_hero_tiles", "home_benefits"].includes(item.sectionKey));
   const prepared = await Promise.all(renderable.map(async (item) => {
-    if (["product_carousel", "product_grid", "all_products_preview"].includes(item.sectionType)) {
+    if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
     }
     if (item.sectionType === "featured_brand") {
       const config = item.config as unknown as FeaturedBrandAndSponsoredContent;
       const [featuredBrand, sponsoredBrands] = await Promise.all([getBrandContent(config.featuredBrandSlug), getBrandSummariesBySlug(config.sponsoredBrandSlugs)]);
       return { item, featuredBrand, sponsoredBrands };
+    }
+    if (item.sectionType === "brand_carousel" || item.sectionType === "sponsored_brands") {
+      const slugs = Array.isArray(item.config.brandSlugs) ? item.config.brandSlugs.filter((slug): slug is string => typeof slug === "string") : [];
+      return { item, brands: await getBrandSummariesBySlug(slugs) };
     }
     return { item };
   }));
@@ -99,8 +106,9 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   return <main className="min-h-screen bg-cream"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
     const { item } = entry;
     if ("products" in entry && entry.products) {
-      const config = item.config as unknown as HomeProductSectionContent & { itemCount?: number };
+      const config = item.config as unknown as HomeProductSectionContent & { itemCount?: number; displayStyle?: string };
       const isAll = item.sectionType === "all_products_preview";
+      if (item.sectionType === "product_grid" || config.displayStyle === "grid") return frame(item, <PageStudioProductGridSection key={item.id} title={config.title ?? HOME_NEW_ARRIVALS.title} products={entry.products} viewAllHref={isAll ? "/shop/all" : (VIEW_ALL_HREF[config.source] ?? "/shop/all")} />);
       return frame(item, <NewArrivalsSection key={item.id} title={config.title ?? HOME_NEW_ARRIVALS.title} products={entry.products} viewAllHref={isAll ? "/shop/all" : (VIEW_ALL_HREF[config.source] ?? "/shop/all")} />);
     }
     if (item.sectionType === "mood_tiles") {
@@ -109,6 +117,8 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
       return frame(item, <ShopByMood key={item.id} tiles={tiles} />);
     }
     if ("featuredBrand" in entry) return frame(item, <Sponsored key={item.id} featuredBrand={entry.featuredBrand ?? null} sponsoredBrands={entry.sponsoredBrands ?? []} />);
+    if ("brands" in entry) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} brands={entry.brands} />);
+    if (["promotional_banner", "editorial_image", "text_block", "newsletter"].includes(item.sectionType)) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} />);
     return null;
   })}<Footer /></main>;
 }

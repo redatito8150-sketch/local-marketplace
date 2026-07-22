@@ -38,12 +38,13 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Added eager loading for above-the-fold catalog images after runtime LCP diagnostics.
 - Added a manager-only Page Studio media library with validated JPEG, PNG, WebP, and AVIF uploads, binary signature checks, 5 MB limits, scoped storage paths, previews, and asset selection.
 - Added a storefront Edit Mode for the homepage with contextual controls for editing, keyboard-accessible ordering, and hiding optional sections while preserving the draft/publish boundary.
+- Added draft-safe section creation, duplication, and removal with required-section protection, service-role-only transactional RPCs, audit events, and soft deletion that reaches the storefront only after publishing.
+- Added structured editing and storefront renderers for product grids, custom product collections, promotional banners, editorial images, text blocks, newsletters, and brand/sponsor carousels.
 
 ## Pending tasks
 
 - Verify live database function grants, policies, indexes, and schema drift read-only against the connected Supabase project.
 - Complete all customer, brand-owner, and admin flow verification.
-- Add safe custom-section creation, duplication, and removal controls.
 - Complete responsive QA, preview verification, PR review, and final merge.
 
 ## Files changed
@@ -76,6 +77,7 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - `app/admin/page-studio/**`
 - `app/api/admin/page-studio/**`
 - `supabase/migrations/20260722_page_studio_foundation.sql`
+- `supabase/migrations/20260722_page_studio_section_lifecycle.sql`
 - `tests/pageStudioRegistry.test.ts`
 - `app/shop/all/**`
 - `components/category/AllProductsShoppingArea.tsx`
@@ -89,6 +91,7 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - Added service-role-only transactional RPC migrations for product/variant replacement and user access/brand membership transitions.
 - Added an additive migration for explicit cash-on-delivery method and unpaid/paid/refunded order payment state.
 - Added the additive Page Studio schema with separate draft/published order, configuration, and visibility; private version history; service-role-only mutation RPCs; and an idempotent homepage seed compatible with the earlier content prototype.
+- Added the Page Studio section-lifecycle migration with separate draft/published deletion state and service-role-only create, duplicate, and remove RPCs; it is checked in but not applied to production.
 - Rollback requires restoring the previous policies and function grants; no table rows or columns are deleted.
 
 ## Security fixes
@@ -103,7 +106,8 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 - RLS and PostgreSQL function scan.
 - Public API route classification.
 - `npm audit --json` with registry access.
-- Twenty-four validation/security tests pass (eight order-request, three image-upload, three product-persistence, seven Page Studio registry, and three catalog-query tests).
+- Final production-dependency audit confirms one moderate PostCSS advisory and two high Sharp/libvips advisories inherited through the current Next.js dependency; npm only proposes an unsafe forced downgrade to Next 9, so no automatic breaking fix was applied.
+- Twenty-six validation/security tests pass (eight order-request, three image-upload, three product-persistence, nine Page Studio registry, and three catalog-query tests).
 - TypeScript and lint pass after the first security and upload-hardening implementation.
 - Browser QA: Women desktop filter layout, conditional Clothing → Product Type behavior, Studio Nile brand catalog, mobile full-filter drawer, and 390px horizontal-overflow check.
 
@@ -114,6 +118,7 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 
 - TypeScript, ESLint, and all 24 tests pass after the Page Studio media-library and Edit Mode integration.
 - Production build passes with 140 generated routes, including `/admin/page-studio/[pageKey]/edit` and `/api/admin/page-studio/assets`.
+- TypeScript, ESLint, all 26 tests, and the production build pass after adding draft-safe section lifecycle controls and flexible storefront renderers.
 
 ## Known limitations
 

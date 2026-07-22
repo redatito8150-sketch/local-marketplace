@@ -15,6 +15,8 @@ type PageSectionRow = {
   published_config: Record<string, unknown>;
   draft_visible: boolean;
   published_visible: boolean;
+  draft_deleted: boolean;
+  published_deleted: boolean;
   updated_at: string;
   published_at: string | null;
 };
@@ -56,8 +58,8 @@ function toSection(row: PageSectionRow, mode: "draft" | "published"): PageSectio
 async function readSections(pageKey: string, mode: "draft" | "published") {
   const orderColumn = mode === "draft" ? "draft_position" : "published_position";
   const modeColumns = mode === "draft"
-    ? ["draft_position", "draft_config", "draft_visible"]
-    : ["published_position", "published_config", "published_visible"];
+    ? ["draft_position", "draft_config", "draft_visible", "draft_deleted"]
+    : ["published_position", "published_config", "published_visible", "published_deleted"];
   const { data, error } = await supabaseAdmin
     .from("page_sections")
     .select([...SECTION_BASE_COLUMNS, ...modeColumns].join(","))
@@ -65,7 +67,9 @@ async function readSections(pageKey: string, mode: "draft" | "published") {
     .order(orderColumn, { ascending: true });
 
   if (error) throw new Error(`getPageSections(${pageKey}, ${mode}) failed: ${error.message}`);
-  return (data as unknown as PageSectionRow[]).map((row) => toSection(row, mode));
+  return (data as unknown as PageSectionRow[])
+    .filter((row) => mode === "draft" ? !row.draft_deleted : !row.published_deleted)
+    .map((row) => toSection(row, mode));
 }
 
 /** Server-only published view. Never selects draft fields into a browser client. */

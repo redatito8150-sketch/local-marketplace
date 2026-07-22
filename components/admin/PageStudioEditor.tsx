@@ -10,18 +10,21 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   Eye,
   EyeOff,
   GripVertical,
   History,
   Loader2,
   Pencil,
+  Plus,
   RotateCcw,
   Save,
   Send,
+  Trash2,
 } from "lucide-react";
 import type { PageVersionRecord } from "@/lib/data/pageStudio";
-import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
+import { ADDABLE_PAGE_SECTION_TYPES, PAGE_SECTION_REGISTRY, type PageSectionRecord, type PageSectionType } from "@/lib/pageStudio/registry";
 import PageStudioImageField from "@/components/admin/PageStudioImageField";
 
 type Config = Record<string, unknown>;
@@ -102,6 +105,7 @@ function SectionFields({ pageKey, section, onChange }: { pageKey: string; sectio
         {section.sectionType === "all_products_preview" && (
           <label className="flex items-center gap-2 self-end pb-2.5 text-[12.5px] font-semibold text-[var(--admin-text)]"><input type="checkbox" checked={Boolean(config.featuredOnly)} onChange={(event) => patch({ featuredOnly: event.target.checked })} /> Featured products only</label>
         )}
+        {section.sectionType === "custom_product_collection" && <div className="sm:col-span-2 lg:col-span-3"><TextField label="Product IDs (comma separated)" value={Array.isArray(config.productIds) ? config.productIds.join(", ") : ""} onChange={(value) => patch({ productIds: value.split(",").map((id) => id.trim()).filter(Boolean) })} multiline /></div>}
       </div>
     );
   }
@@ -140,6 +144,22 @@ function SectionFields({ pageKey, section, onChange }: { pageKey: string; sectio
     return <div className="grid gap-4 sm:grid-cols-2"><TextField label="Featured brand slug" value={config.featuredBrandSlug} onChange={(value) => patch({ featuredBrandSlug: value })} /><TextField label="Sponsored brand slugs" value={Array.isArray(config.sponsoredBrandSlugs) ? config.sponsoredBrandSlugs.join(", ") : ""} onChange={(value) => patch({ sponsoredBrandSlugs: value.split(",").map((slug) => slug.trim()).filter(Boolean) })} /></div>;
   }
 
+  if (section.sectionType === "brand_carousel" || section.sectionType === "sponsored_brands") {
+    return <div className="grid gap-4 sm:grid-cols-2"><TextField label="Section title" value={config.title} onChange={(value) => patch({ title: value })} /><TextField label="Brand slugs (comma separated)" value={Array.isArray(config.brandSlugs) ? config.brandSlugs.join(", ") : ""} onChange={(value) => patch({ brandSlugs: value.split(",").map((slug) => slug.trim()).filter(Boolean) })} /></div>;
+  }
+
+  if (section.sectionType === "promotional_banner") {
+    return <div className="grid gap-4 sm:grid-cols-2"><TextField label="Title" value={config.title} onChange={(value) => patch({ title: value })} /><TextField label="Description" value={config.description} onChange={(value) => patch({ description: value })} multiline /><TextField label="Button label" value={config.ctaLabel} onChange={(value) => patch({ ctaLabel: value })} /><TextField label="Button link" value={config.ctaHref} onChange={(value) => patch({ ctaHref: value })} /><div className="sm:col-span-2"><PageStudioImageField pageKey={pageKey} label="Banner image" value={String(config.image ?? "")} onChange={(value) => patch({ image: value })} /></div><div className="sm:col-span-2"><TextField label="Image alt text" value={config.imageAlt} onChange={(value) => patch({ imageAlt: value })} /></div></div>;
+  }
+
+  if (section.sectionType === "editorial_image") {
+    return <div className="grid gap-4 sm:grid-cols-2"><div className="sm:col-span-2"><PageStudioImageField pageKey={pageKey} label="Editorial image" value={String(config.image ?? "")} onChange={(value) => patch({ image: value })} /></div><TextField label="Image alt text" value={config.imageAlt} onChange={(value) => patch({ imageAlt: value })} /><TextField label="Caption" value={config.caption} onChange={(value) => patch({ caption: value })} /></div>;
+  }
+
+  if (section.sectionType === "text_block" || section.sectionType === "newsletter") {
+    return <div className="grid gap-4"><TextField label="Title" value={config.title} onChange={(value) => patch({ title: value })} /><TextField label={section.sectionType === "text_block" ? "Body" : "Description"} value={config.body ?? config.description} onChange={(value) => patch(section.sectionType === "text_block" ? { body: value } : { description: value })} multiline /></div>;
+  }
+
   return <p className="rounded-xl bg-[var(--admin-surface-muted)] p-4 text-[12.5px] text-[var(--admin-text-muted)]">This section uses its safe default configuration. Additional structured fields will appear when it is added to a supported page.</p>;
 }
 
@@ -157,6 +177,7 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [newSectionType, setNewSectionType] = useState<PageSectionType>("product_carousel");
   const dirtyCount = useMemo(() => sections.filter((section, index) => JSON.stringify(section) !== JSON.stringify(initialSections[index])).length, [sections, initialSections]);
 
   const updateConfig = (id: string, config: Config) => setSections((rows) => rows.map((row) => row.id === id ? { ...row, config } : row));
@@ -195,6 +216,35 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
     finally { setBusy(null); }
   };
 
+  const createSection = async () => {
+    setBusy("create"); setMessage(null);
+    try {
+      const data = await requestJson(`/api/admin/page-studio/${pageKey}/sections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sectionType: newSectionType }) });
+      setExpanded(data.sectionId); setMessage({ kind: "ok", text: `${PAGE_SECTION_REGISTRY[newSectionType].label} added to the draft.` }); router.refresh();
+    } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Could not add section" }); }
+    finally { setBusy(null); }
+  };
+
+  const duplicateSection = async (section: PageSectionRecord) => {
+    setBusy(`duplicate:${section.id}`); setMessage(null);
+    try {
+      const data = await requestJson(`/api/admin/page-studio/sections/${section.id}/duplicate`, { method: "POST" });
+      setExpanded(data.sectionId); setMessage({ kind: "ok", text: `${PAGE_SECTION_REGISTRY[section.sectionType].label} duplicated in the draft.` }); router.refresh();
+    } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Could not duplicate section" }); }
+    finally { setBusy(null); }
+  };
+
+  const deleteSection = async (section: PageSectionRecord) => {
+    if (section.isRequired || !window.confirm(`Remove ${PAGE_SECTION_REGISTRY[section.sectionType].label} from the draft? The live page will not change until you publish.`)) return;
+    setBusy(`delete:${section.id}`); setMessage(null);
+    try {
+      await requestJson(`/api/admin/page-studio/sections/${section.id}`, { method: "DELETE" });
+      setSections((rows) => rows.filter((row) => row.id !== section.id));
+      setMessage({ kind: "ok", text: "Section removed from the draft. Publish to apply this removal to the live page." }); router.refresh();
+    } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Could not remove section" }); }
+    finally { setBusy(null); }
+  };
+
   return (
     <div className="pb-16">
       <div className="sticky -top-5 z-20 -mx-5 border-b border-[var(--admin-border)] bg-[var(--admin-bg)]/95 px-5 py-4 backdrop-blur md:-mx-8 md:px-8">
@@ -211,6 +261,16 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
         {message && <p role="status" className={`mt-3 rounded-lg px-3 py-2 text-[12px] font-semibold ${message.kind === "ok" ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>{message.text}</p>}
       </div>
 
+      <div className="mt-5 flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4 shadow-sm">
+        <label className="min-w-56 flex-1 text-[11.5px] font-bold text-[var(--admin-text-muted)]">Add a section
+          <select value={newSectionType} onChange={(event) => setNewSectionType(event.target.value as PageSectionType)} className={inputClass}>
+            {ADDABLE_PAGE_SECTION_TYPES.map((type) => <option key={type} value={type}>{PAGE_SECTION_REGISTRY[type].label}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={Boolean(busy)} onClick={() => void createSection()} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-primary)] bg-[var(--admin-selected)] px-4 text-[12px] font-bold text-[var(--admin-primary)] disabled:opacity-50">{busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Add to draft</button>
+        <p className="w-full text-[11px] text-[var(--admin-text-muted)]">New sections remain private until you review and publish the draft.</p>
+      </div>
+
       {historyOpen && <div className="mt-5 rounded-2xl border border-[var(--admin-border)] bg-[var(--admin-surface)] p-4"><h2 className="text-sm font-bold text-[var(--admin-text)]">Published versions</h2><div className="mt-3 space-y-2">{versions.length ? versions.map((version) => <div key={version.id} className="flex items-center justify-between gap-3 rounded-xl bg-[var(--admin-surface-muted)] px-3 py-2.5"><div><p className="text-[12.5px] font-bold">Version {version.version}</p><p className="text-[11px] text-[var(--admin-text-muted)]">{new Date(version.createdAt).toLocaleString("en-US")}</p></div><button type="button" disabled={Boolean(busy)} onClick={async () => { setBusy(`restore:${version.version}`); try { await requestJson(`/api/admin/page-studio/${pageKey}/versions/${version.version}/restore`, { method: "POST" }); setMessage({ kind: "ok", text: `Version ${version.version} restored to draft. Review it before publishing.` }); router.refresh(); } catch (error) { setMessage({ kind: "error", text: error instanceof Error ? error.message : "Restore failed" }); } finally { setBusy(null); } }} className="rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-[11.5px] font-bold">Restore to draft</button></div>) : <p className="text-[12px] text-[var(--admin-text-muted)]">No published versions yet.</p>}</div></div>}
 
       <div className="mt-6 space-y-3">
@@ -220,11 +280,13 @@ export default function PageStudioEditor({ pageKey, initialSections, versions }:
             <div className="flex min-h-16 items-center gap-2 px-3 sm:px-4">
               <GripVertical className="hidden h-5 w-5 cursor-grab text-[var(--admin-text-muted)]/55 sm:block" aria-hidden="true" />
               <button type="button" onClick={() => setExpanded(isExpanded ? null : section.id)} aria-expanded={isExpanded} className="flex min-w-0 flex-1 items-center gap-3 py-3 text-left">{isExpanded ? <ChevronDown className="h-4 w-4 flex-none" /> : <ChevronRight className="h-4 w-4 flex-none" />}<span className="min-w-0"><span className="block truncate text-[13.5px] font-bold text-[var(--admin-text)]">{PAGE_SECTION_REGISTRY[section.sectionType].label}</span><span className="block text-[10.5px] text-[var(--admin-text-muted)]">{section.sectionKey}{section.isRequired ? " · Required" : ""}</span></span></button>
+              {PAGE_SECTION_REGISTRY[section.sectionType].canDuplicate && <button type="button" disabled={Boolean(busy)} onClick={() => void duplicateSection(section)} aria-label={`Duplicate ${PAGE_SECTION_REGISTRY[section.sectionType].label}`} className="hidden rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25 sm:inline-flex">{busy === `duplicate:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}</button>}
+              {!section.isRequired && <button type="button" disabled={Boolean(busy)} onClick={() => void deleteSection(section)} aria-label={`Remove ${PAGE_SECTION_REGISTRY[section.sectionType].label}`} className="hidden rounded-lg p-2 text-[var(--admin-danger)] hover:bg-red-50 disabled:opacity-25 sm:inline-flex">{busy === `delete:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}</button>}
               <button type="button" disabled={index === 0 || Boolean(busy)} onClick={() => move(index, -1)} aria-label={`Move ${PAGE_SECTION_REGISTRY[section.sectionType].label} up`} className="rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25"><ArrowUp className="h-4 w-4" /></button>
               <button type="button" disabled={index === sections.length - 1 || Boolean(busy)} onClick={() => move(index, 1)} aria-label={`Move ${PAGE_SECTION_REGISTRY[section.sectionType].label} down`} className="rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25"><ArrowDown className="h-4 w-4" /></button>
               <button type="button" disabled={section.isRequired || Boolean(busy)} onClick={() => { const next = { ...section, visible: !section.visible }; setSections((rows) => rows.map((row) => row.id === section.id ? next : row)); void save(next); }} aria-label={section.visible ? "Hide section" : "Show section"} className="rounded-lg p-2 hover:bg-[var(--admin-surface-muted)] disabled:opacity-25">{section.visible ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}</button>
             </div>
-            {isExpanded && <div className="border-t border-[var(--admin-border)] px-4 py-5 sm:px-6"><SectionFields pageKey={pageKey} section={section} onChange={(config) => updateConfig(section.id, config)} /><div className="mt-5 flex justify-end"><button type="button" disabled={Boolean(busy)} onClick={() => void save(section)} className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--admin-primary)] px-4 text-[12px] font-bold text-white disabled:opacity-50">{busy === `save:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : message?.kind === "ok" ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />} Save draft</button></div></div>}
+            {isExpanded && <div className="border-t border-[var(--admin-border)] px-4 py-5 sm:px-6"><SectionFields pageKey={pageKey} section={section} onChange={(config) => updateConfig(section.id, config)} /><div className="mt-5 flex flex-wrap items-center justify-between gap-2"><div className="flex gap-2 sm:hidden">{PAGE_SECTION_REGISTRY[section.sectionType].canDuplicate && <button type="button" disabled={Boolean(busy)} onClick={() => void duplicateSection(section)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--admin-border)] px-3 text-[11.5px] font-bold"><Copy className="h-4 w-4" /> Duplicate</button>}{!section.isRequired && <button type="button" disabled={Boolean(busy)} onClick={() => void deleteSection(section)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-red-200 px-3 text-[11.5px] font-bold text-[var(--admin-danger)]"><Trash2 className="h-4 w-4" /> Remove</button>}</div><button type="button" disabled={Boolean(busy)} onClick={() => void save(section)} className="ml-auto inline-flex min-h-10 items-center gap-2 rounded-xl bg-[var(--admin-primary)] px-4 text-[12px] font-bold text-white disabled:opacity-50">{busy === `save:${section.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : message?.kind === "ok" ? <Check className="h-4 w-4" /> : <Save className="h-4 w-4" />} Save draft</button></div></div>}
           </section>;
         })}
       </div>

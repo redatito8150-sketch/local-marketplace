@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validatePageSectionConfig } from "../lib/pageStudio/registry.ts";
+import { ADDABLE_PAGE_SECTION_TYPES, PAGE_SECTION_REGISTRY, validatePageSectionConfig } from "../lib/pageStudio/registry.ts";
 
 test("accepts a valid typed product carousel", () => {
   assert.equal(
@@ -77,4 +77,17 @@ test("validates every benefit instead of accepting an empty placeholder", () => 
     validatePageSectionConfig("benefits_strip", { items: [{ title: "Secure" }] }) ?? "",
     /Every benefit/
   );
+});
+
+test("only exposes typed registered sections in the add-section menu", () => {
+  assert.equal(new Set(ADDABLE_PAGE_SECTION_TYPES).size, ADDABLE_PAGE_SECTION_TYPES.length);
+  assert.ok(ADDABLE_PAGE_SECTION_TYPES.every((type) => PAGE_SECTION_REGISTRY[type]));
+  assert.ok(!ADDABLE_PAGE_SECTION_TYPES.includes("hero"));
+  assert.ok(!ADDABLE_PAGE_SECTION_TYPES.includes("benefits_strip"));
+});
+
+test("keeps non-repeatable foundation sections protected from duplication", () => {
+  assert.equal(PAGE_SECTION_REGISTRY.hero.canDuplicate, false);
+  assert.equal(PAGE_SECTION_REGISTRY.category_cards.canDuplicate, false);
+  assert.equal(PAGE_SECTION_REGISTRY.product_carousel.canDuplicate, true);
 });

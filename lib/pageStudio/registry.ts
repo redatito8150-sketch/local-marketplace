@@ -18,6 +18,19 @@ export const PAGE_SECTION_TYPES = [
 
 export type PageSectionType = (typeof PAGE_SECTION_TYPES)[number];
 
+export const ADDABLE_PAGE_SECTION_TYPES: PageSectionType[] = [
+  "product_carousel",
+  "product_grid",
+  "featured_brand",
+  "brand_carousel",
+  "promotional_banner",
+  "editorial_image",
+  "text_block",
+  "newsletter",
+  "sponsored_brands",
+  "custom_product_collection",
+];
+
 export interface PageSectionRecord {
   id: string;
   pageKey: string;

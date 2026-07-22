@@ -17,5 +17,5 @@ export default async function PageStudioEditorPage(props: { params: Promise<{ pa
   ]);
   if (!sections.length) notFound();
 
-  return <PageStudioEditor pageKey={pageKey} initialSections={sections} versions={versions} />;
+  return <PageStudioEditor key={sections.map((section) => `${section.id}:${section.updatedAt}`).join("|")} pageKey={pageKey} initialSections={sections} versions={versions} />;
 }

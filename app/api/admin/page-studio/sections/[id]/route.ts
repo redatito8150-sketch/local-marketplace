@@ -40,3 +40,18 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
   revalidatePath(`/admin/page-studio/${section.page_key}`);
   return NextResponse.json({ ok: true });
 }
+
+export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const staff = await requireStaffRole("manager");
+  if (!staff) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  const { id } = await props.params;
+  const { data: pageKey, error } = await supabaseAdmin.rpc("delete_page_section_draft", {
+    p_section_id: id,
+    p_actor_id: staff.user.id,
+    p_actor_label: staff.user.email ?? staff.user.id,
+  });
+  if (error) return NextResponse.json({ error: error.message }, { status: error.message.includes("Required") ? 400 : 500 });
+  revalidatePath(`/admin/page-studio/${pageKey}`);
+  revalidatePath(`/admin/page-studio/${pageKey}/edit`);
+  return NextResponse.json({ ok: true });
+}

@@ -260,6 +260,22 @@ export async function getAllActiveProducts(
   return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
 }
 
+export async function getActiveProductsByIds(ids: string[], limit = 20): Promise<Product[]> {
+  const selected = [...new Set(ids.filter(Boolean))].slice(0, Math.max(1, Math.min(limit, 20)));
+  if (!selected.length) return [];
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .in("id", selected)
+    .eq("status", "published")
+    .eq("paused_by_brand", false);
+  if (error) throw new Error(`getActiveProductsByIds failed: ${error.message}`);
+  const byId = new Map(((data as ProductRow[]) ?? []).map((row) => [row.id, toProductCard(row)]));
+  const cards = selected.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+}
+
 export type MarketplaceCatalogFilters = Partial<Record<
   "audience" | "brand" | "productCategory" | "productType" | "collection" | "material" | "fit" | "size" | "color" | "price" | "availability" | "rating" | "featured" | "discounted",
   string[]

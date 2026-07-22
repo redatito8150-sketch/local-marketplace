@@ -1097,6 +1097,8 @@ create table if not exists public.page_sections (
   published_config jsonb not null default '{}'::jsonb,
   draft_visible boolean not null default true,
   published_visible boolean not null default true,
+  draft_deleted boolean not null default false,
+  published_deleted boolean not null default false,
   created_by uuid references public.profiles(id) on delete set null,
   updated_by uuid references public.profiles(id) on delete set null,
   published_by uuid references public.profiles(id) on delete set null,
@@ -1222,7 +1224,7 @@ begin
 
   select jsonb_agg(jsonb_build_object(
     'sectionKey', section_key, 'sectionType', section_type, 'position', published_position,
-    'visible', published_visible, 'config', published_config
+    'visible', published_visible, 'deleted', published_deleted, 'config', published_config
   ) order by published_position) into v_before
   from public.page_sections where page_key = p_page_key;
 
@@ -1230,6 +1232,7 @@ begin
   set published_config = draft_config,
       published_visible = draft_visible,
       published_position = draft_position,
+      published_deleted = draft_deleted,
       published_by = p_actor_id,
       published_at = now(),
       updated_at = now()
@@ -1237,7 +1240,7 @@ begin
 
   select jsonb_agg(jsonb_build_object(
     'sectionKey', section_key, 'sectionType', section_type, 'position', published_position,
-    'visible', published_visible, 'config', published_config
+    'visible', published_visible, 'deleted', published_deleted, 'config', published_config
   ) order by published_position) into v_after
   from public.page_sections where page_key = p_page_key;
 
@@ -1278,7 +1281,7 @@ begin
 
   select jsonb_agg(jsonb_build_object(
     'sectionKey', section_key, 'position', draft_position,
-    'visible', draft_visible, 'config', draft_config
+    'visible', draft_visible, 'deleted', draft_deleted, 'config', draft_config
   ) order by draft_position) into v_before
   from public.page_sections where page_key = p_page_key;
 
@@ -1291,12 +1294,13 @@ begin
   update public.page_sections section
   set draft_config = item.config,
       draft_visible = item.visible,
+      draft_deleted = coalesce(item.deleted, false),
       draft_position = item.position,
       updated_by = p_actor_id,
       updated_at = now()
   from jsonb_to_recordset(v_snapshot) as item(
     "sectionKey" text, "sectionType" text, position integer,
-    visible boolean, config jsonb
+    visible boolean, deleted boolean, config jsonb
   )
   where section.page_key = p_page_key and section.section_key = item."sectionKey";
 
@@ -1315,6 +1319,7 @@ begin
   )
   update public.page_sections section
   set draft_visible = section.is_required,
+      draft_deleted = not section.is_required,
       draft_position = snapshot_max.max_position + (absent.row_number * 10),
       updated_by = p_actor_id,
       updated_at = now()
@@ -1395,7 +1400,7 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
 
-  select count(*) into v_page_count from public.page_sections where page_key = p_page_key;
+  select count(*) into v_page_count from public.page_sections where page_key = p_page_key and not draft_deleted;
   select count(distinct id) into v_distinct_count from unnest(p_section_ids) as ids(id);
   if v_page_count = 0 then raise exception 'Page not found'; end if;
   if coalesce(array_length(p_section_ids, 1), 0) <> v_page_count
@@ -1404,7 +1409,7 @@ begin
       select 1 from unnest(p_section_ids) as ids(id)
       where not exists (
         select 1 from public.page_sections section
-        where section.id = ids.id and section.page_key = p_page_key
+        where section.id = ids.id and section.page_key = p_page_key and not section.draft_deleted
       )
     ) then
     raise exception 'Section order must contain every page section exactly once';
@@ -1422,7 +1427,15 @@ begin
       updated_by = p_actor_id,
       updated_at = now()
   from unnest(p_section_ids) with ordinality as ordered(id, ordinality)
-  where section.id = ordered.id and section.page_key = p_page_key;
+  where section.id = ordered.id and section.page_key = p_page_key and not section.draft_deleted;
+
+  with removed as (
+    select id, row_number() over (order by created_at, id) as row_number
+    from public.page_sections where page_key = p_page_key and draft_deleted
+  )
+  update public.page_sections section
+  set draft_position = (v_page_count + removed.row_number) * 10
+  from removed where section.id = removed.id;
 
   insert into public.audit_logs (
     actor_id, actor_label, entity_type, entity_id, action, before_value, after_value
@@ -1453,7 +1466,7 @@ begin
 
   select jsonb_agg(jsonb_build_object(
     'sectionKey', section_key, 'position', draft_position,
-    'visible', draft_visible, 'config', draft_config
+    'visible', draft_visible, 'deleted', draft_deleted, 'config', draft_config
   ) order by draft_position) into v_before
   from public.page_sections where page_key = p_page_key;
 
@@ -1461,6 +1474,7 @@ begin
   set draft_config = published_config,
       draft_visible = published_visible,
       draft_position = published_position,
+      draft_deleted = published_deleted,
       updated_by = p_actor_id,
       updated_at = now()
   where page_key = p_page_key;
@@ -1470,6 +1484,113 @@ begin
   ) values (
     p_actor_id, p_actor_label, 'page', p_page_key, 'discard_draft', v_before, null
   );
+end;
+$$;
+
+create or replace function public.create_page_section_draft(
+  p_page_key text, p_section_type text, p_config jsonb,
+  p_actor_id uuid, p_actor_label text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_id uuid := gen_random_uuid();
+  v_draft_position integer;
+  v_published_position integer;
+begin
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || p_page_key));
+  if p_page_key !~ '^[a-z][a-z0-9-]{0,39}$' then raise exception 'Invalid page key'; end if;
+  if p_config is null or jsonb_typeof(p_config) <> 'object' then raise exception 'Section configuration must be an object'; end if;
+  select coalesce(max(draft_position), 0) + 10, coalesce(max(published_position), 0) + 10
+    into v_draft_position, v_published_position
+  from public.page_sections where page_key = p_page_key;
+  insert into public.page_sections (
+    id, page_key, section_key, section_type, draft_position, published_position,
+    is_required, draft_config, published_config, draft_visible, published_visible,
+    draft_deleted, published_deleted, created_by, updated_by
+  ) values (
+    v_id, p_page_key, p_section_type || '_' || replace(v_id::text, '-', ''), p_section_type,
+    v_draft_position, v_published_position, false, p_config, p_config, true, false,
+    false, true, p_actor_id, p_actor_id
+  );
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, after_value)
+  values (p_actor_id, p_actor_label, 'page', p_page_key, 'create',
+    jsonb_build_object('sectionId', v_id, 'sectionType', p_section_type));
+  return v_id;
+end;
+$$;
+
+create or replace function public.duplicate_page_section_draft(
+  p_section_id uuid, p_actor_id uuid, p_actor_label text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_source public.page_sections%rowtype;
+  v_id uuid := gen_random_uuid();
+  v_draft_position integer;
+  v_published_position integer;
+begin
+  select * into v_source from public.page_sections where id = p_section_id and not draft_deleted;
+  if v_source.id is null then raise exception 'Page section not found'; end if;
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || v_source.page_key));
+  select * into v_source from public.page_sections where id = p_section_id and not draft_deleted for update;
+  if v_source.id is null then raise exception 'Page section not found'; end if;
+  select coalesce(max(draft_position), 0) + 10, coalesce(max(published_position), 0) + 10
+    into v_draft_position, v_published_position
+  from public.page_sections where page_key = v_source.page_key;
+  insert into public.page_sections (
+    id, page_key, section_key, section_type, draft_position, published_position,
+    is_required, draft_config, published_config, draft_visible, published_visible,
+    draft_deleted, published_deleted, created_by, updated_by
+  ) values (
+    v_id, v_source.page_key, v_source.section_type || '_' || replace(v_id::text, '-', ''),
+    v_source.section_type, v_draft_position, v_published_position, false,
+    v_source.draft_config, v_source.draft_config, v_source.draft_visible, false,
+    false, true, p_actor_id, p_actor_id
+  );
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, after_value)
+  values (p_actor_id, p_actor_label, 'page', v_source.page_key, 'create',
+    jsonb_build_object('sectionId', v_id, 'duplicatedFrom', p_section_id));
+  return v_id;
+end;
+$$;
+
+create or replace function public.delete_page_section_draft(
+  p_section_id uuid, p_actor_id uuid, p_actor_label text
+)
+returns text
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_section public.page_sections%rowtype;
+  v_position integer;
+begin
+  select * into v_section from public.page_sections where id = p_section_id and not draft_deleted;
+  if v_section.id is null then raise exception 'Page section not found'; end if;
+  if v_section.is_required then raise exception 'Required sections cannot be removed'; end if;
+  perform pg_advisory_xact_lock(hashtext('page-studio:' || v_section.page_key));
+  select * into v_section from public.page_sections where id = p_section_id and not draft_deleted for update;
+  if v_section.id is null then raise exception 'Page section not found'; end if;
+  if v_section.is_required then raise exception 'Required sections cannot be removed'; end if;
+  select coalesce(max(draft_position), 0) + 10 into v_position
+  from public.page_sections where page_key = v_section.page_key;
+  update public.page_sections
+  set draft_deleted = true, draft_visible = false, draft_position = v_position,
+      updated_by = p_actor_id, updated_at = now()
+  where id = p_section_id;
+  insert into public.audit_logs (actor_id, actor_label, entity_type, entity_id, action, before_value)
+  values (p_actor_id, p_actor_label, 'page', v_section.page_key, 'delete',
+    jsonb_build_object('sectionId', p_section_id, 'sectionKey', v_section.section_key));
+  return v_section.page_key;
 end;
 $$;
 
@@ -1488,3 +1609,9 @@ grant execute on function public.restore_page_version_to_draft(text, integer, uu
 grant execute on function public.save_page_section_draft(uuid, jsonb, boolean, uuid, text) to service_role;
 grant execute on function public.reorder_page_draft(text, uuid[], uuid, text) to service_role;
 grant execute on function public.discard_page_draft(text, uuid, text) to service_role;
+revoke all on function public.create_page_section_draft(text, text, jsonb, uuid, text) from public, anon, authenticated;
+revoke all on function public.duplicate_page_section_draft(uuid, uuid, text) from public, anon, authenticated;
+revoke all on function public.delete_page_section_draft(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.create_page_section_draft(text, text, jsonb, uuid, text) to service_role;
+grant execute on function public.duplicate_page_section_draft(uuid, uuid, text) to service_role;
+grant execute on function public.delete_page_section_draft(uuid, uuid, text) to service_role;
