@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const ACCESS_LEVELS = [
   "customer",
@@ -18,6 +19,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const admin = await requireAdminUser();
   if (!admin) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  // Defense-in-depth against a compromised admin session scripting rapid
+  // role changes across many accounts — this is the route that grants/
+  // revokes admin access itself (CLAUDE.md's own hardening note on this
+  // route), so it gets the tightest limit of any admin route touched here.
+  if (!checkRateLimit(`admin-user-access-change:${admin.id}`, 20, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body = await request.json();

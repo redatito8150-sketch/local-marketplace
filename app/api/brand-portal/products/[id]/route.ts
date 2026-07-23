@@ -11,6 +11,7 @@ import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
 } from "@/lib/admin/productPersistence";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 async function loadOwnedProduct(id: string, brandSlug: string) {
   const { data } = await supabaseAdmin
@@ -27,6 +28,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const owner = await requireBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  if (!checkRateLimit(`brand-portal-product-edit:${owner.user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const existing = await loadOwnedProduct(params.id, owner.brandSlug);
@@ -171,6 +176,10 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
   const owner = await requireBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  if (!checkRateLimit(`brand-portal-product-delete:${owner.user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const existing = await loadOwnedProduct(params.id, owner.brandSlug);

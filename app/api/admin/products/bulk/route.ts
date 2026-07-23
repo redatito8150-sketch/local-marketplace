@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const BULK_ACTIONS = ["publish", "archive", "delete"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
@@ -16,6 +17,10 @@ export async function POST(request: NextRequest) {
   const staff = await requireStaffRole("manager");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  if (!checkRateLimit(`admin-products-bulk:${staff.user.id}`, 20, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body = await request.json();

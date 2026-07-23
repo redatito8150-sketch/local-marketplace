@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
 
 const MAX_ATTEMPTS = 5;
@@ -21,6 +22,14 @@ export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  }
+
+  // The per-code attempt counter below already caps wrong guesses at
+  // MAX_ATTEMPTS (persisted in the DB row, so it holds across serverless
+  // instances) — this IP-keyed limit is defense-in-depth against request
+  // flooding/DoS on this endpoint, not the primary brute-force guard.
+  if (!checkRateLimit(`phone-verify-otp:${getClientIp(request)}`, 20, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many attempts — try again later" }, { status: 429 });
   }
 
   const body = await request.json().catch(() => ({}));

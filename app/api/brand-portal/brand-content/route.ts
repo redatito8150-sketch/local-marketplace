@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 // Unlike products, brand page content applies instantly — the confirmed
 // design decision is that the admin just gets notified to spot-check it
@@ -16,6 +17,10 @@ export async function PATCH(request: NextRequest) {
   const owner = await requireBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug || owner.accessLevel !== "owner") {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  if (!checkRateLimit(`brand-portal-content-update:${owner.user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body: BrandInput = await request.json();

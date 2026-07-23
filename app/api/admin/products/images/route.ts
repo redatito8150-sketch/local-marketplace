@@ -8,6 +8,7 @@ import {
   isCanonicalProductFolderId,
   isUuid,
 } from "@/lib/uploads/imageValidation";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -91,6 +92,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  if (!checkRateLimit(`product-image-upload:${uploader.userId}`, 40, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many uploads — please slow down" }, { status: 429 });
+  }
+
   const formData = await request.formData();
   const file = formData.get("file");
   // `folderId` is the product id when editing, or a client-generated
@@ -142,6 +147,10 @@ export async function DELETE(request: NextRequest) {
   const uploader = await requireUploader();
   if (!uploader) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  if (!checkRateLimit(`product-image-delete:${uploader.userId}`, 40, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body = await request.json().catch(() => null);

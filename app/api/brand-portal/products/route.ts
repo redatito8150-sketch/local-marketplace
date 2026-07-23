@@ -7,6 +7,7 @@ import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductCreate } from "@/lib/admin/describeProductChange";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 function slugify(value: string): string {
   return value
@@ -30,6 +31,14 @@ export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  // Keyed by user, not IP — this is an authenticated, instant-publish write
+  // path (goes live immediately, no review queue), so a compromised or
+  // malicious brand-portal account shouldn't be able to script unlimited
+  // product creation.
+  if (!checkRateLimit(`brand-portal-product-create:${owner.user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body: ProductInput = await request.json();
