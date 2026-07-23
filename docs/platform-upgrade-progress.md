@@ -1,10 +1,12 @@
 # Mahaly Platform Upgrade Progress
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23 (this branch merged to `main` via PR #8 since the
+2026-07-22 entries below were written; a follow-up production-readiness
+pass then live-verified what this doc had marked "pending")
 
 ## Current phase
 
-Phase 6 — Page Studio and storefront publishing. Security-critical boundaries, shared catalog controls, and the first brand-experience pass are complete on the feature branch. The typed Page Studio foundation, private draft preview, explicit publishing, version history, restoration, and homepage renderer are implemented; migration and preview-environment verification remain pending.
+Phase 6 — Page Studio and storefront publishing. Security-critical boundaries, shared catalog controls, and the first brand-experience pass are complete and confirmed live on `main` as of 2026-07-23 (see the verification note at the bottom). The typed Page Studio foundation, private draft preview, explicit publishing, version history, restoration, and homepage renderer are implemented and confirmed deployed — the `page_sections`/`page_versions` tables exist on the live Supabase project, which contradicts this doc's original "migration and preview-environment verification remain pending" note below (now stale).
 
 ## Completed tasks
 
@@ -124,12 +126,37 @@ Phase 6 — Page Studio and storefront publishing. Security-critical boundaries,
 
 ## Known limitations
 
-- The checked-in `supabase/schema.sql` is cumulative while only one file exists in `supabase/migrations`; deployment history and schema drift are not yet reproducible from migrations alone.
-- No second customer or second brand-owner test identity has yet been used, so cross-account and cross-brand isolation are not fully runtime-verified.
-- Payment processing is not integrated; checkout accurately presents and stores cash on delivery rather than collecting disconnected card details.
-- Page Studio migrations are checked in but have not been applied to production; the public homepage retains its legacy-content fallback until preview migration validation succeeds.
-- The Vercel Preview deployment is protected by Vercel SSO and currently points at an environment where the Page Studio tables do not exist, so authenticated interactive Page Studio QA remains blocked until an isolated Preview database is configured and migrated.
-- The in-memory rate limiter is not distributed across Vercel instances.
+- **(Stale as of 2026-07-23)** ~~The checked-in `supabase/schema.sql` is cumulative while only one file exists in `supabase/migrations`~~ — 14 migration files exist now, covering this branch's work and everything shipped since. `schema.sql` is still hand-maintained in parallel rather than generated from migrations, which remains a real (if less acute) architectural gap.
+- No second customer or second brand-owner test identity has yet been used, so cross-account and cross-brand isolation are not fully runtime-verified. Still true as of 2026-07-23.
+- Payment processing is not integrated; checkout accurately presents and stores cash on delivery rather than collecting disconnected card details. Still true.
+- **(Stale as of 2026-07-23)** ~~Page Studio migrations are checked in but have not been applied to production~~ — confirmed live: `page_sections` and `page_versions` both exist on the production Supabase project.
+- The Vercel Preview/SSO limitation may still apply to preview-specific QA; not re-checked this pass (production itself was verified directly instead).
+- The in-memory rate limiter is still not distributed across Vercel instances (unchanged), though its coverage was extended on 2026-07-23 to previously-unthrottled routes (phone-verify-otp, brand-portal writes, top admin write routes) — see `docs/security-audit.md` SEC-007.
+
+## 2026-07-23 verification pass (separate audit branch)
+
+- Confirmed live against the actual Supabase project (not static review):
+  `place_order`, `cancel_order`, `set_default_address`, `set_user_access`,
+  `replace_product_with_variants` all reject the anon key; `products` RLS
+  doesn't leak non-published/paused rows; `page_sections`/`page_versions`
+  exist. Added `tests/security.rls.test.ts` to keep these checks permanent.
+- Fixed real gaps found along the way: no rate limiting on
+  `account/phone/verify-otp` and across `brand-portal`/`admin` write
+  routes; raw Postgres/Supabase error messages reaching customer-facing
+  API clients; missing explicit cookie `sameSite`/`secure` config.
+- Discovered and fixed a critical, unrelated regression: sign-in and
+  password-reset were failing for every user because Supabase's Attack
+  Protection (Turnstile), once enabled, requires a captcha token on those
+  flows too, not just sign-up — `context/AuthContext.tsx`'s `signIn()`
+  and `/forgot-password` never sent one. Cherry-picked straight to `main`
+  given severity.
+- Removed 4 confirmed-dead components (zero references anywhere,
+  superseded by later work); kept `FollowedBrandsRow.tsx` despite also
+  having zero references — it looks like an unfinished feature
+  integration, not dead code, and was flagged separately rather than
+  deleted.
+- Full details: `docs/security-audit.md`'s verification log and
+  `docs/full-platform-audit.md`'s matching update.
 
 ## Rollback notes
 
