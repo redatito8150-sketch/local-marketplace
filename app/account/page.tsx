@@ -8,6 +8,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import CaptchaWidget, { type CaptchaWidgetHandle } from "@/components/account/CaptchaWidget";
+import PasswordInput from "@/components/shared/PasswordInput";
 
 const CAPTCHA_REQUIRED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
@@ -219,32 +220,28 @@ export default function AccountPage() {
             </div>
           )}
 
-          <div className="relative">
-            <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/40" />
-            <input
-              type="password"
-              placeholder="Password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-4 text-[14px] text-ink outline-none focus:border-ink/30"
-            />
-          </div>
+          <PasswordInput
+            icon={Lock}
+            placeholder="Password"
+            required
+            minLength={6}
+            autoComplete={mode === "create" ? "new-password" : "current-password"}
+            value={password}
+            onChange={setPassword}
+            inputClassName="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-11 text-[14px] text-ink outline-none focus:border-ink/30"
+          />
 
           {mode === "create" && (
-            <div className="relative">
-              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/40" />
-              <input
-                type="password"
-                placeholder="Confirm password"
-                required
-                minLength={6}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-4 text-[14px] text-ink outline-none focus:border-ink/30"
-              />
-            </div>
+            <PasswordInput
+              icon={Lock}
+              placeholder="Confirm password"
+              required
+              minLength={6}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              inputClassName="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-11 text-[14px] text-ink outline-none focus:border-ink/30"
+            />
           )}
 
           {mode === "sign-in" && (
