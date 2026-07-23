@@ -15,9 +15,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getOrdersForUser } from "@/lib/data/orders";
 import { getAddressesForUser } from "@/lib/data/addresses";
 import { getWishlistForUser } from "@/lib/data/wishlist";
+import { getFollowedBrandsForUser } from "@/lib/data/follows";
 import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
 import { formatPrice } from "@/lib/format";
 import OrderCard from "@/components/account/OrderCard";
+import FollowedBrandsRow from "@/components/account/FollowedBrandsRow";
 import {
   AccountEmptyState,
   AccountHighlightCard,
@@ -38,7 +40,7 @@ export default async function AccountOverviewPage() {
   if (!user) redirect("/account");
 
   const supabase = await createSupabaseServerClient();
-  const [{ data: profile }, orders, addresses, wishlist] = await Promise.all([
+  const [{ data: profile }, orders, addresses, wishlist, followedBrands] = await Promise.all([
     supabase
       .from("profiles")
       .select("full_name, phone, phone_verified_at, notification_preferences")
@@ -47,6 +49,7 @@ export default async function AccountOverviewPage() {
     getOrdersForUser(user.id),
     getAddressesForUser(user.id),
     getWishlistForUser(user.id),
+    getFollowedBrandsForUser(user.id),
   ]);
 
   const fullName = profile?.full_name?.trim() || "there";
@@ -177,6 +180,8 @@ export default async function AccountOverviewPage() {
           <AccountEmptyState title="Your wishlist is ready" description="Tap the heart on any product to keep it here for later." action={<Link href="/new-arrivals" className={accountSecondaryButton}>Discover products</Link>} />
         )}
       </AccountPanel>
+
+      <FollowedBrandsRow brands={followedBrands} />
     </div>
   );
 }
