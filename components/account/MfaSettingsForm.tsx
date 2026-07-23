@@ -27,6 +27,11 @@ export default function MfaSettingsForm() {
   };
 
   useEffect(() => {
+    // refresh() is fully async (awaits before touching state) and is
+    // shared with confirmEnrollment/disable below — inlining it here would
+    // duplicate that logic just to satisfy the lint rule's preference for
+    // an effect-local async IIFE.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refresh();
   }, []);
 

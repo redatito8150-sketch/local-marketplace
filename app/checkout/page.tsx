@@ -70,10 +70,10 @@ export default function CheckoutPage() {
   const [newAddressLabel, setNewAddressLabel] = useState<AddressLabel>("Home");
 
   useEffect(() => {
-    if (!user) {
-      setAddressesLoaded(true);
-      return;
-    }
+    // addressesLoaded is only ever read alongside `user &&` in the JSX
+    // below, so a guest (no user) has nothing that depends on it — no
+    // need to fetch or set state here at all.
+    if (!user) return;
     let cancelled = false;
     fetch("/api/account/addresses")
       .then((res) => (res.ok ? res.json() : { addresses: [] }))
