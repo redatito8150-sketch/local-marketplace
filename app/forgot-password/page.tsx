@@ -1,31 +1,46 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { Mail } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase/client";
+import CaptchaWidget, { type CaptchaWidgetHandle } from "@/components/account/CaptchaWidget";
+
+const CAPTCHA_REQUIRED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
+  const [captchaToken, setCaptchaToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const captchaRef = useRef<CaptchaWidgetHandle>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Supabase's Attack Protection covers password-recovery requests too,
+    // same as sign-in/sign-up.
+    if (CAPTCHA_REQUIRED && !captchaToken) {
+      setError("Please complete the verification challenge");
+      return;
+    }
+
     setSubmitting(true);
     setError("");
 
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/reset-password`,
+      captchaToken: captchaToken || undefined,
     });
 
     // Always show the same success message regardless of whether the email
     // exists — otherwise this endpoint becomes an account-enumeration oracle.
     if (error) {
       setError("Something went wrong. Please try again.");
+      captchaRef.current?.reset();
+      setCaptchaToken("");
     } else {
       setSent(true);
     }
@@ -65,6 +80,8 @@ export default function ForgotPasswordPage() {
                 className="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-4 text-[14px] text-ink outline-none focus:border-ink/30"
               />
             </div>
+
+            <CaptchaWidget ref={captchaRef} onToken={setCaptchaToken} />
 
             {error && (
               <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
