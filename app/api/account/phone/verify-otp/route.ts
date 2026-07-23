@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const MAX_ATTEMPTS = 5;
 
@@ -48,7 +49,7 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.phone.verify-otp.lookup", error);
   }
   if (!verification) {
     return NextResponse.json({ error: "Request a new code first" }, { status: 400 });
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
     .eq("id", user.id);
 
   if (profileError) {
-    return NextResponse.json({ error: profileError.message }, { status: 500 });
+    return safeErrorResponse("account.phone.verify-otp.update-profile", profileError);
   }
   return NextResponse.json({ ok: true, phone: verification.phone });
 }

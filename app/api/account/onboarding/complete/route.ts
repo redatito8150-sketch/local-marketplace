@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Marks the post-registration "add an address / skip" onboarding step
 // (app/onboarding/add-address) as seen, whichever action the customer took
@@ -17,7 +18,7 @@ export async function POST() {
     .eq("id", user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.onboarding.complete", error);
   }
   return NextResponse.json({ ok: true });
 }

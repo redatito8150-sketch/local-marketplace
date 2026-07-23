@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -17,7 +18,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     .select("id");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.sessions.revoke", error);
   }
   if (!data || data.length === 0) {
     return NextResponse.json({ error: "Session not found" }, { status: 404 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 import type { NotificationPreferences } from "@/types";
 
 export async function PATCH(request: NextRequest) {
@@ -16,7 +17,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
   if (readError) {
-    return NextResponse.json({ error: readError.message }, { status: 500 });
+    return safeErrorResponse("account.notification-preferences.read", readError);
   }
   const current = (profile?.notification_preferences ?? {}) as Partial<NotificationPreferences>;
   const preferences: NotificationPreferences = {
@@ -32,7 +33,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.notification-preferences.update", error);
   }
   return NextResponse.json({ ok: true });
 }

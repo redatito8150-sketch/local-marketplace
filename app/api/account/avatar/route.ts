@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const BUCKET = "product-images";
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     .from(BUCKET)
     .upload(path, file, { contentType: file.type, upsert: true, cacheControl: "3600" });
   if (uploadError) {
-    return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    return safeErrorResponse("account.avatar.upload", uploadError, "Upload failed. Please try again.");
   }
 
   const stalePaths = avatarPaths(user.id).filter((candidate) => candidate !== path);
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     user_metadata: { ...user.user_metadata, avatar_url: avatarUrl, avatar_path: path },
   });
   if (metadataError) {
-    return NextResponse.json({ error: metadataError.message }, { status: 500 });
+    return safeErrorResponse("account.avatar.update-metadata", metadataError);
   }
   return NextResponse.json({ ok: true, avatarUrl });
 }
@@ -63,6 +64,6 @@ export async function DELETE() {
   const { error } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
     user_metadata: metadata,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("account.avatar.delete", error);
   return NextResponse.json({ ok: true });
 }

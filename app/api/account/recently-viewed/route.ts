@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Silent no-op when signed out — this fires from every product page visit,
 // and an anonymous browsing session has nothing to record against.
@@ -23,7 +24,7 @@ export async function POST(request: NextRequest) {
     );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.recently-viewed.upsert", error);
   }
   return NextResponse.json({ ok: true });
 }

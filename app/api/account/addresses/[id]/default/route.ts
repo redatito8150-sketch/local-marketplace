@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Atomic swap via the set_default_address() Postgres function (Phase 0
 // schema) — clears the old default and sets the new one in one statement,
@@ -18,7 +19,7 @@ export async function POST(_request: NextRequest, props: { params: Promise<{ id:
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.addresses.set-default", error);
   }
   return NextResponse.json({ ok: true });
 }

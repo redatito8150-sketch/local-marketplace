@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
 
 const VALID_LABELS: AddressLabel[] = ["Home", "Work", "Other"];
@@ -68,7 +69,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     .select("id");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.addresses.update", error);
   }
   if (!data || data.length === 0) {
     return NextResponse.json({ error: "Address not found" }, { status: 404 });
@@ -91,7 +92,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     .select("id, is_default");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.addresses.delete", error);
   }
   if (!data || data.length === 0) {
     return NextResponse.json({ error: "Address not found" }, { status: 404 });

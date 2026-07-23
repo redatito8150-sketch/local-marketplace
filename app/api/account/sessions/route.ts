@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function GET() {
   const user = await requireUser();
@@ -16,7 +17,7 @@ export async function GET() {
     .order("last_seen_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.sessions.list", error);
   }
   return NextResponse.json({ sessions: data ?? [] });
 }

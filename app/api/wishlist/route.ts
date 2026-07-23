@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getWishlistForUser } from "@/lib/data/wishlist";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function GET() {
   const user = await requireUser();
@@ -37,7 +38,7 @@ export async function POST(request: NextRequest) {
   if (existing) {
     const { error } = await supabaseAdmin.from("wishlists").delete().eq("id", existing.id);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("wishlist.remove", error);
     }
     return NextResponse.json({ wishlisted: false });
   }
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
     .from("wishlists")
     .insert({ user_id: user.id, product_id: productId });
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("wishlist.add", error);
   }
   return NextResponse.json({ wishlisted: true });
 }
@@ -72,7 +73,7 @@ export async function DELETE(request: NextRequest) {
     .eq("user_id", user.id)
     .eq("product_id", productId);
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("wishlist.delete", error);
   }
   return NextResponse.json({ wishlisted: false });
 }

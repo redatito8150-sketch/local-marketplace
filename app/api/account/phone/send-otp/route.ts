@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { SMS_VERIFICATION_ENABLED, sendSms } from "@/lib/sms";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.phone.send-otp", error);
   }
 
   await sendSms(phone, `Your Mahaly verification code is ${code}. It expires in 10 minutes.`);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Only the plain-text profile fields — email/password go through
 // supabase.auth.updateUser() directly from the client, since those are
@@ -22,7 +23,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", user.id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.profile.update", error);
   }
   return NextResponse.json({ ok: true });
 }

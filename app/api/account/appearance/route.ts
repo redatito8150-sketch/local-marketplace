@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isAccountTheme } from "@/lib/account/themes";
+import { safeErrorResponse } from "@/lib/apiError";
 import type { NotificationPreferences } from "@/types";
 
 export async function PATCH(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function PATCH(request: NextRequest) {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return safeErrorResponse("account.appearance.read", readError);
 
   const current = (profile?.notification_preferences ?? {}) as Partial<NotificationPreferences>;
   const preferences: NotificationPreferences = {
@@ -34,6 +35,6 @@ export async function PATCH(request: NextRequest) {
     .update({ notification_preferences: preferences })
     .eq("id", user.id);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("account.appearance.update", error);
   return NextResponse.json({ ok: true, theme: body.theme });
 }

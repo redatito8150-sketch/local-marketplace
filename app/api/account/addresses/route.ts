@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAddressesForUser } from "@/lib/data/addresses";
+import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
 
 const VALID_LABELS: AddressLabel[] = ["Home", "Work", "Other"];
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.addresses.create", error);
   }
   return NextResponse.json({ id: data.id });
 }

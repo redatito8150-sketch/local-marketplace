@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getClientIp } from "@/lib/rateLimit";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Called once per device per sign-in (AuthContext, on SIGNED_IN / initial
 // session) so the security page's device list has something current to
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
   );
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.sessions.touch", error);
   }
   return NextResponse.json({ ok: true });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // profiles/wishlists/addresses/recently_viewed/brand_follows all cascade on
 // delete; orders.user_id is ON DELETE SET NULL, so past orders survive
@@ -13,7 +14,7 @@ export async function POST() {
 
   const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("account.delete", error);
   }
   return NextResponse.json({ ok: true });
 }
