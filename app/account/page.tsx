@@ -19,6 +19,7 @@ export default function AccountPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [captchaToken, setCaptchaToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +50,10 @@ export default function AccountPage() {
     // enabled for the project — both modes need a token when captcha is on.
     if (CAPTCHA_REQUIRED && !captchaToken) {
       setError("Please complete the verification challenge");
+      return;
+    }
+    if (mode === "create" && password !== confirmPassword) {
+      setError("Passwords do not match");
       return;
     }
     if (mode === "create" && !acceptedTerms) {
@@ -227,6 +232,21 @@ export default function AccountPage() {
             />
           </div>
 
+          {mode === "create" && (
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/40" />
+              <input
+                type="password"
+                placeholder="Confirm password"
+                required
+                minLength={6}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-4 text-[14px] text-ink outline-none focus:border-ink/30"
+              />
+            </div>
+          )}
+
           {mode === "sign-in" && (
             <div className="text-right">
               <Link href="/forgot-password" className="text-[12.5px] font-medium text-ink-soft/60 hover:text-ink hover:underline">
@@ -291,6 +311,7 @@ export default function AccountPage() {
                   setMode("create");
                   setError("");
                   setConfirmationMessage("");
+                  setConfirmPassword("");
                 }}
                 className="font-semibold text-ink hover:underline"
               >
@@ -305,6 +326,7 @@ export default function AccountPage() {
                   setMode("sign-in");
                   setError("");
                   setConfirmationMessage("");
+                  setConfirmPassword("");
                 }}
                 className="font-semibold text-ink hover:underline"
               >
