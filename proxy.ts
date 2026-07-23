@@ -1,6 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// @supabase/ssr's own cookie serialization doesn't set sameSite/secure
+// explicitly, leaving auth cookies to whatever the browser/Next default is.
+// Pin them here rather than rely on that implicit default — matches the
+// same override in lib/supabase/server.ts.
+const AUTH_COOKIE_OPTIONS = {
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+};
+
 // Refreshes the Supabase auth session cookie on every request so server
 // components/route handlers always see an up-to-date session, per the
 // standard @supabase/ssr Next.js App Router pattern.
@@ -20,7 +29,7 @@ export async function proxy(request: NextRequest) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
+          response.cookies.set(name, value, { ...options, ...AUTH_COOKIE_OPTIONS })
         );
       },
     },

@@ -10,6 +10,16 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// @supabase/ssr's own cookie serialization doesn't set sameSite/secure
+// explicitly, leaving auth cookies to whatever the browser/Next default is.
+// Pin them here rather than rely on that implicit default — matches the
+// same override in proxy.ts, which is the other place this project sets
+// these cookies.
+const AUTH_COOKIE_OPTIONS = {
+  sameSite: "lax" as const,
+  secure: process.env.NODE_ENV === "production",
+};
+
 // Cookie-backed client for Server Components and Route Handlers. Still only
 // carries the anon key — RLS decides what it can read/write. Use this (not
 // the browser client) anywhere you need to know the current request's
@@ -26,7 +36,7 @@ export async function createSupabaseServerClient() {
       setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
+            cookieStore.set(name, value, { ...options, ...AUTH_COOKIE_OPTIONS })
           );
         } catch {
           // Called from a Server Component render — middleware already
