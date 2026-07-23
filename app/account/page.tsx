@@ -45,15 +45,15 @@ export default function AccountPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === "create") {
-      if (!acceptedTerms) {
-        setError("Please accept the Terms and Privacy Policy to continue");
-        return;
-      }
-      if (CAPTCHA_REQUIRED && !captchaToken) {
-        setError("Please complete the verification challenge");
-        return;
-      }
+    // Supabase's Attack Protection covers sign-in as well as sign-up once
+    // enabled for the project — both modes need a token when captcha is on.
+    if (CAPTCHA_REQUIRED && !captchaToken) {
+      setError("Please complete the verification challenge");
+      return;
+    }
+    if (mode === "create" && !acceptedTerms) {
+      setError("Please accept the Terms and Privacy Policy to continue");
+      return;
     }
 
     setSubmitting(true);
@@ -62,18 +62,16 @@ export default function AccountPage() {
 
     const result =
       mode === "sign-in"
-        ? await signIn(email, password)
+        ? await signIn(email, password, captchaToken || undefined)
         : await signUp(fullName, email, phone, password, captchaToken || undefined);
 
     if (result.error) {
       setError(result.error);
-      // A Turnstile token is single-use — whether signUp succeeded or
+      // A Turnstile token is single-use — whether the call succeeded or
       // failed, the token just spent is no longer valid, so the widget
       // must issue a fresh one before the user can retry.
-      if (mode === "create") {
-        captchaRef.current?.reset();
-        setCaptchaToken("");
-      }
+      captchaRef.current?.reset();
+      setCaptchaToken("");
     } else if (result.needsEmailConfirmation) {
       setConfirmationMessage(
         "Check your inbox to confirm your account before signing in."
@@ -238,29 +236,27 @@ export default function AccountPage() {
           )}
 
           {mode === "create" && (
-            <>
-              <label className="flex items-start gap-2 text-[12.5px] text-ink-soft/70">
-                <input
-                  type="checkbox"
-                  className="mt-0.5"
-                  checked={acceptedTerms}
-                  onChange={(e) => setAcceptedTerms(e.target.checked)}
-                />
-                <span>
-                  I agree to the{" "}
-                  <Link href="/terms" className="font-semibold text-ink hover:underline">
-                    Terms &amp; Conditions
-                  </Link>{" "}
-                  and{" "}
-                  <Link href="/privacy" className="font-semibold text-ink hover:underline">
-                    Privacy Policy
-                  </Link>
-                  .
-                </span>
-              </label>
-              <CaptchaWidget ref={captchaRef} onToken={setCaptchaToken} />
-            </>
+            <label className="flex items-start gap-2 text-[12.5px] text-ink-soft/70">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+              />
+              <span>
+                I agree to the{" "}
+                <Link href="/terms" className="font-semibold text-ink hover:underline">
+                  Terms &amp; Conditions
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="font-semibold text-ink hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
           )}
+          <CaptchaWidget key={mode} ref={captchaRef} onToken={setCaptchaToken} />
 
           {error && (
             <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">

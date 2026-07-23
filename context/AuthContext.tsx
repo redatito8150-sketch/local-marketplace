@@ -36,7 +36,7 @@ interface AuthContextValue {
   profile: AuthProfile | null;
   loading: boolean;
   mfaChallenge: MfaChallenge | null;
-  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signIn: (email: string, password: string, captchaToken?: string) => Promise<AuthResult>;
   signUp: (
     fullName: string,
     email: string,
@@ -107,8 +107,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const signIn = useCallback(async (email: string, password: string, captchaToken?: string) => {
+    // Supabase's Attack Protection applies captcha verification to
+    // sign-in, not just sign-up — omitting this here fails every login
+    // with "captcha protection: request disallowed" once Attack Protection
+    // is enabled. Same as signUp, this is safely a no-op (ignored by
+    // Supabase) when the project has no captcha provider configured.
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+      options: { captchaToken },
+    });
     if (error) return { error: error.message };
 
     // Password alone only proves aal1. An account with a verified TOTP
