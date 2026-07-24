@@ -98,6 +98,30 @@ test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, as
 });
 
 test(
+  "convert_application_to_brand rejects the public anon key",
+  { skip: !hasCredentials },
+  async (t) => {
+    const anon = createClient(supabaseUrl!, anonKey!);
+    const { error } = await anon.rpc("convert_application_to_brand", {
+      p_application_id: FAKE_UUID,
+      p_admin_user_id: FAKE_UUID,
+      p_brand: {},
+    });
+
+    if (error && /could not find the function/i.test(error.message)) {
+      // The 2026-07-25 brand_application_workflow migration hasn't been
+      // applied to this project yet — skip rather than fail, same as the
+      // "no credentials" skip above; this isn't a lockdown regression.
+      t.skip("convert_application_to_brand does not exist yet (migration not applied)");
+      return;
+    }
+
+    assert.ok(error, "expected an error calling convert_application_to_brand with the anon key");
+    assert.match(error!.message, /permission denied/i);
+  }
+);
+
+test(
   "products RLS does not leak non-published/paused rows to the anon key",
   { skip: !hasCredentials || !serviceRoleKey },
   async () => {

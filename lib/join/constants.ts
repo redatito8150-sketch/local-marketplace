@@ -1,4 +1,4 @@
-import type { ApplicantRole, ApplicationStatus, LegalStatus } from "@/types";
+import type { ApplicantRole, ApplicationStatus, BrandApplicationRecord, LegalStatus } from "@/types";
 
 export { ACTIVE_APPLICATION_STATUSES } from "../../types/index.ts";
 
@@ -83,3 +83,18 @@ export function isValidStatusTransition(from: ApplicationStatus, to: Application
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 export const ALLOWED_DOCUMENT_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 export const DOCUMENTS_BUCKET = "brand-application-documents";
+
+// Whether a user who was rejected is currently blocked from starting a new
+// application by the cooldown, unless an admin already overrode it.
+export function isWithinReapplicationCooldown(app: BrandApplicationRecord): boolean {
+  if (app.status !== "rejected") return false;
+  if (app.reapplicationOverride) return false;
+  if (!app.reapplicationAllowedAt) return false;
+  return new Date(app.reapplicationAllowedAt).getTime() > Date.now();
+}
+
+export function computeReapplicationAllowedAt(fromDate = new Date()): string {
+  const date = new Date(fromDate);
+  date.setDate(date.getDate() + REAPPLICATION_COOLDOWN_DAYS);
+  return date.toISOString();
+}

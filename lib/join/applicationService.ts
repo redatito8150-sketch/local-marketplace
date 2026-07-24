@@ -1,6 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { isValidStatusTransition, REAPPLICATION_COOLDOWN_DAYS } from "@/lib/join/constants";
+import { isValidStatusTransition, isWithinReapplicationCooldown } from "@/lib/join/constants";
 import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/validation";
 import type {
   ApplicantAccountSnapshot,
@@ -387,20 +387,11 @@ export async function recordStatusHistory(
   }
 }
 
-// Whether a user who was rejected is currently blocked from starting a new
-// application by the cooldown, unless an admin already overrode it.
-export function isWithinReapplicationCooldown(app: BrandApplicationRecord): boolean {
-  if (app.status !== "rejected") return false;
-  if (app.reapplicationOverride) return false;
-  if (!app.reapplicationAllowedAt) return false;
-  return new Date(app.reapplicationAllowedAt).getTime() > Date.now();
-}
-
-export function computeReapplicationAllowedAt(fromDate = new Date()): string {
-  const date = new Date(fromDate);
-  date.setDate(date.getDate() + REAPPLICATION_COOLDOWN_DAYS);
-  return date.toISOString();
-}
+// Pure, DB-free logic — lives in constants.ts so it can be unit-tested
+// without importing the service-role client (and therefore without
+// needing Supabase credentials just to run `node --test`). Re-exported
+// here so existing call sites don't need to change their import path.
+export { isWithinReapplicationCooldown, computeReapplicationAllowedAt } from "./constants.ts";
 
 export function toDocumentRecord(row: {
   id: string;

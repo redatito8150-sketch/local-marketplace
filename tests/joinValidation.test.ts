@@ -4,7 +4,13 @@ import {
   draftApplicationSchema,
   submitApplicationSchema,
 } from "../lib/join/validation.ts";
-import { isValidStatusTransition } from "../lib/join/constants.ts";
+import {
+  computeReapplicationAllowedAt,
+  isValidStatusTransition,
+  isWithinReapplicationCooldown,
+  REAPPLICATION_COOLDOWN_DAYS,
+} from "../lib/join/constants.ts";
+import type { BrandApplicationRecord } from "../types/index.ts";
 
 const validSubmission = {
   founderName: "Sara Ahmed",
@@ -81,4 +87,44 @@ test("isValidStatusTransition rejects invalid jumps and allows valid ones", () =
   assert.equal(isValidStatusTransition("under_review", "changes_requested"), true);
   assert.equal(isValidStatusTransition("rejected", "submitted"), false);
   assert.equal(isValidStatusTransition("approved", "converted_to_brand"), true);
+});
+
+function makeRejectedApp(overrides: Partial<BrandApplicationRecord> = {}): BrandApplicationRecord {
+  return {
+    ...validSubmission,
+    id: "app-1",
+    status: "rejected",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    applicantUserId: "user-1",
+    reapplicationOverride: false,
+    applicantAccountSnapshot: null,
+    otherSocialUrls: [],
+    additionalCategories: [],
+    salesChannelsList: ["Instagram"],
+    ...overrides,
+  } as BrandApplicationRecord;
+}
+
+test("isWithinReapplicationCooldown blocks reapplying until the cooldown date passes", () => {
+  const future = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+  const past = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+
+  assert.equal(isWithinReapplicationCooldown(makeRejectedApp({ reapplicationAllowedAt: future })), true);
+  assert.equal(isWithinReapplicationCooldown(makeRejectedApp({ reapplicationAllowedAt: past })), false);
+  assert.equal(
+    isWithinReapplicationCooldown(makeRejectedApp({ reapplicationAllowedAt: future, reapplicationOverride: true })),
+    false
+  );
+  assert.equal(
+    isWithinReapplicationCooldown({ ...makeRejectedApp({ reapplicationAllowedAt: future }), status: "withdrawn" }),
+    false
+  );
+});
+
+test("computeReapplicationAllowedAt adds the configured cooldown window", () => {
+  const from = new Date("2026-01-01T00:00:00.000Z");
+  const result = new Date(computeReapplicationAllowedAt(from));
+  const expectedDays = Math.round((result.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
+  assert.equal(expectedDays, REAPPLICATION_COOLDOWN_DAYS);
 });
