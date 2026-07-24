@@ -8,7 +8,7 @@ import { z } from "zod";
 import {
   LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
   LEGAL_STATUSES_WITH_TAX_CARD,
-} from "@/lib/join/constants";
+} from "./constants.ts";
 
 const trimmedString = (max: number) => z.string().trim().max(max);
 const requiredString = (label: string, max: number) =>
@@ -121,7 +121,7 @@ const submitApplicationObjectSchema = applicantInfoSchema
 
 export const submitApplicationSchema = legalInfoRefinements(submitApplicationObjectSchema);
 
-export type SubmitApplicationInput = z.infer<typeof submitApplicationObjectSchema>;
+export type SubmitApplicationInput = z.infer<typeof submitApplicationSchema>;
 
 // Draft saves accept a partial slice of any step, since the applicant can
 // leave and come back mid-form — required-ness is only enforced at submit

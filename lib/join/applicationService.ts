@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isValidStatusTransition, REAPPLICATION_COOLDOWN_DAYS } from "@/lib/join/constants";
 import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/validation";
@@ -128,14 +129,27 @@ export class ApplicationServiceError extends Error {
   }
 }
 
-const ACTIVE_STATUSES: ApplicationStatus[] = [
-  "draft",
-  "submitted",
-  "under_review",
-  "changes_requested",
-  "resubmitted",
-  "approved_pending_creation",
-];
+// Snapshot of the authenticated account at submission/draft-creation time —
+// never overwritten by application-entered fields, kept separate so admins
+// can compare "what the account says" vs. "what the applicant typed."
+export async function getApplicantAccountSnapshot(user: User): Promise<ApplicantAccountSnapshot> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("full_name, email, phone")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getApplicantAccountSnapshot(${user.id}) failed: ${error.message}`);
+  }
+
+  return {
+    fullName: data?.full_name ?? null,
+    email: data?.email ?? user.email ?? null,
+    phone: data?.phone ?? null,
+    accountCreatedAt: user.created_at,
+  };
+}
 
 // The applicant's own current application (active one preferred, else most
 // recent), used to drive "resume your application" / "view your status" UI.
@@ -193,9 +207,13 @@ function draftInputToRow(input: DraftApplicationInput) {
 }
 
 // Creates a new draft, or updates the applicant's existing draft /
-// changes_requested application in place. Never creates a second active row
-// — relies on brand_applications_one_active_per_user as the real guard, but
-// pre-checks here too for a friendly error instead of a raw 23505.
+// changes_requested application in place. If the applicant's most recent
+// application is in a terminal, inactive state (rejected past its cooldown,
+// withdrawn, approved, converted_to_brand) this starts a brand-new row
+// instead of trying to edit the old one — only an active, non-editable
+// status (submitted/under_review/resubmitted/approved_pending_creation)
+// blocks a new submission outright. The partial unique index remains the
+// real backstop against a race; this is just the friendly pre-check.
 export async function createOrUpdateDraft(
   userId: string,
   accountSnapshot: ApplicantAccountSnapshot,
@@ -203,16 +221,26 @@ export async function createOrUpdateDraft(
 ): Promise<BrandApplicationRecord> {
   const existing = await getMyApplication(userId);
 
-  if (existing && !isEditableStatus(existing.status)) {
+  if (existing && !isEditableStatus(existing.status) && isActiveStatus(existing.status)) {
     throw new ApplicationServiceError(
       "APPLICATION_NOT_EDITABLE",
       `Your application is currently "${existing.status}" and can no longer be edited.`
     );
   }
+  if (existing && isWithinReapplicationCooldown(existing)) {
+    const until = existing.reapplicationAllowedAt
+      ? new Date(existing.reapplicationAllowedAt).toLocaleDateString()
+      : "later";
+    throw new ApplicationServiceError(
+      "REAPPLICATION_COOLDOWN_ACTIVE",
+      `You can submit a new application after ${until}.`
+    );
+  }
 
+  const startNewRow = existing !== null && !isEditableStatus(existing.status);
   const row = draftInputToRow(input);
 
-  if (existing) {
+  if (existing && !startNewRow) {
     const { data, error } = await supabaseAdmin
       .from("brand_applications")
       .update(row)
@@ -251,6 +279,19 @@ export async function createOrUpdateDraft(
 
 function isEditableStatus(status: ApplicationStatus): boolean {
   return status === "draft" || status === "changes_requested";
+}
+
+const ACTIVE_STATUSES: ApplicationStatus[] = [
+  "draft",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "resubmitted",
+  "approved_pending_creation",
+];
+
+function isActiveStatus(status: ApplicationStatus): boolean {
+  return ACTIVE_STATUSES.includes(status);
 }
 
 // Validates + transitions draft/changes_requested -> submitted (or

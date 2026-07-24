@@ -1,6 +1,6 @@
 import type { ApplicantRole, ApplicationStatus, LegalStatus } from "@/types";
 
-export { ACTIVE_APPLICATION_STATUSES } from "@/types";
+export { ACTIVE_APPLICATION_STATUSES } from "../../types/index.ts";
 
 // How long a rejected applicant must wait before they're allowed to submit
 // a new application, unless an admin explicitly overrides it earlier. One

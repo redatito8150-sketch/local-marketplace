@@ -40,7 +40,7 @@ export default async function AdminApplicationDetailPage(
         <Field label="Instagram / Website" value={application.instagramOrWebsite} />
         <Field label="Product category" value={application.productCategory} />
         <Field label="Brand story" value={application.brandStory} />
-        <Field label="Current sales channels" value={application.salesChannels} />
+        <Field label="Current sales channels" value={application.salesChannels ?? "—"} />
       </div>
     </div>
   );

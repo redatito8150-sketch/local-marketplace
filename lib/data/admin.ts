@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVariantsForProducts } from "@/lib/data/variants";
+import { toBrandApplicationRecord } from "@/lib/join/applicationService";
 import {
-  ApplicationStatus,
   AuditLogRecord,
   BrandApplicationRecord,
   BrandCategoryTab,
@@ -403,37 +403,9 @@ export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> 
   return toOrderRecord(data as OrderRow);
 }
 
-interface BrandApplicationRow {
-  id: string;
-  brand_name: string;
-  founder_name: string;
-  email: string;
-  phone: string;
-  instagram_or_website: string;
-  product_category: string;
-  brand_story: string;
-  sales_channels: string;
-  status: ApplicationStatus;
-  created_at: string;
-}
-
-function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplicationRecord {
-  return {
-    id: row.id,
-    brandName: row.brand_name,
-    founderName: row.founder_name,
-    email: row.email,
-    phone: row.phone,
-    instagramOrWebsite: row.instagram_or_website,
-    productCategory: row.product_category,
-    brandStory: row.brand_story,
-    salesChannels: row.sales_channels,
-    status: row.status,
-    createdAt: row.created_at,
-  };
-}
-
-// brand_applications also has no public policy — service-role reads only.
+// Row-mapping lives in lib/join/applicationService.ts (shared with the
+// applicant routes) so the admin and applicant sides never drift onto two
+// different shapes for the same table.
 export async function getAllApplicationsForAdmin(): Promise<BrandApplicationRecord[]> {
   const { data, error } = await supabaseAdmin
     .from("brand_applications")
@@ -443,7 +415,7 @@ export async function getAllApplicationsForAdmin(): Promise<BrandApplicationReco
   if (error) {
     throw new Error(`getAllApplicationsForAdmin failed: ${error.message}`);
   }
-  return (data as BrandApplicationRow[]).map(toBrandApplicationRecord);
+  return (data ?? []).map(toBrandApplicationRecord);
 }
 
 export async function getApplicationForAdmin(
@@ -459,7 +431,7 @@ export async function getApplicationForAdmin(
     throw new Error(`getApplicationForAdmin(${id}) failed: ${error.message}`);
   }
   if (!data) return null;
-  return toBrandApplicationRecord(data as BrandApplicationRow);
+  return toBrandApplicationRecord(data);
 }
 
 interface ProfileRow {
