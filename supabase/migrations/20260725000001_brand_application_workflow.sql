@@ -90,13 +90,17 @@ create trigger brand_applications_updated_at
 
 -- Expanded status lifecycle. Same "drop the auto-named check, recreate it"
 -- approach already used for orders_status_check elsewhere in this project.
--- Backfill existing rows onto their nearest equivalent new status first, so
--- the new constraint never rejects a row that already exists.
+-- The old 4-value check constraint must be dropped BEFORE the backfill
+-- below — it doesn't allow 'submitted'/'under_review' either, so backfilling
+-- while it's still active fails the same way the new constraint would if
+-- backfilling ran after it. Recreate the constraint (with the full new
+-- vocabulary) only once every existing row already satisfies it.
+alter table brand_applications drop constraint if exists brand_applications_status_check;
+
 update brand_applications set status = 'submitted' where status = 'new';
 update brand_applications set status = 'under_review' where status = 'reviewing';
 -- 'approved' and 'rejected' already match the new vocabulary as-is.
 
-alter table brand_applications drop constraint if exists brand_applications_status_check;
 alter table brand_applications add constraint brand_applications_status_check
   check (status in (
     'draft', 'submitted', 'under_review', 'changes_requested', 'resubmitted',
