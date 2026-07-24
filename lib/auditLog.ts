@@ -29,7 +29,11 @@ export type AuditAction =
   | "reorder"
   | "publish"
   | "restore"
-  | "upload_asset";
+  | "upload_asset"
+  // Brand application workflow (Milestones 5-6)
+  | "reject"
+  | "withdraw"
+  | "convert_to_brand";
 
 export type AuditEntityType =
   | "product"
@@ -68,6 +72,9 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   bulk_archive: DISCORD_COLORS.red,
   request_deletion: DISCORD_COLORS.red,
   reject_deletion: DISCORD_COLORS.red,
+  convert_to_brand: DISCORD_COLORS.green,
+  reject: DISCORD_COLORS.red,
+  withdraw: DISCORD_COLORS.red,
 };
 
 // Plain-English past-tense verb per action, used to build the embed's bold
@@ -96,6 +103,9 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   bulk_archive: "bulk archived",
   request_deletion: "deletion requested",
   reject_deletion: "deletion request rejected",
+  convert_to_brand: "converted to brand",
+  reject: "rejected",
+  withdraw: "withdrawn",
 };
 
 function capitalize(value: string): string {

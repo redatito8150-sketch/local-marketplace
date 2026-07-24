@@ -22,9 +22,16 @@ interface BrandFormProps {
   scope?: "admin" | "brand-portal";
   apiPath?: string;
   redirectPath?: string;
+  // Milestone 6: pre-fills a subset of fields from an approved brand
+  // application (create mode only — `initial` still wins if both are
+  // somehow passed). `sourceApplicationId` is threaded through to the
+  // create route so it can call convert_application_to_brand() instead of
+  // a plain insert, atomically marking the application converted.
+  prefill?: Partial<FormState>;
+  sourceApplicationId?: string;
 }
 
-interface FormState {
+export interface FormState {
   slug: string;
   name: string;
   tagline: string;
@@ -83,10 +90,15 @@ export default function BrandForm({
   scope = "admin",
   apiPath,
   redirectPath,
+  prefill,
+  sourceApplicationId,
 }: BrandFormProps) {
   const router = useRouter();
   const isBrandPortal = scope === "brand-portal";
-  const [form, setForm] = useState<FormState>(() => toFormState(initial));
+  const [form, setForm] = useState<FormState>(() => ({
+    ...toFormState(initial),
+    ...(!initial ? prefill : undefined),
+  }));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -173,6 +185,7 @@ export default function BrandForm({
       values: form.values.filter((v) => v.title.trim() && v.description.trim()),
       similarBrandSlugs: form.similarBrandSlugs,
       shopTheLook: form.shopTheLook.filter((t) => t.image.trim() && t.title.trim()),
+      ...(sourceApplicationId ? { sourceApplicationId } : {}),
     };
 
     try {

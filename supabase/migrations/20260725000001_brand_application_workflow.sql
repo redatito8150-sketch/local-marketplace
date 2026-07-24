@@ -260,10 +260,16 @@ begin
     raise exception 'MISSING_SLUG';
   end if;
 
+  -- Column set mirrors POST /api/admin/brands' plain insert exactly (see
+  -- 20260721_collection_brand_content.sql for logo_image/website_url/
+  -- story_image_2/shop_the_look) so a converted brand never lacks a field
+  -- the normal create form would have set.
   insert into brands (
     slug, name, tagline, category, founded_year, city, hero_image,
-    about_description, about_image, story_image, story_body,
-    info_badges, category_tabs, active_tab, values, similar_brand_slugs
+    logo_image, website_url, about_description, about_image,
+    story_image, story_image_2, story_body,
+    info_badges, category_tabs, active_tab, values, similar_brand_slugs,
+    shop_the_look
   )
   values (
     v_slug,
@@ -273,9 +279,12 @@ begin
     nullif(p_brand->>'foundedYear', '')::int,
     coalesce(p_brand->>'city', 'Cairo'),
     coalesce(p_brand->>'heroImage', ''),
+    nullif(p_brand->>'logoImage', ''),
+    nullif(p_brand->>'websiteUrl', ''),
     coalesce(p_brand->>'aboutDescription', ''),
     coalesce(p_brand->>'aboutImage', ''),
     coalesce(p_brand->>'storyImage', ''),
+    nullif(p_brand->>'storyImage2', ''),
     coalesce(p_brand->>'storyBody', ''),
     coalesce(p_brand->'infoBadges', '[]'::jsonb),
     coalesce(p_brand->'categoryTabs', '[]'::jsonb),
@@ -284,7 +293,8 @@ begin
     coalesce(
       (select array_agg(value::text) from jsonb_array_elements_text(coalesce(p_brand->'similarBrandSlugs', '[]'::jsonb))),
       '{}'
-    )
+    ),
+    coalesce(p_brand->'shopTheLook', '[]'::jsonb)
   );
 
   update brand_applications

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import { getApplicationDocuments, getApplicationStatusHistory } from "@/lib/join/applicationService";
@@ -36,11 +37,30 @@ export default async function AdminApplicationDetailPage(
             {!application.applicantUserId && " · Legacy submission (pre-auth)"}
           </p>
         </div>
-        <span
-          className={`rounded-full px-3 py-1.5 text-[12px] font-bold ${applicationStatusBadgeClass(application.status)}`}
-        >
-          {APPLICATION_STATUS_LABELS[application.status]}
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className={`rounded-full px-3 py-1.5 text-[12px] font-bold ${applicationStatusBadgeClass(application.status)}`}
+          >
+            {APPLICATION_STATUS_LABELS[application.status]}
+          </span>
+          {(application.status === "approved" || application.status === "approved_pending_creation") &&
+            !application.approvedBrandId && (
+              <Link
+                href={`/admin/brands/new?applicationId=${application.id}`}
+                className="rounded-md bg-mahalyred px-3.5 py-2 text-[12.5px] font-bold text-white hover:bg-mahalyred/90"
+              >
+                Create brand
+              </Link>
+            )}
+          {application.approvedBrandId && (
+            <Link
+              href={`/brands/${application.approvedBrandId}`}
+              className="text-[12.5px] font-semibold text-mahalyred hover:underline"
+            >
+              View brand →
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
