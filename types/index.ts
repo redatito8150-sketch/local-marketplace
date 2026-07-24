@@ -398,10 +398,87 @@ export interface CouponRecord {
   createdAt: string;
 }
 
+// ── Brand applications ───────────────────────────────────────────────────
+// Rebuilt 2026-07-25 (feature/brand-application-redesign) — see
+// supabase/migrations/20260725000001_brand_application_workflow.sql for the
+// full schema reasoning. `"new"`/`"reviewing"` are kept in the union only
+// because pre-rebuild rows in some non-production snapshots may still carry
+// them; the migration itself backfills every real row onto the new
+// vocabulary, so new code should never write those two values.
+
+export type ApplicationStatus =
+  | "new"
+  | "reviewing"
+  | "draft"
+  | "submitted"
+  | "under_review"
+  | "changes_requested"
+  | "resubmitted"
+  | "approved_pending_creation"
+  | "approved"
+  | "rejected"
+  | "withdrawn"
+  | "converted_to_brand";
+
+// Statuses where the applicant still has an active application — must match
+// the partial unique index in the migration exactly.
+export const ACTIVE_APPLICATION_STATUSES: ApplicationStatus[] = [
+  "draft",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "resubmitted",
+  "approved_pending_creation",
+];
+
+export type ApplicantRole =
+  | "founder"
+  | "co_founder"
+  | "manager"
+  | "employee"
+  | "agency_representative"
+  | "other";
+
+export type LegalStatus =
+  | "both_docs"
+  | "commercial_registration_only"
+  | "tax_card_only"
+  | "documents_pending"
+  | "unregistered_individual"
+  | "other";
+
+// Snapshot of the authenticated account at submission time — deliberately
+// separate from the application's own contact fields (email/phone entered
+// in the form). Never assume these identify the same thing; the admin UI
+// shows both and flags when they differ, without treating that as fraud.
+export interface ApplicantAccountSnapshot {
+  fullName: string | null;
+  email: string | null;
+  phone: string | null;
+  accountCreatedAt: string;
+}
+
+export interface BrandApplicationDocumentRecord {
+  id: string;
+  applicationId: string;
+  fileName: string;
+  storagePath: string;
+  mimeType: string;
+  fileSizeBytes: number;
+  createdAt: string;
+}
+
+export interface BrandApplicationStatusHistoryEntry {
+  id: string;
+  applicationId: string;
+  fromStatus: ApplicationStatus | null;
+  toStatus: ApplicationStatus;
+  changedBy: string | null;
+  reason: string | null;
+  createdAt: string;
+}
+
 // ── Admin (raw `brand_applications` row shape) ──────────────────────────────
-
-export type ApplicationStatus = "new" | "reviewing" | "approved" | "rejected";
-
 export interface BrandApplicationRecord {
   id: string;
   brandName: string;
@@ -411,9 +488,52 @@ export interface BrandApplicationRecord {
   instagramOrWebsite: string;
   productCategory: string;
   brandStory: string;
-  salesChannels: string;
+  salesChannels: string | null;
   status: ApplicationStatus;
   createdAt: string;
+  updatedAt: string;
+
+  applicantUserId: string | null;
+  applicantRole: ApplicantRole | null;
+  brandNameAr?: string;
+  brandNameEn?: string;
+  websiteUrl?: string;
+  otherSocialUrls: string[];
+  additionalCategories: string[];
+  foundingYear?: number;
+  country?: string;
+  city?: string;
+  salesChannelsList: string[];
+  approxProductCount?: number;
+  approxMonthlyOrders?: string;
+
+  legalStatus: LegalStatus | null;
+  commercialRegistrationNumber?: string;
+  taxRegistrationNumber?: string;
+  legalBusinessName?: string;
+
+  productPriceRange?: string;
+  productsManufacturedByBrand?: boolean;
+  madeToOrder?: boolean;
+  avgPreparationTime?: string;
+  shippingCoverage?: string;
+  returnExchangeAvailable?: boolean;
+  inventoryStatus?: string;
+
+  consentAccurate: boolean;
+  consentTerms: boolean;
+
+  reviewedAt?: string;
+  reviewedBy?: string;
+  rejectionReason?: string;
+  adminNotes?: string;
+  changesRequestedMessage?: string;
+  approvedBrandId?: string;
+  reapplicationAllowedAt?: string;
+  reapplicationOverride: boolean;
+  convertedAt?: string;
+  convertedBy?: string;
+  applicantAccountSnapshot: ApplicantAccountSnapshot | null;
 }
 
 // ── Admin (raw `profiles` row shape, used by the users/permissions page) ───

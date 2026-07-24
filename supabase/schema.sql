@@ -218,8 +218,30 @@ alter table orders add constraint orders_payment_status_check
 
 -- ============================================================================
 -- BRAND APPLICATIONS
--- Submissions from app/join-as-a-brand/apply (app/api/join/apply/route.ts).
--- Reviewed from app/admin/applications.
+-- Submissions from app/join-as-a-brand/apply. Reviewed from
+-- app/admin/applications. Rebuilt 2026-07-25 (feature/brand-application-redesign)
+-- into a full authenticated, multi-step, resumable workflow — see
+-- supabase/migrations/20260725000001_brand_application_workflow.sql for the
+-- full reasoning (kept here only as the "current state" reference; that
+-- migration is the source of truth for how each column was added).
+--
+-- applicant_user_id is nullable: rows submitted before this rebuild have no
+-- linked account and stay as read-only legacy records, never backfilled
+-- with a guessed identity. Every new row always carries a real one, derived
+-- server-side from the authenticated session — never trusted from a
+-- request body.
+--
+-- sales_channels (free text) is kept for legacy rows; new submissions use
+-- the structured sales_channels_list array instead — deliberately not
+-- unified into one column, same "document divergence, don't silently
+-- merge it" precedent used elsewhere in this schema (see the phone/password
+-- min-length notes on other tables).
+--
+-- applicant_account_snapshot captures the applicant's account name/email/
+-- phone/created_at once, at submission time — lets the admin see what the
+-- account looked like when they applied without ever overwriting live
+-- profile data with application-entered data, and without assuming the
+-- application's own contact email identifies the authenticated account.
 -- ============================================================================
 create table if not exists brand_applications (
   id uuid primary key default gen_random_uuid(),
@@ -230,11 +252,118 @@ create table if not exists brand_applications (
   instagram_or_website text not null,
   product_category text not null,
   brand_story text not null,
-  sales_channels text not null,
-  status text not null default 'new'
-    check (status in ('new', 'reviewing', 'approved', 'rejected')),
+  sales_channels text,
+  status text not null default 'draft'
+    check (status in (
+      'draft', 'submitted', 'under_review', 'changes_requested', 'resubmitted',
+      'approved_pending_creation', 'approved', 'rejected', 'withdrawn', 'converted_to_brand'
+    )),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  applicant_user_id uuid references auth.users (id) on delete cascade,
+  applicant_role text,
+  brand_name_ar text,
+  brand_name_en text,
+  website_url text,
+  other_social_urls text[] not null default '{}',
+  additional_categories text[] not null default '{}',
+  founding_year int,
+  country text,
+  city text,
+  sales_channels_list text[] not null default '{}',
+  approx_product_count int,
+  approx_monthly_orders text,
+  legal_status text
+    check (legal_status is null or legal_status in (
+      'both_docs', 'commercial_registration_only', 'tax_card_only',
+      'documents_pending', 'unregistered_individual', 'other'
+    )),
+  commercial_registration_number text,
+  tax_registration_number text,
+  legal_business_name text,
+  product_price_range text,
+  products_manufactured_by_brand boolean,
+  made_to_order boolean,
+  avg_preparation_time text,
+  shipping_coverage text,
+  return_exchange_available boolean,
+  inventory_status text,
+  consent_accurate boolean not null default false,
+  consent_terms boolean not null default false,
+  reviewed_at timestamptz,
+  reviewed_by uuid references auth.users (id),
+  rejection_reason text,
+  admin_notes text,
+  changes_requested_message text,
+  approved_brand_id text references brands (slug),
+  reapplication_allowed_at timestamptz,
+  reapplication_override boolean not null default false,
+  converted_at timestamptz,
+  converted_by uuid references auth.users (id),
+  applicant_account_snapshot jsonb
+);
+
+create index if not exists brand_applications_applicant_user_id_idx
+  on brand_applications (applicant_user_id);
+create index if not exists brand_applications_status_idx
+  on brand_applications (status);
+
+-- Race-condition-proof "one active application per user" limit — a unique
+-- index ignores nulls, so legacy rows with no applicant_user_id are never
+-- constrained by it.
+create unique index if not exists brand_applications_one_active_per_user
+  on brand_applications (applicant_user_id)
+  where status in (
+    'draft', 'submitted', 'under_review', 'changes_requested',
+    'resubmitted', 'approved_pending_creation'
+  );
+
+create or replace function public.brand_applications_set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists brand_applications_updated_at on brand_applications;
+create trigger brand_applications_updated_at
+  before update on brand_applications
+  for each row execute function public.brand_applications_set_updated_at();
+
+-- One row per uploaded legal/supporting document. Stored in the private
+-- brand-application-documents bucket (public = false) — never a public URL,
+-- always a short-lived signed URL issued from an admin-gated route.
+create table if not exists brand_application_documents (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references brand_applications (id) on delete cascade,
+  uploaded_by uuid references auth.users (id),
+  file_name text not null,
+  storage_path text not null unique,
+  mime_type text not null,
+  file_size_bytes int not null,
   created_at timestamptz not null default now()
 );
+
+create index if not exists brand_application_documents_application_id_idx
+  on brand_application_documents (application_id);
+
+-- Append-only timeline of every status transition, independent of the
+-- single current `status` column on brand_applications.
+create table if not exists brand_application_status_history (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references brand_applications (id) on delete cascade,
+  from_status text,
+  to_status text not null,
+  changed_by uuid references auth.users (id),
+  reason text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists brand_application_status_history_application_id_idx
+  on brand_application_status_history (application_id);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY
@@ -248,6 +377,14 @@ alter table profiles enable row level security;
 alter table orders enable row level security;
 alter table order_items enable row level security;
 alter table brand_applications enable row level security;
+-- No public policies on any of these three, on purpose — same convention as
+-- orders/addresses/profiles: every read/write goes through supabaseAdmin
+-- from Next.js routes gated by requireUser()/requireAdminUser(). Per-column
+-- write protection (an applicant can edit their own draft but never set
+-- status/admin_notes/applicant_user_id themselves) isn't expressible in
+-- row-level RLS alone, so it's enforced in the API routes instead.
+alter table brand_application_documents enable row level security;
+alter table brand_application_status_history enable row level security;
 alter table addresses enable row level security;
 alter table phone_verifications enable row level security;
 -- Never read from the browser at all — send-otp/verify-otp both go through
@@ -991,6 +1128,129 @@ revoke all on function public.place_order(text, text, text, text, text, text, uu
   from anon, authenticated;
 grant execute on function public.place_order(text, text, text, text, text, text, uuid, jsonb, text, uuid)
   to service_role;
+
+-- ============================================================================
+-- BRAND APPLICATION DOCUMENTS — private storage bucket
+-- This repo's one other bucket (product-images) was created by hand in the
+-- Supabase dashboard; there's no precedent here for bucket-creation SQL
+-- reliably taking effect. This insert is included for convenience but MUST
+-- BE VERIFIED in Storage → Buckets (confirm brand-application-documents
+-- exists with Public OFF), and created by hand there if this insert didn't
+-- take effect.
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('brand-application-documents', 'brand-application-documents', false)
+on conflict (id) do nothing;
+
+create policy "Applicants can upload their own application documents"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'brand-application-documents'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Applicants can read their own application documents"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'brand-application-documents'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Admins can read all application documents"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'brand-application-documents'
+    and exists (
+      select 1 from profiles where profiles.id = auth.uid() and profiles.is_admin
+    )
+  );
+
+-- Atomic approve-to-brand conversion — mirrors place_order()'s pattern
+-- (security definer, pinned search_path, service_role-only). Idempotent:
+-- calling it again on an already-converted application raises instead of
+-- creating a second brand.
+create or replace function public.convert_application_to_brand(
+  p_application_id uuid,
+  p_admin_user_id uuid,
+  p_brand jsonb
+)
+returns text
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_status text;
+  v_approved_brand_id text;
+  v_slug text;
+begin
+  select status, approved_brand_id into v_status, v_approved_brand_id
+  from brand_applications
+  where id = p_application_id
+  for update;
+
+  if v_status is null then
+    raise exception 'APPLICATION_NOT_FOUND';
+  end if;
+  if v_approved_brand_id is not null or v_status = 'converted_to_brand' then
+    raise exception 'ALREADY_CONVERTED';
+  end if;
+  if v_status not in ('approved', 'approved_pending_creation') then
+    raise exception 'NOT_APPROVED';
+  end if;
+
+  v_slug := p_brand->>'slug';
+  if v_slug is null or length(trim(v_slug)) = 0 then
+    raise exception 'MISSING_SLUG';
+  end if;
+
+  insert into brands (
+    slug, name, tagline, category, founded_year, city, hero_image,
+    about_description, about_image, story_image, story_body,
+    info_badges, category_tabs, active_tab, values, similar_brand_slugs
+  )
+  values (
+    v_slug,
+    p_brand->>'name',
+    coalesce(p_brand->>'tagline', ''),
+    coalesce(p_brand->>'category', ''),
+    nullif(p_brand->>'foundedYear', '')::int,
+    coalesce(p_brand->>'city', 'Cairo'),
+    coalesce(p_brand->>'heroImage', ''),
+    coalesce(p_brand->>'aboutDescription', ''),
+    coalesce(p_brand->>'aboutImage', ''),
+    coalesce(p_brand->>'storyImage', ''),
+    coalesce(p_brand->>'storyBody', ''),
+    coalesce(p_brand->'infoBadges', '[]'::jsonb),
+    coalesce(p_brand->'categoryTabs', '[]'::jsonb),
+    coalesce(p_brand->>'activeTab', 'shop-all'),
+    coalesce(p_brand->'values', '[]'::jsonb),
+    coalesce(
+      (select array_agg(value::text) from jsonb_array_elements_text(coalesce(p_brand->'similarBrandSlugs', '[]'::jsonb))),
+      '{}'
+    )
+  );
+
+  update brand_applications
+  set
+    status = 'converted_to_brand',
+    approved_brand_id = v_slug,
+    converted_at = now(),
+    converted_by = p_admin_user_id
+  where id = p_application_id;
+
+  insert into brand_application_status_history (application_id, from_status, to_status, changed_by, reason)
+  values (p_application_id, v_status, 'converted_to_brand', p_admin_user_id, 'Brand created from application');
+
+  return v_slug;
+end;
+$$;
+
+revoke all on function public.convert_application_to_brand(uuid, uuid, jsonb) from public;
+revoke all on function public.convert_application_to_brand(uuid, uuid, jsonb) from anon, authenticated;
+grant execute on function public.convert_application_to_brand(uuid, uuid, jsonb) to service_role;
 
 -- Atomic product + variant replacement. Route handlers perform authorization
 -- and validation; this service-role-only function guarantees all-or-nothing

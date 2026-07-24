@@ -1,0 +1,360 @@
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { isValidStatusTransition, REAPPLICATION_COOLDOWN_DAYS } from "@/lib/join/constants";
+import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/validation";
+import type {
+  ApplicantAccountSnapshot,
+  ApplicationStatus,
+  BrandApplicationRecord,
+} from "@/types";
+
+// Service-role-backed functions for the brand application workflow. Every
+// export here assumes the caller (a route handler) already resolved and
+// authorized the acting user — none of these take a client-supplied user id,
+// they all take an already-verified `userId` string. Never call this module
+// from a client component.
+
+interface BrandApplicationRow {
+  id: string;
+  brand_name: string;
+  founder_name: string;
+  email: string;
+  phone: string;
+  instagram_or_website: string;
+  product_category: string;
+  brand_story: string;
+  sales_channels: string | null;
+  status: ApplicationStatus;
+  created_at: string;
+  updated_at: string;
+  applicant_user_id: string | null;
+  applicant_role: string | null;
+  brand_name_ar: string | null;
+  brand_name_en: string | null;
+  website_url: string | null;
+  other_social_urls: string[];
+  additional_categories: string[];
+  founding_year: number | null;
+  country: string | null;
+  city: string | null;
+  sales_channels_list: string[];
+  approx_product_count: number | null;
+  approx_monthly_orders: string | null;
+  legal_status: string | null;
+  commercial_registration_number: string | null;
+  tax_registration_number: string | null;
+  legal_business_name: string | null;
+  product_price_range: string | null;
+  products_manufactured_by_brand: boolean | null;
+  made_to_order: boolean | null;
+  avg_preparation_time: string | null;
+  shipping_coverage: string | null;
+  return_exchange_available: boolean | null;
+  inventory_status: string | null;
+  consent_accurate: boolean;
+  consent_terms: boolean;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  rejection_reason: string | null;
+  admin_notes: string | null;
+  changes_requested_message: string | null;
+  approved_brand_id: string | null;
+  reapplication_allowed_at: string | null;
+  reapplication_override: boolean;
+  converted_at: string | null;
+  converted_by: string | null;
+  applicant_account_snapshot: ApplicantAccountSnapshot | null;
+}
+
+export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplicationRecord {
+  return {
+    id: row.id,
+    brandName: row.brand_name,
+    founderName: row.founder_name,
+    email: row.email,
+    phone: row.phone,
+    instagramOrWebsite: row.instagram_or_website,
+    productCategory: row.product_category,
+    brandStory: row.brand_story,
+    salesChannels: row.sales_channels,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    applicantUserId: row.applicant_user_id,
+    applicantRole: (row.applicant_role as BrandApplicationRecord["applicantRole"]) ?? null,
+    brandNameAr: row.brand_name_ar ?? undefined,
+    brandNameEn: row.brand_name_en ?? undefined,
+    websiteUrl: row.website_url ?? undefined,
+    otherSocialUrls: row.other_social_urls ?? [],
+    additionalCategories: row.additional_categories ?? [],
+    foundingYear: row.founding_year ?? undefined,
+    country: row.country ?? undefined,
+    city: row.city ?? undefined,
+    salesChannelsList: row.sales_channels_list ?? [],
+    approxProductCount: row.approx_product_count ?? undefined,
+    approxMonthlyOrders: row.approx_monthly_orders ?? undefined,
+    legalStatus: (row.legal_status as BrandApplicationRecord["legalStatus"]) ?? null,
+    commercialRegistrationNumber: row.commercial_registration_number ?? undefined,
+    taxRegistrationNumber: row.tax_registration_number ?? undefined,
+    legalBusinessName: row.legal_business_name ?? undefined,
+    productPriceRange: row.product_price_range ?? undefined,
+    productsManufacturedByBrand: row.products_manufactured_by_brand ?? undefined,
+    madeToOrder: row.made_to_order ?? undefined,
+    avgPreparationTime: row.avg_preparation_time ?? undefined,
+    shippingCoverage: row.shipping_coverage ?? undefined,
+    returnExchangeAvailable: row.return_exchange_available ?? undefined,
+    inventoryStatus: row.inventory_status ?? undefined,
+    consentAccurate: row.consent_accurate,
+    consentTerms: row.consent_terms,
+    reviewedAt: row.reviewed_at ?? undefined,
+    reviewedBy: row.reviewed_by ?? undefined,
+    rejectionReason: row.rejection_reason ?? undefined,
+    adminNotes: row.admin_notes ?? undefined,
+    changesRequestedMessage: row.changes_requested_message ?? undefined,
+    approvedBrandId: row.approved_brand_id ?? undefined,
+    reapplicationAllowedAt: row.reapplication_allowed_at ?? undefined,
+    reapplicationOverride: row.reapplication_override,
+    convertedAt: row.converted_at ?? undefined,
+    convertedBy: row.converted_by ?? undefined,
+    applicantAccountSnapshot: row.applicant_account_snapshot,
+  };
+}
+
+export class ApplicationServiceError extends Error {
+  code: string;
+  constructor(code: string, message: string) {
+    super(message);
+    this.code = code;
+    this.name = "ApplicationServiceError";
+  }
+}
+
+const ACTIVE_STATUSES: ApplicationStatus[] = [
+  "draft",
+  "submitted",
+  "under_review",
+  "changes_requested",
+  "resubmitted",
+  "approved_pending_creation",
+];
+
+// The applicant's own current application (active one preferred, else most
+// recent), used to drive "resume your application" / "view your status" UI.
+export async function getMyApplication(userId: string): Promise<BrandApplicationRecord | null> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .select("*")
+    .eq("applicant_user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`getMyApplication(${userId}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  return toBrandApplicationRecord(data as BrandApplicationRow);
+}
+
+function draftInputToRow(input: DraftApplicationInput) {
+  return {
+    brand_name: input.brandName,
+    founder_name: input.founderName,
+    email: input.email,
+    phone: input.phone,
+    instagram_or_website: input.instagramUsername || input.websiteUrl || "",
+    product_category: input.productCategory,
+    brand_story: input.brandStory,
+    applicant_role: input.applicantRole,
+    brand_name_ar: input.brandNameAr,
+    brand_name_en: input.brandNameEn,
+    website_url: input.websiteUrl,
+    other_social_urls: input.otherSocialUrls,
+    additional_categories: input.additionalCategories,
+    founding_year: input.foundingYear,
+    country: input.country,
+    city: input.city,
+    sales_channels_list: input.salesChannelsList,
+    approx_product_count: input.approxProductCount,
+    approx_monthly_orders: input.approxMonthlyOrders,
+    legal_status: input.legalStatus,
+    commercial_registration_number: input.commercialRegistrationNumber,
+    tax_registration_number: input.taxRegistrationNumber,
+    legal_business_name: input.legalBusinessName,
+    product_price_range: input.productPriceRange,
+    products_manufactured_by_brand: input.productsManufacturedByBrand,
+    made_to_order: input.madeToOrder,
+    avg_preparation_time: input.avgPreparationTime,
+    shipping_coverage: input.shippingCoverage,
+    return_exchange_available: input.returnExchangeAvailable,
+    inventory_status: input.inventoryStatus,
+    consent_accurate: input.consentAccurate ?? false,
+    consent_terms: input.consentTerms ?? false,
+  };
+}
+
+// Creates a new draft, or updates the applicant's existing draft /
+// changes_requested application in place. Never creates a second active row
+// — relies on brand_applications_one_active_per_user as the real guard, but
+// pre-checks here too for a friendly error instead of a raw 23505.
+export async function createOrUpdateDraft(
+  userId: string,
+  accountSnapshot: ApplicantAccountSnapshot,
+  input: DraftApplicationInput
+): Promise<BrandApplicationRecord> {
+  const existing = await getMyApplication(userId);
+
+  if (existing && !isEditableStatus(existing.status)) {
+    throw new ApplicationServiceError(
+      "APPLICATION_NOT_EDITABLE",
+      `Your application is currently "${existing.status}" and can no longer be edited.`
+    );
+  }
+
+  const row = draftInputToRow(input);
+
+  if (existing) {
+    const { data, error } = await supabaseAdmin
+      .from("brand_applications")
+      .update(row)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw new Error(`createOrUpdateDraft(update ${existing.id}) failed: ${error.message}`);
+    }
+    return toBrandApplicationRecord(data as BrandApplicationRow);
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .insert({
+      ...row,
+      applicant_user_id: userId,
+      applicant_account_snapshot: accountSnapshot,
+      status: "draft" as ApplicationStatus,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new ApplicationServiceError(
+        "ALREADY_HAS_ACTIVE_APPLICATION",
+        "You already have an active brand application."
+      );
+    }
+    throw new Error(`createOrUpdateDraft(insert) failed: ${error.message}`);
+  }
+  return toBrandApplicationRecord(data as BrandApplicationRow);
+}
+
+function isEditableStatus(status: ApplicationStatus): boolean {
+  return status === "draft" || status === "changes_requested";
+}
+
+// Validates + transitions draft/changes_requested -> submitted (or
+// resubmitted, when coming from changes_requested). The unique partial index
+// is the real backstop against a race; this still pre-checks for a clean
+// error message in the common case.
+export async function submitApplication(
+  userId: string,
+  input: SubmitApplicationInput
+): Promise<BrandApplicationRecord> {
+  const existing = await getMyApplication(userId);
+  if (!existing) {
+    throw new ApplicationServiceError("APPLICATION_NOT_FOUND", "No draft application found to submit.");
+  }
+  if (!isEditableStatus(existing.status)) {
+    throw new ApplicationServiceError(
+      "APPLICATION_NOT_EDITABLE",
+      `Your application is currently "${existing.status}" and cannot be submitted.`
+    );
+  }
+
+  const nextStatus: ApplicationStatus =
+    existing.status === "changes_requested" ? "resubmitted" : "submitted";
+  if (!isValidStatusTransition(existing.status, nextStatus)) {
+    throw new ApplicationServiceError(
+      "INVALID_TRANSITION",
+      `Cannot move from "${existing.status}" to "${nextStatus}".`
+    );
+  }
+
+  const row = draftInputToRow(input);
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .update({ ...row, status: nextStatus })
+    .eq("id", existing.id)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`submitApplication(${existing.id}) failed: ${error.message}`);
+  }
+
+  await recordStatusHistory(existing.id, existing.status, nextStatus, userId, null);
+  return toBrandApplicationRecord(data as BrandApplicationRow);
+}
+
+export async function withdrawApplication(userId: string): Promise<BrandApplicationRecord> {
+  const existing = await getMyApplication(userId);
+  if (!existing) {
+    throw new ApplicationServiceError("APPLICATION_NOT_FOUND", "No application found to withdraw.");
+  }
+  if (!isValidStatusTransition(existing.status, "withdrawn")) {
+    throw new ApplicationServiceError(
+      "INVALID_TRANSITION",
+      `Cannot withdraw an application that is currently "${existing.status}".`
+    );
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("brand_applications")
+    .update({ status: "withdrawn" as ApplicationStatus })
+    .eq("id", existing.id)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw new Error(`withdrawApplication(${existing.id}) failed: ${error.message}`);
+  }
+
+  await recordStatusHistory(existing.id, existing.status, "withdrawn", userId, null);
+  return toBrandApplicationRecord(data as BrandApplicationRow);
+}
+
+export async function recordStatusHistory(
+  applicationId: string,
+  fromStatus: ApplicationStatus | null,
+  toStatus: ApplicationStatus,
+  changedBy: string | null,
+  reason: string | null
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("brand_application_status_history").insert({
+    application_id: applicationId,
+    from_status: fromStatus,
+    to_status: toStatus,
+    changed_by: changedBy,
+    reason,
+  });
+
+  if (error) {
+    throw new Error(`recordStatusHistory(${applicationId}) failed: ${error.message}`);
+  }
+}
+
+// Whether a user who was rejected is currently blocked from starting a new
+// application by the cooldown, unless an admin already overrode it.
+export function isWithinReapplicationCooldown(app: BrandApplicationRecord): boolean {
+  if (app.status !== "rejected") return false;
+  if (app.reapplicationOverride) return false;
+  if (!app.reapplicationAllowedAt) return false;
+  return new Date(app.reapplicationAllowedAt).getTime() > Date.now();
+}
+
+export function computeReapplicationAllowedAt(fromDate = new Date()): string {
+  const date = new Date(fromDate);
+  date.setDate(date.getDate() + REAPPLICATION_COOLDOWN_DAYS);
+  return date.toISOString();
+}
