@@ -4,6 +4,8 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { sendEmail } from "@/lib/email/sendEmail";
+import { applicationSubmittedEmail } from "@/lib/email/templates/brandApplication";
 import { ApplicationServiceError, submitApplication } from "@/lib/join/applicationService";
 import { submitApplicationSchema } from "@/lib/join/validation";
 
@@ -49,6 +51,7 @@ export async function POST(request: NextRequest) {
       actorLabel: `${application.founderName} (${application.email})`,
       after: { status: application.status },
     });
+    await sendEmail({ to: application.email, ...applicationSubmittedEmail(application) });
 
     return NextResponse.json({ application });
   } catch (error) {

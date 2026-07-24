@@ -9,7 +9,34 @@ import {
   computeReapplicationAllowedAt,
 } from "@/lib/join/applicationService";
 import { isValidStatusTransition } from "@/lib/join/constants";
-import type { ApplicationStatus } from "@/types";
+import { sendEmail } from "@/lib/email/sendEmail";
+import {
+  applicationApprovedEmail,
+  applicationChangesRequestedEmail,
+  applicationRejectedEmail,
+  applicationUnderReviewEmail,
+} from "@/lib/email/templates/brandApplication";
+import type { ApplicationStatus, BrandApplicationRecord } from "@/types";
+
+function applicantEmailFor(
+  status: ApplicationStatus,
+  application: BrandApplicationRecord,
+  reason: string
+): { subject: string; html: string } | null {
+  switch (status) {
+    case "under_review":
+      return applicationUnderReviewEmail(application);
+    case "changes_requested":
+      return applicationChangesRequestedEmail(application, reason);
+    case "approved":
+    case "approved_pending_creation":
+      return applicationApprovedEmail(application);
+    case "rejected":
+      return applicationRejectedEmail(application, reason);
+    default:
+      return null;
+  }
+}
 
 // Transitions that must carry a reason (shown to the applicant, so it
 // can't be an empty/whitespace string) — everything else is optional.
@@ -103,6 +130,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     before: { status: application.status },
     after: { status: nextStatus, reason: reason || undefined },
   });
+
+  if (nextStatus !== application.status) {
+    const email = applicantEmailFor(nextStatus as ApplicationStatus, application, reason);
+    if (email) {
+      await sendEmail({ to: application.email, ...email });
+    }
+  }
 
   return NextResponse.json({ id: params.id, status: nextStatus });
 }

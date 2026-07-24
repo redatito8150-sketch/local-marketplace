@@ -3,6 +3,9 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
 import { logAudit } from "@/lib/auditLog";
+import { getApplicationForAdmin } from "@/lib/data/admin";
+import { sendEmail } from "@/lib/email/sendEmail";
+import { applicationBrandCreatedEmail } from "@/lib/email/templates/brandApplication";
 
 type BrandInputWithSource = BrandInput & { sourceApplicationId?: string };
 
@@ -58,6 +61,11 @@ export async function POST(request: NextRequest) {
       action: "convert_to_brand",
       after: { approvedBrandId: slug },
     });
+
+    const convertedApplication = await getApplicationForAdmin(body.sourceApplicationId);
+    if (convertedApplication) {
+      await sendEmail({ to: convertedApplication.email, ...applicationBrandCreatedEmail(convertedApplication) });
+    }
 
     return NextResponse.json({ slug });
   }
