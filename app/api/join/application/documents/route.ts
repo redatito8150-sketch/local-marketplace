@@ -5,13 +5,16 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { notify } from "@/lib/notify";
 import { hasExpectedDocumentSignature } from "@/lib/uploads/imageValidation";
-import { getMyApplication } from "@/lib/join/applicationService";
+import {
+  getApplicationDocuments,
+  getMyApplication,
+  toDocumentRecord,
+} from "@/lib/join/applicationService";
 import {
   ALLOWED_DOCUMENT_MIME_TYPES,
   DOCUMENTS_BUCKET,
   MAX_DOCUMENT_SIZE_BYTES,
 } from "@/lib/join/constants";
-import type { BrandApplicationDocumentRecord } from "@/types";
 
 function sanitizeFileName(name: string): string {
   return (
@@ -21,26 +24,6 @@ function sanitizeFileName(name: string): string {
       .replace(/(^-|-$)/g, "")
       .slice(-80) || "document"
   );
-}
-
-function toDocumentRecord(row: {
-  id: string;
-  application_id: string;
-  file_name: string;
-  storage_path: string;
-  mime_type: string;
-  file_size_bytes: number;
-  created_at: string;
-}): BrandApplicationDocumentRecord {
-  return {
-    id: row.id,
-    applicationId: row.application_id,
-    fileName: row.file_name,
-    storagePath: row.storage_path,
-    mimeType: row.mime_type,
-    fileSizeBytes: row.file_size_bytes,
-    createdAt: row.created_at,
-  };
 }
 
 // Own uploaded documents for the applicant's current application.
@@ -55,16 +38,12 @@ export async function GET() {
     return NextResponse.json({ documents: [] });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("brand_application_documents")
-    .select("*")
-    .eq("application_id", application.id)
-    .order("created_at", { ascending: true });
-
-  if (error) {
-    return safeErrorResponse("join.application.documents.get", error);
+  try {
+    const documents = await getApplicationDocuments(application.id);
+    return NextResponse.json({ documents });
+  } catch (error) {
+    return safeErrorResponse("join.application.documents.get", error as Error);
   }
-  return NextResponse.json({ documents: (data ?? []).map(toDocumentRecord) });
 }
 
 // Uploads a legal/business document (registration, tax card, etc.) for the

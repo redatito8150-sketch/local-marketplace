@@ -5,7 +5,9 @@ import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/v
 import type {
   ApplicantAccountSnapshot,
   ApplicationStatus,
+  BrandApplicationDocumentRecord,
   BrandApplicationRecord,
+  BrandApplicationStatusHistoryEntry,
 } from "@/types";
 
 // Service-role-backed functions for the brand application workflow. Every
@@ -398,4 +400,77 @@ export function computeReapplicationAllowedAt(fromDate = new Date()): string {
   const date = new Date(fromDate);
   date.setDate(date.getDate() + REAPPLICATION_COOLDOWN_DAYS);
   return date.toISOString();
+}
+
+export function toDocumentRecord(row: {
+  id: string;
+  application_id: string;
+  file_name: string;
+  storage_path: string;
+  mime_type: string;
+  file_size_bytes: number;
+  created_at: string;
+}): BrandApplicationDocumentRecord {
+  return {
+    id: row.id,
+    applicationId: row.application_id,
+    fileName: row.file_name,
+    storagePath: row.storage_path,
+    mimeType: row.mime_type,
+    fileSizeBytes: row.file_size_bytes,
+    createdAt: row.created_at,
+  };
+}
+
+// Used by both the applicant's own document route and the admin detail
+// page — no ownership check here, since each caller is responsible for
+// verifying the applicant/admin can see this application before calling.
+export async function getApplicationDocuments(
+  applicationId: string
+): Promise<BrandApplicationDocumentRecord[]> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_application_documents")
+    .select("*")
+    .eq("application_id", applicationId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`getApplicationDocuments(${applicationId}) failed: ${error.message}`);
+  }
+  return (data ?? []).map(toDocumentRecord);
+}
+
+function toStatusHistoryEntry(row: {
+  id: string;
+  application_id: string;
+  from_status: ApplicationStatus | null;
+  to_status: ApplicationStatus;
+  changed_by: string | null;
+  reason: string | null;
+  created_at: string;
+}): BrandApplicationStatusHistoryEntry {
+  return {
+    id: row.id,
+    applicationId: row.application_id,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    changedBy: row.changed_by,
+    reason: row.reason,
+    createdAt: row.created_at,
+  };
+}
+
+export async function getApplicationStatusHistory(
+  applicationId: string
+): Promise<BrandApplicationStatusHistoryEntry[]> {
+  const { data, error } = await supabaseAdmin
+    .from("brand_application_status_history")
+    .select("*")
+    .eq("application_id", applicationId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw new Error(`getApplicationStatusHistory(${applicationId}) failed: ${error.message}`);
+  }
+  return (data ?? []).map(toStatusHistoryEntry);
 }
