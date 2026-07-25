@@ -16,12 +16,10 @@ const requiredString = (label: string, max: number) =>
 const optionalString = (max: number) =>
   trimmedString(max).optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 
-const urlOrEmpty = optionalString(300).refine(
-  (value) => !value || /^https?:\/\/.+/i.test(value) || /^@?[\w.]{1,40}$/.test(value),
-  { message: "Enter a valid URL or handle" }
-);
-
-export const applicantInfoSchema = z.object({
+// Kept as a plain ZodObject (no .refine()) for the same mergeable/partial-
+// able reason as legalInfoObjectSchema below — applicantInfoRefinements()
+// is applied separately wherever this ends up (step-level or full-submit).
+export const applicantInfoObjectSchema = z.object({
   founderName: requiredString("Full name", 120),
   email: requiredString("Email", 254).email("Enter a valid email address"),
   phone: requiredString("Phone number", 40),
@@ -33,29 +31,47 @@ export const applicantInfoSchema = z.object({
     "agency_representative",
     "other",
   ]),
+  // Only meaningful when applicantRole === "other" — see the refinement below.
+  applicantRoleOther: optionalString(120),
 });
 
+function applicantInfoRefinements<
+  T extends { applicantRole: string; applicantRoleOther?: string }
+>(schema: z.ZodType<T>) {
+  return schema.refine(
+    (data) => data.applicantRole !== "other" || Boolean(data.applicantRoleOther),
+    { message: "Please specify your role", path: ["applicantRoleOther"] }
+  );
+}
+
+export const applicantInfoSchema = applicantInfoRefinements(applicantInfoObjectSchema);
+
+// Main product category is a multi-select (unlike the old single required
+// dropdown) — the applicant can pick as many as apply, or none at draft
+// time. Sales channel links replace the old Instagram-username/website-url/
+// other-social-urls trio with one {channel: link} map, since the form now
+// collects a single link per selected channel instead of the same
+// information three different ways.
 export const brandInfoSchema = z.object({
-  brandName: requiredString("Brand name", 120),
-  brandNameAr: optionalString(120),
-  brandNameEn: optionalString(120),
-  instagramUsername: optionalString(60),
-  websiteUrl: urlOrEmpty,
-  otherSocialUrls: z.array(trimmedString(300)).max(10).default([]),
-  productCategory: requiredString("Main product category", 60),
-  additionalCategories: z.array(trimmedString(60)).max(10).default([]),
-  brandStory: requiredString("Brand story", 2000),
+  brandNameAr: requiredString("Brand name (Arabic)", 120),
+  brandNameEn: requiredString("Brand name (English)", 120),
+  productCategories: z.array(trimmedString(60)).max(10).default([]),
+  brandStory: optionalString(2000),
   foundingYear: z
-    .number()
+    .number({ required_error: "Founding year is required" })
     .int()
     .min(1900)
-    .max(new Date().getFullYear())
-    .optional(),
+    .max(new Date().getFullYear()),
   country: requiredString("Country", 80),
   city: requiredString("City", 80),
   salesChannelsList: z.array(trimmedString(60)).min(1, "Select at least one sales channel").max(10),
-  approxProductCount: z.number().int().min(0).max(1_000_000).optional(),
-  approxMonthlyOrders: optionalString(60),
+  salesChannelLinks: z.record(z.string(), trimmedString(300)).default({}),
+  approxProductCount: z
+    .number({ required_error: "Approx. product count is required" })
+    .int()
+    .min(0)
+    .max(1_000_000),
+  approxMonthlyOrders: requiredString("Approx. monthly orders", 60),
 });
 
 // Kept as a plain ZodObject (no .refine()) so it stays mergeable/partial-able
@@ -112,21 +128,24 @@ export const consentSchema = z.object({
 });
 
 // Full submit-time schema — every step merged, everything above required,
-// plus the legal-status conditional-field checks applied once at the end.
-const submitApplicationObjectSchema = applicantInfoSchema
+// plus the conditional-field checks (legal status, "other" role) applied
+// once at the end.
+const submitApplicationObjectSchema = applicantInfoObjectSchema
   .merge(brandInfoSchema)
   .merge(legalInfoObjectSchema)
   .merge(operationsInfoSchema)
   .merge(consentSchema);
 
-export const submitApplicationSchema = legalInfoRefinements(submitApplicationObjectSchema);
+export const submitApplicationSchema = legalInfoRefinements(
+  applicantInfoRefinements(submitApplicationObjectSchema)
+);
 
 export type SubmitApplicationInput = z.infer<typeof submitApplicationSchema>;
 
 // Draft saves accept a partial slice of any step, since the applicant can
 // leave and come back mid-form — required-ness is only enforced at submit
 // time, not while drafting.
-export const draftApplicationSchema = applicantInfoSchema
+export const draftApplicationSchema = applicantInfoObjectSchema
   .partial()
   .merge(brandInfoSchema.partial())
   .merge(legalInfoObjectSchema.partial())

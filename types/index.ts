@@ -495,6 +495,7 @@ export interface BrandApplicationRecord {
 
   applicantUserId: string | null;
   applicantRole: ApplicantRole | null;
+  applicantRoleOther?: string;
   brandNameAr?: string;
   brandNameEn?: string;
   websiteUrl?: string;
@@ -504,6 +505,7 @@ export interface BrandApplicationRecord {
   country?: string;
   city?: string;
   salesChannelsList: string[];
+  salesChannelLinks: Record<string, string>;
   approxProductCount?: number;
   approxMonthlyOrders?: string;
 

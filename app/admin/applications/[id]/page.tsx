@@ -84,24 +84,43 @@ export default async function AdminApplicationDetailPage(
             <Field label="Full name" value={application.founderName} />
             <Field label="Email" value={application.email} />
             <Field label="Phone" value={application.phone} />
-            <Field label="Role" value={application.applicantRole ?? "—"} />
+            <Field
+              label="Role"
+              value={
+                application.applicantRole === "other"
+                  ? `Other — ${application.applicantRoleOther || "—"}`
+                  : application.applicantRole ?? "—"
+              }
+            />
           </Section>
 
           <Section title="Brand">
             <Field label="Brand name" value={application.brandName} />
             <Field label="Arabic name" value={application.brandNameAr || "—"} />
             <Field label="English name" value={application.brandNameEn || "—"} />
-            <Field label="Category" value={application.productCategory} />
             <Field
-              label="Additional categories"
-              value={application.additionalCategories.join(", ") || "—"}
+              label="Categories"
+              value={[application.productCategory, ...application.additionalCategories].filter(Boolean).join(", ") || "—"}
             />
-            <Field label="Website" value={application.websiteUrl || "—"} />
-            <Field label="Instagram / other" value={application.instagramOrWebsite || "—"} />
-            <Field
-              label="Other social"
-              value={application.otherSocialUrls.join(", ") || "—"}
-            />
+            {Object.keys(application.salesChannelLinks ?? {}).length > 0 ? (
+              <Field
+                label="Sales channel links"
+                value={
+                  Object.entries(application.salesChannelLinks)
+                    .map(([channel, link]) => `${channel}: ${link || "—"}`)
+                    .join(" · ") || "—"
+                }
+              />
+            ) : (
+              <>
+                <Field label="Website" value={application.websiteUrl || "—"} />
+                <Field label="Instagram / other" value={application.instagramOrWebsite || "—"} />
+                <Field
+                  label="Other social"
+                  value={application.otherSocialUrls.join(", ") || "—"}
+                />
+              </>
+            )}
             <Field label="Brand story" value={application.brandStory} />
             <Field label="Founding year" value={application.foundingYear?.toString() ?? "—"} />
             <Field

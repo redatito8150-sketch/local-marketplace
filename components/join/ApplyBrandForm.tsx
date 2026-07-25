@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, Loader2, Upload, X } from "lucide-react";
+import { Check, Loader2, MessageSquare, Upload, X } from "lucide-react";
 import type { BrandApplicationDocumentRecord, BrandApplicationRecord } from "@/types";
 import {
   APPLICANT_ROLES,
@@ -10,6 +10,7 @@ import {
   LEGAL_STATUSES_WITH_TAX_CARD,
   PRODUCT_CATEGORY_OPTIONS,
   SALES_CHANNEL_OPTIONS,
+  WEBSITE_CHANNEL,
 } from "@/lib/join/constants";
 import {
   applicantInfoSchema,
@@ -43,19 +44,16 @@ interface FormState {
   email: string;
   phone: string;
   applicantRole: string;
-  brandName: string;
+  applicantRoleOther: string;
   brandNameAr: string;
   brandNameEn: string;
-  instagramUsername: string;
-  websiteUrl: string;
-  otherSocialUrls: string;
-  productCategory: string;
-  additionalCategories: string[];
+  productCategories: string[];
   brandStory: string;
   foundingYear: string;
   country: string;
   city: string;
   salesChannelsList: string[];
+  salesChannelLinks: Record<string, string>;
   approxProductCount: string;
   approxMonthlyOrders: string;
   legalStatus: string;
@@ -79,19 +77,17 @@ function emptyForm(): FormState {
     email: "",
     phone: "",
     applicantRole: "",
-    brandName: "",
+    applicantRoleOther: "",
     brandNameAr: "",
     brandNameEn: "",
-    instagramUsername: "",
-    websiteUrl: "",
-    otherSocialUrls: "",
-    productCategory: "",
-    additionalCategories: [],
+    productCategories: [],
     brandStory: "",
     foundingYear: "",
-    country: "",
+    // Fixed — Mahaly is Egypt-only for now, see the locked Country field below.
+    country: "Egypt",
     city: "",
     salesChannelsList: [],
+    salesChannelLinks: {},
     approxProductCount: "",
     approxMonthlyOrders: "",
     legalStatus: "",
@@ -111,24 +107,31 @@ function emptyForm(): FormState {
 }
 
 function fromApplication(app: BrandApplicationRecord): FormState {
+  // Legacy rows saved before this rework have an empty salesChannelLinks
+  // (DB default) but may already have a websiteUrl from the old separate
+  // field — surface it as the "Website" channel's link so it isn't lost.
+  const salesChannelLinks =
+    Object.keys(app.salesChannelLinks ?? {}).length > 0
+      ? app.salesChannelLinks
+      : app.websiteUrl
+        ? { [WEBSITE_CHANNEL]: app.websiteUrl }
+        : {};
   return {
     founderName: app.founderName ?? "",
     email: app.email ?? "",
     phone: app.phone ?? "",
     applicantRole: app.applicantRole ?? "",
-    brandName: app.brandName ?? "",
+    applicantRoleOther: app.applicantRoleOther ?? "",
     brandNameAr: app.brandNameAr ?? "",
     brandNameEn: app.brandNameEn ?? "",
-    instagramUsername: app.instagramOrWebsite?.startsWith("http") ? "" : app.instagramOrWebsite ?? "",
-    websiteUrl: app.websiteUrl ?? "",
-    otherSocialUrls: (app.otherSocialUrls ?? []).join(", "),
-    productCategory: app.productCategory ?? "",
-    additionalCategories: app.additionalCategories ?? [],
+    productCategories: [...new Set([app.productCategory, ...(app.additionalCategories ?? [])])].filter(Boolean),
     brandStory: app.brandStory ?? "",
     foundingYear: app.foundingYear ? String(app.foundingYear) : "",
-    country: app.country ?? "",
+    // Always fixed to Egypt going forward regardless of what a legacy row stored.
+    country: "Egypt",
     city: app.city ?? "",
     salesChannelsList: app.salesChannelsList ?? [],
+    salesChannelLinks,
     approxProductCount: app.approxProductCount ? String(app.approxProductCount) : "",
     approxMonthlyOrders: app.approxMonthlyOrders ?? "",
     legalStatus: app.legalStatus ?? "",
@@ -153,21 +156,16 @@ function toDraftInput(form: FormState): DraftApplicationInput {
     email: form.email || undefined,
     phone: form.phone || undefined,
     applicantRole: (form.applicantRole || undefined) as DraftApplicationInput["applicantRole"],
-    brandName: form.brandName || undefined,
+    applicantRoleOther: form.applicantRoleOther || undefined,
     brandNameAr: form.brandNameAr || undefined,
     brandNameEn: form.brandNameEn || undefined,
-    instagramUsername: form.instagramUsername || undefined,
-    websiteUrl: form.websiteUrl || undefined,
-    otherSocialUrls: form.otherSocialUrls
-      ? form.otherSocialUrls.split(",").map((s) => s.trim()).filter(Boolean)
-      : [],
-    productCategory: form.productCategory || undefined,
-    additionalCategories: form.additionalCategories,
+    productCategories: form.productCategories,
     brandStory: form.brandStory || undefined,
     foundingYear: form.foundingYear ? Number(form.foundingYear) : undefined,
     country: form.country || undefined,
     city: form.city || undefined,
     salesChannelsList: form.salesChannelsList.length ? form.salesChannelsList : undefined,
+    salesChannelLinks: form.salesChannelLinks,
     approxProductCount: form.approxProductCount ? Number(form.approxProductCount) : undefined,
     approxMonthlyOrders: form.approxMonthlyOrders || undefined,
     legalStatus: (form.legalStatus || undefined) as DraftApplicationInput["legalStatus"],
@@ -221,7 +219,7 @@ export default function ApplyBrandForm({
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const toggleListItem = (key: "additionalCategories" | "salesChannelsList", value: string) => {
+  const toggleListItem = (key: "productCategories" | "salesChannelsList", value: string) => {
     setForm((f) => {
       const list = f[key];
       return {
@@ -230,6 +228,26 @@ export default function ApplyBrandForm({
       };
     });
   };
+
+  // Selecting a sales channel also opens its link field; deselecting drops
+  // whatever link was typed for it, so channelLinks never holds an entry
+  // for a channel that isn't actually selected.
+  const toggleSalesChannel = (channel: string) => {
+    setForm((f) => {
+      const selected = f.salesChannelsList.includes(channel);
+      const { [channel]: _removed, ...remainingLinks } = f.salesChannelLinks;
+      return {
+        ...f,
+        salesChannelsList: selected
+          ? f.salesChannelsList.filter((v) => v !== channel)
+          : [...f.salesChannelsList, channel],
+        salesChannelLinks: selected ? remainingLinks : { ...f.salesChannelLinks, [channel]: f.salesChannelLinks[channel] ?? "" },
+      };
+    });
+  };
+
+  const setChannelLink = (channel: string, link: string) =>
+    setForm((f) => ({ ...f, salesChannelLinks: { ...f.salesChannelLinks, [channel]: link } }));
 
   const stepSchemas = useMemo(
     () => ({
@@ -379,6 +397,18 @@ export default function ApplyBrandForm({
 
   return (
     <div className="max-w-2xl">
+      {application?.status === "changes_requested" && application.changesRequestedMessage && (
+        <div className="mb-8 flex gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
+          <MessageSquare className="h-5 w-5 shrink-0 text-ink-soft/60" strokeWidth={1.8} />
+          <div>
+            <p className="text-[13px] font-semibold text-ink">Changes requested</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-soft/70">
+              {application.changesRequestedMessage}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="mb-10 flex flex-wrap items-center gap-3">
         {STEPS.map((s, i) => (
           <div key={s.id} className="flex items-center gap-3">
@@ -405,7 +435,7 @@ export default function ApplyBrandForm({
 
       {stepIndex === 0 && (
         <div className="max-w-lg space-y-5">
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid gap-4 ${form.applicantRole === "other" ? "grid-cols-3" : "grid-cols-2"}`}>
             <Field
               label="Full name"
               value={form.founderName}
@@ -421,6 +451,15 @@ export default function ApplyBrandForm({
               error={fieldErrors.applicantRole}
               required
             />
+            {form.applicantRole === "other" && (
+              <Field
+                label="Please specify"
+                value={form.applicantRoleOther}
+                onChange={(v) => set("applicantRoleOther", v)}
+                error={fieldErrors.applicantRoleOther}
+                required
+              />
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field
@@ -447,73 +486,34 @@ export default function ApplyBrandForm({
         <div className="max-w-lg space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <Field
-              label="Brand name"
-              value={form.brandName}
-              onChange={(v) => set("brandName", v)}
-              error={fieldErrors.brandName}
+              label="Brand name (English)"
+              value={form.brandNameEn}
+              onChange={(v) => set("brandNameEn", v)}
+              error={fieldErrors.brandNameEn}
               required
             />
-            <SelectField
-              label="Main product category"
-              value={form.productCategory}
-              onChange={(v) => set("productCategory", v)}
-              options={PRODUCT_CATEGORY_OPTIONS.map((c) => ({ value: c, label: c }))}
-              error={fieldErrors.productCategory}
-              required
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <Field
               label="Brand name (Arabic)"
               value={form.brandNameAr}
               onChange={(v) => set("brandNameAr", v)}
-            />
-            <Field
-              label="Brand name (English)"
-              value={form.brandNameEn}
-              onChange={(v) => set("brandNameEn", v)}
+              error={fieldErrors.brandNameAr}
+              required
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field
-              label="Instagram username"
-              placeholder="@yourbrand"
-              value={form.instagramUsername}
-              onChange={(v) => set("instagramUsername", v)}
-            />
-            <Field
-              label="Website URL"
-              placeholder="https://yourbrand.com"
-              value={form.websiteUrl}
-              onChange={(v) => set("websiteUrl", v)}
-              error={fieldErrors.websiteUrl}
-            />
-          </div>
-          <Field
-            label="Other social media (comma-separated)"
-            value={form.otherSocialUrls}
-            onChange={(v) => set("otherSocialUrls", v)}
+
+          <CheckboxGroup
+            label="Main product category"
+            options={PRODUCT_CATEGORY_OPTIONS}
+            selected={form.productCategories}
+            onToggle={(v) => toggleListItem("productCategories", v)}
+            error={fieldErrors.productCategories}
           />
-          <TextAreaField
-            label="Brand story"
-            value={form.brandStory}
-            onChange={(v) => set("brandStory", v)}
-            error={fieldErrors.brandStory}
-            rows={4}
-            required
-          />
+
           <div className="grid grid-cols-3 gap-4">
-            <Field
-              label="Founding year"
-              value={form.foundingYear}
-              onChange={(v) => set("foundingYear", v)}
-            />
-            <Field
+            <LockedField
               label="Country"
               value={form.country}
-              onChange={(v) => set("country", v)}
-              error={fieldErrors.country}
-              required
+              title="We hope to be available in every country soon."
             />
             <Field
               label="City"
@@ -522,24 +522,64 @@ export default function ApplyBrandForm({
               error={fieldErrors.city}
               required
             />
+            <Field
+              label="Founding year"
+              value={form.foundingYear}
+              onChange={(v) => set("foundingYear", v)}
+              error={fieldErrors.foundingYear}
+              required
+            />
           </div>
-          <CheckboxGroup
-            label="Current sales channels"
-            options={SALES_CHANNEL_OPTIONS}
-            selected={form.salesChannelsList}
-            onToggle={(v) => toggleListItem("salesChannelsList", v)}
-            error={fieldErrors.salesChannelsList}
+
+          <TextAreaField
+            label="Brand story"
+            value={form.brandStory}
+            onChange={(v) => set("brandStory", v)}
+            error={fieldErrors.brandStory}
+            rows={4}
           />
+
+          <div>
+            <CheckboxGroup
+              label="Current sales channels"
+              options={SALES_CHANNEL_OPTIONS}
+              selected={form.salesChannelsList}
+              onToggle={toggleSalesChannel}
+              error={fieldErrors.salesChannelsList}
+            />
+            {form.salesChannelsList.length > 0 && (
+              <div className="mt-3 space-y-2.5">
+                {form.salesChannelsList.map((channel) => (
+                  <Field
+                    key={channel}
+                    label={channel}
+                    placeholder={
+                      channel === WEBSITE_CHANNEL
+                        ? "https://yourbrand.com"
+                        : `Paste your ${channel} link here`
+                    }
+                    value={form.salesChannelLinks[channel] ?? ""}
+                    onChange={(v) => setChannelLink(channel, v)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Field
               label="Approx. product count"
               value={form.approxProductCount}
               onChange={(v) => set("approxProductCount", v)}
+              error={fieldErrors.approxProductCount}
+              required
             />
             <Field
               label="Approx. monthly orders"
               value={form.approxMonthlyOrders}
               onChange={(v) => set("approxMonthlyOrders", v)}
+              error={fieldErrors.approxMonthlyOrders}
+              required
             />
           </div>
         </div>
@@ -670,8 +710,8 @@ export default function ApplyBrandForm({
           <div className="space-y-3 rounded-md bg-white p-4 text-[13px] text-ink-soft/80">
             <ReviewRow label="Founder" value={form.founderName} />
             <ReviewRow label="Email" value={form.email} />
-            <ReviewRow label="Brand name" value={form.brandName} />
-            <ReviewRow label="Category" value={form.productCategory} />
+            <ReviewRow label="Brand name" value={form.brandNameEn} />
+            <ReviewRow label="Category" value={form.productCategories.join(", ")} />
             <ReviewRow label="Legal status" value={form.legalStatus} />
           </div>
 
@@ -783,6 +823,23 @@ function Field({
         }`}
       />
       {error && <span className="mt-1 block text-[12px] text-red-600">{error}</span>}
+    </label>
+  );
+}
+
+// A fixed, non-editable value (currently just Country, locked to Egypt) —
+// shown disabled with a hover tooltip explaining why, instead of a normal
+// editable Field.
+function LockedField({ label, value, title }: { label: string; value: string; title: string }) {
+  return (
+    <label className="block" title={title}>
+      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <input
+        type="text"
+        value={value}
+        disabled
+        className="mt-1.5 w-full cursor-not-allowed rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5 text-[14px] text-ink-soft/70 outline-none"
+      />
     </label>
   );
 }

@@ -39,12 +39,17 @@ export const SALES_CHANNEL_OPTIONS = [
   "Instagram",
   "Facebook",
   "TikTok",
-  "Own website",
+  "Website",
   "Physical store",
   "Pop-up markets",
   "Other marketplaces",
   "Other",
 ] as const;
+
+// The one sales channel whose link doubles as the brand's website —
+// applicationService.ts mirrors it into the legacy website_url column so
+// admin brand-creation prefill (app/admin/brands/new) keeps working.
+export const WEBSITE_CHANNEL = "Website";
 
 export const PRODUCT_CATEGORY_OPTIONS = [
   "Women's Fashion",

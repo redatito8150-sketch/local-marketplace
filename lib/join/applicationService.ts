@@ -1,6 +1,10 @@
 import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { isValidStatusTransition, isWithinReapplicationCooldown } from "@/lib/join/constants";
+import {
+  isValidStatusTransition,
+  isWithinReapplicationCooldown,
+  WEBSITE_CHANNEL,
+} from "@/lib/join/constants";
 import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/validation";
 import type {
   ApplicantAccountSnapshot,
@@ -31,6 +35,7 @@ interface BrandApplicationRow {
   updated_at: string;
   applicant_user_id: string | null;
   applicant_role: string | null;
+  applicant_role_other: string | null;
   brand_name_ar: string | null;
   brand_name_en: string | null;
   website_url: string | null;
@@ -40,6 +45,7 @@ interface BrandApplicationRow {
   country: string | null;
   city: string | null;
   sales_channels_list: string[];
+  sales_channel_links: Record<string, string>;
   approx_product_count: number | null;
   approx_monthly_orders: string | null;
   legal_status: string | null;
@@ -84,6 +90,7 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     updatedAt: row.updated_at,
     applicantUserId: row.applicant_user_id,
     applicantRole: (row.applicant_role as BrandApplicationRecord["applicantRole"]) ?? null,
+    applicantRoleOther: row.applicant_role_other ?? undefined,
     brandNameAr: row.brand_name_ar ?? undefined,
     brandNameEn: row.brand_name_en ?? undefined,
     websiteUrl: row.website_url ?? undefined,
@@ -93,6 +100,7 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     country: row.country ?? undefined,
     city: row.city ?? undefined,
     salesChannelsList: row.sales_channels_list ?? [],
+    salesChannelLinks: row.sales_channel_links ?? {},
     approxProductCount: row.approx_product_count ?? undefined,
     approxMonthlyOrders: row.approx_monthly_orders ?? undefined,
     legalStatus: (row.legal_status as BrandApplicationRecord["legalStatus"]) ?? null,
@@ -172,6 +180,8 @@ export async function getMyApplication(userId: string): Promise<BrandApplication
 }
 
 function draftInputToRow(input: DraftApplicationInput) {
+  const websiteLink = input.salesChannelLinks?.[WEBSITE_CHANNEL];
+  const [primaryCategory, ...otherCategories] = input.productCategories ?? [];
   return {
     // brand_name/product_category/brand_story are NOT NULL at the DB level
     // (pre-dating this multi-step redesign — see schema.sql), but a draft
@@ -179,23 +189,30 @@ function draftInputToRow(input: DraftApplicationInput) {
     // "" rather than leaving them undefined, same fallback already used for
     // instagram_or_website below, so an early draft save doesn't 500 on a
     // not-null violation.
-    brand_name: input.brandName ?? "",
+    brand_name: input.brandNameEn ?? "",
     founder_name: input.founderName,
     email: input.email,
     phone: input.phone,
-    instagram_or_website: input.instagramUsername || input.websiteUrl || "",
-    product_category: input.productCategory ?? "",
+    // Legacy NOT NULL column, superseded by sales_channel_links below —
+    // instagramUsername/websiteUrl no longer exist as separate inputs on
+    // the new form, so this just mirrors the "Website" channel's link.
+    instagram_or_website: websiteLink || "",
+    product_category: primaryCategory ?? "",
     brand_story: input.brandStory ?? "",
     applicant_role: input.applicantRole,
+    applicant_role_other: input.applicantRoleOther,
     brand_name_ar: input.brandNameAr,
     brand_name_en: input.brandNameEn,
-    website_url: input.websiteUrl,
-    other_social_urls: input.otherSocialUrls,
-    additional_categories: input.additionalCategories,
+    // Mirrored rather than cleared when absent (undefined = key omitted,
+    // existing value untouched), so admin brand-creation prefill
+    // (app/admin/brands/new) keeps reading a real value.
+    website_url: websiteLink || undefined,
+    additional_categories: otherCategories,
     founding_year: input.foundingYear,
     country: input.country,
     city: input.city,
     sales_channels_list: input.salesChannelsList,
+    sales_channel_links: input.salesChannelLinks ?? {},
     approx_product_count: input.approxProductCount,
     approx_monthly_orders: input.approxMonthlyOrders,
     legal_status: input.legalStatus,

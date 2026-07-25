@@ -12,19 +12,24 @@ import {
 } from "../lib/join/constants.ts";
 import type { BrandApplicationRecord } from "../types/index.ts";
 
+const currentYear = new Date().getFullYear();
+
 const validSubmission = {
   founderName: "Sara Ahmed",
   email: "sara@example.com",
   phone: "+201001234567",
   applicantRole: "founder",
-  brandName: "Sara Studio",
-  otherSocialUrls: [],
-  additionalCategories: [],
-  productCategory: "Women's Fashion",
+  brandNameAr: "استوديو سارة",
+  brandNameEn: "Sara Studio",
+  productCategories: ["Women's Fashion"],
   brandStory: "A small studio making handmade accessories.",
+  foundingYear: currentYear - 2,
   country: "Egypt",
   city: "Cairo",
   salesChannelsList: ["Instagram"],
+  salesChannelLinks: { Instagram: "https://instagram.com/sarastudio" },
+  approxProductCount: 25,
+  approxMonthlyOrders: "10-50",
   legalStatus: "unregistered_individual",
   productsManufacturedByBrand: true,
   madeToOrder: true,
@@ -70,8 +75,24 @@ test("submitApplicationSchema requires at least one sales channel", () => {
   assert.equal(result.success, false);
 });
 
+test("submitApplicationSchema requires specifying a role when applicantRole is 'other'", () => {
+  const result = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    applicantRole: "other",
+    applicantRoleOther: undefined,
+  });
+  assert.equal(result.success, false);
+
+  const withRole = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    applicantRole: "other",
+    applicantRoleOther: "Marketing consultant",
+  });
+  assert.equal(withRole.success, true);
+});
+
 test("draftApplicationSchema accepts a partially filled-in draft", () => {
-  const result = draftApplicationSchema.safeParse({ brandName: "Just Started" });
+  const result = draftApplicationSchema.safeParse({ brandNameEn: "Just Started" });
   assert.equal(result.success, true);
 });
 
@@ -93,6 +114,9 @@ function makeRejectedApp(overrides: Partial<BrandApplicationRecord> = {}): Brand
   return {
     ...validSubmission,
     id: "app-1",
+    brandName: validSubmission.brandNameEn,
+    instagramOrWebsite: "",
+    productCategory: validSubmission.productCategories[0],
     status: "rejected",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -102,6 +126,7 @@ function makeRejectedApp(overrides: Partial<BrandApplicationRecord> = {}): Brand
     otherSocialUrls: [],
     additionalCategories: [],
     salesChannelsList: ["Instagram"],
+    salesChannelLinks: validSubmission.salesChannelLinks,
     ...overrides,
   } as BrandApplicationRecord;
 }
