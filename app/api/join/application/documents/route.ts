@@ -5,6 +5,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { notify } from "@/lib/notify";
 import { hasExpectedDocumentSignature } from "@/lib/uploads/imageValidation";
+import { readFormData } from "@/lib/uploads/formData";
 import {
   getApplicationDocuments,
   getMyApplication,
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const formData = await request.formData();
+  const formData = await readFormData(request);
   const file = formData.get("file");
 
   if (!(file instanceof File)) {

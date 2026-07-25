@@ -9,6 +9,7 @@ import {
   isUuid,
 } from "@/lib/uploads/imageValidation";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { readFormData } from "@/lib/uploads/formData";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many uploads — please slow down" }, { status: 429 });
   }
 
-  const formData = await request.formData();
+  const formData = await readFormData(request);
   const file = formData.get("file");
   // `folderId` is the product id when editing, or a client-generated
   // temporary id while creating a new product (before it has a real id) —

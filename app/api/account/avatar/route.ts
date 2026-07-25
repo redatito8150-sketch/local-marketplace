@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
+import { readFormData } from "@/lib/uploads/formData";
 
 const BUCKET = "product-images";
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
 
-  const formData = await request.formData();
+  const formData = await readFormData(request);
   const file = formData.get("avatar");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Choose an image to upload." }, { status: 400 });

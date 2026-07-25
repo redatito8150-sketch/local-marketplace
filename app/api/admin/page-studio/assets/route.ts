@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { logAudit } from "@/lib/auditLog";
 import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
+import { readFormData } from "@/lib/uploads/formData";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const staff = await manager();
   if (!staff) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  const form = await request.formData();
+  const form = await readFormData(request);
   const file = form.get("file");
   const pageKey = form.get("pageKey");
   if (!(file instanceof File) || typeof pageKey !== "string" || !PAGE_KEY.test(pageKey)) return NextResponse.json({ error: "Invalid upload" }, { status: 400 });
