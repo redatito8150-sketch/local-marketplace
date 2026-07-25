@@ -173,13 +173,19 @@ export async function getMyApplication(userId: string): Promise<BrandApplication
 
 function draftInputToRow(input: DraftApplicationInput) {
   return {
-    brand_name: input.brandName,
+    // brand_name/product_category/brand_story are NOT NULL at the DB level
+    // (pre-dating this multi-step redesign — see schema.sql), but a draft
+    // saved after step 1 ("About you") hasn't collected them yet. Default to
+    // "" rather than leaving them undefined, same fallback already used for
+    // instagram_or_website below, so an early draft save doesn't 500 on a
+    // not-null violation.
+    brand_name: input.brandName ?? "",
     founder_name: input.founderName,
     email: input.email,
     phone: input.phone,
     instagram_or_website: input.instagramUsername || input.websiteUrl || "",
-    product_category: input.productCategory,
-    brand_story: input.brandStory,
+    product_category: input.productCategory ?? "",
+    brand_story: input.brandStory ?? "",
     applicant_role: input.applicantRole,
     brand_name_ar: input.brandNameAr,
     brand_name_en: input.brandNameEn,
