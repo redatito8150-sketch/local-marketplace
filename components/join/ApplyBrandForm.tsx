@@ -167,7 +167,7 @@ function toDraftInput(form: FormState): DraftApplicationInput {
     foundingYear: form.foundingYear ? Number(form.foundingYear) : undefined,
     country: form.country || undefined,
     city: form.city || undefined,
-    salesChannelsList: form.salesChannelsList,
+    salesChannelsList: form.salesChannelsList.length ? form.salesChannelsList : undefined,
     approxProductCount: form.approxProductCount ? Number(form.approxProductCount) : undefined,
     approxMonthlyOrders: form.approxMonthlyOrders || undefined,
     legalStatus: (form.legalStatus || undefined) as DraftApplicationInput["legalStatus"],
@@ -601,7 +601,7 @@ export default function ApplyBrandForm({
             </label>
             {!application && (
               <p className="mt-1.5 text-[12px] text-ink-soft/50">
-                Save your progress (click Continue) before uploading documents.
+                Save your progress (click Next) before uploading documents.
               </p>
             )}
             {documents.length > 0 && (
@@ -726,7 +726,7 @@ export default function ApplyBrandForm({
             disabled={saving}
             className="flex flex-1 items-center justify-center gap-2 rounded-md bg-ink py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? "Saving…" : "Continue"}
+            {saving ? "Saving…" : "Next"}
           </button>
         ) : (
           <button
