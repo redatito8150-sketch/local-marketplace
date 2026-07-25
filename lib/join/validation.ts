@@ -6,8 +6,12 @@
 // validation ran at all, same rule every other route in this project follows.
 import { z } from "zod";
 import {
+  EGYPT_GOVERNORATES,
+  INVENTORY_MODEL_VALUES,
   LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
   LEGAL_STATUSES_WITH_TAX_CARD,
+  PRODUCT_CATEGORY_OPTIONS,
+  SALES_CHANNEL_LINK_CONFIG,
 } from "./constants.ts";
 
 const trimmedString = (max: number) => z.string().trim().max(max);
@@ -16,12 +20,14 @@ const requiredString = (label: string, max: number) =>
 const optionalString = (max: number) =>
   trimmedString(max).optional().or(z.literal("")).transform((v) => (v ? v : undefined));
 
+const INVENTORY_MODEL_VALUE_LIST = Object.values(INVENTORY_MODEL_VALUES) as [string, ...string[]];
+
 // Kept as a plain ZodObject (no .refine()) for the same mergeable/partial-
 // able reason as legalInfoObjectSchema below — applicantInfoRefinements()
 // is applied separately wherever this ends up (step-level or full-submit).
 export const applicantInfoObjectSchema = z.object({
   founderName: requiredString("Full name", 120),
-  email: requiredString("Email", 254).email("Enter a valid email address"),
+  email: requiredString("Business email", 254).email("Enter a valid email address"),
   phone: requiredString("Phone number", 40),
   applicantRole: z.enum([
     "founder",
@@ -46,32 +52,49 @@ function applicantInfoRefinements<
 
 export const applicantInfoSchema = applicantInfoRefinements(applicantInfoObjectSchema);
 
-// Main product category is a multi-select (unlike the old single required
-// dropdown) — the applicant can pick as many as apply, or none at draft
-// time. Sales channel links replace the old Instagram-username/website-url/
-// other-social-urls trio with one {channel: link} map, since the form now
-// collects a single link per selected channel instead of the same
-// information three different ways.
+// One link field per selected sales channel, validated as a real URL only
+// for the channels SALES_CHANNEL_LINK_CONFIG marks strict (Instagram,
+// Facebook, TikTok, Website) — Pop-up markets/Other marketplaces accept a
+// URL or short free text instead.
+const salesChannelLinksSchema = z
+  .record(z.string(), trimmedString(300))
+  .default({})
+  .superRefine((links, ctx) => {
+    for (const [channel, config] of Object.entries(SALES_CHANNEL_LINK_CONFIG)) {
+      if (!config.strictUrl) continue;
+      const value = links[channel];
+      if (value && !/^https?:\/\/.+/i.test(value)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Enter a valid URL for ${config.label}`,
+          path: [channel],
+        });
+      }
+    }
+  });
+
 export const brandInfoSchema = z.object({
   brandNameAr: requiredString("Brand name (Arabic)", 120),
   brandNameEn: requiredString("Brand name (English)", 120),
-  productCategories: z.array(trimmedString(60)).max(10).default([]),
-  brandStory: optionalString(2000),
+  productCategory: z.enum(PRODUCT_CATEGORY_OPTIONS, {
+    errorMap: () => ({ message: "Category is required" }),
+  }),
+  brandStory: optionalString(500),
   foundingYear: z
     .number({ required_error: "Founding year is required" })
     .int()
     .min(1900)
     .max(new Date().getFullYear()),
   country: requiredString("Country", 80),
-  city: requiredString("City", 80),
+  city: z.enum(EGYPT_GOVERNORATES, { errorMap: () => ({ message: "City is required" }) }),
   salesChannelsList: z.array(trimmedString(60)).min(1, "Select at least one sales channel").max(10),
-  salesChannelLinks: z.record(z.string(), trimmedString(300)).default({}),
-  approxProductCount: z
-    .number({ required_error: "Approx. product count is required" })
-    .int()
-    .min(0)
-    .max(1_000_000),
-  approxMonthlyOrders: requiredString("Approx. monthly orders", 60),
+  salesChannelLinks: salesChannelLinksSchema,
+  approxProductCountRange: z.enum(["0_20", "20_100", "100_500", "500_plus"], {
+    errorMap: () => ({ message: "Approx. product count is required" }),
+  }),
+  approxMonthlyOrdersRange: z.enum(["0_20", "20_100", "100_500", "500_plus"], {
+    errorMap: () => ({ message: "Approx. monthly orders is required" }),
+  }),
 });
 
 // Kept as a plain ZodObject (no .refine()) so it stays mergeable/partial-able
@@ -112,15 +135,48 @@ function legalInfoRefinements<
 
 export const legalInfoSchema = legalInfoRefinements(legalInfoObjectSchema);
 
-export const operationsInfoSchema = z.object({
-  productPriceRange: optionalString(80),
-  productsManufacturedByBrand: z.boolean().optional(),
-  madeToOrder: z.boolean().optional(),
-  avgPreparationTime: optionalString(60),
-  shippingCoverage: optionalString(120),
-  returnExchangeAvailable: z.boolean().optional(),
-  inventoryStatus: optionalString(120),
+// Kept as a plain ZodObject (no .refine()) for the same mergeable/partial-
+// able reason as legalInfoObjectSchema — operationsInfoRefinements() below
+// is applied separately (step-level or full-submit).
+export const operationsInfoObjectSchema = z.object({
+  priceMin: z.number().min(0, "Minimum price cannot be negative").optional(),
+  priceMax: z.number().min(0, "Maximum price cannot be negative").optional(),
+  manufacturingModel: z.enum(["own_production", "external_manufacturer", "mixed"]).optional(),
+  fulfillmentModel: z.enum(["ready_to_ship", "made_to_order", "both"]).optional(),
+  avgPreparationTimeRange: z
+    .enum(["same_day", "1_2_days", "3_5_days", "6_7_days", "more_than_week"])
+    .optional(),
+  shippingCoverageOption: z.enum(["all_egypt", "selected_governorates", "international"]).optional(),
+  shippingGovernorates: z.array(z.enum(EGYPT_GOVERNORATES)).max(27).default([]),
+  returnsPolicy: z
+    .enum(["returns_and_exchanges", "exchanges_only", "no_returns", "depends_on_product"])
+    .optional(),
+  inventoryModel: z.array(z.enum(INVENTORY_MODEL_VALUE_LIST)).max(4).default([]),
 });
+
+function operationsInfoRefinements<
+  T extends {
+    priceMin?: number;
+    priceMax?: number;
+    shippingCoverageOption?: string;
+    shippingGovernorates?: string[];
+  }
+>(schema: z.ZodType<T>) {
+  return schema
+    .refine(
+      (data) =>
+        data.priceMin === undefined || data.priceMax === undefined || data.priceMax >= data.priceMin,
+      { message: "Maximum price must be greater than or equal to minimum price", path: ["priceMax"] }
+    )
+    .refine(
+      (data) =>
+        data.shippingCoverageOption !== "selected_governorates" ||
+        (data.shippingGovernorates && data.shippingGovernorates.length > 0),
+      { message: "Select at least one governorate", path: ["shippingGovernorates"] }
+    );
+}
+
+export const operationsInfoSchema = operationsInfoRefinements(operationsInfoObjectSchema);
 
 export const consentSchema = z.object({
   consentAccurate: z.literal(true, { errorMap: () => ({ message: "Please confirm the information is accurate" }) }),
@@ -128,16 +184,16 @@ export const consentSchema = z.object({
 });
 
 // Full submit-time schema — every step merged, everything above required,
-// plus the conditional-field checks (legal status, "other" role) applied
-// once at the end.
+// plus the conditional-field checks (legal status, "other" role, price
+// range, selected-governorates) applied once at the end.
 const submitApplicationObjectSchema = applicantInfoObjectSchema
   .merge(brandInfoSchema)
   .merge(legalInfoObjectSchema)
-  .merge(operationsInfoSchema)
+  .merge(operationsInfoObjectSchema)
   .merge(consentSchema);
 
 export const submitApplicationSchema = legalInfoRefinements(
-  applicantInfoRefinements(submitApplicationObjectSchema)
+  applicantInfoRefinements(operationsInfoRefinements(submitApplicationObjectSchema))
 );
 
 export type SubmitApplicationInput = z.infer<typeof submitApplicationSchema>;
@@ -149,7 +205,7 @@ export const draftApplicationSchema = applicantInfoObjectSchema
   .partial()
   .merge(brandInfoSchema.partial())
   .merge(legalInfoObjectSchema.partial())
-  .merge(operationsInfoSchema.partial())
+  .merge(operationsInfoObjectSchema.partial())
   .merge(consentSchema.partial());
 
 export type DraftApplicationInput = z.infer<typeof draftApplicationSchema>;

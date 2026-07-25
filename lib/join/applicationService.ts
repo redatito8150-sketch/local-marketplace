@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import {
+  isEgyptGovernorate,
   isValidStatusTransition,
   isWithinReapplicationCooldown,
   WEBSITE_CHANNEL,
@@ -48,6 +49,8 @@ interface BrandApplicationRow {
   sales_channel_links: Record<string, string>;
   approx_product_count: number | null;
   approx_monthly_orders: string | null;
+  approx_product_count_range: string | null;
+  approx_monthly_orders_range: string | null;
   legal_status: string | null;
   commercial_registration_number: string | null;
   tax_registration_number: string | null;
@@ -59,6 +62,15 @@ interface BrandApplicationRow {
   shipping_coverage: string | null;
   return_exchange_available: boolean | null;
   inventory_status: string | null;
+  price_min: number | null;
+  price_max: number | null;
+  manufacturing_model: string | null;
+  fulfillment_model: string | null;
+  avg_preparation_time_range: string | null;
+  shipping_coverage_option: string | null;
+  shipping_governorates: string[];
+  returns_policy: string | null;
+  inventory_model: string[];
   consent_accurate: boolean;
   consent_terms: boolean;
   reviewed_at: string | null;
@@ -98,11 +110,15 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     additionalCategories: row.additional_categories ?? [],
     foundingYear: row.founding_year ?? undefined,
     country: row.country ?? undefined,
-    city: row.city ?? undefined,
+    city: row.city && isEgyptGovernorate(row.city) ? row.city : undefined,
     salesChannelsList: row.sales_channels_list ?? [],
     salesChannelLinks: row.sales_channel_links ?? {},
     approxProductCount: row.approx_product_count ?? undefined,
     approxMonthlyOrders: row.approx_monthly_orders ?? undefined,
+    approxProductCountRange:
+      (row.approx_product_count_range as BrandApplicationRecord["approxProductCountRange"]) ?? undefined,
+    approxMonthlyOrdersRange:
+      (row.approx_monthly_orders_range as BrandApplicationRecord["approxMonthlyOrdersRange"]) ?? undefined,
     legalStatus: (row.legal_status as BrandApplicationRecord["legalStatus"]) ?? null,
     commercialRegistrationNumber: row.commercial_registration_number ?? undefined,
     taxRegistrationNumber: row.tax_registration_number ?? undefined,
@@ -114,6 +130,17 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     shippingCoverage: row.shipping_coverage ?? undefined,
     returnExchangeAvailable: row.return_exchange_available ?? undefined,
     inventoryStatus: row.inventory_status ?? undefined,
+    priceMin: row.price_min ?? undefined,
+    priceMax: row.price_max ?? undefined,
+    manufacturingModel: (row.manufacturing_model as BrandApplicationRecord["manufacturingModel"]) ?? undefined,
+    fulfillmentModel: (row.fulfillment_model as BrandApplicationRecord["fulfillmentModel"]) ?? undefined,
+    avgPreparationTimeRange:
+      (row.avg_preparation_time_range as BrandApplicationRecord["avgPreparationTimeRange"]) ?? undefined,
+    shippingCoverageOption:
+      (row.shipping_coverage_option as BrandApplicationRecord["shippingCoverageOption"]) ?? undefined,
+    shippingGovernorates: (row.shipping_governorates ?? []).filter(isEgyptGovernorate),
+    returnsPolicy: (row.returns_policy as BrandApplicationRecord["returnsPolicy"]) ?? undefined,
+    inventoryModel: row.inventory_model ?? [],
     consentAccurate: row.consent_accurate,
     consentTerms: row.consent_terms,
     reviewedAt: row.reviewed_at ?? undefined,
@@ -181,7 +208,6 @@ export async function getMyApplication(userId: string): Promise<BrandApplication
 
 function draftInputToRow(input: DraftApplicationInput) {
   const websiteLink = input.salesChannelLinks?.[WEBSITE_CHANNEL];
-  const [primaryCategory, ...otherCategories] = input.productCategories ?? [];
   return {
     // brand_name/product_category/brand_story are NOT NULL at the DB level
     // (pre-dating this multi-step redesign — see schema.sql), but a draft
@@ -197,7 +223,7 @@ function draftInputToRow(input: DraftApplicationInput) {
     // instagramUsername/websiteUrl no longer exist as separate inputs on
     // the new form, so this just mirrors the "Website" channel's link.
     instagram_or_website: websiteLink || "",
-    product_category: primaryCategory ?? "",
+    product_category: input.productCategory ?? "",
     brand_story: input.brandStory ?? "",
     applicant_role: input.applicantRole,
     applicant_role_other: input.applicantRoleOther,
@@ -207,25 +233,26 @@ function draftInputToRow(input: DraftApplicationInput) {
     // existing value untouched), so admin brand-creation prefill
     // (app/admin/brands/new) keeps reading a real value.
     website_url: websiteLink || undefined,
-    additional_categories: otherCategories,
     founding_year: input.foundingYear,
     country: input.country,
     city: input.city,
     sales_channels_list: input.salesChannelsList,
     sales_channel_links: input.salesChannelLinks ?? {},
-    approx_product_count: input.approxProductCount,
-    approx_monthly_orders: input.approxMonthlyOrders,
+    approx_product_count_range: input.approxProductCountRange,
+    approx_monthly_orders_range: input.approxMonthlyOrdersRange,
     legal_status: input.legalStatus,
     commercial_registration_number: input.commercialRegistrationNumber,
     tax_registration_number: input.taxRegistrationNumber,
     legal_business_name: input.legalBusinessName,
-    product_price_range: input.productPriceRange,
-    products_manufactured_by_brand: input.productsManufacturedByBrand,
-    made_to_order: input.madeToOrder,
-    avg_preparation_time: input.avgPreparationTime,
-    shipping_coverage: input.shippingCoverage,
-    return_exchange_available: input.returnExchangeAvailable,
-    inventory_status: input.inventoryStatus,
+    price_min: input.priceMin,
+    price_max: input.priceMax,
+    manufacturing_model: input.manufacturingModel,
+    fulfillment_model: input.fulfillmentModel,
+    avg_preparation_time_range: input.avgPreparationTimeRange,
+    shipping_coverage_option: input.shippingCoverageOption,
+    shipping_governorates: input.shippingGovernorates,
+    returns_policy: input.returnsPolicy,
+    inventory_model: input.inventoryModel,
     consent_accurate: input.consentAccurate ?? false,
     consent_terms: input.consentTerms ?? false,
   };

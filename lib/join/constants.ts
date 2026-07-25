@@ -1,4 +1,16 @@
-import type { ApplicantRole, ApplicationStatus, BrandApplicationRecord, LegalStatus } from "@/types";
+import type {
+  ApplicantRole,
+  ApplicationStatus,
+  BrandApplicationRecord,
+  BusinessSizeRange,
+  EgyptGovernorate,
+  FulfillmentModel,
+  LegalStatus,
+  ManufacturingModel,
+  PreparationTimeRange,
+  ReturnsPolicy,
+  ShippingCoverageOption,
+} from "@/types";
 
 export { ACTIVE_APPLICATION_STATUSES } from "../../types/index.ts";
 
@@ -43,13 +55,25 @@ export const SALES_CHANNEL_OPTIONS = [
   "Physical store",
   "Pop-up markets",
   "Other marketplaces",
-  "Other",
 ] as const;
 
 // The one sales channel whose link doubles as the brand's website —
 // applicationService.ts mirrors it into the legacy website_url column so
 // admin brand-creation prefill (app/admin/brands/new) keeps working.
 export const WEBSITE_CHANNEL = "Website";
+
+// Per-channel link field config — Physical store has no entry (no field
+// shown at all); the four "*_URL" channels are validated as real URLs,
+// Pop-up markets/Other marketplaces accept a URL or short free text instead
+// since a market or marketplace often isn't a single canonical link.
+export const SALES_CHANNEL_LINK_CONFIG: Record<string, { label: string; strictUrl: boolean }> = {
+  Instagram: { label: "Instagram URL", strictUrl: true },
+  Facebook: { label: "Facebook URL", strictUrl: true },
+  TikTok: { label: "TikTok URL", strictUrl: true },
+  [WEBSITE_CHANNEL]: { label: "Website URL", strictUrl: true },
+  "Pop-up markets": { label: "Pop-up markets details", strictUrl: false },
+  "Other marketplaces": { label: "Marketplace details", strictUrl: false },
+};
 
 export const PRODUCT_CATEGORY_OPTIONS = [
   "Women's Fashion",
@@ -60,6 +84,108 @@ export const PRODUCT_CATEGORY_OPTIONS = [
   "Beauty",
   "Other",
 ] as const;
+
+// All 27 Egyptian governorates — the fixed, canonical list for both the
+// brand-application City field and Step 4's "Selected governorates"
+// shipping coverage. No custom values are ever accepted outside this list.
+// `satisfies` (not a type annotation) keeps the literal tuple type intact —
+// z.enum() needs the literal tuple, not the widened EgyptGovernorate[] —
+// while still checking every entry really is a valid EgyptGovernorate, and
+// types/index.ts's EgyptGovernorate union is the one canonical source this
+// gets checked against, so the two can never silently drift apart.
+export const EGYPT_GOVERNORATES = [
+  "Alexandria",
+  "Aswan",
+  "Asyut",
+  "Beheira",
+  "Beni Suef",
+  "Cairo",
+  "Dakahlia",
+  "Damietta",
+  "Faiyum",
+  "Gharbia",
+  "Giza",
+  "Ismailia",
+  "Kafr El Sheikh",
+  "Luxor",
+  "Matrouh",
+  "Minya",
+  "Monufia",
+  "New Valley",
+  "North Sinai",
+  "Port Said",
+  "Qalyubia",
+  "Qena",
+  "Red Sea",
+  "Sharqia",
+  "Sohag",
+  "South Sinai",
+  "Suez",
+] as const satisfies readonly EgyptGovernorate[];
+
+// Real runtime narrowing for a raw DB string (e.g. brand_applications.city)
+// into the typed EgyptGovernorate union — used at the one boundary where an
+// untyped Postgres text column becomes a typed field, instead of a type
+// assertion.
+export function isEgyptGovernorate(value: string): value is EgyptGovernorate {
+  return EGYPT_GOVERNORATES.some((governorate) => governorate === value);
+}
+
+export const BUSINESS_SIZE_OPTIONS: { value: BusinessSizeRange; label: string }[] = [
+  { value: "0_20", label: "0–20" },
+  { value: "20_100", label: "20–100" },
+  { value: "100_500", label: "100–500" },
+  { value: "500_plus", label: "500+" },
+];
+
+export const MANUFACTURING_MODEL_OPTIONS: { value: ManufacturingModel; label: string }[] = [
+  { value: "own_production", label: "We manufacture our products" },
+  { value: "external_manufacturer", label: "We work with external manufacturers" },
+  { value: "mixed", label: "We use both" },
+];
+
+export const FULFILLMENT_MODEL_OPTIONS: { value: FulfillmentModel; label: string }[] = [
+  { value: "ready_to_ship", label: "Ready to ship" },
+  { value: "made_to_order", label: "Made to order" },
+  { value: "both", label: "Both" },
+];
+
+export const PREPARATION_TIME_OPTIONS: { value: PreparationTimeRange; label: string }[] = [
+  { value: "same_day", label: "Same day" },
+  { value: "1_2_days", label: "1–2 business days" },
+  { value: "3_5_days", label: "3–5 business days" },
+  { value: "6_7_days", label: "6–7 business days" },
+  { value: "more_than_week", label: "More than one week" },
+];
+
+export const SHIPPING_COVERAGE_OPTIONS: { value: ShippingCoverageOption; label: string }[] = [
+  { value: "all_egypt", label: "All Egypt" },
+  { value: "selected_governorates", label: "Selected governorates" },
+  { value: "international", label: "International" },
+];
+
+export const RETURNS_POLICY_OPTIONS: { value: ReturnsPolicy; label: string }[] = [
+  { value: "returns_and_exchanges", label: "Returns and exchanges" },
+  { value: "exchanges_only", label: "Exchanges only" },
+  { value: "no_returns", label: "No returns or exchanges" },
+  { value: "depends_on_product", label: "Depends on the product" },
+];
+
+export const INVENTORY_MODEL_OPTIONS = [
+  "In stock",
+  "Made to order",
+  "Pre-order",
+  "Limited drops",
+] as const;
+
+// Stable stored value per inventory-model label (kept short and
+// database-safe, same convention as the other fixed-choice fields above).
+export const INVENTORY_MODEL_VALUES: Record<(typeof INVENTORY_MODEL_OPTIONS)[number], string> = {
+  "In stock": "in_stock",
+  "Made to order": "made_to_order",
+  "Pre-order": "pre_order",
+  "Limited drops": "limited_drops",
+};
 
 // Server-authoritative status transition map — the admin PATCH route (and
 // the applicant submit/withdraw routes) reject any transition not listed

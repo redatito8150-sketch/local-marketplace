@@ -21,19 +21,24 @@ const validSubmission = {
   applicantRole: "founder",
   brandNameAr: "استوديو سارة",
   brandNameEn: "Sara Studio",
-  productCategories: ["Women's Fashion"],
+  productCategory: "Women's Fashion",
   brandStory: "A small studio making handmade accessories.",
   foundingYear: currentYear - 2,
   country: "Egypt",
   city: "Cairo",
   salesChannelsList: ["Instagram"],
   salesChannelLinks: { Instagram: "https://instagram.com/sarastudio" },
-  approxProductCount: 25,
-  approxMonthlyOrders: "10-50",
+  approxProductCountRange: "0_20",
+  approxMonthlyOrdersRange: "20_100",
   legalStatus: "unregistered_individual",
-  productsManufacturedByBrand: true,
-  madeToOrder: true,
-  returnExchangeAvailable: true,
+  priceMin: 100,
+  priceMax: 500,
+  manufacturingModel: "own_production",
+  fulfillmentModel: "ready_to_ship",
+  avgPreparationTimeRange: "1_2_days",
+  shippingCoverageOption: "all_egypt",
+  returnsPolicy: "returns_and_exchanges",
+  inventoryModel: ["in_stock"],
   consentAccurate: true,
   consentTerms: true,
 };
@@ -91,6 +96,89 @@ test("submitApplicationSchema requires specifying a role when applicantRole is '
   assert.equal(withRole.success, true);
 });
 
+test("submitApplicationSchema rejects a city outside the 27 Egyptian governorates", () => {
+  const result = submitApplicationSchema.safeParse({ ...validSubmission, city: "Not A Real City" });
+  assert.equal(result.success, false);
+});
+
+test("submitApplicationSchema rejects a category outside the fixed list", () => {
+  const result = submitApplicationSchema.safeParse({ ...validSubmission, productCategory: "Electronics" });
+  assert.equal(result.success, false);
+});
+
+test("submitApplicationSchema requires approx. product count and monthly orders ranges", () => {
+  const missingCount = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    approxProductCountRange: undefined,
+  });
+  assert.equal(missingCount.success, false);
+
+  const invalidRange = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    approxMonthlyOrdersRange: "not_a_real_bucket",
+  });
+  assert.equal(invalidRange.success, false);
+});
+
+test("submitApplicationSchema validates strict-URL sales channel links but not free-text ones", () => {
+  const badInstagram = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    salesChannelsList: ["Instagram"],
+    salesChannelLinks: { Instagram: "not-a-url" },
+  });
+  assert.equal(badInstagram.success, false);
+
+  const popupMarketsFreeText = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    salesChannelsList: ["Instagram", "Pop-up markets"],
+    salesChannelLinks: {
+      Instagram: "https://instagram.com/sarastudio",
+      "Pop-up markets": "Weekend market at Zamalek, no link",
+    },
+  });
+  assert.equal(popupMarketsFreeText.success, true);
+});
+
+test("submitApplicationSchema requires the maximum price to be at least the minimum price", () => {
+  const result = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    priceMin: 500,
+    priceMax: 100,
+  });
+  assert.equal(result.success, false);
+
+  const equalOk = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    priceMin: 500,
+    priceMax: 500,
+  });
+  assert.equal(equalOk.success, true);
+});
+
+test("submitApplicationSchema requires at least one governorate when shipping coverage is 'selected_governorates'", () => {
+  const missing = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    shippingCoverageOption: "selected_governorates",
+    shippingGovernorates: [],
+  });
+  assert.equal(missing.success, false);
+
+  const withGovernorate = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    shippingCoverageOption: "selected_governorates",
+    shippingGovernorates: ["Cairo", "Giza"],
+  });
+  assert.equal(withGovernorate.success, true);
+});
+
+test("submitApplicationSchema rejects an inventory model value outside the fixed set", () => {
+  const result = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    inventoryModel: ["not_a_real_value"],
+  });
+  assert.equal(result.success, false);
+});
+
 test("draftApplicationSchema accepts a partially filled-in draft", () => {
   const result = draftApplicationSchema.safeParse({ brandNameEn: "Just Started" });
   assert.equal(result.success, true);
@@ -116,7 +204,6 @@ function makeRejectedApp(overrides: Partial<BrandApplicationRecord> = {}): Brand
     id: "app-1",
     brandName: validSubmission.brandNameEn,
     instagramOrWebsite: "",
-    productCategory: validSubmission.productCategories[0],
     status: "rejected",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -127,6 +214,8 @@ function makeRejectedApp(overrides: Partial<BrandApplicationRecord> = {}): Brand
     additionalCategories: [],
     salesChannelsList: ["Instagram"],
     salesChannelLinks: validSubmission.salesChannelLinks,
+    shippingGovernorates: [],
+    inventoryModel: validSubmission.inventoryModel,
     ...overrides,
   } as BrandApplicationRecord;
 }

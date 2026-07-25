@@ -447,6 +447,60 @@ export type LegalStatus =
   | "unregistered_individual"
   | "other";
 
+export type BusinessSizeRange = "0_20" | "20_100" | "100_500" | "500_plus";
+
+export type ManufacturingModel = "own_production" | "external_manufacturer" | "mixed";
+
+export type FulfillmentModel = "ready_to_ship" | "made_to_order" | "both";
+
+export type PreparationTimeRange =
+  | "same_day"
+  | "1_2_days"
+  | "3_5_days"
+  | "6_7_days"
+  | "more_than_week";
+
+export type ShippingCoverageOption = "all_egypt" | "selected_governorates" | "international";
+
+export type ReturnsPolicy =
+  | "returns_and_exchanges"
+  | "exchanges_only"
+  | "no_returns"
+  | "depends_on_product";
+
+// The 27 Egyptian governorates — canonical list backing both the brand-
+// application City field and Step 4's "Selected governorates" shipping
+// coverage. lib/join/constants.ts's EGYPT_GOVERNORATES runtime array is
+// checked against this type (via `satisfies`) so the two can never drift.
+export type EgyptGovernorate =
+  | "Alexandria"
+  | "Aswan"
+  | "Asyut"
+  | "Beheira"
+  | "Beni Suef"
+  | "Cairo"
+  | "Dakahlia"
+  | "Damietta"
+  | "Faiyum"
+  | "Gharbia"
+  | "Giza"
+  | "Ismailia"
+  | "Kafr El Sheikh"
+  | "Luxor"
+  | "Matrouh"
+  | "Minya"
+  | "Monufia"
+  | "New Valley"
+  | "North Sinai"
+  | "Port Said"
+  | "Qalyubia"
+  | "Qena"
+  | "Red Sea"
+  | "Sharqia"
+  | "Sohag"
+  | "South Sinai"
+  | "Suez";
+
 // Snapshot of the authenticated account at submission time — deliberately
 // separate from the application's own contact fields (email/phone entered
 // in the form). Never assume these identify the same thing; the admin UI
@@ -503,11 +557,13 @@ export interface BrandApplicationRecord {
   additionalCategories: string[];
   foundingYear?: number;
   country?: string;
-  city?: string;
+  city?: EgyptGovernorate;
   salesChannelsList: string[];
   salesChannelLinks: Record<string, string>;
   approxProductCount?: number;
   approxMonthlyOrders?: string;
+  approxProductCountRange?: BusinessSizeRange;
+  approxMonthlyOrdersRange?: BusinessSizeRange;
 
   legalStatus: LegalStatus | null;
   commercialRegistrationNumber?: string;
@@ -521,6 +577,15 @@ export interface BrandApplicationRecord {
   shippingCoverage?: string;
   returnExchangeAvailable?: boolean;
   inventoryStatus?: string;
+  priceMin?: number;
+  priceMax?: number;
+  manufacturingModel?: ManufacturingModel;
+  fulfillmentModel?: FulfillmentModel;
+  avgPreparationTimeRange?: PreparationTimeRange;
+  shippingCoverageOption?: ShippingCoverageOption;
+  shippingGovernorates: EgyptGovernorate[];
+  returnsPolicy?: ReturnsPolicy;
+  inventoryModel: string[];
 
   consentAccurate: boolean;
   consentTerms: boolean;

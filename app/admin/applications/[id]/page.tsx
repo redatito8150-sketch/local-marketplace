@@ -3,7 +3,17 @@ import { notFound } from "next/navigation";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import { getApplicationDocuments, getApplicationStatusHistory } from "@/lib/join/applicationService";
 import { APPLICATION_STATUS_LABELS, applicationStatusBadgeClass } from "@/lib/admin/statuses";
-import { LEGAL_STATUS_OPTIONS } from "@/lib/join/constants";
+import {
+  BUSINESS_SIZE_OPTIONS,
+  FULFILLMENT_MODEL_OPTIONS,
+  INVENTORY_MODEL_OPTIONS,
+  INVENTORY_MODEL_VALUES,
+  LEGAL_STATUS_OPTIONS,
+  MANUFACTURING_MODEL_OPTIONS,
+  PREPARATION_TIME_OPTIONS,
+  RETURNS_POLICY_OPTIONS,
+  SHIPPING_COVERAGE_OPTIONS,
+} from "@/lib/join/constants";
 import ApplicationTransitionPanel from "@/components/admin/ApplicationTransitionPanel";
 import ApplicationAdminNotes from "@/components/admin/ApplicationAdminNotes";
 import ApplicationDocumentsList from "@/components/admin/ApplicationDocumentsList";
@@ -131,12 +141,26 @@ export default async function AdminApplicationDetailPage(
               label="Sales channels"
               value={application.salesChannelsList.join(", ") || application.salesChannels || "—"}
             />
-            <Field label="Approx. products" value={application.approxProductCount?.toString() ?? "—"} />
-            <Field label="Approx. monthly orders" value={application.approxMonthlyOrders || "—"} />
+            <Field
+              label="Approx. products"
+              value={
+                labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxProductCountRange) ??
+                application.approxProductCount?.toString() ??
+                "—"
+              }
+            />
+            <Field
+              label="Approx. monthly orders"
+              value={
+                labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxMonthlyOrdersRange) ??
+                application.approxMonthlyOrders ??
+                "—"
+              }
+            />
           </Section>
 
           <Section title="Legal & documents">
-            <Field label="Legal status" value={legalStatusLabel ?? application.legalStatus ?? "—"} />
+            <Field label="Business registration status" value={legalStatusLabel ?? application.legalStatus ?? "—"} />
             <Field
               label="Commercial registration #"
               value={application.commercialRegistrationNumber || "—"}
@@ -149,19 +173,64 @@ export default async function AdminApplicationDetailPage(
           </Section>
 
           <Section title="Products & operations">
-            <Field label="Price range" value={application.productPriceRange || "—"} />
             <Field
-              label="Manufactured by brand"
-              value={boolLabel(application.productsManufacturedByBrand)}
+              label="Price range"
+              value={
+                application.priceMin !== undefined || application.priceMax !== undefined
+                  ? `EGP ${application.priceMin ?? "0"} – ${application.priceMax ?? "—"}`
+                  : application.productPriceRange || "—"
+              }
             />
-            <Field label="Made to order" value={boolLabel(application.madeToOrder)} />
-            <Field label="Avg. preparation time" value={application.avgPreparationTime || "—"} />
-            <Field label="Shipping coverage" value={application.shippingCoverage || "—"} />
+            <Field
+              label="Manufacturing model"
+              value={
+                labelForOrFallback(MANUFACTURING_MODEL_OPTIONS, application.manufacturingModel) ??
+                boolLabel(application.productsManufacturedByBrand)
+              }
+            />
+            <Field
+              label="Fulfillment model"
+              value={
+                labelForOrFallback(FULFILLMENT_MODEL_OPTIONS, application.fulfillmentModel) ??
+                boolLabel(application.madeToOrder)
+              }
+            />
+            <Field
+              label="Avg. preparation time"
+              value={
+                labelForOrFallback(PREPARATION_TIME_OPTIONS, application.avgPreparationTimeRange) ??
+                application.avgPreparationTime ??
+                "—"
+              }
+            />
+            <Field
+              label="Shipping coverage"
+              value={
+                labelForOrFallback(SHIPPING_COVERAGE_OPTIONS, application.shippingCoverageOption) ??
+                application.shippingCoverage ??
+                "—"
+              }
+            />
+            {application.shippingGovernorates.length > 0 && (
+              <Field label="Selected governorates" value={application.shippingGovernorates.join(", ")} />
+            )}
             <Field
               label="Returns / exchanges"
-              value={boolLabel(application.returnExchangeAvailable)}
+              value={
+                labelForOrFallback(RETURNS_POLICY_OPTIONS, application.returnsPolicy) ??
+                boolLabel(application.returnExchangeAvailable)
+              }
             />
-            <Field label="Inventory status" value={application.inventoryStatus || "—"} />
+            <Field
+              label="Inventory model"
+              value={
+                application.inventoryModel.length > 0
+                  ? INVENTORY_MODEL_OPTIONS.filter((label) =>
+                      application.inventoryModel.includes(INVENTORY_MODEL_VALUES[label])
+                    ).join(", ")
+                  : application.inventoryStatus || "—"
+              }
+            />
           </Section>
 
           {(application.rejectionReason || application.changesRequestedMessage) && (
@@ -215,6 +284,17 @@ export default async function AdminApplicationDetailPage(
 function boolLabel(value: boolean | undefined): string {
   if (value === undefined) return "—";
   return value ? "Yes" : "No";
+}
+
+// Applications submitted before the fixed-choice rework have no value in
+// these new columns — returns null (not "—") so callers can fall back to
+// the legacy free-text/boolean field instead of shadowing it.
+function labelForOrFallback(
+  options: { value: string; label: string }[],
+  value: string | undefined
+): string | null {
+  if (!value) return null;
+  return options.find((o) => o.value === value)?.label ?? value;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
