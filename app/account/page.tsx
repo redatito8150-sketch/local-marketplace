@@ -197,17 +197,7 @@ function AccountPageContent() {
           </p>
         )}
 
-        <div className="mt-9 w-full max-w-sm">
-          <GoogleAuthButton next={nextParam} label="Continue with Google" />
-        </div>
-
-        <div className="mt-5 flex w-full max-w-sm items-center gap-3 text-[11.5px] font-medium uppercase tracking-wide text-ink-soft/40">
-          <span className="h-px flex-1 bg-stone-150" />
-          or continue with email
-          <span className="h-px flex-1 bg-stone-150" />
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-5 w-full max-w-sm space-y-4">
+        <form onSubmit={handleSubmit} className="mt-9 w-full max-w-sm space-y-4">
           {mode === "create" && (
             <div className="relative">
               <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/40" />
@@ -326,6 +316,16 @@ function AccountPageContent() {
               : "Create Account"}
           </button>
         </form>
+
+        <div className="mt-5 flex w-full max-w-sm items-center gap-3 text-[11.5px] font-medium uppercase tracking-wide text-ink-soft/40">
+          <span className="h-px flex-1 bg-stone-150" />
+          or continue with
+          <span className="h-px flex-1 bg-stone-150" />
+        </div>
+
+        <div className="mt-5 w-full max-w-sm">
+          <GoogleAuthButton next={nextParam} label="Continue with Google" />
+        </div>
 
         <p className="mt-6 text-[13px] text-ink-soft/60">
           {mode === "sign-in" ? (
