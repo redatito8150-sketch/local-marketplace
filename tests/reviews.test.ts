@@ -1,10 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { calculateReviewSummary, isEligibleOrder, weightedBrandAverage } from "../lib/reviews/aggregates.ts";
-import { parseReviewFilters, reportSchema, replySchema, reviewInputSchema } from "../lib/reviews/validation.ts";
+import { parseReviewFilters, reportSchema, replySchema, reviewInputSchema, toReviewInsert } from "../lib/reviews/validation.ts";
 
 const valid = { productId:"p1", orderItemId:"11111111-1111-4111-8111-111111111111", rating:5, title:"Lovely", body:"Excellent quality and fit." };
 test("accepts a valid review input",()=>assert.equal(reviewInputSchema.safeParse(valid).success,true));
+test("maps client review fields to database snake_case columns",()=>assert.deepEqual(toReviewInsert("user-1", valid),{
+  user_id:"user-1",product_id:"p1",order_item_id:"11111111-1111-4111-8111-111111111111",rating:5,title:"Lovely",body:"Excellent quality and fit."
+}));
 test("rejects ratings outside one to five",()=>assert.equal(reviewInputSchema.safeParse({...valid,rating:6}).success,false));
 test("rejects whitespace and short review text",()=>assert.equal(reviewInputSchema.safeParse({...valid,body:"   "}).success,false));
 test("limits review title and body",()=>{assert.equal(reviewInputSchema.safeParse({...valid,title:"x".repeat(121)}).success,false);assert.equal(reviewInputSchema.safeParse({...valid,body:"x".repeat(2001)}).success,false);});

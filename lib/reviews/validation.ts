@@ -20,6 +20,17 @@ export const moderationSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+export function toReviewInsert(userId: string, input: z.infer<typeof reviewInputSchema>) {
+  return {
+    user_id: userId,
+    product_id: input.productId,
+    order_item_id: input.orderItemId,
+    rating: input.rating,
+    title: input.title,
+    body: input.body,
+  };
+}
+
 export function parseReviewFilters(params: Record<string, string | string[] | undefined>): ReviewFilters {
   const one = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
   const rating = Number(one(params.rating));
