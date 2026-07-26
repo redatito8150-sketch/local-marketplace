@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import AccountHeaderCard from "@/components/account/AccountHeaderCard";
@@ -15,7 +16,14 @@ export default async function AccountDashboardLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  if (!user) redirect("/account");
+  if (!user) {
+    // x-pathname is set by proxy.ts on every request — carries the exact
+    // protected page (e.g. /account/wishlist) the visitor was trying to
+    // reach, so signing in lands them back there instead of always at
+    // /account/overview.
+    const pathname = (await headers()).get("x-pathname");
+    redirect(pathname ? `/account?next=${encodeURIComponent(pathname)}` : "/account");
+  }
 
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase

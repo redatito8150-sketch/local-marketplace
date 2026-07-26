@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Heart, ShoppingBag, User, Menu, X, LayoutGrid } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
@@ -35,6 +36,7 @@ export default function Header() {
   const [active, setActive] = useState("Home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
   const { itemCount } = useCart();
   const { count: wishlistCount } = useWishlist();
   const { user, profile } = useAuth();
@@ -143,7 +145,7 @@ export default function Header() {
           )}
 
           <Link
-            href="/account"
+            href={user ? "/account" : `/account?next=${encodeURIComponent(pathname)}`}
             aria-label="Account"
             className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
           >

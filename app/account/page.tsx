@@ -1,20 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { User, Mail, Lock, Phone } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useAuth } from "@/context/AuthContext";
 import CaptchaWidget, { type CaptchaWidgetHandle } from "@/components/account/CaptchaWidget";
 import PasswordInput from "@/components/shared/PasswordInput";
+import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
+import { decidePostAuthDestination } from "@/lib/auth/postAuthDestination";
 
 const CAPTCHA_REQUIRED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
+// useSearchParams() opts this page out of static prerendering unless it's
+// wrapped in Suspense — the actual form lives in AccountPageContent so the
+// default export can provide that boundary.
 export default function AccountPage() {
+  return (
+    <Suspense fallback={null}>
+      <AccountPageContent />
+    </Suspense>
+  );
+}
+
+function AccountPageContent() {
   const { user, profile, loading, mfaChallenge, signIn, signUp, verifyMfaChallenge } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
+  const oauthFailed = searchParams.get("error") === "oauth_failed";
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -37,13 +53,9 @@ export default function AccountPage() {
   // set isn't sent through onboarding on this one tick. A pending MFA
   // challenge blocks the redirect entirely until it's cleared.
   useEffect(() => {
-    if (!user || loading || mfaChallenge) return;
-    if (profile && !profile.onboardingCompletedAt) {
-      router.replace("/onboarding/add-address");
-    } else if (profile) {
-      router.replace("/account/overview");
-    }
-  }, [user, profile, loading, mfaChallenge, router]);
+    if (!user || loading || mfaChallenge || !profile) return;
+    router.replace(decidePostAuthDestination(profile.onboardingCompletedAt, nextParam));
+  }, [user, profile, loading, mfaChallenge, router, nextParam]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,6 +191,12 @@ export default function AccountPage() {
             : "Join Local to save your favorites and track orders."}
         </p>
 
+        {oauthFailed && (
+          <p role="alert" className="mt-6 w-full max-w-sm rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+            Google sign-in didn&apos;t complete. Please try again or continue with email below.
+          </p>
+        )}
+
         <form onSubmit={handleSubmit} className="mt-9 w-full max-w-sm space-y-4">
           {mode === "create" && (
             <div className="relative">
@@ -298,6 +316,16 @@ export default function AccountPage() {
               : "Create Account"}
           </button>
         </form>
+
+        <div className="mt-5 flex w-full max-w-sm items-center gap-3 text-[11.5px] font-medium uppercase tracking-wide text-ink-soft/40">
+          <span className="h-px flex-1 bg-stone-150" />
+          or continue with
+          <span className="h-px flex-1 bg-stone-150" />
+        </div>
+
+        <div className="mt-5 w-full max-w-sm">
+          <GoogleAuthButton next={nextParam} label="Continue with Google" />
+        </div>
 
         <p className="mt-6 text-[13px] text-ink-soft/60">
           {mode === "sign-in" ? (

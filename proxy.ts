@@ -12,9 +12,16 @@ const AUTH_COOKIE_OPTIONS = {
 
 // Refreshes the Supabase auth session cookie on every request so server
 // components/route handlers always see an up-to-date session, per the
-// standard @supabase/ssr Next.js App Router pattern.
+// standard @supabase/ssr Next.js App Router pattern. Also forwards the
+// current pathname as a request header (x-pathname) — the only way a
+// Server Component/layout can know "what page was this" without a client
+// hook, used by the account dashboard layout to build a safe `?next=`
+// return path when it redirects a signed-out visitor to sign in.
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+
+  let response = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -27,7 +34,7 @@ export async function proxy(request: NextRequest) {
       },
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
+        response = NextResponse.next({ request: { headers: requestHeaders } });
         cookiesToSet.forEach(({ name, value, options }) =>
           response.cookies.set(name, value, { ...options, ...AUTH_COOKIE_OPTIONS })
         );
