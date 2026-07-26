@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Plus, ShoppingBag, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useCart } from "@/context/CartContext";
-import { formatPrice } from "@/lib/format";
+import { calculateCollectionTotal, formatPrice, resolveActivePrice } from "@/lib/format";
 import type { Product, ProductVariant } from "@/types";
 import type { CollectionPageConfig } from "./collectionPageConfig";
 
@@ -60,7 +60,7 @@ export default function CollectionHero({ products, config }: { products: Product
         variantId: variant?.id,
         name: product.name,
         brand: product.brand,
-        price: variant?.priceOverride ?? product.price,
+        price: resolveActivePrice(product, variant),
         currency: product.currency,
         image: product.image,
         size: variant?.size ?? product.sizes[0] ?? "",
@@ -74,6 +74,12 @@ export default function CollectionHero({ products, config }: { products: Product
       : `Complete look added — ${addedCount} items are now in your bag.`);
     window.setTimeout(() => setAdding(false), 650);
   };
+
+  const totalPrice = useMemo(
+    () => calculateCollectionTotal(featuredItems, availableVariant),
+    [featuredItems]
+  );
+  const totalCurrency = featuredItems[0]?.currency ?? "EGP";
 
   const [titleFirst, ...titleRest] = config.title.split(" ");
 
@@ -131,7 +137,7 @@ export default function CollectionHero({ products, config }: { products: Product
 
         <div className={`relative z-30 mt-3 flex justify-start md:absolute md:bottom-20 md:mt-0 ${config.completeLookClass}`}>
           <button type="button" onClick={addCompleteLook} disabled={adding || featuredItems.length === 0} className="flex min-w-[245px] items-center justify-between rounded-[10px] border border-white bg-white/90 px-4 py-3 text-left shadow-card backdrop-blur transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-mahalyred/40 disabled:opacity-60">
-            <span className="flex items-center gap-3"><ShoppingBag className="h-5 w-5 text-mahalyred" /><span><span className="block text-[10px] font-semibold">COMPLETE FEATURED LOOK</span><span className="mt-1 block text-[10px] text-ink-soft/60">{featuredItems.length} curated pieces</span></span></span>
+            <span className="flex items-center gap-3"><ShoppingBag className="h-5 w-5 text-mahalyred" /><span><span className="block text-[10px] font-semibold">COMPLETE FEATURED LOOK</span><span className="mt-1 block text-[10px] text-ink-soft/60">{featuredItems.length} curated pieces</span>{featuredItems.length > 0 && <span className="mt-0.5 block text-[10px] font-semibold text-ink">Total: {formatPrice(totalPrice, totalCurrency)}</span>}</span></span>
             <span className="flex h-7 w-7 items-center justify-center rounded-full border border-ink/35"><Plus className="h-4 w-4" /></span>
           </button>
         </div>

@@ -8,8 +8,9 @@ import CatalogControls, { CatalogEmptyState } from "@/components/category/Catalo
 import ProductGrid from "@/components/category/ProductGrid";
 import type { FilterGroup, Product, SortOption, ViewMode } from "@/types";
 import { CATALOG_FILTER_QUERY_KEYS } from "@/lib/catalogQuery";
+import { encodePriceRangeValue } from "@/lib/filters";
 
-export default function AllProductsShoppingArea({ products, filterGroups, productTypeRelations, selected: initialSelected, sort: initialSort, search: initialSearch, total, page, totalPages }: { products: Product[]; filterGroups: FilterGroup[]; productTypeRelations: { productCategory?: string; productType?: string }[]; selected: Record<string, string[]>; sort: SortOption; search: string; total: number; page: number; totalPages: number }) {
+export default function AllProductsShoppingArea({ products, filterGroups, productTypeRelations, selected: initialSelected, sort: initialSort, search: initialSearch, total, page, totalPages, priceBounds }: { products: Product[]; filterGroups: FilterGroup[]; productTypeRelations: { productCategory?: string; productType?: string }[]; selected: Record<string, string[]>; sort: SortOption; search: string; total: number; page: number; totalPages: number; priceBounds: { min: number; max: number } }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -39,6 +40,15 @@ export default function AllProductsShoppingArea({ products, filterGroups, produc
     navigate(next);
   };
   const clearFilters = () => { selectedRef.current = {}; setSelected({}); navigate({}); };
+  const setPriceRange = (min: number, max: number) => {
+    const current = selectedRef.current;
+    const next = { ...current };
+    if (min <= priceBounds.min && max >= priceBounds.max) delete next.price;
+    else next.price = [encodePriceRangeValue(min, max)];
+    selectedRef.current = next;
+    setSelected(next);
+    navigate(next);
+  };
   const changeSort = (next: SortOption) => { setSort(next); navigate(selected, next); };
   const submitSearch = (event: FormEvent) => { event.preventDefault(); navigate(selected, sort, search); };
 
@@ -49,7 +59,7 @@ export default function AllProductsShoppingArea({ products, filterGroups, produc
         <form onSubmit={submitSearch} role="search" className="flex h-11 w-full max-w-md items-center rounded-full border border-stone-150 bg-white px-4 focus-within:border-ink/30"><Search className="h-4 w-4 text-ink-soft/45" /><input value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search all products" placeholder="Search products or brands" className="min-w-0 flex-1 bg-transparent px-3 text-[13px] outline-none" />{search && <button type="button" aria-label="Clear search" onClick={() => { setSearch(""); navigate(selected, sort, ""); }}><X className="h-4 w-4 text-ink-soft/45" /></button>}</form>
       </div>
 
-      <CatalogControls groups={filterGroups} products={products} productTypeRelations={productTypeRelations} selected={selected} onToggle={toggleFilter} onClear={clearFilters} productCount={total} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={changeSort} />
+      <CatalogControls groups={filterGroups} products={products} productTypeRelations={productTypeRelations} selected={selected} onToggle={toggleFilter} onClear={clearFilters} productCount={total} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={changeSort} priceBounds={priceBounds} onPriceChange={setPriceRange} />
 
       <div className="mt-6">{products.length ? <ProductGrid products={products} viewMode={viewMode} compact /> : <CatalogEmptyState onClear={() => { setSearch(""); selectedRef.current = {}; setSelected({}); navigate({}, sort, ""); }} />}</div>
 

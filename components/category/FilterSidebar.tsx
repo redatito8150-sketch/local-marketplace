@@ -3,22 +3,40 @@
 import { useState } from "react";
 import { SlidersHorizontal, ChevronDown, Check } from "lucide-react";
 import { FilterGroup } from "@/types";
+import { PRODUCT_CATEGORIES } from "@/content/productTaxonomy";
+import { parsePriceRangeValue } from "@/lib/filters";
+import PriceRangeFilter from "./PriceRangeFilter";
+
+// Same canonical-value check as HorizontalFilters — kept local since each
+// file already imports its own small set of filter helpers rather than
+// sharing a UI-less "constants" module for a single string.
+const CLOTHING_CATEGORY = "Clothing" satisfies (typeof PRODUCT_CATEGORIES)[number];
 
 function FilterSection({
   group,
   selectedIds,
   onToggle,
+  highlighted = false,
+  priceBounds,
+  onPriceChange,
 }: {
   group: FilterGroup;
   selectedIds: string[];
   onToggle: (optionId: string) => void;
+  highlighted?: boolean;
+  priceBounds?: { min: number; max: number };
+  onPriceChange?: (min: number, max: number) => void;
 }) {
   const [open, setOpen] = useState(true);
+  const isPrice = group.id === "price";
 
   return (
-    <div className="border-b border-stone-150 py-5 first:pt-0 last:border-b-0">
+    <div
+      className={`border-b py-5 first:pt-0 last:border-b-0 transition-colors motion-reduce:transition-none ${highlighted ? "-mx-3 rounded-lg border-amber-300 bg-amber-50 px-3" : "border-stone-150"}`}
+    >
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className="flex w-full items-center justify-between text-left"
       >
         <span className="text-sm font-semibold text-ink">{group.title}</span>
@@ -29,7 +47,15 @@ function FilterSection({
         />
       </button>
 
-      {open && (
+      {open && isPrice && priceBounds && onPriceChange && (
+        <PriceRangeFilter
+          bounds={priceBounds}
+          value={parsePriceRangeValue(selectedIds[0]) ?? priceBounds}
+          onChange={onPriceChange}
+        />
+      )}
+
+      {open && !isPrice && (
         <ul className="mt-4 space-y-3">
           {group.options.map((opt) => {
             const checked = selectedIds.includes(opt.id);
@@ -76,17 +102,22 @@ export default function FilterSidebar({
   selected,
   onToggle,
   onClear,
+  priceBounds,
+  onPriceChange,
 }: {
   groups: FilterGroup[];
   selected: Record<string, string[]>;
   onToggle: (groupId: string, optionId: string) => void;
   onClear?: () => void;
+  priceBounds?: { min: number; max: number };
+  onPriceChange?: (min: number, max: number) => void;
 }) {
   const hasActiveFilters = Object.values(selected).some((ids) => ids.length > 0);
   // Collapsed by default on mobile — the full ~25-row filter list otherwise
   // sits above the product grid, since the layout stacks to one column
   // below the `lg` breakpoint. Always expanded at `lg` and up.
   const [mobileOpen, setMobileOpen] = useState(false);
+  const clothingSelected = (selected.productCategory ?? []).includes(CLOTHING_CATEGORY);
 
   return (
     <aside className="w-full lg:w-[240px] lg:flex-none">
@@ -122,6 +153,9 @@ export default function FilterSidebar({
             group={group}
             selectedIds={selected[group.id] ?? []}
             onToggle={(optionId) => onToggle(group.id, optionId)}
+            highlighted={group.id === "productType" && clothingSelected}
+            priceBounds={priceBounds}
+            onPriceChange={onPriceChange}
           />
         ))}
       </div>

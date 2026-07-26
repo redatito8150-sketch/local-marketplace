@@ -53,7 +53,7 @@ export default function OnboardingAddAddressPage() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => complete("/account/overview")}
+            onClick={() => complete("/")}
             className="w-full rounded-md border border-stone-150 bg-white py-3.5 text-[14px] font-semibold text-ink transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Skip for now

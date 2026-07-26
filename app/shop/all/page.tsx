@@ -3,7 +3,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import AllProductsShoppingArea from "@/components/category/AllProductsShoppingArea";
 import { getMarketplaceCatalogFacets, getMarketplaceCatalogPage, type MarketplaceCatalogFilters } from "@/lib/data/products";
-import { buildMarketplaceFilterGroups } from "@/lib/filters";
+import { buildMarketplaceFilterGroups, derivePriceBounds, encodePriceRangeValue, parsePriceRangeValue } from "@/lib/filters";
 import type { SortOption } from "@/types";
 import { CATALOG_FILTER_QUERY_KEYS, parseCatalogFilterValues } from "@/lib/catalogQuery";
 
@@ -19,8 +19,23 @@ export default async function ShopAllPage(props: { searchParams: Promise<Record<
   const facets = await getMarketplaceCatalogFacets();
   const filterGroups = buildMarketplaceFilterGroups(facets);
   const allowed = new Map(filterGroups.map((group) => [group.id, new Set(group.options.map((option) => option.id))]));
+  const priceBounds = derivePriceBounds(facets);
   const filters: MarketplaceCatalogFilters = {};
   for (const key of CATALOG_FILTER_QUERY_KEYS) {
+    // Price is a min-max range, not a fixed option list, so it's validated
+    // against the real numeric bounds instead of the `allowed` id set.
+    if (key === "price") {
+      const raw = parseCatalogFilterValues(params.price)[0];
+      const range = raw ? parsePriceRangeValue(raw) : null;
+      if (range) {
+        const clamped = {
+          min: Math.max(priceBounds.min, range.min),
+          max: Math.min(priceBounds.max, range.max),
+        };
+        if (clamped.min <= clamped.max) filters.price = [encodePriceRangeValue(clamped.min, clamped.max)];
+      }
+      continue;
+    }
     const selected = parseCatalogFilterValues(params[key]).filter((value) => allowed.get(key)?.has(value));
     if (selected.length) filters[key] = selected;
   }
@@ -39,5 +54,5 @@ export default async function ShopAllPage(props: { searchParams: Promise<Record<
   if (page > totalPages) result = await getMarketplaceCatalogPage({ search, sort, page: totalPages, pageSize: 24, filters });
 
   const stateKey = JSON.stringify({ filters, sort, search, page: result.page });
-  return <main className="min-h-screen bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ productCategory, productType }) => ({ productCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} /><Footer /></main>;
+  return <main className="min-h-screen bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ productCategory, productType }) => ({ productCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} priceBounds={priceBounds} /><Footer /></main>;
 }

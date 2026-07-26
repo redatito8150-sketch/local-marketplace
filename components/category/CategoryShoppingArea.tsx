@@ -22,14 +22,14 @@ export default function CategoryShoppingArea({
   compact?: boolean;
 }) {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
-  const { selected, sort, setSort, toggleFilter, clearFilters, sortedProducts } =
+  const { selected, sort, setSort, toggleFilter, clearFilters, sortedProducts, priceBounds, setPriceRange } =
     useProductFilters(products);
 
   return (
     <section className={`${compact ? "mx-auto max-w-[1680px] px-5 pb-16 pt-5 sm:px-8 lg:px-[60px]" : "mx-auto max-w-screen3xl px-8 pb-20 pt-10 lg:px-[60px]"}`}>
       {compact && (
         <div className="mb-5">
-          <CatalogControls groups={filterGroups} products={products} selected={selected} onToggle={toggleFilter} onClear={clearFilters} productCount={sortedProducts.length} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={setSort} />
+          <CatalogControls groups={filterGroups} products={products} selected={selected} onToggle={toggleFilter} onClear={clearFilters} productCount={sortedProducts.length} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={setSort} priceBounds={priceBounds} onPriceChange={setPriceRange} />
         </div>
       )}
       {compact ? (
@@ -46,6 +46,8 @@ export default function CategoryShoppingArea({
           selected={selected}
           onToggle={toggleFilter}
           onClear={clearFilters}
+          priceBounds={priceBounds}
+          onPriceChange={setPriceRange}
         />
 
         <div className="border-t border-stone-150 pt-8 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0">

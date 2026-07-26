@@ -16,6 +16,8 @@ export default function CatalogControls({
   sort,
   onSortChange,
   productTypeRelations,
+  priceBounds,
+  onPriceChange,
 }: {
   groups: FilterGroup[];
   products: Product[];
@@ -28,6 +30,8 @@ export default function CatalogControls({
   sort: SortOption;
   onSortChange: (sort: SortOption) => void;
   productTypeRelations?: { productCategory?: string; productType?: string }[];
+  priceBounds: { min: number; max: number };
+  onPriceChange: (min: number, max: number) => void;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 border-b border-stone-150 pb-4">
@@ -38,6 +42,8 @@ export default function CatalogControls({
         onToggle={onToggle}
         onClear={onClear}
         productTypeRelations={productTypeRelations}
+        priceBounds={priceBounds}
+        onPriceChange={onPriceChange}
       />
       <ProductsToolbar
         productCount={productCount}

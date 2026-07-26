@@ -47,8 +47,8 @@ export default function DashboardShell({
       </header>
 
       <div className="grid w-full grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <aside className={`hidden min-h-[calc(100vh-72px)] border-r px-4 py-6 lg:block ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
-          <div className="sticky top-[96px]">{sidebar}</div>
+        <aside className={`hidden border-r px-4 py-6 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-y-auto ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
+          {sidebar}
         </aside>
         <main className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 xl:px-10 xl:py-10">
           {children}

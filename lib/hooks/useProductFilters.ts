@@ -2,27 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Product, SortOption } from "@/types";
+import { derivePriceBounds, encodePriceRangeValue, parsePriceRangeValue } from "@/lib/filters";
 
 // Extracted from CategoryShoppingArea (Round 4) so /shop/[category] and the
 // brand page's own shopping area share one filtering/sorting
 // implementation instead of two copies drifting apart. Behavior here must
 // stay byte-identical to what CategoryShoppingArea had before this
 // extraction — it's a pure move, not a rewrite.
-function matchesPriceRange(price: number, rangeId: string): boolean {
-  switch (rangeId) {
-    case "under-500":
-      return price < 500;
-    case "500-1000":
-      return price >= 500 && price <= 1000;
-    case "1000-2000":
-      return price > 1000 && price <= 2000;
-    case "2000-5000":
-      return price > 2000 && price <= 5000;
-    case "above-5000":
-      return price > 5000;
-    default:
-      return true;
-  }
+function matchesPriceRange(price: number, rangeValue: string): boolean {
+  const range = parsePriceRangeValue(rangeValue);
+  if (!range) return true;
+  return price >= range.min && price <= range.max;
 }
 
 function matchesRating(rating: number, ratingId: string): boolean {
@@ -50,6 +40,7 @@ function matchesAvailability(inStock: boolean, availabilityId: string): boolean 
 export function useProductFilters(products: Product[], initialSelected?: Record<string, string[]>) {
   const [sort, setSort] = useState<SortOption>("newest");
   const [selected, setSelected] = useState<Record<string, string[]>>(() => initialSelected ?? {});
+  const priceBounds = useMemo(() => derivePriceBounds(products), [products]);
 
   const toggleFilter = (groupId: string, optionId: string) => {
     setSelected((prev) => {
@@ -58,6 +49,22 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
         ? current.filter((id) => id !== optionId)
         : [...current, optionId];
       return { ...prev, [groupId]: next };
+    });
+  };
+
+  // Direct "set" rather than toggleFilter's add/remove-one-option semantics
+  // — a new range replaces the old one outright. Dropping the key entirely
+  // when the chosen range covers the full catalog keeps the "active
+  // filters" count accurate (no filter is actually being applied then).
+  const setPriceRange = (min: number, max: number) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      if (min <= priceBounds.min && max >= priceBounds.max) {
+        delete next.price;
+      } else {
+        next.price = [encodePriceRangeValue(min, max)];
+      }
+      return next;
     });
   };
 
@@ -190,5 +197,5 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
     }
   }, [filteredProducts, sort]);
 
-  return { selected, sort, setSort, toggleFilter, clearFilters, filteredProducts, sortedProducts };
+  return { selected, sort, setSort, toggleFilter, clearFilters, filteredProducts, sortedProducts, priceBounds, setPriceRange };
 }

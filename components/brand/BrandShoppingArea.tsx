@@ -47,7 +47,7 @@ export default function BrandShoppingArea({
   const [activeTab, setActiveTab] = useState(defaultActiveTab || "shop-all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
-  const { selected, sort, setSort, toggleFilter, clearFilters, sortedProducts } =
+  const { selected, sort, setSort, toggleFilter, clearFilters, sortedProducts, priceBounds, setPriceRange } =
     useProductFilters(products, initialSelectedFromParams(searchParams));
 
   // Category tabs are brand-curated free text (an admin can name them
@@ -89,6 +89,8 @@ export default function BrandShoppingArea({
             onViewModeChange={setViewMode}
             sort={sort}
             onSortChange={setSort}
+            priceBounds={priceBounds}
+            onPriceChange={setPriceRange}
           />
 
           <div className="pt-7">

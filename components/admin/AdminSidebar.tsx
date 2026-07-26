@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -7,6 +8,7 @@ import {
   ArrowLeft,
   BarChart3,
   Bell,
+  ChevronDown,
   FileText,
   History,
   LayoutDashboard,
@@ -29,7 +31,18 @@ interface NavItem {
   badge?: "notifications" | "lowStock" | "brandActivity";
 }
 
-const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
+interface NavGroupItem {
+  label: string;
+  icon: React.ElementType;
+  minRole?: Role;
+  children: NavItem[];
+}
+
+function isNavGroupItem(item: NavItem | NavGroupItem): item is NavGroupItem {
+  return "children" in item;
+}
+
+const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
   {
     items: [
       { label: "Overview", href: "/admin", icon: LayoutDashboard },
@@ -41,7 +54,15 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
     items: [
       { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Products", href: "/admin/products", icon: Package },
-      { label: "Categories", href: "/admin/products/categories", icon: LayoutTemplate, minRole: "manager" },
+      {
+        label: "Categories",
+        icon: LayoutTemplate,
+        minRole: "manager",
+        children: [
+          { label: "Product Taxonomy", href: "/admin/products/categories", icon: LayoutTemplate, minRole: "manager" },
+          { label: "Category Heroes", href: "/admin/content/categories", icon: LayoutTemplate, minRole: "manager" },
+        ],
+      },
       { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock" },
       { label: "Coupons", href: "/admin/coupons", icon: Tag, minRole: "manager" },
     ],
@@ -74,6 +95,88 @@ const NAV_GROUPS: { label?: string; items: NavItem[] }[] = [
 const ROLE_RANK: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 const canSee = (role: string, minRole: Role = "staff") => (ROLE_RANK[role] ?? 0) >= ROLE_RANK[minRole];
 
+type BadgeCounts = Record<"notifications" | "lowStock" | "brandActivity", number>;
+
+function isActiveHref(pathname: string, href: string): boolean {
+  return href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLink({
+  item,
+  active,
+  count,
+  indent = false,
+}: {
+  item: NavItem;
+  active: boolean;
+  count: number;
+  indent?: boolean;
+}) {
+  return (
+    <Link
+      href={item.href}
+      aria-current={active ? "page" : undefined}
+      className={`group flex min-h-10 items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${indent ? "ml-3" : ""} ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+    >
+      <item.icon className={`h-[17px] w-[17px] ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold text-[var(--admin-primary)]">{count}</span>}
+    </Link>
+  );
+}
+
+function NavGroupDisclosure({
+  group,
+  pathname,
+  role,
+  counts,
+}: {
+  group: NavGroupItem;
+  pathname: string;
+  role: string;
+  counts: BadgeCounts;
+}) {
+  const visibleChildren = group.children.filter((child) => canSee(role, child.minRole));
+  const containsActiveRoute = visibleChildren.some((child) => isActiveHref(pathname, child.href));
+  const [open, setOpen] = useState(containsActiveRoute);
+
+  // Keep the group open automatically whenever navigation lands on one of
+  // its child routes, even if the user had previously collapsed it — an
+  // in-render state adjustment (guarded so it only fires on an actual
+  // change) rather than an effect.
+  const [wasActive, setWasActive] = useState(containsActiveRoute);
+  if (containsActiveRoute !== wasActive) {
+    setWasActive(containsActiveRoute);
+    if (containsActiveRoute) setOpen(true);
+  }
+
+  if (!visibleChildren.length) return null;
+  const groupId = `admin-nav-group-${group.label.toLowerCase().replace(/\s+/g, "-")}`;
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={groupId}
+        className={`group flex min-h-10 w-full items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${containsActiveRoute ? "border-[var(--admin-primary)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+      >
+        <group.icon className={`h-[17px] w-[17px] ${containsActiveRoute ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
+        <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
+        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div id={groupId} className="mt-1 space-y-1">
+          {visibleChildren.map((child) => (
+            <NavLink key={child.href} item={child} active={isActiveHref(pathname, child.href)} count={child.badge ? counts[child.badge] : 0} indent />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminSidebar({
   unreadNotifications = 0,
   lowStockCount = 0,
@@ -87,9 +190,6 @@ export default function AdminSidebar({
 }) {
   const pathname = usePathname();
   const counts = { notifications: unreadNotifications, lowStock: lowStockCount, brandActivity: reviewQueueCount };
-  const activeHref = NAV_GROUPS.flatMap((group) => group.items)
-    .filter((item) => item.href === "/admin" ? pathname === "/admin" : pathname === item.href || pathname.startsWith(`${item.href}/`))
-    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <nav aria-label="Admin navigation" className="space-y-6">
@@ -100,22 +200,13 @@ export default function AdminSidebar({
           <div key={group.label ?? index}>
             {group.label && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-text-muted)]/75">{group.label}</p>}
             <div className="space-y-1">
-              {items.map((item) => {
-                const active = activeHref === item.href;
-                const count = item.badge ? counts[item.badge] : 0;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={`group flex min-h-10 items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
-                  >
-                    <item.icon className={`h-[17px] w-[17px] ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold text-[var(--admin-primary)]">{count}</span>}
-                  </Link>
-                );
-              })}
+              {items.map((item) =>
+                isNavGroupItem(item) ? (
+                  <NavGroupDisclosure key={item.label} group={item} pathname={pathname} role={role} counts={counts} />
+                ) : (
+                  <NavLink key={item.href} item={item} active={isActiveHref(pathname, item.href)} count={item.badge ? counts[item.badge] : 0} />
+                )
+              )}
             </div>
           </div>
         );

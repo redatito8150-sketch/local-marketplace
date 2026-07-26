@@ -1,5 +1,38 @@
 import type { FilterGroup, Product } from "@/types";
 
+// Fallback price bounds when no products are available to derive a real
+// range from (e.g. an empty catalog) — the project's own configured floor
+// and ceiling rather than an arbitrary guess.
+export const DEFAULT_PRICE_BOUNDS = { min: 0, max: 10000 };
+
+// The real, currently-available product-price range, derived from actual
+// catalog data rather than a hardcoded bucket list — used to bound the
+// Price filter's slider/inputs. Falls back to DEFAULT_PRICE_BOUNDS when no
+// priced products are available.
+export function derivePriceBounds(products: { price: number }[]): { min: number; max: number } {
+  const prices = products.map((product) => product.price).filter((price) => Number.isFinite(price));
+  if (prices.length === 0) return DEFAULT_PRICE_BOUNDS;
+  return { min: Math.floor(Math.min(...prices)), max: Math.ceil(Math.max(...prices)) };
+}
+
+// The Price filter stores its selection as a single "min-max" encoded
+// string (rather than the old multi-select bucket ids) so it round-trips
+// through the same selected-filter arrays and URL query params everywhere
+// else in the catalog filtering system without changing that architecture.
+export function encodePriceRangeValue(min: number, max: number): string {
+  return `${Math.round(min)}-${Math.round(max)}`;
+}
+
+export function parsePriceRangeValue(value: string | undefined): { min: number; max: number } | null {
+  if (!value) return null;
+  const match = /^(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)$/.exec(value);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) return null;
+  return { min, max };
+}
+
 function countedGroup(id: string, title: string, values: (string | undefined)[]): FilterGroup {
   const counts = new Map<string, number>();
   for (const v of values) {
@@ -17,17 +50,11 @@ function countedGroup(id: string, title: string, values: (string | undefined)[])
   };
 }
 
-const PRICE_GROUP: FilterGroup = {
-  id: "price",
-  title: "Price",
-  options: [
-    { id: "under-500", label: "Under 500 EGP" },
-    { id: "500-1000", label: "500 - 1,000 EGP" },
-    { id: "1000-2000", label: "1,000 - 2,000 EGP" },
-    { id: "2000-5000", label: "2,000 - 5,000 EGP" },
-    { id: "above-5000", label: "Above 5,000 EGP" },
-  ],
-};
+// The Price group no longer carries a discrete option list — it's rendered
+// as a min/max range control (PriceRangeFilter) wherever `group.id ===
+// "price"` is special-cased, so this is just a stable marker for that
+// group's id/title/ordering among the other filter groups.
+const PRICE_GROUP: FilterGroup = { id: "price", title: "Price", options: [] };
 
 const AVAILABILITY_GROUP: FilterGroup = {
   id: "availability",
@@ -59,7 +86,7 @@ const DISCOUNTED_GROUP: FilterGroup = {
   options: [{ id: "discounted-only", label: "On Sale" }],
 };
 
-export type ProductFacet = Pick<Product, "brand" | "category" | "sizes" | "colors" | "productCategory" | "productType" | "collection" | "material" | "fit" | "compareAtPrice">;
+export type ProductFacet = Pick<Product, "brand" | "category" | "sizes" | "colors" | "productCategory" | "productType" | "collection" | "material" | "fit" | "compareAtPrice" | "price">;
 
 export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGroup[] {
   const groups: FilterGroup[] = [
@@ -78,7 +105,10 @@ export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGr
     FEATURED_GROUP,
     ...(products.some((product) => product.compareAtPrice != null) ? [DISCOUNTED_GROUP] : []),
   ];
-  return groups.filter((group) => group.options.length > 0);
+  // Price has no discrete option list (it's a range control) so it's kept
+  // whenever there's at least one priced product, unlike every other group
+  // here which is dropped once its real option list comes back empty.
+  return groups.filter((group) => group.id === "price" ? products.length > 0 : group.options.length > 0);
 }
 
 // Filter options are derived from whatever products are actually being

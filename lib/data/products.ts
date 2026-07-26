@@ -10,6 +10,7 @@ import {
   ProductStatus,
 } from "@/types";
 import { CATEGORIES } from "@/content/categories";
+import { parsePriceRangeValue } from "@/lib/filters";
 
 export interface ProductRow {
   id: string;
@@ -313,15 +314,8 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     query = query.or(filters.color.map((color) => `colors.cs.${JSON.stringify([{ name: color }])}`).join(","));
   }
   if (filters.price?.length) {
-    const clauses: Record<string, string> = {
-      "under-500": "price.lt.500",
-      "500-1000": "and(price.gte.500,price.lte.1000)",
-      "1000-2000": "and(price.gt.1000,price.lte.2000)",
-      "2000-5000": "and(price.gt.2000,price.lte.5000)",
-      "above-5000": "price.gt.5000",
-    };
-    const selected = filters.price.map((id) => clauses[id]).filter(Boolean);
-    if (selected.length) query = query.or(selected.join(","));
+    const range = parsePriceRangeValue(filters.price[0]);
+    if (range) query = query.gte("price", range.min).lte("price", range.max);
   }
   if (filters.availability?.length === 1) query = query.eq("in_stock", filters.availability[0] === "in-stock");
   if (filters.rating?.length) query = query.gte("rating", filters.rating.includes("3-plus") ? 3 : 4);
@@ -350,7 +344,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 export async function getMarketplaceCatalogFacets() {
   const { data, error } = await supabase
     .from("products")
-    .select("brand_name, category, product_category, product_type, collection, material, fit, sizes, colors, compare_at_price")
+    .select("brand_name, category, product_category, product_type, collection, material, fit, sizes, colors, compare_at_price, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .limit(2000);
@@ -366,6 +360,7 @@ export async function getMarketplaceCatalogFacets() {
     sizes: (row.sizes as string[] | null) ?? [],
     colors: (row.colors as ProductColorOption[] | null) ?? [],
     compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
+    price: Number(row.price),
   }));
 }
 
