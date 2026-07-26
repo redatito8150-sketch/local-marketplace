@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Stack, useRouter } from "expo-router";
 import { Pressable, View } from "react-native";
+import * as Crypto from "expo-crypto";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppText } from "@/components/ui/AppText";
 import { Card } from "@/components/ui/Primitives";
@@ -24,6 +25,7 @@ export default function CheckoutRoute() {
   const [selected, setSelected] = useState<string | null>(null);
   const [shipping, setShipping] = useState<Shipping>({ ...empty, email: auth.user?.email ?? "" });
   const [placing, setPlacing] = useState(false); const [error, setError] = useState("");
+  const [idempotencyKey] = useState(() => Crypto.randomUUID());
   const egp = useMemo(() => cart.items.filter((item) => item.currency === "EGP").reduce((sum, item) => sum + item.price * item.quantity, 0), [cart.items]);
   const select = (address: Address) => { setSelected(address.id); setShipping(fromAddress(address, auth.user?.email ?? "")); };
   const field = (key: keyof Shipping, label: string) => <TextField label={label} value={shipping[key]} onChangeText={(value) => { setSelected(null); setShipping((current) => ({ ...current, [key]: value })); }} keyboardType={key === "email" ? "email-address" : key === "phone" ? "phone-pad" : "default"} />;
@@ -32,7 +34,7 @@ export default function CheckoutRoute() {
     if (!cart.items.length || Object.values(shipping).some((value) => !value.trim())) { setError("Complete all delivery fields before placing your order."); return; }
     setPlacing(true); setError("");
     try {
-      const result = await apiRequest<{ orderNumber: string }>("/api/orders", { method: "POST", body: JSON.stringify({
+      const result = await apiRequest<{ orderNumber: string }>("/api/orders", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({
         items: cart.items.map((item) => ({ productId: item.productId, size: item.size, color: item.color, quantity: item.quantity })),
         shipping, addressId: selected ?? undefined
       }) });

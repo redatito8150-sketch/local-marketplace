@@ -8,6 +8,7 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
 import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
 import { getRequestUser } from "@/lib/supabase/requestUser";
+import { readOrderIdempotency, storeOrderIdempotency } from "@/lib/orders/idempotency";
 
 interface RpcOrderItem {
   product_id: string;
@@ -24,6 +25,11 @@ interface RpcOrderItem {
 }
 
 export async function POST(request: NextRequest) {
+  const idempotencyKey = request.headers.get("idempotency-key");
+  const previousOrderNumber = readOrderIdempotency(idempotencyKey);
+  if (previousOrderNumber) {
+    return NextResponse.json({ orderNumber: previousOrderNumber, replayed: true });
+  }
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_ORDER_BODY_BYTES) {
     return NextResponse.json({ error: "Request is too large" }, { status: 413 });
@@ -267,5 +273,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  if (result?.order_number) storeOrderIdempotency(idempotencyKey, result.order_number);
   return NextResponse.json({ orderNumber: result?.order_number });
 }
