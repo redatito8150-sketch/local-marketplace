@@ -7,7 +7,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppText } from "@/components/ui/AppText";
 import { Badge, BottomActionBar, FilterChip } from "@/components/ui/Primitives";
 import { ErrorState, LoadingState } from "@/components/system/States";
-import { formatPrice, getProduct } from "@/domain/products";
+import { findProductVariant, formatPrice, getProduct, resolveProductPrice } from "@/domain/products";
 import { useAppTheme } from "@/theme/ThemeProvider";
 import { useCart } from "@/providers/CartProvider";
 import { toggleWishlist } from "@/domain/wishlist";
@@ -31,17 +31,14 @@ export default function ProductDetailsRoute() {
   if (query.isError) return <ErrorState message="We couldn't load this product." onRetry={() => query.refetch()} />;
   const product = query.data;
   if (!product) return <ErrorState title="Product unavailable" message="This piece is no longer published." />;
-  const selectedVariant = product.variants?.find((variant) =>
-    (variant.size ?? "").trim().toLowerCase() === size.trim().toLowerCase() &&
-    (variant.color ?? "").trim().toLowerCase() === color.trim().toLowerCase()
-  );
+  const selectedVariant = findProductVariant(product.variants, size, color);
   const hasVariants = Boolean(product.variants?.length);
   const selectedUnavailable = Boolean(
     (hasVariants && (!selectedVariant || selectedVariant.availability_status !== "available")) ||
     (product.track_inventory && selectedVariant && selectedVariant.quantity < 1) ||
     product.unavailable_sizes.includes(size)
   );
-  const activePrice = selectedVariant?.price_override ?? product.price;
+  const activePrice = resolveProductPrice(product, selectedVariant);
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Screen options={{ headerShown: true, title: product.brand_name }} />

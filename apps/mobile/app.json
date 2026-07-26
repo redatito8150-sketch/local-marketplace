@@ -11,6 +11,12 @@
       "expo-secure-store",
       "expo-image",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mahaly to attach photos to your product review."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#F7F1E8",

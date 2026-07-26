@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
+export { findProductVariant, resolveProductPrice } from "./product-selection";
 
 export type ProductColor = { name: string; hex?: string };
 export type ProductVariant = {
@@ -54,10 +55,13 @@ function normalize(row: Record<string, unknown>): Product {
   };
 }
 
-export async function getProducts(options: { query?: string; category?: string; limit?: number } = {}) {
+export async function getProducts(options: { query?: string; category?: string; limit?: number; page?: number } = {}) {
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 40);
+  const page = Math.max(options.page ?? 0, 0);
   let request = supabase.from("products").select(productSelect)
     .eq("status", "published").eq("paused_by_brand", false)
-    .order("created_at", { ascending: false }).limit(options.limit ?? 30);
+    .order("created_at", { ascending: false })
+    .range(page * limit, page * limit + limit - 1);
   if (options.category) request = request.eq("category", options.category);
   if (options.query?.trim()) {
     const safe = options.query.trim().replace(/[%_,().]/g, " ").slice(0, 80);

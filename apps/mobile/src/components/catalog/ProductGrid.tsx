@@ -11,6 +11,9 @@ export function ProductGrid({ products, ...props }: Omit<FlatListProps<Product>,
       data={products}
       numColumns={2}
       keyExtractor={(item) => item.id}
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      windowSize={7}
       renderItem={({ item }) => <ProductCard product={item} />}
       columnWrapperStyle={{ gap: spacing.sm }}
       contentContainerStyle={[{ gap: spacing.sm, padding: spacing.md }, props.contentContainerStyle]}
