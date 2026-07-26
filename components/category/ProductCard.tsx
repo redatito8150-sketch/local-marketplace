@@ -14,11 +14,19 @@ export default function ProductCard({
   viewMode = "grid",
   compact = false,
   eager = false,
+  hideRating = false,
+  hideQuickAdd = false,
+  showColorDots = false,
+  elevated = false,
 }: {
   product: Product;
   viewMode?: ViewMode;
   compact?: boolean;
   eager?: boolean;
+  hideRating?: boolean;
+  hideQuickAdd?: boolean;
+  showColorDots?: boolean;
+  elevated?: boolean;
 }) {
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
@@ -40,6 +48,10 @@ export default function ProductCard({
       href={`/product/${product.id}`}
       className={`group block ${
         viewMode === "list" ? "flex items-center gap-5" : ""
+      } ${
+        elevated
+          ? "rounded-[18px] border border-stone-150/80 bg-white p-2.5 pb-1.5 shadow-[0_10px_28px_rgba(69,49,37,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(69,49,37,0.12)]"
+          : ""
       }`}
     >
       <div
@@ -81,25 +93,51 @@ export default function ProductCard({
         </button>
       </div>
 
-      <div className={viewMode === "list" ? "flex-1" : compact ? "rounded-b-[8px] border border-t-0 border-stone-150 px-3 pb-2.5 pt-2" : "mt-3.5"}>
-        <p className={`${compact ? "hidden" : "block"} text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50`}>
-          {product.brand}
-        </p>
-        <h3 className={`${compact ? "truncate text-[11px]" : "mt-1 text-[14px]"} font-medium leading-snug text-ink`}>
+      <div className={viewMode === "list" ? "flex-1" : compact ? "rounded-b-[8px] border border-t-0 border-stone-150 px-3 pb-2.5 pt-2" : elevated ? "mt-2" : "mt-3.5"}>
+        {showColorDots ? (
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <p className="truncate text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
+              {product.brand}
+            </p>
+            {product.colors.length > 0 && (
+              <div className="flex shrink-0 items-center gap-1.5" aria-label="Available colors">
+                {product.colors.slice(0, 6).map((color) => (
+                  <span
+                    key={color.name}
+                    title={color.name}
+                    aria-label={color.name}
+                    className="h-3 w-3 rounded-full border border-black/15 ring-1 ring-white"
+                    style={{ backgroundColor: color.hex }}
+                  />
+                ))}
+                {product.colors.length > 6 && (
+                  <span className="ml-0.5 text-[10px] text-ink-soft/50">
+                    +{product.colors.length - 6}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className={`${compact ? "hidden" : "block"} text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50`}>
+            {product.brand}
+          </p>
+        )}
+        <h3 className={`${compact ? "truncate text-[11px]" : elevated ? "mt-0.5 text-[14px]" : "mt-1 text-[14px]"} font-medium leading-snug text-ink`}>
           {product.name}
         </h3>
-        <p className={`${compact ? "mt-1 text-[11px]" : "mt-1.5 text-[14px]"} font-semibold text-ink`}>
+        <p className={`${compact ? "mt-1 text-[11px]" : elevated ? "mt-1 text-[14px]" : "mt-1.5 text-[14px]"} font-semibold text-ink`}>
           {formatPrice(product.price, product.currency)}
         </p>
 
-        <div className={`${compact ? "hidden" : "flex"} mt-1.5 items-center gap-1.5`}>
+        <div className={`${compact || hideRating ? "hidden" : "flex"} mt-1.5 items-center gap-1.5`}>
           <StarRating rating={product.rating} size="xs" />
           <span className="text-[12px] text-ink-soft/45">
             ({product.reviewCount})
           </span>
         </div>
 
-        {!compact && (
+        {!compact && !hideQuickAdd && (
         <button
           onClick={(e) => {
             e.preventDefault();

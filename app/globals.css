@@ -38,6 +38,23 @@ body {
   scrollbar-width: none;
 }
 
+.brand-stars {
+  background-image:
+    radial-gradient(circle at 12% 20%, rgba(255,255,255,.8) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 32%, rgba(239,201,133,.7) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 38% 72%, rgba(255,255,255,.55) 0 1px, transparent 1.5px);
+  background-size: 170px 170px, 230px 230px, 130px 130px;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(12deg); }
+  50% { transform: translate3d(-12px, 16px, 0) rotate(8deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-stars { background-image: none; }
+}
+
 /* Customer account themes are intentionally scoped to /account only. */
 .account-theme {
   --account-bg: #f7f0e5;

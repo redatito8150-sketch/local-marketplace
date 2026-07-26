@@ -36,12 +36,22 @@ export default function BrandShoppingArea({
   filterGroups,
   categoryTabs,
   defaultActiveTab,
+  showHeading = true,
+  compactProducts = true,
+  roomyProducts = false,
+  mediumProducts = false,
+  minimalProductCards = false,
 }: {
   brandName: string;
   products: Product[];
   filterGroups: FilterGroup[];
   categoryTabs: BrandCategoryTab[];
   defaultActiveTab: string;
+  showHeading?: boolean;
+  compactProducts?: boolean;
+  roomyProducts?: boolean;
+  mediumProducts?: boolean;
+  minimalProductCards?: boolean;
 }) {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState(defaultActiveTab || "shop-all");
@@ -72,10 +82,10 @@ export default function BrandShoppingArea({
         <CategoryNav tabs={categoryTabs} active={activeTab} onChange={setActiveTab} />
       )}
 
-      <section id="shop" className="mx-auto max-w-brand px-6 py-16 lg:px-10">
-        <h2 className="mb-8 text-2xl font-medium tracking-tight text-charcoal">
+      <section id="shop" className={`mx-auto max-w-brand ${showHeading ? "px-6 py-16 lg:px-10" : "pt-2 lg:pt-3"}`}>
+        {showHeading && <h2 className="mb-8 text-2xl font-medium tracking-tight text-charcoal">
           Shop {brandName}
-        </h2>
+        </h2>}
 
         <div>
           <CatalogControls
@@ -93,11 +103,18 @@ export default function BrandShoppingArea({
             onPriceChange={setPriceRange}
           />
 
-          <div className="pt-7">
+          <div className={minimalProductCards ? "pt-6 lg:pt-7" : "pt-7"}>
             {tabFilteredProducts.length === 0 ? (
               <CatalogEmptyState onClear={clearFilters} />
             ) : (
-              <ProductGrid products={tabFilteredProducts} viewMode={viewMode} compact />
+              <ProductGrid
+                products={tabFilteredProducts}
+                viewMode={viewMode}
+                compact={compactProducts}
+                roomy={roomyProducts}
+                medium={mediumProducts}
+                minimalCard={minimalProductCards}
+              />
             )}
           </div>
         </div>
