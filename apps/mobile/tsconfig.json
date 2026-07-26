@@ -5,6 +5,8 @@
     "noUncheckedIndexedAccess": true,
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
+    "allowImportingTsExtensions": true,
+    "types": ["react", "node"],
     "paths": {
       "@/*": ["src/*"]
     }

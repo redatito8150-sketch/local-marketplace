@@ -3,6 +3,9 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AppErrorBoundary, NetworkStatusBanner } from "@/components/system/States";
 import { AuthProvider } from "@/providers/AuthProvider";
+import { QueryProvider } from "@/providers/QueryProvider";
+import { CartProvider } from "@/providers/CartProvider";
+import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { ThemeProvider, useAppTheme } from "@/theme/ThemeProvider";
 
 function RootNavigator() {
@@ -31,9 +34,15 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <AppErrorBoundary>
-          <AuthProvider>
-            <RootNavigator />
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <CartProvider>
+                <OnboardingGate>
+                  <RootNavigator />
+                </OnboardingGate>
+              </CartProvider>
+            </AuthProvider>
+          </QueryProvider>
         </AppErrorBoundary>
       </ThemeProvider>
     </SafeAreaProvider>

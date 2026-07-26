@@ -19,6 +19,9 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   configurationError: string | null;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string, name: string) => Promise<void>;
+  recoverPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -67,6 +70,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
       configurationError: isSupabaseConfigured
         ? null
         : "Supabase public environment variables are missing.",
+      signIn: async (email, password) => {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      },
+      signUp: async (email, password, name) => {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: name } }
+        });
+        if (error) throw error;
+      },
+      recoverPassword: async (email) => {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: "mahaly://reset-password"
+        });
+        if (error) throw error;
+      },
       signOut: async () => {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;

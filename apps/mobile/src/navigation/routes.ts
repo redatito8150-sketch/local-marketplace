@@ -7,14 +7,20 @@ export const routes = {
   signIn: "/sign-in",
   signUp: "/sign-up",
   passwordRecovery: "/password-recovery",
-  search: "/search"
+  resetPassword: "/reset-password",
+  search: "/search",
+  products: "/products",
+  addresses: "/addresses",
+  checkout: "/checkout",
+  orderSuccess: "/order-success"
 } as const;
 
 export type StaticRoute = (typeof routes)[keyof typeof routes];
 export type EntityRoute =
   | `/products/${string}`
   | `/brands/${string}`
-  | `/orders/${string}`;
+  | `/orders/${string}`
+  | `/addresses/${string}`;
 
 export const productRoute = (id: string): EntityRoute => `/products/${encodeURIComponent(id)}`;
 export const brandRoute = (slug: string): EntityRoute => `/brands/${encodeURIComponent(slug)}`;

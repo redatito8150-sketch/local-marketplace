@@ -1,4 +1,2 @@
-import { MilestonePlaceholder } from "@/components/system/MilestonePlaceholder";
-export default function PasswordRecoveryRoute() {
-  return <MilestonePlaceholder name="Recover password" milestone={2} />;
-}
+import { AuthForm } from "@/components/auth/AuthForm";
+export default function PasswordRecoveryRoute() { return <AuthForm mode="recovery" />; }

@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { useCart } from "@/providers/CartProvider";
 
 const icons = {
   index: ["home-outline", "home"],
@@ -12,6 +13,7 @@ const icons = {
 
 export default function TabsLayout() {
   const { colors } = useAppTheme();
+  const { itemCount } = useCart();
   return (
     <Tabs
       screenOptions={({ route }) => ({
@@ -31,7 +33,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: "Home" }} />
       <Tabs.Screen name="categories" options={{ title: "Categories" }} />
       <Tabs.Screen name="wishlist" options={{ title: "Wishlist" }} />
-      <Tabs.Screen name="cart" options={{ title: "Cart" }} />
+      <Tabs.Screen name="cart" options={{ title: "Cart", tabBarBadge: itemCount || undefined }} />
       <Tabs.Screen name="profile" options={{ title: "Profile" }} />
     </Tabs>
   );

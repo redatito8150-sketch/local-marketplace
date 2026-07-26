@@ -1,4 +1,2 @@
-import { MilestonePlaceholder } from "@/components/system/MilestonePlaceholder";
-export default function SignInRoute() {
-  return <MilestonePlaceholder name="Sign in" milestone={2} />;
-}
+import { AuthForm } from "@/components/auth/AuthForm";
+export default function SignInRoute() { return <AuthForm mode="sign-in" />; }
