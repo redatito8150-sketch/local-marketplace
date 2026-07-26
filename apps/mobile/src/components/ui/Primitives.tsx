@@ -79,11 +79,11 @@ export function QuantitySelector({ value, onChange, min = 1, max = 99 }: { value
   const { colors, radius, spacing } = useAppTheme();
   return (
     <View style={[styles.quantity, { borderColor: colors.border, borderRadius: radius.md }]}>
-      <Pressable accessibilityLabel="Decrease quantity" disabled={value <= min} onPress={() => onChange(Math.max(min, value - 1))} hitSlop={8}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Decrease quantity" disabled={value <= min} onPress={() => onChange(Math.max(min, value - 1))} hitSlop={8}>
         <Ionicons name="remove" size={20} color={value <= min ? colors.textMuted : colors.text} />
       </Pressable>
       <AppText variant="label" style={{ paddingHorizontal: spacing.sm }}>{value}</AppText>
-      <Pressable accessibilityLabel="Increase quantity" disabled={value >= max} onPress={() => onChange(Math.min(max, value + 1))} hitSlop={8}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Increase quantity" disabled={value >= max} onPress={() => onChange(Math.min(max, value + 1))} hitSlop={8}>
         <Ionicons name="add" size={20} color={value >= max ? colors.textMuted : colors.text} />
       </Pressable>
     </View>
@@ -96,7 +96,7 @@ export function AppSheet({ visible, title, onClose, children }: PropsWithChildre
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
       <Pressable style={[styles.overlay, { backgroundColor: colors.overlay }]} onPress={onClose}>
         <Pressable style={[styles.sheet, { backgroundColor: colors.surfaceRaised, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, padding: spacing.lg }]} onPress={() => undefined}>
-          <SectionHeader title={title} action={<Pressable accessibilityLabel="Close" onPress={onClose}><Ionicons name="close" size={24} color={colors.text} /></Pressable>} />
+          <SectionHeader title={title} action={<Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={onClose}><Ionicons name="close" size={24} color={colors.text} /></Pressable>} />
           {children}
         </Pressable>
       </Pressable>

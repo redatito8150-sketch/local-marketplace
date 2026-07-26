@@ -50,6 +50,7 @@ export const TextField = forwardRef<TextInput, Props>(function TextField(
         />
         {isPassword ? (
           <Pressable
+            accessibilityRole="button"
             accessibilityLabel={passwordVisible ? "Hide password" : "Show password"}
             hitSlop={10}
             onPress={() => setPasswordVisible((value) => !value)}
