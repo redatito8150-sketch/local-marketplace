@@ -70,7 +70,7 @@ export type ThemeColors = {
 };
 
 export const lightColors: ThemeColors = {
-  background: palette.ivory,
+  background: "#F3ECE8",
   surface: palette.paper,
   surfaceRaised: palette.white,
   text: palette.ink,

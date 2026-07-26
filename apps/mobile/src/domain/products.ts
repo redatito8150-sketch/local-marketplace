@@ -67,14 +67,30 @@ export type CatalogFacets = {
   price: { min: number; max: number };
 };
 
+const mediaBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace(/\/$/, "");
+
+function resolveMediaUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  const url = value.trim();
+  if (/^(https?:|data:|file:|content:)/i.test(url)) return url;
+  if (!mediaBaseUrl) return url;
+  return `${mediaBaseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 function normalize(row: Record<string, unknown>): Product {
+  const images = ((row.images as string[] | null) ?? [])
+    .map(resolveMediaUrl)
+    .filter(Boolean);
+  const image = resolveMediaUrl(row.image) || images[0] || "";
+
   return {
     ...(row as unknown as Product),
     price: Number(row.price),
     compare_at_price: row.compare_at_price == null ? null : Number(row.compare_at_price),
     rating: Number(row.rating ?? 0),
     review_count: Number(row.review_count ?? 0),
-    images: (row.images as string[] | null) ?? [],
+    image,
+    images,
     colors: (row.colors as ProductColor[] | null) ?? [],
     sizes: (row.sizes as string[] | null) ?? [],
     unavailable_sizes: (row.unavailable_sizes as string[] | null) ?? [],
