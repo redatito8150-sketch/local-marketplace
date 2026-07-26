@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileEdit, History, LayoutDashboard, Package, ShoppingBag, ShoppingCart } from "lucide-react";
+import { ArrowLeft, FileEdit, History, LayoutDashboard, MessageSquare, Package, ShoppingBag, ShoppingCart } from "lucide-react";
 
 const GROUPS = [
   { items: [{ label: "Overview", href: "/brand-portal", icon: LayoutDashboard }] },
@@ -13,7 +13,7 @@ const GROUPS = [
       { label: "Inventory", href: "/brand-portal/stock", icon: Package },
     ],
   },
-  { label: "Sales", items: [{ label: "Orders", href: "/brand-portal/orders", icon: ShoppingBag }] },
+  { label: "Sales", items: [{ label: "Orders", href: "/brand-portal/orders", icon: ShoppingBag }, { label: "Reviews", href: "/brand-portal/reviews", icon: MessageSquare }] },
 ];
 
 export default function BrandPortalNav({ showPageContent = true }: { showPageContent?: boolean }) {

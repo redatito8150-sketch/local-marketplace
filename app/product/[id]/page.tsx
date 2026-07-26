@@ -10,6 +10,8 @@ import RelatedProducts from "@/components/product/RelatedProducts";
 import RecentlyViewedTracker from "@/components/product/RecentlyViewedTracker";
 import { getProductById, getRelatedProductCards } from "@/lib/data/products";
 import { supabase } from "@/lib/supabase/client";
+import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const revalidate = 60;
 
@@ -34,6 +36,10 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
   if (!product) notFound();
 
   const related = await getRelatedProductCards(product.relatedIds);
+  const reviewResult = await getPublicReviews({ productId: product.id, filters: { photos:false, verified:false, replied:false, sort:"recent", page:1 } });
+  const serverClient = await createSupabaseServerClient();
+  const { data: { user } } = await serverClient.auth.getUser();
+  const eligibleItems = user ? await getEligibleOrderItems(user.id, product.id) : [];
 
   return (
     <main className="min-h-screen bg-cream">
@@ -66,9 +72,9 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
 
         <div className="mt-4 space-y-16">
           <ProductReviews
-            rating={product.rating}
-            reviewCount={product.reviewCount}
-            reviews={product.reviews}
+            summary={reviewResult.summary}
+            reviews={reviewResult.reviews}
+            eligibleItem={eligibleItems[0]}
           />
           <RelatedProducts products={related} />
         </div>

@@ -30,6 +30,7 @@ export type AuditAction =
   | "publish"
   | "restore"
   | "upload_asset"
+  | "moderate_review"
   // Brand application workflow (Milestones 5-6)
   | "reject"
   | "withdraw"
@@ -43,7 +44,8 @@ export type AuditEntityType =
   | "profile"
   | "coupon"
   | "site_content"
-  | "page";
+  | "page"
+  | "review";
 
 // Green = something was added, red = something was removed, orange for
 // everything else (edits, status flips, reverts). Used only for the
@@ -66,6 +68,7 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   publish: DISCORD_COLORS.green,
   restore: DISCORD_COLORS.orange,
   upload_asset: DISCORD_COLORS.green,
+  moderate_review: DISCORD_COLORS.orange,
   delete: DISCORD_COLORS.red,
   bulk_delete: DISCORD_COLORS.red,
   archive: DISCORD_COLORS.red,
@@ -97,6 +100,7 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   publish: "published",
   restore: "version restored",
   upload_asset: "asset uploaded",
+  moderate_review: "moderated",
   delete: "deleted",
   bulk_delete: "bulk deleted",
   archive: "archived",
