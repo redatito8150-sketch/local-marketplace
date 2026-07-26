@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
@@ -8,6 +7,7 @@ import { getOrderForAdmin } from "@/lib/data/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
 import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 
 interface RpcOrderItem {
   product_id: string;
@@ -169,10 +169,7 @@ export async function POST(request: NextRequest) {
 
   // Look up the signed-in user (if any) via the cookie-backed server client;
   // guest checkout stays supported with a null user_id.
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getRequestUser(request);
 
   // A client-supplied addressId is only ever a traceability hint — never
   // trust it blindly. Confirm it actually belongs to the signed-in user

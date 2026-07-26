@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getAddressesForUser } from "@/lib/data/addresses";
 import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 
 const VALID_LABELS: AddressLabel[] = ["Home", "Work", "Other"];
 
@@ -36,8 +36,8 @@ function validate(body: Partial<AddressInput>): string | null {
 
 // Used by checkout's address selector to list every saved address for a
 // signed-in shopper (default/[id] only ever returned a single address).
-export async function GET() {
-  const user = await requireUser();
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ addresses: [] });
   }
@@ -47,7 +47,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }

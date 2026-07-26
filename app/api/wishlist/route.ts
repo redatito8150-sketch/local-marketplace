@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getWishlistForUser } from "@/lib/data/wishlist";
 import { safeErrorResponse } from "@/lib/apiError";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 
-export async function GET() {
-  const user = await requireUser();
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
@@ -18,7 +18,7 @@ export async function GET() {
 // body only needs productId; display fields (name/brand/price/image) are
 // joined from `products` at read time, never duplicated into this table.
 export async function POST(request: NextRequest) {
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 // "remove" action, where the caller always means "take this off," never
 // "add it if it's somehow missing."
 export async function DELETE(request: NextRequest) {
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }

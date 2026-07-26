@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/accountAuth";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
@@ -35,7 +35,7 @@ function validate(body: Partial<AddressInput>): string | null {
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
@@ -77,9 +77,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
   }
