@@ -32,7 +32,7 @@ export default function CartRoute() {
             <AppText variant="label">{formatPrice(item.price * item.quantity, item.currency)}</AppText>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <QuantitySelector value={item.quantity} max={10} onChange={(quantity) => cart.updateQuantity(item.id, quantity)} />
-              <Pressable onPress={() => cart.removeItem(item.id)}><AppText variant="caption" style={{ color: colors.danger }}>Remove</AppText></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name} from cart`} onPress={() => cart.removeItem(item.id)}><AppText variant="caption" style={{ color: colors.danger }}>Remove</AppText></Pressable>
             </View>
           </View>
         </View>

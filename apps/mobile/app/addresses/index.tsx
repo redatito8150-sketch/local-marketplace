@@ -8,12 +8,14 @@ import { AppText } from "@/components/ui/AppText";
 import { Badge, Card, EmptyState } from "@/components/ui/Primitives";
 import { deleteAddress, getAddresses, setDefaultAddress } from "@/domain/addresses";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function AddressesRoute() {
   const router = useRouter();
   const { spacing } = useAppTheme();
   const client = useQueryClient();
-  const query = useQuery({ queryKey: ["addresses"], queryFn: getAddresses });
+  const auth = useAuth();
+  const query = useQuery({ queryKey: ["addresses"], queryFn: getAddresses, enabled: auth.isAuthenticated });
   const refresh = () => client.invalidateQueries({ queryKey: ["addresses"] });
   const remove = useMutation({ mutationFn: deleteAddress, onSuccess: refresh });
   const makeDefault = useMutation({ mutationFn: setDefaultAddress, onSuccess: refresh });

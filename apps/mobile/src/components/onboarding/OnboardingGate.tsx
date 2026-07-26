@@ -23,7 +23,7 @@ export function OnboardingGate({ children }: PropsWithChildren) {
   const item = pages[page]!;
   const finish = async () => { await AsyncStorage.setItem(KEY, "true"); setComplete(true); };
   return <Screen><View style={{ flex: 1, justifyContent: "space-between", paddingVertical: spacing.xl }}>
-    <View style={{ flexDirection: "row", justifyContent: "space-between" }}><AppText variant="title">Mahaly</AppText><Pressable onPress={finish}><AppText variant="label" style={{ color: colors.textMuted }}>Skip</AppText></Pressable></View>
+    <View style={{ flexDirection: "row", justifyContent: "space-between" }}><AppText variant="title">Mahaly</AppText><Pressable accessibilityRole="button" onPress={finish}><AppText variant="label" style={{ color: colors.textMuted }}>Skip</AppText></Pressable></View>
     <View style={{ gap: spacing.lg }}><View style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: page === 1 ? colors.accent : colors.primary }} /><AppText variant="display">{item.title}</AppText><AppText style={{ color: colors.textMuted }}>{item.body}</AppText></View>
     <View style={{ gap: spacing.md }}><View style={{ flexDirection: "row", gap: spacing.xs }}>{pages.map((_, index) => <View key={index} style={{ width: index === page ? 24 : 8, height: 8, borderRadius: 4, backgroundColor: index === page ? colors.primary : colors.border }} />)}</View><AppButton label={page === pages.length - 1 ? "Start exploring" : "Continue"} onPress={() => page === pages.length - 1 ? finish() : setPage((value) => value + 1)} /></View>
   </View></Screen>;

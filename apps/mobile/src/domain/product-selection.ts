@@ -23,3 +23,18 @@ export function resolveProductPrice(
 ) {
   return variant?.price_override ?? product.price;
 }
+
+export function isProductSelectionUnavailable(input: {
+  hasVariants: boolean;
+  selectedVariant?: SelectableVariant & { availability_status?: string; quantity?: number };
+  tracksInventory: boolean;
+  selectedSize: string;
+  unavailableSizes: string[];
+}) {
+  const { hasVariants, selectedVariant, tracksInventory, selectedSize, unavailableSizes } = input;
+  return Boolean(
+    (hasVariants && (!selectedVariant || selectedVariant.availability_status !== "available")) ||
+    (tracksInventory && selectedVariant && (selectedVariant.quantity ?? 0) < 1) ||
+    unavailableSizes.includes(selectedSize)
+  );
+}

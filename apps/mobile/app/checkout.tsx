@@ -14,6 +14,7 @@ import { apiRequest } from "@/lib/api";
 import { useAuth } from "@/providers/AuthProvider";
 import { useCart } from "@/providers/CartProvider";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { validateCheckoutInput } from "@/domain/checkout";
 
 type Shipping = { firstName: string; lastName: string; email: string; phone: string; address: string; city: string; governorate: string };
 const empty: Shipping = { firstName: "", lastName: "", email: "", phone: "", address: "", city: "", governorate: "" };
@@ -31,7 +32,8 @@ export default function CheckoutRoute() {
   const field = (key: keyof Shipping, label: string) => <TextField label={label} value={shipping[key]} onChangeText={(value) => { setSelected(null); setShipping((current) => ({ ...current, [key]: value })); }} keyboardType={key === "email" ? "email-address" : key === "phone" ? "phone-pad" : "default"} />;
   const placeOrder = async () => {
     if (placing) return;
-    if (!cart.items.length || Object.values(shipping).some((value) => !value.trim())) { setError("Complete all delivery fields before placing your order."); return; }
+    const validationError = validateCheckoutInput(cart.items.length, shipping);
+    if (validationError) { setError(validationError); return; }
     setPlacing(true); setError("");
     try {
       const result = await apiRequest<{ orderNumber: string }>("/api/orders", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({
@@ -46,7 +48,7 @@ export default function CheckoutRoute() {
   };
   return <Screen scroll keyboardShouldPersistTaps="handled"><Stack.Screen options={{ headerShown: true, title: "Checkout" }} />
     <AppText variant="display" style={{ marginVertical: spacing.lg }}>Checkout</AppText>
-    {addresses.data?.map((address) => <Pressable key={address.id} onPress={() => select(address)}><Card style={{ borderColor: selected === address.id ? colors.primary : colors.border, marginBottom: spacing.sm }}><AppText variant="label">{address.label}{address.isDefault ? " · Default" : ""}</AppText><AppText>{address.addressLine}, {address.city}</AppText></Card></Pressable>)}
+    <View accessibilityRole="radiogroup">{addresses.data?.map((address) => <Pressable accessibilityRole="radio" accessibilityLabel={`${address.label}, ${address.addressLine}`} accessibilityState={{ checked: selected === address.id }} key={address.id} onPress={() => select(address)}><Card style={{ borderColor: selected === address.id ? colors.primary : colors.border, marginBottom: spacing.sm }}><AppText variant="label">{address.label}{address.isDefault ? " · Default" : ""}</AppText><AppText>{address.addressLine}, {address.city}</AppText></Card></Pressable>)}</View>
     <AppText variant="title" style={{ marginVertical: spacing.md }}>{selected ? "Delivery details" : "New delivery address"}</AppText>
     <View style={{ gap: spacing.sm }}>{field("firstName", "First name")}{field("lastName", "Last name")}{field("email", "Email")}{field("phone", "Phone")}{field("address", "Street and building")}{field("city", "City")}{field("governorate", "Governorate")}</View>
     <Card style={{ marginVertical: spacing.lg, gap: spacing.xs }}><AppText variant="title">Cash on delivery</AppText><AppText style={{ color: colors.textMuted }}>Mahaly currently collects no card details. Final price, discounts and stock are validated by the server.</AppText>{egp ? <AppText variant="title">{formatPrice(egp, "EGP")} before server validation</AppText> : null}</Card>

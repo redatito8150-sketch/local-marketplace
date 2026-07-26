@@ -14,10 +14,11 @@ import { TextField } from "@/components/ui/TextField";
 import { getReviews } from "@/domain/brands";
 import { apiFormRequest } from "@/lib/api";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function WriteReviewRoute() {
-  const params = useLocalSearchParams<{ productId?: string; brandSlug?: string }>(); const router = useRouter(); const client = useQueryClient(); const { colors, radius, spacing } = useAppTheme();
-  const eligibility = useQuery({ queryKey: ["review-eligibility", params.productId, params.brandSlug], queryFn: () => getReviews(params) });
+  const params = useLocalSearchParams<{ productId?: string; brandSlug?: string }>(); const auth = useAuth(); const router = useRouter(); const client = useQueryClient(); const { colors, radius, spacing } = useAppTheme();
+  const eligibility = useQuery({ queryKey: ["review-eligibility", params.productId, params.brandSlug], queryFn: () => getReviews(params), enabled: auth.isAuthenticated });
   const [selectedItem, setSelectedItem] = useState(""); const [rating, setRating] = useState(0); const [title, setTitle] = useState(""); const [body, setBody] = useState(""); const [images, setImages] = useState<ImagePicker.ImagePickerAsset[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const items = eligibility.data?.eligibleItems ?? [];
   const chosen = items.find((item) => item.id === selectedItem) ?? (items.length === 1 ? items[0] : undefined);

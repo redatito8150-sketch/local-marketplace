@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText } from "@/components/ui/AppText";
 import { Product, formatPrice } from "@/domain/products";
 import { useAppTheme } from "@/theme/ThemeProvider";
-import { getWishlist, toggleWishlist, WishlistItem } from "@/domain/wishlist";
+import { getWishlist, toggleWishlist, toggleWishlistState, WishlistItem } from "@/domain/wishlist";
 import { useAuth } from "@/providers/AuthProvider";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -22,7 +22,7 @@ export function ProductCard({ product }: { product: Product }) {
       await client.cancelQueries({ queryKey: ["wishlist"] });
       const previous = client.getQueryData<WishlistItem[]>(["wishlist"]) ?? [];
       const nextItem: WishlistItem = { productId: product.id, name: product.name, brand: product.brand_name, price: product.price, currency: product.currency, image: product.image };
-      client.setQueryData<WishlistItem[]>(["wishlist"], previous.some((item) => item.productId === product.id) ? previous.filter((item) => item.productId !== product.id) : [...previous, nextItem]);
+      client.setQueryData<WishlistItem[]>(["wishlist"], toggleWishlistState(previous, nextItem));
       return { previous };
     },
     onError: (_error, _variables, context) => client.setQueryData(["wishlist"], context?.previous),

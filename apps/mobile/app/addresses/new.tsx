@@ -7,8 +7,13 @@ import { Screen } from "@/components/ui/Screen";
 import { TextField } from "@/components/ui/TextField";
 import { createAddress } from "@/domain/addresses";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 export default function NewAddressRoute() {
+  return <AuthGuard><NewAddressContent /></AuthGuard>;
+}
+
+function NewAddressContent() {
   const router = useRouter(); const client = useQueryClient(); const { colors, spacing } = useAppTheme();
   const [form, setForm] = useState({ label: "Home" as const, firstName: "", lastName: "", phone: "", addressLine: "", city: "", governorate: "" });
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");

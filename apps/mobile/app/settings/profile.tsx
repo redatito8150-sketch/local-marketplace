@@ -7,8 +7,13 @@ import { Screen } from "@/components/ui/Screen";
 import { TextField } from "@/components/ui/TextField";
 import { getProfile, updateProfile } from "@/domain/profile";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 export default function ProfileSettingsRoute() {
+  return <AuthGuard><ProfileSettingsContent /></AuthGuard>;
+}
+
+function ProfileSettingsContent() {
   const router = useRouter(); const client = useQueryClient(); const { spacing } = useAppTheme(); const query = useQuery({ queryKey: ["profile"], queryFn: getProfile });
   if (!query.data) return <Screen><AppText>Loading profile…</AppText></Screen>;
   return <ProfileForm key={`${query.data.fullName}-${query.data.phone}`} profile={query.data} onDone={async () => { await client.invalidateQueries({ queryKey: ["profile"] }); router.back(); }} spacing={spacing.lg} />;

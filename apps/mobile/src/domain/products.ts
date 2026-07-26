@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 export { findProductVariant, resolveProductPrice } from "./product-selection";
+export { calculateDiscountPercent, formatPrice } from "./pricing";
 
 export type ProductColor = { name: string; hex?: string };
 export type ProductVariant = {
@@ -134,12 +135,4 @@ export async function getProduct(id: string) {
     .select("id,product_id,color,size,price_override,quantity,availability_status")
     .eq("product_id", id);
   return { ...product, variants: (variants ?? []) as ProductVariant[] };
-}
-
-export function formatPrice(amount: number, currency: "EGP" | "USD") {
-  return new Intl.NumberFormat("en-EG", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: currency === "EGP" ? 0 : 2
-  }).format(amount);
 }

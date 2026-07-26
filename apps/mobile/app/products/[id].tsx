@@ -6,7 +6,8 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppText } from "@/components/ui/AppText";
 import { Badge, BottomActionBar, Divider, FilterChip, QuantitySelector } from "@/components/ui/Primitives";
 import { ErrorState, LoadingState } from "@/components/system/States";
-import { findProductVariant, formatPrice, getProduct, getProducts, resolveProductPrice } from "@/domain/products";
+import { calculateDiscountPercent, findProductVariant, formatPrice, getProduct, getProducts, resolveProductPrice } from "@/domain/products";
+import { isProductSelectionUnavailable } from "@/domain/product-selection";
 import { useAppTheme } from "@/theme/ThemeProvider";
 import { useCart } from "@/providers/CartProvider";
 import { toggleWishlist } from "@/domain/wishlist";
@@ -36,13 +37,9 @@ export default function ProductDetailsRoute() {
   if (!product) return <ErrorState title="Product unavailable" message="This piece is no longer published." />;
   const selectedVariant = findProductVariant(product.variants, size, color);
   const hasVariants = Boolean(product.variants?.length);
-  const selectedUnavailable = Boolean(
-    (hasVariants && (!selectedVariant || selectedVariant.availability_status !== "available")) ||
-    (product.track_inventory && selectedVariant && selectedVariant.quantity < 1) ||
-    product.unavailable_sizes.includes(size)
-  );
+  const selectedUnavailable = isProductSelectionUnavailable({ hasVariants, selectedVariant, tracksInventory: product.track_inventory, selectedSize: size, unavailableSizes: product.unavailable_sizes });
   const activePrice = resolveProductPrice(product, selectedVariant);
-  const discount = product.compare_at_price && product.compare_at_price > activePrice ? Math.round((1 - activePrice / product.compare_at_price) * 100) : 0;
+  const discount = calculateDiscountPercent(activePrice, product.compare_at_price);
   const availableQuantity = product.track_inventory && selectedVariant ? Math.max(selectedVariant.quantity, 1) : 10;
   const addToCart = () => cart.addItem({ productId: product.id, name: product.name, brand: product.brand_name, image: product.image, price: activePrice, currency: product.currency, size: size || "One size", color: color || undefined, quantity });
   const purchaseDisabled = !product.in_stock || selectedUnavailable || (product.sizes.length > 0 && !size) || (product.colors.length > 0 && !color);

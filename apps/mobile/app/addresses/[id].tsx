@@ -7,8 +7,13 @@ import { Screen } from "@/components/ui/Screen";
 import { TextField } from "@/components/ui/TextField";
 import { Address, AddressInput, getAddresses, updateAddress } from "@/domain/addresses";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 export default function EditAddressRoute() {
+  return <AuthGuard><EditAddressContent /></AuthGuard>;
+}
+
+function EditAddressContent() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const query = useQuery({ queryKey: ["addresses"], queryFn: getAddresses });

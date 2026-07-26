@@ -7,8 +7,13 @@ import { Card } from "@/components/ui/Primitives";
 import { Screen } from "@/components/ui/Screen";
 import { getNotificationPreferences, NotificationPreferences, updateNotificationPreferences } from "@/domain/profile";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { AuthGuard } from "@/components/auth/AuthGuard";
 
 export default function NotificationsRoute() {
+  return <AuthGuard><NotificationsContent /></AuthGuard>;
+}
+
+function NotificationsContent() {
   const query = useQuery({ queryKey: ["notification-preferences"], queryFn: getNotificationPreferences });
   if (!query.data) return <Screen><AppText>Loading preferences…</AppText></Screen>;
   return <PreferencesForm key={JSON.stringify(query.data)} initial={query.data} />;

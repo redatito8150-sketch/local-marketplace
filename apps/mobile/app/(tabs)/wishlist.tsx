@@ -9,10 +9,11 @@ import { EmptyState } from "@/components/ui/Primitives";
 import { formatPrice } from "@/domain/products";
 import { getWishlist, removeWishlist } from "@/domain/wishlist";
 import { useAppTheme } from "@/theme/ThemeProvider";
+import { useAuth } from "@/providers/AuthProvider";
 
 export default function WishlistRoute() {
-  const router = useRouter(); const client = useQueryClient(); const { colors, radius, spacing } = useAppTheme();
-  const query = useQuery({ queryKey: ["wishlist"], queryFn: getWishlist });
+  const router = useRouter(); const auth = useAuth(); const client = useQueryClient(); const { colors, radius, spacing } = useAppTheme();
+  const query = useQuery({ queryKey: ["wishlist"], queryFn: getWishlist, enabled: auth.isAuthenticated });
   const remove = useMutation({
     mutationFn: removeWishlist,
     onMutate: async (productId) => {
@@ -28,9 +29,9 @@ export default function WishlistRoute() {
     <FlatList style={{ backgroundColor: colors.background }} contentContainerStyle={{ padding: spacing.md, gap: spacing.sm, flexGrow: 1 }} data={query.data ?? []} keyExtractor={(item) => item.productId}
       ListHeaderComponent={<AppText variant="display" style={{ marginVertical: spacing.md }}>Wishlist</AppText>}
       ListEmptyComponent={<EmptyState title="Your wishlist is empty" message="Save pieces you want to revisit." />}
-      renderItem={({ item }) => <Pressable onPress={() => router.push(`/products/${item.productId}` as Href)} style={{ flexDirection: "row", gap: spacing.sm, backgroundColor: colors.surfaceRaised, padding: spacing.sm, borderRadius: radius.md }}>
+      renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Open ${item.name}`} onPress={() => router.push(`/products/${item.productId}` as Href)} style={{ flexDirection: "row", gap: spacing.sm, backgroundColor: colors.surfaceRaised, padding: spacing.sm, borderRadius: radius.md }}>
         <Image source={item.image} alt={item.name} accessibilityLabel={item.name} style={{ width: 90, height: 116, borderRadius: radius.sm, backgroundColor: colors.skeleton }} contentFit="cover" />
-        <View style={{ flex: 1, gap: spacing.xs }}><AppText variant="caption" style={{ color: colors.textMuted }}>{item.brand}</AppText><AppText variant="label">{item.name}</AppText><AppText>{formatPrice(item.price, item.currency)}</AppText><Pressable onPress={() => remove.mutate(item.productId)}><AppText variant="caption" style={{ color: colors.danger }}>Remove</AppText></Pressable></View>
+        <View style={{ flex: 1, gap: spacing.xs }}><AppText variant="caption" style={{ color: colors.textMuted }}>{item.brand}</AppText><AppText variant="label">{item.name}</AppText><AppText>{formatPrice(item.price, item.currency)}</AppText><Pressable accessibilityRole="button" accessibilityLabel={`Remove ${item.name} from wishlist`} onPress={() => remove.mutate(item.productId)}><AppText variant="caption" style={{ color: colors.danger }}>Remove</AppText></Pressable></View>
       </Pressable>} />}
   </AuthGuard>;
 }

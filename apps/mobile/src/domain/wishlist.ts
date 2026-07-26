@@ -1,5 +1,7 @@
 import { apiRequest } from "@/lib/api";
-export type WishlistItem = { productId: string; name: string; brand: string; price: number; currency: "EGP" | "USD"; image: string };
+import type { WishlistStateItem } from "./wishlist-state";
+export type WishlistItem = WishlistStateItem;
+export { toggleWishlistState } from "./wishlist-state";
 export async function getWishlist() { return (await apiRequest<{ items: WishlistItem[] }>("/api/wishlist")).items; }
 export async function toggleWishlist(productId: string) {
   return apiRequest<{ wishlisted: boolean }>("/api/wishlist", { method: "POST", body: JSON.stringify({ productId }) });
