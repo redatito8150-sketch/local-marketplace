@@ -9,7 +9,7 @@ const COLUMNS: { title: string; links: string[] }[] = [
   { title: "Discover", links: ["Brands", "Journal", "Edits", "Egyptian Makers"] },
   { title: "About Mahaly", links: ["Our Story", "Careers", "Press", "Sustainability"] },
   { title: "For Brands", links: ["Join as a Brand", "Seller Guidelines", "Brand Support"] },
-  { title: "Help", links: ["Contact Us", "Shipping", "Returns", "FAQ"] },
+  { title: "Help", links: ["Contact Us", "Shipping", "Returns", "FAQ", "Terms & Conditions", "Privacy Policy"] },
 ];
 
 const LINK_HREFS: Record<string, string> = {
@@ -17,6 +17,8 @@ const LINK_HREFS: Record<string, string> = {
   Journal: "/journal",
   Women: "/shop/women",
   "New Arrivals": "/shop/women",
+  "Terms & Conditions": "/terms",
+  "Privacy Policy": "/privacy",
 };
 
 export default function BrandFooter() {

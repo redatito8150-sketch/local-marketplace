@@ -739,3 +739,19 @@ export interface AddressRecord {
   postalCode?: string;
   isDefault: boolean;
 }
+
+// Shared shape for /privacy and /terms — the same section objects drive
+// both the table-of-contents (id + title) and the rendered content, so the
+// two can never drift out of sync. `body` is an array of blocks rather
+// than one opaque string so paragraphs/lists/subsections can each get
+// correct semantic markup instead of one unstructured blob.
+export type LegalBlock =
+  | { type: "paragraph"; text: string }
+  | { type: "list"; items: string[] }
+  | { type: "subheading"; text: string };
+
+export interface LegalSection {
+  id: string;
+  title: string;
+  body: LegalBlock[];
+}

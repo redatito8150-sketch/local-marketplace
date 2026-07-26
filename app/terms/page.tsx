@@ -1,21 +1,39 @@
+import type { Metadata } from "next";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import LegalHero from "@/components/legal/LegalHero";
+import LegalToc from "@/components/legal/LegalToc";
+import LegalAccordion from "@/components/legal/LegalAccordion";
+import { TERMS_INTRO, TERMS_SECTIONS } from "@/content/legal/terms";
+import { absoluteUrl } from "@/lib/seo";
 
-export const metadata = { title: "Terms & Conditions — Mahaly" };
+const TITLE = "Terms & Conditions — Mahaly";
+const DESCRIPTION =
+  "The terms that govern using Mahaly's website, mobile app, accounts, and marketplace purchases.";
+
+export const metadata: Metadata = {
+  title: TITLE,
+  description: DESCRIPTION,
+  alternates: { canonical: absoluteUrl("/terms") },
+  openGraph: { title: TITLE, description: DESCRIPTION, url: absoluteUrl("/terms") },
+};
 
 export default function TermsPage() {
   return (
     <main className="min-h-screen bg-cream">
       <Header />
-      <section className="mx-auto max-w-3xl px-8 py-16 lg:px-12 lg:py-24">
-        <h1 className="text-3xl font-bold tracking-tightest text-ink">Terms &amp; Conditions</h1>
-        <p className="mt-6 text-[14px] leading-relaxed text-ink-soft/70">
-          By creating a Mahaly account or placing an order, you agree to shop in good faith,
-          provide accurate delivery information, and use the platform only for its intended
-          purpose of browsing and purchasing from our independent local brands. Full legal terms
-          are being finalized — contact us if you have questions in the meantime.
-        </p>
+      <LegalHero title="Terms & Conditions" intro={TERMS_INTRO} />
+
+      <section className="mx-auto max-w-screen2xl px-6 py-12 sm:px-8 lg:px-12 lg:py-16">
+        <div className="lg:flex lg:items-start lg:gap-14">
+          <LegalToc sections={TERMS_SECTIONS.map(({ id, title }) => ({ id, title }))} />
+
+          <div className="max-w-2xl rounded-xl3 border border-stone-150 bg-card px-2 lg:flex-1">
+            <LegalAccordion items={TERMS_SECTIONS} />
+          </div>
+        </div>
       </section>
+
       <Footer />
     </main>
   );
