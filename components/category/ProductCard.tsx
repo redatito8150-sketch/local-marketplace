@@ -57,7 +57,7 @@ export default function ProductCard({
         />
 
         <button
-          aria-label="Add to wishlist"
+          aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
