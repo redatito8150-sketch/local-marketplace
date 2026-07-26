@@ -9,6 +9,14 @@ import { logError } from "@/lib/errorLog";
 import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
 import { getRequestUser } from "@/lib/supabase/requestUser";
 import { readOrderIdempotency, storeOrderIdempotency } from "@/lib/orders/idempotency";
+import { getOrdersForUser } from "@/lib/data/orders";
+
+export async function GET(request: NextRequest) {
+  const user = await getRequestUser(request);
+  if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  const orders = await getOrdersForUser(user.id);
+  return NextResponse.json({ orders });
+}
 
 interface RpcOrderItem {
   product_id: string;

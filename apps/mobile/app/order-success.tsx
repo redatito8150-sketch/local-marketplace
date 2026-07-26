@@ -13,6 +13,7 @@ export default function OrderSuccessRoute() {
     <Ionicons name="bag-check-outline" size={72} color={colors.success} />
     <AppText variant="display" style={{ textAlign: "center" }}>Order placed successfully</AppText>
     <AppText style={{ color: colors.textMuted, textAlign: "center" }}>Your Mahaly order #{orderNumber} is confirmed by the server.</AppText>
+    <AppButton label="View orders" variant="secondary" onPress={() => router.replace("/orders" as never)} />
     <AppButton label="Continue shopping" onPress={() => router.replace("/(tabs)")} />
   </View></Screen>;
 }
