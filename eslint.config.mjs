@@ -1,7 +1,13 @@
 import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
 const eslintConfig = [
-  { ignores: [".claude/**"] },
+  {
+    ignores: [
+      ".claude/**",
+      "apps/mobile/.expo/**",
+      "apps/mobile/dist*/**",
+    ],
+  },
   ...nextCoreWebVitals,
 ];
 

@@ -17,3 +17,16 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (!response.ok) throw new Error(body.error || "The request could not be completed.");
   return body;
 }
+
+export async function apiFormRequest<T>(path: string, body: FormData): Promise<T> {
+  if (!baseUrl) throw new Error("Mahaly API URL is not configured.");
+  const { data } = await supabase.auth.getSession();
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: data.session?.access_token ? { Authorization: `Bearer ${data.session.access_token}` } : undefined,
+    body
+  });
+  const result = await response.json().catch(() => ({})) as { error?: string } & T;
+  if (!response.ok) throw new Error(result.error || "The request could not be completed.");
+  return result;
+}

@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/accountAuth";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 // Toggles the caller's own follow row for this brand — no request body
 // needed, the current state is read straight from the table rather than
 // trusted from the client.
-export async function POST(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
-  const user = await requireUser();
+  const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Sign in to follow a brand" }, { status: 403 });
   }

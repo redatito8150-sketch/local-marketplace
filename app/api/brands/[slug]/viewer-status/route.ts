@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/supabase/accountAuth";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { isUserFollowingBrand } from "@/lib/data/follows";
+import { getRequestUser } from "@/lib/supabase/requestUser";
 
 // Split out of the brand page itself so the page can stay static/ISR —
 // any cookies() read (which requireUser()/requireBrandOwner() both do)
@@ -13,7 +13,7 @@ export async function GET(
   props: { params: Promise<{ slug: string }> }
 ) {
   const params = await props.params;
-  const user = await requireUser();
+  const user = await getRequestUser(_request);
   if (!user) {
     return NextResponse.json({ signedIn: false, isFollowing: false, isOwnBrand: false });
   }

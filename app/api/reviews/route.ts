@@ -1,14 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
 import { reviewInputSchema, toReviewInsert } from "@/lib/reviews/validation";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
+import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
+import { getRequestUser } from "@/lib/supabase/requestUser";
+
+export async function GET(request: NextRequest) {
+  const params = request.nextUrl.searchParams;
+  const page = Math.max(1, Number(params.get("page")) || 1);
+  const rating = Number(params.get("rating"));
+  const result = await getPublicReviews({
+    brandSlug: params.get("brandSlug") || undefined,
+    productId: params.get("productId") || undefined,
+    filters: {
+      photos: params.get("photos") === "true",
+      verified: false,
+      replied: params.get("replied") === "true",
+      sort: "recent",
+      page,
+      rating: rating >= 1 && rating <= 5 ? rating : undefined
+    }
+  });
+  const user = await getRequestUser(request);
+  const eligibleItems = user ? await getEligibleOrderItems(user.id, params.get("productId") || undefined, params.get("brandSlug") || undefined) : [];
+  let reviews = result.reviews.map((review) => ({ ...review, isOwn: false }));
+  if (user && reviews.length) {
+    const ids = reviews.map((review) => review.id);
+    const [{ data: ownRows }, { data: votes }] = await Promise.all([
+      supabaseAdmin.from("reviews").select("id").eq("user_id", user.id).in("id", ids),
+      supabaseAdmin.from("review_helpful_votes").select("review_id").eq("user_id", user.id).in("review_id", ids)
+    ]);
+    const own = new Set((ownRows ?? []).map((row) => row.id));
+    const helpful = new Set((votes ?? []).map((row) => row.review_id));
+    reviews = reviews.map((review) => ({ ...review, isOwn: own.has(review.id), viewerFoundHelpful: helpful.has(review.id) }));
+  }
+  return NextResponse.json({ ...result, reviews, eligibleItems });
+}
 
 export async function POST(request: NextRequest) {
   if (!checkRateLimit(`review:${getClientIp(request)}`, 8, 60_000)) return NextResponse.json({error:"Too many requests"},{status:429});
-  const supabase = await createSupabaseServerClient(); const {data:{user}}=await supabase.auth.getUser();
+  const user = await getRequestUser(request);
   if(!user)return NextResponse.json({error:"Sign in required"},{status:401});
   const form = await request.formData() as unknown as {
     get(name: string): string | File | null;
@@ -19,7 +52,7 @@ export async function POST(request: NextRequest) {
   const files=form.getAll("images").filter((item):item is File=>typeof item !== "string"&&item.size>0);
   if(files.length>5)return NextResponse.json({error:"Up to 5 images are allowed."},{status:400});
   for(const file of files)if(file.size>5*1024*1024||!["image/jpeg","image/png","image/webp"].includes(file.type)||!await hasExpectedImageSignature(file))return NextResponse.json({error:"Images must be JPG, PNG, or WebP and no larger than 5MB."},{status:400});
-  const { data: eligible, error: eligibilityError } = await supabase.rpc("review_purchase_is_eligible", {
+  const { data: eligible, error: eligibilityError } = await supabaseAdmin.rpc("review_purchase_is_eligible", {
     p_user_id: user.id,
     p_product_id: parsed.data.productId,
     p_order_item_id: parsed.data.orderItemId,
@@ -31,7 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This item can only be reviewed after its order is fulfilled." }, { status: 403 });
   }
 
-  const {data:review,error}=await supabase.from("reviews").insert(toReviewInsert(user.id, parsed.data)).select("id").single();
+  const {data:review,error}=await supabaseAdmin.from("reviews").insert(toReviewInsert(user.id, parsed.data)).select("id").single();
   if(error){
     if(error.code==="23505")return NextResponse.json({error:"This purchase has already been reviewed."},{status:409});
     console.error("Review creation failed", { code: error.code, message: error.message });
@@ -41,9 +74,9 @@ export async function POST(request: NextRequest) {
   try{
     for(let index=0;index<files.length;index++){const file=files[index];const ext=file.type.split("/")[1];const path=`${user.id}/${review.id}/${randomUUID()}.${ext}`;
       const upload=await supabaseAdmin.storage.from("review-images").upload(path,file,{contentType:file.type,upsert:false});if(upload.error)throw upload.error;uploaded.push(path);
-      const imageRow=await supabase.from("review_images").insert({review_id:review.id,storage_path:path,display_order:index});if(imageRow.error)throw imageRow.error;
+      const imageRow=await supabaseAdmin.from("review_images").insert({review_id:review.id,storage_path:path,display_order:index});if(imageRow.error)throw imageRow.error;
     }
-  }catch(error){if(uploaded.length)await supabaseAdmin.storage.from("review-images").remove(uploaded);await supabase.from("reviews").update({deleted_at:new Date().toISOString()}).eq("id",review.id);return NextResponse.json({error:"Images could not be saved."},{status:500});}
+  }catch(error){if(uploaded.length)await supabaseAdmin.storage.from("review-images").remove(uploaded);await supabaseAdmin.from("reviews").update({deleted_at:new Date().toISOString()}).eq("id",review.id);return NextResponse.json({error:"Images could not be saved."},{status:500});}
   await supabaseAdmin.from("notifications").insert({
     type: parsed.data.rating <= 2 ? "low_rating_review" : "new_review",
     title: parsed.data.rating <= 2 ? "New low-rating review" : "New verified review",

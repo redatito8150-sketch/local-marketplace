@@ -12,6 +12,8 @@ import { useAppTheme } from "@/theme/ThemeProvider";
 import { useCart } from "@/providers/CartProvider";
 import { toggleWishlist } from "@/domain/wishlist";
 import { useAuth } from "@/providers/AuthProvider";
+import { getReviews } from "@/domain/brands";
+import { ReviewCard } from "@/components/reviews/ReviewCard";
 
 export default function ProductDetailsRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -24,6 +26,7 @@ export default function ProductDetailsRoute() {
   const [color, setColor] = useState("");
   const [size, setSize] = useState("");
   const query = useQuery({ queryKey: ["product", id], queryFn: () => getProduct(id), enabled: Boolean(id), refetchInterval: 60_000 });
+  const reviews = useQuery({ queryKey: ["reviews", "product", id], queryFn: () => getReviews({ productId: id }), enabled: Boolean(id) });
   if (query.isLoading) return <LoadingState label="Loading product…" />;
   if (query.isError) return <ErrorState message="We couldn't load this product." onRetry={() => query.refetch()} />;
   const product = query.data;
@@ -45,7 +48,7 @@ export default function ProductDetailsRoute() {
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <Image source={product.images[0] || product.image} alt={product.name} contentFit="cover" style={{ width: "100%", aspectRatio: 0.78, backgroundColor: colors.skeleton }} accessibilityLabel={product.name} />
         <View style={{ padding: spacing.md, gap: spacing.sm }}>
-          <AppText variant="caption" style={{ color: colors.textMuted }}>{product.brand_name}</AppText>
+          <AppText variant="caption" style={{ color: colors.textMuted }} onPress={() => product.brand_slug && router.push(`/brands/${product.brand_slug}` as never)}>{product.brand_name}</AppText>
           <AppText variant="title">{product.name}</AppText>
           <AppText variant="title">{formatPrice(activePrice, product.currency)}</AppText>
           {!product.in_stock ? <Badge tone="warning">Out of stock</Badge> : null}
@@ -53,6 +56,7 @@ export default function ProductDetailsRoute() {
           {product.sizes.length ? <><AppText variant="label">Size</AppText><View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>{product.sizes.map((item) => <FilterChip key={item} label={item} selected={size === item} onPress={() => setSize(item)} />)}</View></> : null}
           <AppText>{product.description}</AppText>
           <AppButton label={wishlist.isPending ? "Saving…" : "Save to wishlist"} variant="secondary" loading={wishlist.isPending} onPress={() => auth.isAuthenticated ? wishlist.mutate(product.id) : router.push("/sign-in")} />
+          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}><AppText variant="title">Reviews {reviews.data?.summary.total ? `· ${reviews.data.summary.average.toFixed(1)}` : ""}</AppText>{reviews.data?.eligibleItems.length ? <AppButton label="Write a verified review" variant="secondary" onPress={() => router.push(`/reviews/write?productId=${encodeURIComponent(product.id)}` as never)} /> : null}{reviews.data?.reviews.slice(0, 3).map((review) => <ReviewCard key={review.id} review={review} />)}</View>
         </View>
       </ScrollView>
       <BottomActionBar><AppButton
