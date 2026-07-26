@@ -97,6 +97,10 @@ Supabase Dashboard and your own `.env.local`/Vercel project settings.
    `avatar_url`, and a verified email. Do not add Gmail, Drive, Calendar,
    or any other scope — this project never needs them and each additional
    scope adds another consent-screen prompt and review requirement.
+   Supabase still writes this `avatar_url` into
+   `auth.users.user_metadata` on every sign-in exactly as described here —
+   see section G below for what the app does with it (short answer: it's
+   never shown directly).
 
 4. **Testing mode vs. Production mode**: while the consent screen is in
    **Testing**, only accounts you explicitly add under **Test users** can
@@ -201,3 +205,35 @@ Checklist before enabling in Production:
       Test users, which doesn't scale — Production mode is the real answer)
 - [ ] `NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=true` set for the Production
       environment in Vercel
+
+## G. Avatar / profile photo handling
+
+Supabase writes Google's `avatar_url`/`picture` claim into
+`auth.users.user_metadata` on every sign-in (section B.3 above) — this is
+Supabase's own behavior and can't be turned off from this app. Nothing in
+this codebase reads that field for display, on purpose: earlier, a
+manually uploaded photo and Google's photo shared that one key, so every
+Google sign-in silently overwrote a manually uploaded photo.
+
+The app now keeps the two fully separate, in `profiles`
+(`supabase/migrations/20260727000001_profile_avatar_priority.sql`):
+
+- **`profiles.avatar_url`** — the photo a user explicitly uploaded via
+  `/account/settings`. Written only by `app/api/account/avatar`'s
+  POST (set) and DELETE (cleared to `null`). Nothing else — no trigger,
+  no OAuth sync, no session refresh — is allowed to touch it.
+- **`profiles.provider_avatar_url`** — Google's photo, mirrored
+  automatically by the `on_auth_user_metadata_updated` trigger every time
+  `auth.users.raw_user_meta_data` changes (identity linking, and every
+  subsequent Google sign-in). Used only as a fallback.
+
+The UI (`lib/account/avatar.ts`'s `resolveAvatarUrl()`, used by every
+avatar-rendering page/component) always resolves in this order:
+
+```
+profiles.avatar_url  →  profiles.provider_avatar_url  →  initials placeholder
+```
+
+A manually uploaded photo is therefore permanent until the user removes
+it themselves — no number of future Google (or email/password) sign-ins
+will ever replace it.

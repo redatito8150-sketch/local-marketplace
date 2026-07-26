@@ -13,6 +13,7 @@ import { getAddressesForUser } from "@/lib/data/addresses";
 import { getWishlistForUser } from "@/lib/data/wishlist";
 import { getFollowedBrandsForUser } from "@/lib/data/follows";
 import { SMS_VERIFICATION_ENABLED } from "@/lib/sms";
+import { resolveAvatarUrl } from "@/lib/account/avatar";
 import { formatPrice } from "@/lib/format";
 import OrderCard from "@/components/account/OrderCard";
 import FollowedBrandsRow from "@/components/account/FollowedBrandsRow";
@@ -31,7 +32,7 @@ export default async function AccountOverviewPage() {
   const [{ data: profile }, orders, addresses, wishlist, followedBrands] = await Promise.all([
     supabase
       .from("profiles")
-      .select("full_name, phone, phone_verified_at")
+      .select("full_name, phone, phone_verified_at, avatar_url, provider_avatar_url")
       .eq("id", user.id)
       .maybeSingle(),
     getOrdersForUser(user.id),
@@ -42,7 +43,7 @@ export default async function AccountOverviewPage() {
 
   const fullName = profile?.full_name?.trim() || "there";
   const firstName = fullName.split(/\s+/)[0] || "there";
-  const avatarUrl = typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : "";
+  const avatarUrl = resolveAvatarUrl(profile?.avatar_url, profile?.provider_avatar_url) ?? "";
   const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
   // Phone verification is only a real, checkable thing once an SMS provider
   // is actually configured — otherwise every account would show "phone not

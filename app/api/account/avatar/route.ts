@@ -45,11 +45,17 @@ export async function POST(request: NextRequest) {
   await supabaseAdmin.storage.from(BUCKET).remove(stalePaths);
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
   const avatarUrl = `${data.publicUrl}?v=${Date.now()}`;
-  const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-    user_metadata: { ...user.user_metadata, avatar_url: avatarUrl, avatar_path: path },
-  });
-  if (metadataError) {
-    return safeErrorResponse("account.avatar.update-metadata", metadataError);
+  // profiles.avatar_url only — this is the one write path for a manually
+  // uploaded photo. Never write avatar_url into auth.users.user_metadata:
+  // that key is rewritten by Supabase's own GoTrue on every Google sign-in
+  // (see the on_auth_user_metadata_updated trigger), which is exactly what
+  // silently overwrote manually uploaded photos before this fix.
+  const { error: profileError } = await supabaseAdmin
+    .from("profiles")
+    .update({ avatar_url: avatarUrl })
+    .eq("id", user.id);
+  if (profileError) {
+    return safeErrorResponse("account.avatar.update-profile", profileError);
   }
   return NextResponse.json({ ok: true, avatarUrl });
 }
@@ -59,12 +65,9 @@ export async function DELETE() {
   if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
 
   await supabaseAdmin.storage.from(BUCKET).remove(avatarPaths(user.id));
-  const metadata = { ...user.user_metadata };
-  delete metadata.avatar_url;
-  delete metadata.avatar_path;
-  const { error } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-    user_metadata: metadata,
-  });
+  // Clears the manual photo only — provider_avatar_url (the Google photo,
+  // if any) is left untouched so it can appear as the fallback again.
+  const { error } = await supabaseAdmin.from("profiles").update({ avatar_url: null }).eq("id", user.id);
   if (error) return safeErrorResponse("account.avatar.delete", error);
   return NextResponse.json({ ok: true });
 }

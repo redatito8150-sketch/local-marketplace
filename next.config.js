@@ -13,7 +13,11 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  `img-src 'self' data: blob: https://images.unsplash.com https://i.imgur.com${
+  // https://lh3.googleusercontent.com is where Google serves the OAuth
+  // `picture`/`avatar_url` claim (components/account/AccountAvatar.tsx
+  // renders it as a plain <img>) — without this the browser CSP-blocks it
+  // outright and shows a broken image, regardless of any app-side fix.
+  `img-src 'self' data: blob: https://images.unsplash.com https://i.imgur.com https://lh3.googleusercontent.com${
     supabaseUrl ? ` ${supabaseUrl}` : ""
   }`,
   `connect-src 'self' https://challenges.cloudflare.com${supabaseUrl ? ` ${supabaseUrl}` : ""}`,

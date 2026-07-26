@@ -4,13 +4,17 @@ import { useRef, useState } from "react";
 import { Camera, LoaderCircle, Trash2 } from "lucide-react";
 import AccountAvatar from "@/components/account/AccountAvatar";
 import { accountSecondaryButton } from "@/components/account/AccountUI";
+import { resolveAvatarUrl } from "@/lib/account/avatar";
 
 export default function AvatarUploader({
   name,
   initialUrl,
+  providerUrl,
 }: {
   name: string;
   initialUrl?: string | null;
+  /** Google/OAuth provider photo — shown only while no manual photo exists. */
+  providerUrl?: string | null;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState(initialUrl ?? "");
@@ -54,7 +58,7 @@ export default function AvatarUploader({
 
   return (
     <div className="flex flex-col gap-4 rounded-[20px] border border-[var(--account-border)] bg-[var(--account-surface-muted)] p-5 sm:flex-row sm:items-center">
-      <AccountAvatar name={name} imageUrl={url} />
+      <AccountAvatar name={name} imageUrl={resolveAvatarUrl(url, providerUrl)} />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-[var(--account-text)]">Profile photo</p>
         <p className="mt-1 text-[12px] leading-5 text-[var(--account-text-muted)]">

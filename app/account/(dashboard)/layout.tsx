@@ -8,6 +8,7 @@ import AccountDashboardLink from "@/components/account/AccountDashboardLink";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { accountThemeFromPreferences } from "@/lib/account/themes";
+import { resolveAvatarUrl } from "@/lib/account/avatar";
 import type { NotificationPreferences } from "@/types";
 
 export default async function AccountDashboardLayout({
@@ -28,15 +29,14 @@ export default async function AccountDashboardLayout({
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, email, role, is_admin, notification_preferences")
+    .select("full_name, email, role, is_admin, notification_preferences, avatar_url, provider_avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
   const accountTheme = accountThemeFromPreferences(
     profile?.notification_preferences as NotificationPreferences | null,
   );
-  const avatarUrl =
-    typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null;
+  const avatarUrl = resolveAvatarUrl(profile?.avatar_url, profile?.provider_avatar_url);
 
   // Same precedence as Header.tsx's dashboardHref — an admin always
   // outranks a brand link, and neither shows for a plain customer account.

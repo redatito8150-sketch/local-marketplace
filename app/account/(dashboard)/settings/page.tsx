@@ -12,7 +12,7 @@ export default async function AccountSettingsPage() {
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, phone")
+    .select("full_name, phone, avatar_url, provider_avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -27,7 +27,8 @@ export default async function AccountSettingsPage() {
         <div className="space-y-8 p-5 sm:p-6">
           <AvatarUploader
             name={profile?.full_name || user.email || "Your account"}
-            initialUrl={typeof user.user_metadata?.avatar_url === "string" ? user.user_metadata.avatar_url : null}
+            initialUrl={profile?.avatar_url ?? null}
+            providerUrl={profile?.provider_avatar_url ?? null}
           />
         <SettingsForm
           initialFullName={profile?.full_name ?? ""}
