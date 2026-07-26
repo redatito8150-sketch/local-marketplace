@@ -44,12 +44,15 @@ export type ProductSort = "newest" | "price-asc" | "price-desc" | "top-rated";
 export type ProductQueryOptions = {
   query?: string;
   category?: string;
+  productCategory?: string;
   brand?: string;
   color?: string;
   size?: string;
   inStock?: boolean;
   discounted?: boolean;
   minimumRating?: number;
+  minPrice?: number;
+  maxPrice?: number;
   limit?: number;
   page?: number;
   sort?: ProductSort;
@@ -61,6 +64,7 @@ export type CatalogFacets = {
   brands: string[];
   colors: string[];
   sizes: string[];
+  price: { min: number; max: number };
 };
 
 function normalize(row: Record<string, unknown>): Product {
@@ -85,12 +89,15 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   let request = supabase.from("products").select(productSelect, { count: "exact" })
     .eq("status", "published").eq("paused_by_brand", false);
   if (options.category) request = request.eq("category", options.category);
+  if (options.productCategory) request = request.eq("product_category", options.productCategory);
   if (options.brand) request = request.eq("brand_name", options.brand);
   if (options.color) request = request.contains("colors", [{ name: options.color }]);
   if (options.size) request = request.contains("sizes", [options.size]);
   if (options.inStock) request = request.eq("in_stock", true);
   if (options.discounted) request = request.not("compare_at_price", "is", null);
   if (options.minimumRating) request = request.gte("rating", options.minimumRating);
+  if (options.minPrice != null) request = request.gte("price", options.minPrice);
+  if (options.maxPrice != null) request = request.lte("price", options.maxPrice);
   if (options.query?.trim()) {
     const safe = options.query.trim().replace(/[%_,().]/g, " ").slice(0, 80);
     request = request.or(`name.ilike.%${safe}%,brand_name.ilike.%${safe}%,category.ilike.%${safe}%,product_category.ilike.%${safe}%`);
@@ -110,7 +117,7 @@ export async function getProducts(options: ProductQueryOptions = {}) {
 
 export async function getCatalogFacets(): Promise<CatalogFacets> {
   const { data, error } = await supabase.from("products")
-    .select("category,product_category,brand_name,colors,sizes")
+    .select("category,product_category,brand_name,colors,sizes,price")
     .eq("status", "published").eq("paused_by_brand", false).limit(2000);
   if (error) throw new Error("We couldn't load catalog filters.");
   const rows = data ?? [];
@@ -122,6 +129,10 @@ export async function getCatalogFacets(): Promise<CatalogFacets> {
     brands: unique(rows.map((row) => row.brand_name)),
     colors: unique(rows.flatMap((row) => ((row.colors as ProductColor[] | null) ?? []).map((color) => color.name))),
     sizes: unique(rows.flatMap((row) => (row.sizes as string[] | null) ?? [])),
+    price: {
+      min: Math.min(...rows.map((row) => Number(row.price)).filter(Number.isFinite)),
+      max: Math.max(...rows.map((row) => Number(row.price)).filter(Number.isFinite)),
+    },
   };
 }
 

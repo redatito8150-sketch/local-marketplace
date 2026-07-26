@@ -1,7 +1,8 @@
 import { Session, User } from "@supabase/supabase-js";
 import {
   AppState,
-  AppStateStatus
+  AppStateStatus,
+  Linking,
 } from "react-native";
 import {
   createContext,
@@ -12,6 +13,7 @@ import {
   useState
 } from "react";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase/client";
+import { parseAuthCallback } from "@/domain/auth-callback";
 
 type AuthContextValue = {
   session: Session | null;
@@ -36,10 +38,28 @@ export function AuthProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setIsLoading(false);
-    });
+    let active = true;
+    const consumeAuthUrl = async (url: string | null) => {
+      if (!url) return;
+      const callback = parseAuthCallback(url);
+      if (callback?.kind === "tokens") {
+        await supabase.auth.setSession({ access_token: callback.accessToken, refresh_token: callback.refreshToken });
+      } else if (callback?.kind === "code") {
+        await supabase.auth.exchangeCodeForSession(callback.code);
+      }
+    };
+    const initialize = async () => {
+      try {
+        await consumeAuthUrl(await Linking.getInitialURL());
+        const { data } = await supabase.auth.getSession();
+        if (active) setSession(data.session);
+      } catch {
+        if (active) setSession(null);
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void initialize();
 
     const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
@@ -54,10 +74,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
     };
     const subscription = AppState.addEventListener("change", handleAppState);
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => {
+      void consumeAuthUrl(url).catch(() => undefined);
+    });
 
     return () => {
+      active = false;
       data.subscription.unsubscribe();
       subscription.remove();
+      linkSubscription.remove();
     };
   }, []);
 
@@ -78,7 +103,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { data: { full_name: name } }
+          options: { data: { full_name: name }, emailRedirectTo: "mahaly://" }
         });
         if (error) throw error;
       },

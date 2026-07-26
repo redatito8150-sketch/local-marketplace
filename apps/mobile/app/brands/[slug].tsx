@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Href, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { FlatList, View } from "react-native";
+import { FlatList, Pressable, View } from "react-native";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import { ReviewCard } from "@/components/reviews/ReviewCard";
 import { ErrorState, LoadingState } from "@/components/system/States";
@@ -40,7 +40,8 @@ export default function BrandRoute() {
       if (tab === "Reviews") return <ReviewCard review={item as Review} />;
       if (tab === "Collections") {
         const look = item as Brand["shopTheLook"][number];
-        return <Card><Image source={look.image} alt={look.title} style={{ width: "100%", aspectRatio: 1.5, borderRadius: radius.md }} /><AppText variant="title">{look.title}</AppText></Card>;
+        const productId = look.href.split("/").filter(Boolean).at(-1);
+        return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${look.title}`} onPress={() => productId && router.push(`/products/${encodeURIComponent(productId)}` as Href)}><Card><Image source={look.image} alt={look.title} style={{ width: "100%", aspectRatio: 1.5, borderRadius: radius.md }} /><AppText variant="title">{look.title}</AppText></Card></Pressable>;
       }
       const value = item as Brand["values"][number];
       return <Card><AppText variant="title">{value.title}</AppText><AppText>{value.description}</AppText></Card>;

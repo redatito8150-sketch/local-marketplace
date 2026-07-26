@@ -60,7 +60,7 @@ export const secureStorage = {
   },
 
   async removeItem(key: string) {
-    const count = Number(await SecureStore.getItemAsync(metaKey(key))) || 0;
+    const count = Number(await getRaw(metaKey(key))) || 0;
     await removeChunks(key, count);
     await Promise.all([
       removeRaw(metaKey(key)),
