@@ -4,6 +4,7 @@ import { Href, useRouter } from "expo-router";
 import { Pressable, RefreshControl, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HorizontalProductSection } from "@/components/home/HorizontalProductSection";
+import { LivingBackground } from "@/components/home/LivingBackground";
 import { MoodCard } from "@/components/home/MoodCard";
 import { ErrorState, LoadingState } from "@/components/system/States";
 import { AppText } from "@/components/ui/AppText";
@@ -40,15 +41,7 @@ export default function HomeRoute() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <Image
-        source={require("../../assets/images/mahaly-pyramids-background.png")}
-        alt=""
-        accessibilityIgnoresInvertColors
-        contentFit="cover"
-        contentPosition="top center"
-        transition={250}
-        style={{ position: "absolute", inset: 0 }}
-      />
+      <LivingBackground />
       <View
         pointerEvents="none"
         style={{
