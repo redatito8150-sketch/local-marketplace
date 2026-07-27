@@ -120,5 +120,5 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     if ("brands" in entry) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} brands={entry.brands} />);
     if (["promotional_banner", "editorial_image", "text_block", "newsletter"].includes(item.sectionType)) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} />);
     return null;
-  })}<Footer /></main>;
+  })}<Footer homeGradient /></main>;
 }

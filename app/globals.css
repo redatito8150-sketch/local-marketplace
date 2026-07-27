@@ -19,7 +19,17 @@ body {
   position: relative;
   isolation: isolate;
   background:
-    linear-gradient(rgba(250, 250, 248, 0.08), rgba(250, 250, 248, 0.20)),
+    linear-gradient(
+      180deg,
+      rgba(220, 230, 236, 0.24) 0%,
+      rgba(250, 250, 248, 0.12) 18%,
+      rgba(231, 211, 174, 0.26) 42%,
+      rgba(232, 184, 178, 0.22) 68%,
+      rgba(183, 31, 26, 0.14) 86%,
+      rgba(250, 250, 248, 0.34) 100%
+    ),
+    radial-gradient(circle at 12% 34%, rgba(255, 248, 238, 0.18), transparent 32%),
+    radial-gradient(circle at 86% 72%, rgba(183, 31, 26, 0.11), transparent 38%),
     url("/images/home/nile-pyramids-background.png") center / cover fixed;
 }
 
