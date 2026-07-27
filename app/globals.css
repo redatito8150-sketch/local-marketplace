@@ -30,7 +30,7 @@ body {
     ),
     radial-gradient(circle at 12% 34%, rgba(255, 248, 238, 0.18), transparent 32%),
     radial-gradient(circle at 86% 72%, rgba(183, 31, 26, 0.11), transparent 38%),
-    url("/images/home/nile-pyramids-background.png") center / cover fixed;
+    url("/images/home/homepage-background.jpg") center / cover fixed;
 }
 
 .hero-leaf {
