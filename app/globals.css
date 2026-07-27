@@ -46,6 +46,15 @@ body {
   background-size: 170px 170px, 230px 230px, 130px 130px;
 }
 
+.auth-stars {
+  background-image:
+    radial-gradient(circle at 16% 19%, rgba(255,255,255,.72) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 72% 12%, rgba(232,184,178,.85) 0 1.5px, transparent 2px),
+    radial-gradient(circle at 87% 58%, rgba(255,255,255,.48) 0 1px, transparent 1.5px),
+    radial-gradient(circle at 36% 79%, rgba(231,211,174,.68) 0 1.5px, transparent 2px);
+  background-size: 190px 190px, 270px 270px, 155px 155px, 235px 235px;
+}
+
 @keyframes float {
   0%, 100% { transform: translate3d(0, 0, 0) rotate(12deg); }
   50% { transform: translate3d(-12px, 16px, 0) rotate(8deg); }

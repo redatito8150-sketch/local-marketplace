@@ -24,9 +24,11 @@ function GoogleIcon() {
 export default function GoogleAuthButton({
   next,
   label = "Continue with Google",
+  compact = false,
 }: {
   next?: string | null;
   label?: string;
+  compact?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -63,7 +65,7 @@ export default function GoogleAuthButton({
         onClick={handleClick}
         disabled={loading}
         aria-busy={loading}
-        className="flex w-full items-center justify-center gap-3 rounded-md border border-stone-150 bg-white py-3.5 text-[14px] font-semibold text-ink transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/30 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`flex w-full items-center justify-center gap-2 rounded-2xl border border-[#d9cfc4] bg-white/75 font-semibold text-ink transition-all hover:-translate-y-0.5 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:cursor-not-allowed disabled:opacity-60 ${compact ? "h-[50px] px-2 text-[13px]" : "py-3.5 text-[14px]"}`}
       >
         <GoogleIcon />
         {loading ? "Redirecting…" : label}
