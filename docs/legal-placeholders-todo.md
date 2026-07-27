@@ -14,6 +14,33 @@ one-off items at the bottom, directly in `content/legal/privacy.ts` /
 `content/legal/terms.ts`) and the fix applies everywhere that token is used
 — no other file needs to change.
 
+## Production deployment gate
+
+`npm run build` (exactly what Vercel runs) now runs
+`scripts/validate-legal-content.mjs` first. That script scans the actual
+rendered `/privacy` and `/terms` content
+(`lib/legal/legalContentStatus.ts` → `lib/legal/validateLegalContent.ts`)
+for every `[BRACKET_TOKEN]` placeholder still present, **not** just the
+ones registered in `config/legal.ts` — so a stray placeholder added later
+directly in `content/legal/*.ts` is caught too.
+
+- **Gated only on a real Vercel Production build** (`VERCEL_ENV ===
+  "production"`) — the one signal that reliably means "this is actually
+  going live." Local builds and Vercel Preview deployments are
+  unaffected (they only print a warning listing what's still unresolved),
+  so the team can keep using `next build`/Preview URLs to review the
+  design before legal sign-off.
+- **When it fires**, the build fails immediately with a non-zero exit and
+  a message listing every unresolved token by name — nothing partial gets
+  deployed.
+- **Every field currently in this document blocks that gate** — all 12
+  tokens in the table below, `EFFECTIVE_DATE`/`LAST_UPDATED_DATE`, and the
+  two one-off review-flag tokens. As of this writing that's 16 unresolved
+  tokens; a real Production deploy will fail until all 16 reach zero.
+- Covered by `tests/legalContentValidation.test.ts` — both the pure
+  scanner (synthetic fixtures) and an assertion that the real, current
+  content is correctly detected as not-yet-production-ready.
+
 ## Registered in config/legal.ts
 
 | Token | Used in | What's needed |
@@ -30,6 +57,8 @@ one-off items at the bottom, directly in `content/legal/privacy.ts` /
 | `CANCELLATION_RULES` | Terms §8 | Failed-delivery / re-delivery rules |
 | `GOVERNING_LAW` | Terms §19 | Which jurisdiction's law governs |
 | `COURT_OR_DISPUTE_FORUM` | Terms §19 | Where disputes are resolved |
+| `EFFECTIVE_DATE` | Hero row, both pages | When this policy version takes effect |
+| `LAST_UPDATED_DATE` | Hero row, both pages | When this policy version was last revised |
 
 `TRADING_NAME` is **not** a placeholder — it's filled in with "Mahaly", the
 site's real public brand name, per the task's "use verified existing
@@ -47,16 +76,23 @@ public brand information" guidance.
   review before publication rather than treated as final, since an
   indemnity clause's scope has real legal consequences.
 
-## Other things worth the owner's attention (found during the audit, not fixed here — out of this task's scope)
+## Footer labels with no real destination yet
 
-- **No `/returns` or `/shipping` page exists yet.** The footer's "Shipping
-  & returns" (main `Footer.tsx`) and "Shipping"/"Returns" (`BrandFooter.tsx`)
-  labels still point nowhere (`href="#"`) — left as-is since building those
-  pages is a separate task, not part of this Privacy/Terms redesign.
-- **No `/contact` or help-center page exists yet** — same reasoning;
-  footer "Contact us" links are still `href="#"`.
+`/returns`, `/shipping`, `/contact`, `/collections`, `/gift-cards`,
+`/local-guides`, an "Our mission" page, `/careers`, `/press`, a Beauty
+category, "Edits", "Egyptian Makers", "Seller Guidelines", "Brand
+Support", "Our Story" (as a standalone page), "Sustainability", and real
+social-media profile URLs — **none of these exist in the project.**
+`Footer.tsx`'s `FOOTER_HREFS` and `BrandFooter.tsx`'s `LINK_HREFS` only map
+labels with a confirmed, accurate destination; every other label renders
+as plain non-interactive text (`aria-disabled="true"`, no `href`) instead
+of a dead `href="#"` link, and `BrandFooter.tsx`'s three social icons
+render as inert (non-`<a>`) icons for the same reason. No placeholder
+page was created for any of these — building them is a separate task.
+
 - **No Cookie Policy page exists.** The Privacy Policy's Cookies section
-  says so explicitly rather than linking to a page that doesn't exist.
+  says so explicitly rather than linking to a page that doesn't exist, and
+  no "Cookie Policy" label is rendered anywhere in either footer.
 - **`content/settings.ts`'s `DEFAULT_CONTACT_INFO`/`DEFAULT_SHIPPING_SETTINGS`**
   (admin-editable via `/admin/settings`) hold a placeholder support email/
   phone/address and a 30-day return window, but nothing on the public site

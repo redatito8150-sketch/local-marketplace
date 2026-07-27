@@ -12,14 +12,31 @@ const COLUMNS: { title: string; links: string[] }[] = [
   { title: "Help", links: ["Contact Us", "Shipping", "Returns", "FAQ", "Terms & Conditions", "Privacy Policy"] },
 ];
 
+// Every label above that maps to a real, existing route. Anything NOT in
+// this map has no accurate destination yet (no Beauty category, no
+// /contact, /shipping, /returns, etc. page — see
+// docs/legal-placeholders-todo.md) and renders as plain, non-interactive
+// text instead of a dead hash link.
 const LINK_HREFS: Record<string, string> = {
   Brands: "/brands",
   Journal: "/journal",
   Women: "/shop/women",
+  Men: "/shop/men",
+  Home: "/shop/home",
   "New Arrivals": "/shop/women",
+  "Join as a Brand": "/join-as-a-brand",
   "Terms & Conditions": "/terms",
   "Privacy Policy": "/privacy",
 };
+
+// Same reasoning as LINK_HREFS above — no real social profile URLs are
+// configured anywhere in the project, so these render as inert (not
+// dead hash links) icons instead.
+const SOCIAL_ICONS = [
+  { label: "Instagram", Icon: InstagramIcon },
+  { label: "Facebook", Icon: FacebookIcon },
+  { label: "TikTok", Icon: Music2 },
+];
 
 export default function BrandFooter() {
   return (
@@ -32,16 +49,25 @@ export default function BrandFooter() {
                 {col.title}
               </h4>
               <ul className="mt-5 space-y-3">
-                {col.links.map((link) => (
-                  <li key={link}>
-                    <Link
-                      href={LINK_HREFS[link] ?? "#"}
-                      className="text-[13px] font-light text-muted transition-colors hover:text-charcoal"
-                    >
-                      {link}
-                    </Link>
-                  </li>
-                ))}
+                {col.links.map((link) => {
+                  const href = LINK_HREFS[link];
+                  return (
+                    <li key={link}>
+                      {href ? (
+                        <Link
+                          href={href}
+                          className="text-[13px] font-light text-muted transition-colors hover:text-charcoal"
+                        >
+                          {link}
+                        </Link>
+                      ) : (
+                        <span aria-disabled="true" className="cursor-default text-[13px] font-light text-muted/50">
+                          {link}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           ))}
@@ -83,27 +109,16 @@ export default function BrandFooter() {
           </p>
 
           <div className="flex items-center gap-4">
-            <a
-              href="#"
-              aria-label="Instagram"
-              className="text-charcoal/60 transition-colors hover:text-charcoal"
-            >
-              <InstagramIcon className="h-[18px] w-[18px]" strokeWidth={1.5} />
-            </a>
-            <a
-              href="#"
-              aria-label="Facebook"
-              className="text-charcoal/60 transition-colors hover:text-charcoal"
-            >
-              <FacebookIcon className="h-[18px] w-[18px]" strokeWidth={1.5} />
-            </a>
-            <a
-              href="#"
-              aria-label="TikTok"
-              className="text-charcoal/60 transition-colors hover:text-charcoal"
-            >
-              <Music2 className="h-[18px] w-[18px]" strokeWidth={1.5} />
-            </a>
+            {SOCIAL_ICONS.map(({ label, Icon }) => (
+              <span
+                key={label}
+                aria-hidden="true"
+                title={`${label} — coming soon`}
+                className="cursor-default text-charcoal/25"
+              >
+                <Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />
+              </span>
+            ))}
           </div>
         </div>
       </div>

@@ -56,3 +56,28 @@ test("robots does not block /privacy or /terms", () => {
   assert.ok(!DISALLOWED_ROUTES.includes("/privacy"), "/privacy must not be disallowed");
   assert.ok(!DISALLOWED_ROUTES.includes("/terms"), "/terms must not be disallowed");
 });
+
+test("main Footer contains no dead href=\"#\" links (literal or dynamic fallback)", () => {
+  const source = readSource("components/Footer.tsx");
+  assert.doesNotMatch(source, /href="#"/, "no literal href=\"#\" should remain");
+  assert.doesNotMatch(source, /\?\?\s*"#"/, "no dynamic \"fall back to #\" pattern should remain");
+  // A label with no real destination (e.g. "Contact us") must still be
+  // present for the reader, just non-interactive rather than a dead link.
+  assert.match(source, /"Contact us"/);
+  assert.match(source, /aria-disabled="true"/, "unmapped labels must render as non-interactive text");
+});
+
+test("BrandFooter contains no dead href=\"#\" links (literal or dynamic fallback), including social icons", () => {
+  const source = readSource("components/brand/BrandFooter.tsx");
+  assert.doesNotMatch(source, /href="#"/, "no literal href=\"#\" should remain");
+  assert.doesNotMatch(source, /\?\?\s*"#"/, "no dynamic \"fall back to #\" pattern should remain");
+  assert.doesNotMatch(source, /<a\s+href="#"/);
+  assert.match(source, /aria-disabled="true"/, "unmapped labels must render as non-interactive text");
+});
+
+test("no \"Cookie Policy\" link label is rendered in either footer", () => {
+  const mainFooter = readSource("components/Footer.tsx");
+  const brandFooter = readSource("components/brand/BrandFooter.tsx");
+  assert.doesNotMatch(mainFooter, /Cookie Policy/);
+  assert.doesNotMatch(brandFooter, /Cookie Policy/);
+});
