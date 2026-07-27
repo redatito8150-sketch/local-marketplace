@@ -6,6 +6,7 @@ import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
@@ -23,6 +24,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
+
+  const taxonomy = await resolveTaxonomyLeaf(body.productTypeId);
+  if (!taxonomy.valid) {
+    return NextResponse.json({ error: taxonomy.error }, { status: 400 });
+  }
+  body.productCategory = taxonomy.productCategory ?? body.productCategory;
+  body.productType = taxonomy.productType ?? body.productType;
+  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
 
   const duplicateSku = await findDuplicateSku(body.sku, body.variants, params.id);
   if (duplicateSku) {

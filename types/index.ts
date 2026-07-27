@@ -91,6 +91,23 @@ export interface ProductTaxonomyContent {
   fits: string[];
 }
 
+// A single node in the recursive Main Category -> Product Group -> Product
+// Type hierarchy (supabase/migrations/20260728000001_product_taxonomy_hierarchy.sql,
+// table `taxonomy_nodes`). The full active tree is small (well under 200
+// rows) and fetched flat in one query — components filter by `parentId`
+// rather than the app resolving a nested tree server-side.
+export type TaxonomyLevel = 1 | 2 | 3;
+
+export interface TaxonomyNode {
+  id: string;
+  parentId: string | null;
+  level: TaxonomyLevel;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 export interface ShippingSettingsContent {
   freeShippingThresholdEgp: number;
   returnPolicyDays: number;
@@ -156,6 +173,13 @@ export interface ProductVariant {
 export interface ProductTaxonomyFields {
   productCategory?: string;
   productType?: string;
+  // The resolved Product Type leaf in the new hierarchical taxonomy
+  // (taxonomy_nodes) — additive alongside productCategory/productType
+  // above, which stay the read path for the rest of the app. Undefined for
+  // any product not yet matched into the new tree (see the migration's
+  // backfill note); the product form falls back to showing its existing
+  // productCategory/productType as-is when this is unset.
+  productTypeId?: string;
   collection?: string;
   material?: string;
   fit?: string;

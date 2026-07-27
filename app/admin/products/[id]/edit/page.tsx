@@ -4,15 +4,17 @@ import { notFound } from "next/navigation";
 import { getProductForAdmin } from "@/lib/data/admin";
 import { getFeaturedBrands } from "@/lib/data/brands";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
 export default async function EditProductPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const [product, brandOptions, taxonomy] = await Promise.all([
+  const [product, brandOptions, taxonomy, taxonomyNodes] = await Promise.all([
     getProductForAdmin(params.id),
     getFeaturedBrands(),
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
+    getTaxonomyTree(),
   ]);
 
   if (!product) notFound();
@@ -35,6 +37,7 @@ export default async function EditProductPage(props: { params: Promise<{ id: str
         initial={product}
         brandOptions={brandOptions}
         taxonomy={taxonomy}
+        taxonomyNodes={taxonomyNodes}
       />
     </div>
   );

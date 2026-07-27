@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
 import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
+import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 
@@ -31,6 +32,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  const taxonomy = await resolveTaxonomyLeaf(body.productTypeId);
+  if (!taxonomy.valid) {
+    return NextResponse.json({ error: taxonomy.error }, { status: 400 });
+  }
+  // The server-resolved category/type (derived from the taxonomy tree, not
+  // trusted from the client) wins whenever a productTypeId was submitted —
+  // otherwise body.productCategory/productType pass through unchanged, so
+  // saving without touching the new taxonomy selects never loses an
+  // existing legacy category.
+  body.productCategory = taxonomy.productCategory ?? body.productCategory;
+  body.productType = taxonomy.productType ?? body.productType;
+  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+
   const duplicateSku = await findDuplicateSku(body.sku, body.variants);
   if (duplicateSku) {
     return NextResponse.json(
@@ -55,6 +69,7 @@ export async function POST(request: NextRequest) {
       category: body.category || null,
       product_category: body.productCategory || null,
       product_type: body.productType || null,
+      product_type_id: body.productTypeId || null,
       collection: body.collection || null,
       material: body.material || null,
       fit: body.fit || null,

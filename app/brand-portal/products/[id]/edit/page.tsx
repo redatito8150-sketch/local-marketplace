@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 import type { ProductRecord } from "@/types";
@@ -22,7 +23,10 @@ export default async function EditBrandPortalProductPage(
   const product = await getProductForAdmin(params.id);
   if (!product || product.brandSlug !== owner.brandSlug) notFound();
 
-  const taxonomy = await getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY);
+  const [taxonomy, taxonomyNodes] = await Promise.all([
+    getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
+    getTaxonomyTree(),
+  ]);
   const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
   // If there's already a staged edit awaiting review, continue from that
@@ -59,6 +63,7 @@ export default async function EditBrandPortalProductPage(
         initial={initial}
         brandOptions={[]}
         taxonomy={taxonomy}
+        taxonomyNodes={taxonomyNodes}
         lockedBrand={{ slug: owner.brandSlug, name: owner.brandName ?? owner.brandSlug }}
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}
