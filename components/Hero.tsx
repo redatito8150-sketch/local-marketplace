@@ -22,13 +22,13 @@ export default function Hero({ content, tiles, benefits = DEFAULT_HOME_BENEFITS 
     <>
       <section
         id="home"
-        className="relative overflow-hidden border-b border-sky-100/70 bg-[linear-gradient(120deg,#f6fcff_0%,#def2ff_42%,#c8e9fb_72%,#edf8ff_100%)]"
+        className="relative overflow-hidden border-b border-white/20 bg-[linear-gradient(120deg,rgba(250,250,248,.25)_0%,rgba(220,230,236,.13)_48%,rgba(231,211,174,.10)_100%)]"
       >
         <div className="hero-leaf" aria-hidden />
         <div className="mx-auto grid max-w-[1920px] gap-10 px-6 py-6 md:px-10 lg:grid-cols-[minmax(430px,0.92fr)_minmax(0,1.78fr)] lg:items-center lg:px-12 lg:py-6 xl:px-16">
           <div className="relative z-10 mx-auto w-full max-w-[510px] py-6 lg:mx-0 lg:pl-20">
             <p className="mb-4 text-[12px] font-bold uppercase tracking-[0.14em] text-mahalyred">Curated local. Meaningful.</p>
-            <h1 className="font-serif text-[43px] font-semibold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[56px] lg:text-[61px]">
+            <h1 className="font-serif text-[43px] font-semibold leading-[0.98] tracking-[-0.045em] text-ink [text-shadow:0_2px_24px_rgba(255,255,255,.75)] sm:text-[56px] lg:text-[61px]">
               {content.headingLines.map((line) => <span key={line} className="block">{line}</span>)}
             </h1>
             <p className="mt-5 max-w-[405px] text-[14px] leading-6 text-ink-soft/80">{content.subheading}</p>
@@ -60,7 +60,7 @@ export default function Hero({ content, tiles, benefits = DEFAULT_HOME_BENEFITS 
         </div>
       </section>
 
-      <section className="border-b border-stone-150">
+      <section className="border-b border-white/20 bg-cream/58 backdrop-blur-[2px]">
         <div className="mx-auto grid max-w-[1840px] grid-cols-2 px-5 py-5 sm:grid-cols-3 lg:grid-cols-5 lg:px-12">
           {benefits.map(({ title, detail }, index) => {
             const Icon = DEFAULT_HOME_BENEFITS[index]?.icon ?? Leaf;

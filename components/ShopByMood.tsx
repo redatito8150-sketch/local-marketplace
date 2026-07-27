@@ -5,7 +5,7 @@ import type { MoodTileContent } from "@/types";
 export default function ShopByMood({ tiles }: { tiles: MoodTileContent[] }) {
   if (!tiles.length) return null;
   return (
-    <section className="mx-auto max-w-[1920px] px-6 py-4 md:px-10 xl:px-16">
+    <section className="mx-auto max-w-[1920px] border-b border-white/20 bg-cream/36 px-6 py-6 backdrop-blur-[1px] md:px-10 xl:px-16">
       <div className="mb-3 flex items-center justify-between"><h2 className="font-serif text-[25px] font-semibold tracking-tight">Shop by mood</h2><Link href="/brands" className="text-[11px] font-semibold text-mahalyred">View all</Link></div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         {tiles.map((tile) => (

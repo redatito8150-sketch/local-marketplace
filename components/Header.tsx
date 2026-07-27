@@ -78,13 +78,10 @@ export default function Header() {
   return (
     <motion.header
       ref={mobileMenuRef}
-      initial={{ y: -24, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6, ease: "easeOut" }}
       className={`sticky top-0 z-50 border-b border-stone-150/70 transition-all duration-300 ${
         scrolled
-          ? "bg-cream/90 backdrop-blur-md shadow-soft"
-          : "bg-cream/60 backdrop-blur-sm"
+          ? "bg-cream/80 backdrop-blur-lg shadow-soft"
+          : "bg-cream/55 backdrop-blur-md"
       }`}
     >
       <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">

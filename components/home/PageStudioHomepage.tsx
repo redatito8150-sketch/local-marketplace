@@ -103,7 +103,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
 
   const hero = <Hero content={heroContent} tiles={heroTiles} benefits={benefits} />;
 
-  return <main className="min-h-screen bg-cream"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
+  return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
     const { item } = entry;
     if ("products" in entry && entry.products) {
       const config = item.config as unknown as HomeProductSectionContent & { itemCount?: number; displayStyle?: string };

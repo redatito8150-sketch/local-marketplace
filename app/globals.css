@@ -15,6 +15,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+.home-nile-background {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(rgba(250, 250, 248, 0.08), rgba(250, 250, 248, 0.20)),
+    url("/images/home/nile-pyramids-background.png") center / cover fixed;
+}
+
 .hero-leaf {
   position: absolute;
   inset: 0 auto 0 0;

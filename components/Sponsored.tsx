@@ -8,7 +8,7 @@ type FeaturedBrand = Pick<BrandPageContent, "slug" | "name" | "tagline" | "about
 
 export default function Sponsored({ featuredBrand, sponsoredBrands }: { featuredBrand: FeaturedBrand | null; sponsoredBrands: BrandSummary[] }) {
   return (
-    <section id="deals" className="mx-auto grid max-w-[1920px] gap-4 px-6 pb-3 md:px-10 lg:grid-cols-2 xl:px-16">
+    <section id="deals" className="mx-auto grid max-w-[1920px] gap-4 bg-cream/36 px-6 py-5 backdrop-blur-[1px] md:px-10 lg:grid-cols-2 xl:px-16">
       <div className="relative min-h-[195px] overflow-hidden rounded-[9px] bg-beige-50">
         {featuredBrand && <Image src={featuredBrand.heroImage} alt="" fill sizes="50vw" className="object-cover opacity-75" />}
         <div className="absolute inset-0 bg-gradient-to-r from-[#f6eee5] via-[#f6eee5]/90 to-transparent" />
