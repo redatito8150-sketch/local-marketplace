@@ -24,7 +24,7 @@ export default function HomeRoute() {
   const { colors, radius, spacing } = useAppTheme();
   const query = useQuery({ queryKey: ["products", "home"], queryFn: () => getProducts({ limit: 20 }) });
 
-  if (query.isLoading) return <LoadingState label="Curating Mahaly…" />;
+  if (query.isLoading) return <LoadingState label="Curating Mahaly..." />;
   if (query.isError) return <ErrorState message="We couldn't load Mahaly right now." onRetry={() => query.refetch()} />;
 
   const products = query.data ?? [];
@@ -39,42 +39,69 @@ export default function HomeRoute() {
   ).entries()].slice(0, 4);
 
   return (
-    <ScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingTop: insets.top, paddingBottom: 116 }}
-      refreshControl={
-        <RefreshControl
-          refreshing={query.isRefetching}
-          onRefresh={() => query.refetch()}
-          tintColor={colors.primary}
-          colors={[colors.primary]}
-        />
-      }
-    >
-      <View style={{ height: 314, overflow: "hidden", backgroundColor: colors.skeleton }}>
-        <Image
-          source={require("../../assets/images/home-shopping-hero.jpg")}
-          alt="Shoppers discovering local fashion in a refined boutique"
-          accessibilityLabel="Discover local fashion"
-          contentFit="cover"
-          transition={250}
-          style={{ position: "absolute", inset: 0 }}
-        />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <Image
+        source={require("../../assets/images/mahaly-pyramids-background.png")}
+        alt=""
+        accessibilityIgnoresInvertColors
+        contentFit="cover"
+        contentPosition="top center"
+        transition={250}
+        style={{ position: "absolute", inset: 0 }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          inset: 0,
+          backgroundColor: "rgba(255, 253, 252, 0.56)",
+        }}
+      />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingTop: insets.top, paddingBottom: 116 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isRefetching}
+            onRefresh={() => query.refetch()}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
+      >
         <View
           style={{
-            position: "absolute",
-            inset: 0,
-            justifyContent: "flex-end",
-            paddingHorizontal: spacing.md,
-            paddingBottom: spacing.lg,
-            backgroundColor: "rgba(18, 10, 9, 0.26)",
+            paddingHorizontal: spacing.lg,
+            paddingTop: 52,
+            paddingBottom: spacing.md,
           }}
         >
-          <View style={{ gap: spacing.sm, maxWidth: "78%" }}>
-            <AppText variant="caption" style={{ color: colors.onPrimary, fontWeight: "700", letterSpacing: 1.3 }}>
+          <View style={{ maxWidth: 310, gap: spacing.sm }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+              <Image
+                source={require("../../assets/images/mahaly-logo-transparent.png")}
+                alt="Mahaly logo"
+                accessibilityLabel="Mahaly logo"
+                contentFit="contain"
+                style={{ width: 48, height: 60 }}
+              />
+              <AppText
+                style={{
+                  color: colors.primary,
+                  fontFamily: "Georgia",
+                  fontSize: 38,
+                  lineHeight: 44,
+                  fontWeight: "700",
+                }}
+              >
+                Mahaly
+              </AppText>
+            </View>
+            <AppText variant="caption" style={{ color: colors.primary, fontWeight: "700", letterSpacing: 1.3 }}>
               CURATED IN EGYPT
             </AppText>
-            <AppText variant="title" style={{ color: colors.onPrimary }}>
+            <AppText variant="title" style={{ color: colors.text }}>
               Find something made to feel like you.
             </AppText>
             <Pressable
@@ -89,42 +116,42 @@ export default function HomeRoute() {
                 paddingHorizontal: spacing.md,
                 paddingVertical: 10,
                 borderRadius: radius.pill,
-                backgroundColor: colors.surfaceRaised,
+                backgroundColor: colors.primary,
                 opacity: pressed ? 0.82 : 1,
               })}
             >
-              <AppText variant="label">Shop All</AppText>
-              <AppText variant="label">→</AppText>
+              <AppText variant="label" style={{ color: colors.onPrimary }}>Shop All</AppText>
+              <AppText variant="label" style={{ color: colors.onPrimary }}>→</AppText>
             </Pressable>
           </View>
         </View>
-      </View>
 
-      <View style={{ gap: spacing.xl, paddingHorizontal: spacing.md, paddingTop: spacing.lg }}>
-        <HorizontalProductSection title="New Arrivals" products={newArrivals} />
+        <View style={{ gap: spacing.xl, paddingHorizontal: spacing.md }}>
+          <HorizontalProductSection title="New Arrivals" products={newArrivals} />
 
-        {moods.length ? (
-          <View style={{ gap: spacing.sm }}>
-            <SectionHeader title="Shop by Mood" />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.md }}
-            >
-              {moods.map(([category, product]) => (
-                <MoodCard
-                  key={category}
-                  category={category}
-                  image={product.image}
-                  title={moodTitles[category.toLowerCase()] ?? `The ${category} edit`}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
+          {moods.length ? (
+            <View style={{ gap: spacing.sm }}>
+              <SectionHeader title="Shop by Mood" />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.md }}
+              >
+                {moods.map(([category, product]) => (
+                  <MoodCard
+                    key={category}
+                    category={category}
+                    image={product.image}
+                    title={moodTitles[category.toLowerCase()] ?? `The ${category} edit`}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
 
-        <HorizontalProductSection title="Explore" products={exploreProducts} />
-      </View>
-    </ScrollView>
+          <HorizontalProductSection title="Explore" products={exploreProducts} />
+        </View>
+      </ScrollView>
+    </View>
   );
 }
