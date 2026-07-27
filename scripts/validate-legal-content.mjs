@@ -1,32 +1,41 @@
 // scripts/validate-legal-content.mjs
 //
-// Build-time gate: refuses a real Vercel Production deployment if /privacy
-// or /terms still contain unresolved [BRACKET_TOKEN] legal placeholders
-// (unconfirmed entity name, address, governing law, etc. — see
-// docs/legal-placeholders-todo.md). Wired into `npm run build` (see
-// package.json), which is exactly what Vercel invokes.
+// Reports unresolved [BRACKET_TOKEN] legal placeholders in /privacy or
+// /terms (unconfirmed entity name, address, governing law, etc. — see
+// docs/legal-placeholders-todo.md) at build time. Wired into `npm run
+// build` (see package.json), which is exactly what Vercel invokes.
 //
-// Only gates VERCEL_ENV === "production" — the one reliable "this build is
-// really going live" signal. NODE_ENV isn't safe to gate on here: Next.js
-// sets it to "production" for every `next build`, including local builds
-// and Vercel Preview deployments, which would otherwise block routine
-// local/preview builds before legal copy is finalized.
+// NON-BLOCKING BY DEFAULT — the site is still under development, so an
+// unresolved placeholder must never fail local, Preview, or Production
+// builds right now. It only prints a clear, itemized warning.
+//
+// FUTURE STRICT MODE (enable before the official public launch): set
+// LEGAL_CONTENT_STRICT=true in the environment doing the build (e.g. as a
+// Vercel Production-only environment variable) to make this script exit
+// non-zero — and therefore fail `npm run build` — whenever an unresolved
+// placeholder remains. Nothing else needs to change; the check itself
+// (lib/legal/legalContentStatus.ts) already exists and is already covered
+// by tests/legalContentValidation.test.ts. Turn this on only once every
+// field in docs/legal-placeholders-todo.md is filled in for real, or
+// deliberately as a pre-launch safety net.
 import { assertLegalContentIsProductionReady, findUnresolvedLegalContentPlaceholders } from "../lib/legal/legalContentStatus.ts";
 
-if (process.env.VERCEL_ENV === "production") {
+const unresolved = findUnresolvedLegalContentPlaceholders();
+const strict = process.env.LEGAL_CONTENT_STRICT === "true";
+
+if (unresolved.length === 0) {
+  console.log("[legal] All legal placeholders resolved.");
+} else if (!strict) {
+  console.warn(
+    `\n[legal] ${unresolved.length} unresolved legal placeholder(s) in /privacy or /terms: ` +
+      `${unresolved.join(", ")}\n[legal] Not blocking this build — site is still under development. ` +
+      "Set LEGAL_CONTENT_STRICT=true to enforce this before launch.\n"
+  );
+} else {
   try {
     assertLegalContentIsProductionReady();
-    console.log("[legal] All legal placeholders resolved — production build may proceed.");
   } catch (error) {
-    console.error(`\n[legal] BUILD BLOCKED — ${error.message}\n`);
+    console.error(`\n[legal] LEGAL_CONTENT_STRICT=true — BUILD BLOCKED: ${error.message}\n`);
     process.exit(1);
-  }
-} else {
-  const unresolved = findUnresolvedLegalContentPlaceholders();
-  if (unresolved.length > 0) {
-    console.warn(
-      `[legal] ${unresolved.length} unresolved legal placeholder(s) present — OK outside Production ` +
-        `(VERCEL_ENV=${process.env.VERCEL_ENV ?? "unset"}): ${unresolved.join(", ")}`
-    );
   }
 }
