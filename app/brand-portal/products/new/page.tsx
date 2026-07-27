@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
@@ -15,7 +16,10 @@ export default async function NewBrandPortalProductPage(
   const owner = await requireBrandOwner(searchParams.brand);
   if (!owner || !owner.brandSlug) redirect("/brand-portal/products");
 
-  const taxonomy = await getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY);
+  const [taxonomy, taxonomyNodes] = await Promise.all([
+    getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
+    getTaxonomyTree(),
+  ]);
   const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
   return (
@@ -32,6 +36,7 @@ export default async function NewBrandPortalProductPage(
         mode="create"
         brandOptions={[]}
         taxonomy={taxonomy}
+        taxonomyNodes={taxonomyNodes}
         lockedBrand={{ slug: owner.brandSlug, name: owner.brandName ?? owner.brandSlug }}
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}

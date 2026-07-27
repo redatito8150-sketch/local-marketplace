@@ -7,6 +7,7 @@ import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductCreate } from "@/lib/admin/describeProductChange";
+import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 function slugify(value: string): string {
@@ -52,6 +53,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
+  const taxonomy = await resolveTaxonomyLeaf(body.productTypeId);
+  if (!taxonomy.valid) {
+    return NextResponse.json({ error: taxonomy.error }, { status: 400 });
+  }
+  body.productCategory = taxonomy.productCategory ?? body.productCategory;
+  body.productType = taxonomy.productType ?? body.productType;
+  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+
   const duplicateSku = await findDuplicateSku(body.sku, body.variants);
   if (duplicateSku) {
     return NextResponse.json(
@@ -76,6 +85,7 @@ export async function POST(request: NextRequest) {
       category: body.category || null,
       product_category: body.productCategory || null,
       product_type: body.productType || null,
+      product_type_id: body.productTypeId || null,
       collection: body.collection || null,
       material: body.material || null,
       fit: body.fit || null,

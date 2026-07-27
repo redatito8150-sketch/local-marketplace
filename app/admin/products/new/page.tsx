@@ -2,13 +2,15 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { getFeaturedBrands } from "@/lib/data/brands";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
 export default async function NewProductPage() {
-  const [brandOptions, taxonomy] = await Promise.all([
+  const [brandOptions, taxonomy, taxonomyNodes] = await Promise.all([
     getFeaturedBrands(),
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
+    getTaxonomyTree(),
   ]);
 
   return (
@@ -21,7 +23,7 @@ export default async function NewProductPage() {
         Back to products
       </Link>
       <h1 className="mb-8 text-2xl font-bold tracking-tightest text-ink">Add product</h1>
-      <ProductForm mode="create" brandOptions={brandOptions} taxonomy={taxonomy} />
+      <ProductForm mode="create" brandOptions={brandOptions} taxonomy={taxonomy} taxonomyNodes={taxonomyNodes} />
     </div>
   );
 }

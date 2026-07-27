@@ -31,6 +31,7 @@ interface ProductRow {
   category: CategorySlug | null;
   product_category: string | null;
   product_type: string | null;
+  product_type_id: string | null;
   collection: string | null;
   material: string | null;
   fit: string | null;
@@ -74,6 +75,7 @@ function toProductRecord(row: ProductRow): ProductRecord {
     category: row.category ?? undefined,
     productCategory: row.product_category ?? undefined,
     productType: row.product_type ?? undefined,
+    productTypeId: row.product_type_id ?? undefined,
     collection: row.collection ?? undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,

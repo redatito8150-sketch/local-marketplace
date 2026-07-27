@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import type { ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent } from "@/types";
+import type { ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
 import { parseCsv, parseLines } from "@/lib/admin/parseTextInputs";
 import {
   validateProductInput,
@@ -14,6 +14,7 @@ import { reconcileVariants } from "@/lib/admin/variantGrid";
 import ImageUploader from "@/components/admin/ImageUploader";
 import VariantGrid from "@/components/admin/VariantGrid";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
+import TaxonomySelector from "@/components/admin/TaxonomySelector";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 
 interface ProductFormProps {
@@ -23,7 +24,12 @@ interface ProductFormProps {
   brandOptions: { slug: string; name: string }[];
   // Admin-editable (Round 2 Phase 2) — falls back to the static defaults so
   // any caller that doesn't fetch site_content still works unchanged.
+  // Only Collections/Materials/Fits still come from this — Category/Product
+  // Type are driven by `taxonomyNodes` below instead.
   taxonomy?: ProductTaxonomyContent;
+  // The flat, active Main Category -> Product Group -> Product Type tree
+  // (lib/data/taxonomy.ts) backing the cascading taxonomy selects.
+  taxonomyNodes: TaxonomyNode[];
   // Brand-portal mode (Round 3 Phase 2): forces the brand field to one
   // brand (shown read-only, never editable — a brand owner/assistant can
   // never reassign their own product to a different brand), submits to a
@@ -42,6 +48,7 @@ interface FormState {
   category: "" | "women" | "men" | "kids"; // labeled "Gender" in this form
   productCategory: string;
   productType: string;
+  productTypeId: string;
   collection: string;
   sku: string;
   price: string;
@@ -87,6 +94,7 @@ function toFormState(
     category: product?.category ?? "",
     productCategory: product?.productCategory ?? "",
     productType: product?.productType ?? "",
+    productTypeId: product?.productTypeId ?? "",
     collection: product?.collection ?? "",
     sku: product?.sku ?? "",
     price: product ? String(product.price) : "",
@@ -128,6 +136,7 @@ export default function ProductForm({
   initial,
   brandOptions,
   taxonomy = DEFAULT_PRODUCT_TAXONOMY,
+  taxonomyNodes,
   lockedBrand,
   apiBasePath = "/api/admin/products",
   cancelHref = "/admin/products",
@@ -175,16 +184,26 @@ export default function ProductForm({
     }));
   }, [form.colors, form.sizesText]);
 
-  // A category change can leave a now-invalid product type selected.
-  useEffect(() => {
-    if (!form.productCategory) return;
-    const validTypes = taxonomy.typesByCategory[form.productCategory];
-    if (validTypes && form.productType && !validTypes.includes(form.productType)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      set("productType", "");
+  // Resolves a Product Type selection from TaxonomySelector into the
+  // submitted productCategory/productType text (derived from the tree, not
+  // typed) — clearing both back to empty when the cascading selects reset
+  // partway through (Main/Group changed away from a previously-complete
+  // selection), per the "changing a parent level clears its children" rule.
+  const handleTaxonomyChange = (productTypeId: string) => {
+    if (!productTypeId) {
+      setForm((f) => ({ ...f, productTypeId: "", productCategory: "", productType: "" }));
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.productCategory]);
+    const leaf = taxonomyNodes.find((node) => node.id === productTypeId);
+    const group = leaf ? taxonomyNodes.find((node) => node.id === leaf.parentId) : undefined;
+    const main = group ? taxonomyNodes.find((node) => node.id === group.parentId) : undefined;
+    setForm((f) => ({
+      ...f,
+      productTypeId,
+      productCategory: main?.name ?? "",
+      productType: leaf?.name ?? "",
+    }));
+  };
 
   const updateColor = (index: number, patch: Partial<ProductColorOption>) => {
     setForm((f) => ({
@@ -214,6 +233,7 @@ export default function ProductForm({
     category: form.category || undefined,
     productCategory: form.productCategory || undefined,
     productType: form.productType || undefined,
+    productTypeId: form.productTypeId || undefined,
     collection: form.collection || undefined,
     price: Number(form.price),
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
@@ -287,9 +307,6 @@ export default function ProductForm({
     previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const submitting = submittingStatus !== null;
-  const productTypeOptions = form.productCategory
-    ? taxonomy.typesByCategory[form.productCategory] ?? []
-    : [];
 
   const ActionToolbar = (
     <div className="flex flex-wrap items-center gap-2.5">
@@ -382,28 +399,17 @@ export default function ProductForm({
             />
           </div>
 
+          <div className="mt-4">
+            <TaxonomySelector
+              nodes={taxonomyNodes}
+              value={form.productTypeId}
+              onChange={handleTaxonomyChange}
+              legacyCategory={form.productCategory}
+              legacyType={form.productType}
+            />
+          </div>
+
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <SelectField
-              label="Category"
-              required
-              value={form.productCategory}
-              onChange={(v) => set("productCategory", v)}
-              options={[
-                { value: "", label: "Select category" },
-                ...taxonomy.categories.map((c) => ({ value: c, label: c })),
-              ]}
-            />
-            <SelectField
-              label="Product Type"
-              required
-              value={form.productType}
-              onChange={(v) => set("productType", v)}
-              disabled={!form.productCategory}
-              options={[
-                { value: "", label: "Select product type" },
-                ...productTypeOptions.map((t) => ({ value: t, label: t })),
-              ]}
-            />
             <SelectField
               label="Collection"
               value={form.collection}

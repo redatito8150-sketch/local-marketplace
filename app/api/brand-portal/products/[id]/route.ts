@@ -7,6 +7,7 @@ import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
+import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
@@ -96,6 +97,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
+
+  const taxonomy = await resolveTaxonomyLeaf(productBody.productTypeId);
+  if (!taxonomy.valid) {
+    return NextResponse.json({ error: taxonomy.error }, { status: 400 });
+  }
+  productBody.productCategory = taxonomy.productCategory ?? productBody.productCategory;
+  productBody.productType = taxonomy.productType ?? productBody.productType;
+  productBody.productTypeId = taxonomy.productTypeId ?? productBody.productTypeId;
 
   const duplicateSku = await findDuplicateSku(productBody.sku, productBody.variants, params.id);
   if (duplicateSku) {

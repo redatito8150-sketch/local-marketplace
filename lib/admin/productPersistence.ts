@@ -26,6 +26,7 @@ export function buildProductPersistencePayload(
     category: body.category || null,
     product_category: body.productCategory || null,
     product_type: body.productType || null,
+    product_type_id: body.productTypeId || null,
     collection: body.collection || null,
     material: body.material || null,
     fit: body.fit || null,
