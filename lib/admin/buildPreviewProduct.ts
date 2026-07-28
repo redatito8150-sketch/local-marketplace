@@ -3,7 +3,7 @@ import { primaryShopCategoryForAudience } from "@/lib/audience";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { effectiveVariantPrice } from "@/lib/inventory/pricing";
 import type { Audience, ProductDetail, TaxonomyNode } from "@/types";
-import type { InventoryVariantsValue, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
+import type { InventoryVariantsValue, OptionTypeOption, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
 import { parseLines } from "./parseTextInputs";
 
 // Keep this in sync with next.config.js `images.remotePatterns` — a URL
@@ -47,27 +47,33 @@ export interface ProductPreviewFormValues {
   featured: boolean;
 }
 
-export function deriveProductImages(image: string, images: string[]): string[] {
-  const gallery = images.filter(Boolean);
-  const list = gallery.length ? gallery : image.trim() ? [image.trim()] : [];
-  return list.filter(isPreviewImageSafe);
+export function deriveProductImages(image: string, images: string[], colorImages: Record<string, string> = {}): string[] {
+  return [...new Set([image.trim(), ...images, ...Object.values(colorImages)].filter(Boolean))].filter(isPreviewImageSafe);
 }
 
 export function buildPreviewProduct(
   form: ProductPreviewFormValues,
   taxonomyNodes: TaxonomyNode[],
   optionValues: OptionValueOption[],
-  id?: string
+  id?: string,
+  optionTypes: OptionTypeOption[] = []
 ): ProductDetail {
-  const safeImages = deriveProductImages(form.image, form.images);
+  const safeImages = deriveProductImages(form.image, form.images, form.inventoryVariants.colorImages);
   const audience = (form.audience || "unisex") as Audience;
   const categorySlug = primaryShopCategoryForAudience(audience);
   const path = resolveTaxonomyPath(taxonomyNodes, form.productTypeId);
 
   const productPrice = Number(form.price) || 0;
   const { variants, defaultLowStockThreshold } = form.inventoryVariants;
-  const labelFor = (id: string) => optionValues.find((v) => v.id === id)?.label ?? "";
-  const sizes = [...new Set(variants.flatMap((v) => v.optionValueIds.map(labelFor)).filter(Boolean))];
+  const valueFor = (id: string) => optionValues.find((v) => v.id === id);
+  const typeFor = (id: string) => optionTypes.find((type) => type.id === id);
+  const sizeType = optionTypes.find((type) => type.key === "size");
+  const colorType = optionTypes.find((type) => type.key === "color");
+  const sizes = [...new Set(variants.flatMap((v) => v.optionValueIds.filter((id) => valueFor(id)?.optionTypeId === sizeType?.id).map((id) => valueFor(id)?.label ?? "")).filter(Boolean))];
+  const colors = (form.inventoryVariants.valueIdsByOptionType[colorType?.id ?? ""] ?? []).map((id) => {
+    const option = valueFor(id);
+    return { name: option?.label ?? "", hex: option?.primaryColor ?? "#888888", swatchType: option?.swatchType, secondaryColor: option?.secondaryColor };
+  }).filter((color) => color.name);
   const inStock = variants.some((v) => {
     const threshold = effectiveLowStockThreshold(v.lowStockThresholdOverride, defaultLowStockThreshold);
     return v.sellingStatus === "active" && calculateStockStatus(v.quantity, threshold) !== "out_of_stock";
@@ -89,7 +95,7 @@ export function buildPreviewProduct(
     shippingReturns: form.shippingReturns.trim(),
     sizes,
     unavailableSizes: [],
-    colors: [],
+    colors,
     rating: 5,
     reviewCount: 0,
     reviews: [],
@@ -108,6 +114,33 @@ export function buildPreviewProduct(
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
     featured: form.featured,
-    variants: [],
+    variants: variants.map((variant, index) => ({
+      id: `preview-${index}`,
+      productId: id ?? "preview",
+      sku: variant.sku ?? `PREVIEW-${index + 1}`,
+      quantity: variant.quantity,
+      lowStockThresholdOverride: variant.lowStockThresholdOverride,
+      variantPrice: variant.variantPrice,
+      sellingStatus: variant.sellingStatus,
+      isArchived: false,
+      optionValues: variant.optionValueIds.map((valueId) => {
+        const option = valueFor(valueId);
+        const type = typeFor(option?.optionTypeId ?? "");
+        return {
+          optionTypeId: option?.optionTypeId ?? "",
+          optionTypeName: type?.name ?? "Option",
+          optionValueId: valueId,
+          label: option?.label ?? "",
+          swatchType: option?.swatchType,
+          primaryColor: option?.primaryColor,
+          secondaryColor: option?.secondaryColor,
+        };
+      }),
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date(0).toISOString(),
+    })),
+    colorImages: Object.fromEntries(
+      Object.entries(form.inventoryVariants.colorImages).map(([valueId, url]) => [valueFor(valueId)?.label ?? valueId, url])
+    ),
   };
 }

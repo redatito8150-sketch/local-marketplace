@@ -19,6 +19,7 @@ import InventoryVariantsSection, {
   type OptionValueOption,
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
+import CustomOptionManager from "@/components/admin/CustomOptionManager";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
@@ -107,6 +108,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
     defaultLowStockThreshold: product?.defaultLowStockThreshold ?? 5,
     optionTypeIds,
     valueIdsByOptionType,
+    allowedCombinations: (product?.variants ?? []).map((v) => v.optionValues.map((s) => s.optionValueId)),
     variants: (product?.variants ?? []).map((v) => ({
       optionValueIds: v.optionValues.map((s) => s.optionValueId),
       sku: v.sku,
@@ -115,7 +117,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
       lowStockThresholdOverride: v.lowStockThresholdOverride,
       sellingStatus: v.sellingStatus,
     })),
-    colorImages: {},
+    colorImages: product?.colorImages ?? {},
   };
 }
 
@@ -228,7 +230,7 @@ export default function ProductForm({
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Failed to create option type");
-    const created: OptionTypeOption = { id: data.id, name: data.name, key: data.key, isSystem: data.isSystem };
+    const created: OptionTypeOption = { id: data.id, name: data.name, key: data.key, isSystem: data.isSystem, brandId: data.brandId };
     setOptionTypes((prev) => [...prev, created]);
     return created;
   };
@@ -259,6 +261,7 @@ export default function ProductForm({
       swatchType: data.swatchType,
       primaryColor: data.primaryColor,
       secondaryColor: data.secondaryColor,
+      brandId: data.brandId,
     };
     setOptionValues((prev) => [...prev, created]);
     return created;
@@ -281,7 +284,7 @@ export default function ProductForm({
       // A different brand's collections/private options are a different
       // pool entirely — never keep selections from the brand just left.
       collectionId: "",
-      inventoryVariants: { ...f.inventoryVariants, optionTypeIds: [], valueIdsByOptionType: {}, variants: [], colorImages: {} },
+      inventoryVariants: { ...f.inventoryVariants, optionTypeIds: [], valueIdsByOptionType: {}, allowedCombinations: [], variants: [], colorImages: {} },
     }));
   };
 
@@ -311,6 +314,7 @@ export default function ProductForm({
     defaultLowStockThreshold: form.inventoryVariants.defaultLowStockThreshold,
     optionTypeIds: form.inventoryVariants.optionTypeIds,
     valueIdsByOptionType: form.inventoryVariants.valueIdsByOptionType,
+    allowedCombinations: form.inventoryVariants.allowedCombinations,
     variants: form.inventoryVariants.variants,
     colorImages: form.inventoryVariants.colorImages,
   });
@@ -503,11 +507,12 @@ export default function ProductForm({
         </FormSection>
 
         {/* 03 — Media */}
-        <FormSection number="03" title="Media">
+        <FormSection number="03" title="Product Media">
+          <p className="mb-3 text-[12px] text-ink-soft/55">The Main Image remains the listing cover and also participates in the ordered product-detail gallery. Product media is limited to 10 unique images, including Color-mapped images.</p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ImageUploader
               label="Main Image *"
-              hint="Recommended: 1000 x 1250px"
+              hint="Required cover; automatically included in Gallery"
               folderId={uploadFolderId}
               value={form.image ? [form.image] : []}
               onChange={(urls) => set("image", urls[0] ?? "")}
@@ -515,10 +520,10 @@ export default function ProductForm({
             />
             <ImageUploader
               label="Gallery Images"
-              hint="Up to 4 images"
+              hint="Ordered after Main Image; up to 9 additional images"
               folderId={uploadFolderId}
               multiple
-              maxImages={4}
+              maxImages={9}
               value={form.images}
               onChange={(urls) => set("images", urls)}
             />
@@ -537,7 +542,10 @@ export default function ProductForm({
             currency="EGP"
             productSkuPreview={form.sku || "(generated after first save)"}
             disabled={!form.brandId}
+            taxonomyNodes={taxonomyNodes}
+            productTypeId={form.productTypeId}
           />
+          <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} onChanged={loadOptions} />
         </FormSection>
 
         {/* 05 — Product Details */}
@@ -690,6 +698,7 @@ export default function ProductForm({
           }}
           taxonomyNodes={taxonomyNodes}
           optionValues={optionValues}
+          optionTypes={optionTypes}
           productId={currentProductId}
           hasUnsavedChanges={hasUnsavedChanges}
           justSaved={justSaved}

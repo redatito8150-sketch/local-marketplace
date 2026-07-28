@@ -15,6 +15,8 @@ import {
 import { buildVariantSkuBase, buildVariantSkuWithSuffix } from "../lib/inventory/variantSku.ts";
 import { calculateTotalInventory, calculateVariantReadiness } from "../lib/inventory/readiness.ts";
 import { validateProductInput, type ProductInput } from "../lib/admin/productValidation.ts";
+import { reconcileAllowedCombinationPool, validateAllowedCombinations, variantChangeSummary } from "../lib/inventory/allowedCombinations.ts";
+import { profileForSizeLabel, recommendedSizeProfiles } from "../lib/inventory/sizeProfiles.ts";
 
 // ── Stock Status ─────────────────────────────────────────────────────────
 
@@ -141,6 +143,60 @@ test("generateVariantCombinations rejects an option selected with zero values", 
   assert.equal(result.ok, false);
 });
 
+test("allowed combinations generate only explicit matrix cells", () => {
+  const result = validateAllowedCombinations(
+    ["color", "size"],
+    { color: ["red", "white"], size: ["s", "m", "44", "46"] },
+    [["red", "s"], ["red", "m"], ["white", "44"], ["white", "46"]]
+  );
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.combinations.length, 4);
+    assert.equal(result.combinations.some((combination) => combination.comboKey === buildComboKey(["red", "44"])), false);
+    assert.equal(result.combinations.some((combination) => combination.comboKey === buildComboKey(["white", "s"])), false);
+  }
+});
+
+test("allowed combinations reject zero, incomplete, duplicate, and over-200 sets", () => {
+  assert.equal(validateAllowedCombinations(["color"], { color: ["red"] }, []).ok, false);
+  assert.equal(validateAllowedCombinations(["color", "size"], { color: ["red"], size: ["s"] }, [["red"]]).ok, false);
+  assert.equal(validateAllowedCombinations(["color"], { color: ["red"] }, [["red"], ["red"]]).ok, false);
+  assert.equal(validateAllowedCombinations(["size"], { size: Array.from({ length: 201 }, (_, i) => String(i)) }, Array.from({ length: 201 }, (_, i) => [String(i)])).ok, false);
+});
+
+test("new option values remain unselected and removed values prune only invalid combinations", () => {
+  const current = [["red", "s"]];
+  assert.deepEqual(reconcileAllowedCombinationPool(current, { color: ["red", "white"], size: ["s", "m"] }), current);
+  assert.deepEqual(reconcileAllowedCombinationPool(current, { color: ["white"], size: ["s"] }), []);
+});
+
+test("variant change summary preserves matching combinations and inventory", () => {
+  const summary = variantChangeSummary(
+    [{ optionValueIds: ["red", "s"], quantity: 10 }, { optionValueIds: ["red", "m"], quantity: 10 }],
+    [["red", "s"], ["red", "m"], ["white", "44"], ["white", "46"]]
+  );
+  assert.deepEqual(summary, { preserved: 2, created: 2, removed: 0, affectedQuantity: 0 });
+});
+
+test("taxonomy-aware Size profiles prioritize apparel, trousers, shoes, and baby signals", () => {
+  const nodes = [
+    { id: "clothing", parentId: null, level: 1, name: "Clothing", slug: "clothing", sortOrder: 1, isActive: true },
+    { id: "tops", parentId: "clothing", level: 2, name: "Tops", slug: "tops", sortOrder: 1, isActive: true },
+    { id: "shirts", parentId: "tops", level: 3, name: "T-Shirts", slug: "t-shirts", sortOrder: 1, isActive: true },
+    { id: "trousers", parentId: "clothing", level: 3, name: "Trousers", slug: "trousers", sortOrder: 2, isActive: true },
+    { id: "shoes", parentId: null, level: 1, name: "Shoes", slug: "shoes", sortOrder: 2, isActive: true },
+    { id: "sneakers", parentId: "shoes", level: 3, name: "Sneakers", slug: "sneakers", sortOrder: 1, isActive: true },
+    { id: "kids", parentId: null, level: 1, name: "Kids & Baby", slug: "kids", sortOrder: 3, isActive: true },
+    { id: "baby", parentId: "kids", level: 3, name: "Baby Bodysuits", slug: "baby", sortOrder: 1, isActive: true },
+  ] as any;
+  assert.ok(recommendedSizeProfiles(nodes, "shirts").includes("standard-apparel"));
+  assert.ok(recommendedSizeProfiles(nodes, "trousers").includes("waist-numeric"));
+  assert.deepEqual(recommendedSizeProfiles(nodes, "sneakers"), ["eu-shoes"]);
+  assert.deepEqual(recommendedSizeProfiles(nodes, "baby"), ["baby-age"]);
+  assert.equal(profileForSizeLabel("EU 42"), "eu-shoes");
+  assert.equal(profileForSizeLabel("0–3 Months"), "baby-age");
+});
+
 // ── Variant SKU generation ──────────────────────────────────────────────
 
 test("buildVariantSkuBase appends tokens in the given order, or falls back to the bare product SKU", () => {
@@ -212,6 +268,7 @@ const baseProduct: ProductInput = {
   defaultLowStockThreshold: 5,
   optionTypeIds: [],
   valueIdsByOptionType: {},
+  allowedCombinations: [[]],
   variants: [{ optionValueIds: [], quantity: 1, sellingStatus: "active" }],
   colorImages: {},
 };

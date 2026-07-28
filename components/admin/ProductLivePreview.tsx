@@ -15,7 +15,7 @@ import {
   type ProductPreviewFormValues,
 } from "@/lib/admin/buildPreviewProduct";
 import type { TaxonomyNode } from "@/types";
-import type { OptionValueOption } from "@/components/admin/InventoryVariantsSection";
+import type { OptionTypeOption, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
 
 // Wrapped locally (not edited at the source) so unrelated field edits don't
 // re-render pieces of the preview that don't depend on them.
@@ -27,6 +27,7 @@ export default function ProductLivePreview({
   form,
   taxonomyNodes,
   optionValues,
+  optionTypes,
   productId,
   hasUnsavedChanges,
   justSaved,
@@ -34,6 +35,7 @@ export default function ProductLivePreview({
   form: ProductPreviewFormValues;
   taxonomyNodes: TaxonomyNode[];
   optionValues: OptionValueOption[];
+  optionTypes: OptionTypeOption[];
   productId?: string;
   hasUnsavedChanges: boolean;
   justSaved: boolean;
@@ -41,6 +43,7 @@ export default function ProductLivePreview({
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [mounted, setMounted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [featuredImage, setFeaturedImage] = useState<string | undefined>();
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -48,13 +51,13 @@ export default function ProductLivePreview({
   }, []);
 
   const previewImages = useMemo(
-    () => deriveProductImages(form.image, form.images),
-    [form.image, form.images]
+    () => deriveProductImages(form.image, form.images, form.inventoryVariants.colorImages),
+    [form.image, form.images, form.inventoryVariants.colorImages]
   );
 
   const previewProduct = useMemo(
-    () => buildPreviewProduct(form, taxonomyNodes, optionValues, productId),
-    [form, taxonomyNodes, optionValues, productId]
+    () => buildPreviewProduct(form, taxonomyNodes, optionValues, productId, optionTypes),
+    [form, taxonomyNodes, optionValues, optionTypes, productId]
   );
 
   const previewAccordion = useMemo(
@@ -68,8 +71,8 @@ export default function ProductLivePreview({
   );
 
   return (
-    <div className="lg:sticky lg:top-24 lg:self-start">
-      <div className="rounded-xl3 border border-stone-150 bg-white shadow-soft">
+    <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:min-h-[36rem] lg:self-start">
+      <div className="flex h-full flex-col rounded-xl3 border border-stone-150 bg-white shadow-soft">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-150 px-5 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -156,7 +159,7 @@ export default function ProductLivePreview({
         </div>
 
         {/* Content */}
-        <div className="max-h-[75vh] overflow-y-auto overflow-x-auto bg-stone-50 p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto bg-stone-50 p-4">
           {!mounted ? (
             <PreviewSkeleton />
           ) : (
@@ -192,13 +195,13 @@ export default function ProductLivePreview({
                       transition={{ duration: 0.25 }}
                     >
                       {previewImages.length > 0 ? (
-                        <MemoProductGallery images={previewImages} alt={previewProduct.name} />
+                        <MemoProductGallery images={previewImages} alt={previewProduct.name} featuredImage={featuredImage} />
                       ) : (
                         <ImagePlaceholder />
                       )}
                     </motion.div>
 
-                    <MemoProductInfo product={previewProduct} disableActions />
+                    <MemoProductInfo product={previewProduct} disableActions onColorImageChange={setFeaturedImage} />
                   </div>
 
                   <div className="mt-10">
