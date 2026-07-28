@@ -4,8 +4,10 @@ import { buildVariantSkuBase, buildVariantSkuWithSuffix } from "@/lib/inventory/
 import type { SellingStatus } from "@/types";
 
 export interface VariantEditInput {
+  id?: string;
   optionValueIds: string[]; // in the product's declared option order
   quantity: number;
+  openingStock?: number;
   variantPrice?: number | null;
   lowStockThresholdOverride?: number | null;
   sellingStatus: SellingStatus;
@@ -27,12 +29,14 @@ export async function syncProductVariants(params: {
   productId: string;
   productSku: string;
   submitted: VariantEditInput[];
+  actorId: string;
+  operationKey: string;
 }): Promise<SyncVariantsResult> {
-  const { productId, productSku, submitted } = params;
+  const { productId, productSku, submitted, actorId, operationKey } = params;
 
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("product_variants")
-    .select("id, combo_key, is_archived")
+    .select("id, combo_key, is_archived, quantity")
     .eq("product_id", productId)
     .eq("is_archived", false);
   if (existingError) {
@@ -66,7 +70,6 @@ export async function syncProductVariants(params: {
       const { error: updateError } = await supabaseAdmin
         .from("product_variants")
         .update({
-          quantity: edit.quantity,
           variant_price: edit.variantPrice ?? null,
           low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,
           selling_status: edit.sellingStatus,
@@ -89,21 +92,23 @@ export async function syncProductVariants(params: {
     let lastError: string | null = null;
     for (let attempt = 0; attempt < 5 && !newVariantId; attempt++) {
       const sku = buildVariantSkuWithSuffix(base, attempt);
-      const { data: inserted, error: insertError } = await supabaseAdmin
-        .from("product_variants")
-        .insert({
-          product_id: productId,
-          sku,
-          quantity: edit.quantity,
-          variant_price: edit.variantPrice ?? null,
-          low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,
-          selling_status: edit.sellingStatus,
-          combo_key: comboKey,
-        })
-        .select("id")
-        .single();
+      const { data: inserted, error: insertError } = await supabaseAdmin.rpc(
+        "create_variant_with_opening_stock",
+        {
+          p_product_id: productId,
+          p_sku: sku,
+          p_combo_key: comboKey,
+          p_opening_stock: edit.openingStock ?? edit.quantity ?? 0,
+          p_variant_price: edit.variantPrice ?? null,
+          p_low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,
+          p_selling_status: edit.sellingStatus,
+          p_option_value_ids: edit.optionValueIds,
+          p_actor_id: actorId,
+          p_operation_key: `${operationKey}:${comboKey || "default"}`,
+        } as never
+      );
       if (!insertError && inserted) {
-        newVariantId = inserted.id as string;
+        newVariantId = inserted as string;
       } else if (insertError && insertError.code !== "23505") {
         lastError = insertError.message;
         break;
@@ -115,14 +120,6 @@ export async function syncProductVariants(params: {
       return { ok: false, error: `Failed to generate a unique variant SKU: ${lastError ?? "unknown error"}` };
     }
 
-    if (edit.optionValueIds.length > 0) {
-      const { error: valuesInsertError } = await supabaseAdmin.from("product_variant_values").insert(
-        edit.optionValueIds.map((optionValueId) => ({ variant_id: newVariantId, option_value_id: optionValueId }))
-      );
-      if (valuesInsertError) {
-        return { ok: false, error: `Failed to save variant options: ${valuesInsertError.message}` };
-      }
-    }
     variantIds.push(newVariantId);
   }
 
@@ -132,8 +129,16 @@ export async function syncProductVariants(params: {
   for (const [comboKey, existingId] of existingByCombo) {
     if (submittedByCombo.has(comboKey)) continue;
 
+    const row = (existingRows ?? []).find((candidate) => candidate.id === existingId);
+    if ((row?.quantity ?? 0) > 0) {
+      return {
+        ok: false,
+        error: "Resolve this variant's remaining stock in Inventory before removing it.",
+      };
+    }
+
     const { count } = await supabaseAdmin
-      .from("order_items")
+      .from("inventory_movements")
       .select("id", { count: "exact", head: true })
       .eq("variant_id", existingId);
 

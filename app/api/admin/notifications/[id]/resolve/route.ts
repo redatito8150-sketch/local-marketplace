@@ -178,6 +178,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
           lowStockThresholdOverride: v.lowStockThresholdOverride ?? null,
           sellingStatus: v.sellingStatus,
         })),
+        actorId: admin.id,
+        operationKey: `notification-revert:${params.id}`,
       });
       if (!variantsResult.ok) {
         return NextResponse.json(

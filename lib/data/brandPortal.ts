@@ -111,6 +111,8 @@ export interface BrandVariant {
   productId: string;
   productName: string;
   image: string;
+  sku: string;
+  optionSummary: string;
   color?: string;
   size?: string;
   quantity: number;
@@ -119,10 +121,41 @@ export interface BrandVariant {
   stockStatus: StockStatus;
 }
 
+export interface InventoryMovement {
+  id: string;
+  variantId: string;
+  previousQuantity: number;
+  quantityDelta: number;
+  newQuantity: number;
+  movementType: string;
+  reason: string;
+  note?: string;
+  source: string;
+  createdAt: string;
+}
+
+export async function getInventoryHistoryForBrand(brandId: string, impersonating = false): Promise<InventoryMovement[]> {
+  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("inventory_movements")
+    .select("id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at")
+    .eq("brand_id", brandId)
+    .order("created_at", { ascending: false })
+    .limit(100);
+  if (error) throw new Error(`getInventoryHistoryForBrand failed: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: row.id, variantId: row.variant_id, previousQuantity: row.previous_quantity,
+    quantityDelta: row.quantity_delta, newQuantity: row.new_quantity,
+    movementType: row.movement_type, reason: row.reason, note: row.note ?? undefined,
+    source: row.source, createdAt: row.created_at,
+  }));
+}
+
 interface BrandVariantRow {
   id: string;
   product_id: string;
   quantity: number;
+  sku: string;
   low_stock_threshold_override: number | null;
   selling_status: SellingStatus;
   products: { id: string; name: string; image: string; brand_slug: string | null; default_low_stock_threshold: number } | null;
@@ -138,7 +171,7 @@ export async function getVariantsForBrand(
   const { data, error } = await supabase
     .from("product_variants")
     .select(
-      "id, product_id, quantity, low_stock_threshold_override, selling_status, products!inner(id, name, image, brand_slug, default_low_stock_threshold)"
+      "id, product_id, sku, quantity, low_stock_threshold_override, selling_status, products!inner(id, name, image, brand_slug, default_low_stock_threshold)"
     )
     .eq("products.brand_slug", brandSlug)
     .eq("is_archived", false);
@@ -167,6 +200,8 @@ export async function getVariantsForBrand(
       productId: row.product_id,
       productName: row.products!.name,
       image: row.products!.image,
+      sku: row.sku,
+      optionSummary: optionValues.map((option) => `${option.optionTypeName}: ${option.label}`).join(" / ") || "Default",
       color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
       size: optionValues.find((o) => o.optionTypeName === "Size")?.label,
       quantity: row.quantity,

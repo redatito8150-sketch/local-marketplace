@@ -115,6 +115,8 @@ export async function POST(request: NextRequest) {
     productId: id,
     productSku: generatedSku as string,
     submitted: body.variants,
+    actorId: admin.id,
+    operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product created, but ${variantsResult.error}` }, { status: 500 });
