@@ -83,6 +83,7 @@ export default function InventoryVariantsSection({
   onCreateOptionValue,
   currency,
   productSkuPreview,
+  productPrice,
   disabled,
   taxonomyNodes,
   productTypeId,
@@ -95,6 +96,7 @@ export default function InventoryVariantsSection({
   onCreateOptionValue: (optionTypeId: string, label: string, colorInput?: NewColorInput) => Promise<OptionValueOption>;
   currency: "USD" | "EGP";
   productSkuPreview: string;
+  productPrice: number;
   disabled?: boolean;
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
@@ -145,6 +147,23 @@ export default function InventoryVariantsSection({
       })),
     [value.optionTypeIds, value.valueIdsByOptionType]
   );
+  const generationResult = useMemo(
+    () => validateAllowedCombinations(value.optionTypeIds, value.valueIdsByOptionType, value.allowedCombinations),
+    [value.optionTypeIds, value.valueIdsByOptionType, value.allowedCombinations]
+  );
+  const generationSummary = useMemo(
+    () => generationResult.ok
+      ? variantChangeSummary(value.variants, generationResult.combinations.map((item) => item.optionValueIds))
+      : null,
+    [generationResult, value.variants]
+  );
+  const variantsUpToDate = Boolean(generationSummary) &&
+    generationSummary!.created === 0 &&
+    generationSummary!.removed === 0;
+  const configurationComplete = value.optionTypeIds.length === 0 ||
+    value.optionTypeIds.every((id) => (value.valueIdsByOptionType[id] ?? []).length > 0);
+  const readyToPublish = configurationComplete &&
+    value.variants.some((variant) => variant.sellingStatus === "active" && variant.quantity > 0);
 
   const handleGenerate = () => {
     const result = validateAllowedCombinations(
@@ -320,6 +339,16 @@ export default function InventoryVariantsSection({
             </div>
           ))}
         </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className={`rounded-md border px-3 py-2.5 ${configurationComplete ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Configuration</p>
+            <p className="mt-1 text-[12.5px]">{configurationComplete ? "Complete" : "Select at least one value for every option."}</p>
+          </div>
+          <div className={`rounded-md border px-3 py-2.5 ${readyToPublish ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+            <p className="text-[11px] font-semibold uppercase tracking-wide">Publishing readiness</p>
+            <p className="mt-1 text-[12.5px]">{readyToPublish ? "Ready to publish" : "Needs an active variant with inventory."}</p>
+          </div>
+        </div>
       </div>
 
       {/* 2 — Default Low Stock Alert */}
@@ -436,7 +465,7 @@ export default function InventoryVariantsSection({
             allowed={value.allowedCombinations}
             existing={value.variants}
             onChange={(allowedCombinations) => set({ allowedCombinations })}
-            disabled={disabled}
+            disabled={disabled || !generationResult.ok || variantsUpToDate}
           />
         </div>
 
@@ -449,6 +478,7 @@ export default function InventoryVariantsSection({
           >
             Generate Variants{value.allowedCombinations.length > 0 ? ` (${value.allowedCombinations.length})` : ""}
           </button>
+          {variantsUpToDate && <span className="text-[12.5px] font-medium text-emerald-700">Variants are up to date.</span>}
           {pendingGenerateNotice && (
             <span className="text-[12.5px] font-medium text-red-600">{pendingGenerateNotice}</span>
           )}

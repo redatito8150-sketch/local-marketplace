@@ -201,7 +201,12 @@ export default function ProductLivePreview({
                       )}
                     </motion.div>
 
-                    <MemoProductInfo product={previewProduct} disableActions onColorImageChange={setFeaturedImage} />
+                    <MemoProductInfo
+                      product={previewProduct}
+                      disableActions
+                      disabledActionReason="Preview only — cart and wishlist actions are disabled."
+                      onColorImageChange={setFeaturedImage}
+                    />
                   </div>
 
                   <div className="mt-10">

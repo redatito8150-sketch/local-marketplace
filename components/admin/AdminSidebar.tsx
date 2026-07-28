@@ -21,6 +21,7 @@ import {
   Tag,
   Users,
 } from "lucide-react";
+import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 
 type Role = "staff" | "manager" | "admin";
 
@@ -114,14 +115,17 @@ function NavLink({
   count: number;
   indent?: boolean;
 }) {
+  const { collapsed } = useDashboardSidebar();
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
-      className={`group flex min-h-10 items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${indent ? "ml-3" : ""} ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+      aria-label={item.label}
+      title={collapsed ? item.label : undefined}
+      className={`group flex min-h-10 items-center rounded-xl border-l-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${collapsed ? "justify-center gap-0 px-2" : `gap-3 px-3 ${indent ? "ml-3" : ""}`} ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
     >
       <item.icon className={`h-[17px] w-[17px] ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
-      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold text-[var(--admin-primary)]">{count}</span>}
     </Link>
   );
@@ -138,6 +142,7 @@ function NavGroupDisclosure({
   role: string;
   counts: BadgeCounts;
 }) {
+  const { collapsed } = useDashboardSidebar();
   const visibleChildren = group.children.filter((child) => canSee(role, child.minRole));
   const containsActiveRoute = visibleChildren.some((child) => isActiveHref(pathname, child.href));
   const [open, setOpen] = useState(containsActiveRoute);
@@ -162,11 +167,13 @@ function NavGroupDisclosure({
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls={groupId}
-        className={`group flex min-h-10 w-full items-center gap-3 rounded-xl border-l-2 px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${containsActiveRoute ? "border-[var(--admin-primary)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+        aria-label={group.label}
+        title={collapsed ? group.label : undefined}
+        className={`group flex min-h-10 w-full items-center rounded-xl border-l-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${collapsed ? "justify-center gap-0 px-2" : "gap-3 px-3"} ${containsActiveRoute ? "border-[var(--admin-primary)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
       >
         <group.icon className={`h-[17px] w-[17px] ${containsActiveRoute ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
-        <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>
-        <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+        {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>}
+        {!collapsed && <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />}
       </button>
       {open && (
         <div id={groupId} className="mt-1 space-y-1">
@@ -190,6 +197,7 @@ export default function AdminSidebar({
   reviewQueueCount?: number;
   role?: string;
 }) {
+  const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const counts = { notifications: unreadNotifications, lowStock: lowStockCount, brandActivity: reviewQueueCount };
 
@@ -200,7 +208,7 @@ export default function AdminSidebar({
         if (!items.length) return null;
         return (
           <div key={group.label ?? index}>
-            {group.label && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-text-muted)]/75">{group.label}</p>}
+            {group.label && !collapsed && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-text-muted)]/75">{group.label}</p>}
             <div className="space-y-1">
               {items.map((item) =>
                 isNavGroupItem(item) ? (
@@ -215,11 +223,11 @@ export default function AdminSidebar({
       })}
 
       <div className="border-t border-[var(--admin-border)] pt-4">
-        <Link href="/brand-portal" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]">
-          <Store className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> Brand Portal
+        <Link href="/brand-portal" aria-label="Brand Portal" title={collapsed ? "Brand Portal" : undefined} className={`flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
+          <Store className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> {!collapsed && "Brand Portal"}
         </Link>
-        <Link href="/" className="mt-1 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]">
-          <ArrowLeft className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> Storefront
+        <Link href="/" aria-label="Storefront" title={collapsed ? "Storefront" : undefined} className={`mt-1 flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
+          <ArrowLeft className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> {!collapsed && "Storefront"}
         </Link>
       </div>
     </nav>
