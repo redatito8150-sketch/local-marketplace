@@ -1,6 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getTaxonomyTree } from "@/lib/data/taxonomy";
@@ -23,15 +21,6 @@ export default async function NewBrandPortalProductPage(
   const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
   return (
-    <div>
-      <Link
-        href={productsHref}
-        className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-soft/60 transition-colors hover:text-ink"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-        Back to products
-      </Link>
-      <h1 className="mb-8 text-2xl font-bold tracking-tightest text-ink">Add product</h1>
       <ProductForm
         mode="create"
         brandOptions={[]}
@@ -41,6 +30,5 @@ export default async function NewBrandPortalProductPage(
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}
       />
-    </div>
   );
 }

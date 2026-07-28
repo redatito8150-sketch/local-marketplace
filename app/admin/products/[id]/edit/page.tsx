@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getProductForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
@@ -20,17 +18,6 @@ export default async function EditProductPage(props: { params: Promise<{ id: str
   if (!product) notFound();
 
   return (
-    <div>
-      <Link
-        href="/admin/products"
-        className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-soft/60 transition-colors hover:text-ink"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-        Back to products
-      </Link>
-      <h1 className="mb-8 text-2xl font-bold tracking-tightest text-ink">
-        Edit {product.name}
-      </h1>
       <ProductForm
         mode="edit"
         productId={product.id}
@@ -39,6 +26,5 @@ export default async function EditProductPage(props: { params: Promise<{ id: str
         taxonomy={taxonomy}
         taxonomyNodes={taxonomyNodes}
       />
-    </div>
   );
 }

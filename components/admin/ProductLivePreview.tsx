@@ -71,7 +71,7 @@ export default function ProductLivePreview({
   );
 
   return (
-    <div className="lg:sticky lg:top-24 lg:h-[calc(100vh-7rem)] lg:min-h-[36rem] lg:self-start">
+    <div className="h-full min-h-[34rem]">
       <div className="flex h-full flex-col rounded-xl3 border border-stone-150 bg-white shadow-soft">
         {/* Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-150 px-5 py-3.5">
@@ -187,7 +187,7 @@ export default function ProductLivePreview({
                 />
 
                 <div className="px-6 pb-8">
-                  <div className="grid grid-cols-1 gap-8">
+                  <div className={`grid gap-8 ${viewport === "desktop" ? "min-[1600px]:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)] min-[1600px]:items-start" : "grid-cols-1"}`}>
                     <motion.div
                       key={previewImages[0] ?? "no-image"}
                       initial={{ opacity: 0 }}

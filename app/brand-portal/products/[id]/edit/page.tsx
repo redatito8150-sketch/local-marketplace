@@ -1,6 +1,4 @@
 import { redirect, notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
@@ -38,14 +36,6 @@ export default async function EditBrandPortalProductPage(
 
   return (
     <div>
-      <Link
-        href={productsHref}
-        className="mb-4 inline-flex items-center gap-1.5 text-[13px] font-medium text-ink-soft/60 transition-colors hover:text-ink"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.8} />
-        Back to products
-      </Link>
-      <h1 className="mb-8 text-2xl font-bold tracking-tightest text-ink">Edit {product.name}</h1>
       {product.status === "published" && (
         <p className="mb-6 rounded-md bg-beige-100 px-4 py-2.5 text-[12.5px] text-ink">
           This product is live. Your changes will be reviewed before they replace what shoppers

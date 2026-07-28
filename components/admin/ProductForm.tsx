@@ -6,6 +6,9 @@ import type { Audience, ProductRecord, ProductStatus, ProductTaxonomyContent, Ta
 import { parseLines } from "@/lib/admin/parseTextInputs";
 import {
   validateProductInput,
+  validateProductSections,
+  type ProductEditorSectionId,
+  type ProductValidationIssue,
   type ProductInput,
 } from "@/lib/admin/productValidation";
 import ImageUploader from "@/components/admin/ImageUploader";
@@ -21,6 +24,14 @@ import InventoryVariantsSection, {
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
+import {
+  PRODUCT_EDITOR_SECTIONS,
+  ProductEditorBottomBar,
+  ProductEditorHeader,
+  ProductErrorSummary,
+  ProductSectionNavigation,
+  type EditorSaveState,
+} from "@/components/admin/ProductEditorChrome";
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
   { value: "men", label: "Men" },
@@ -170,6 +181,10 @@ export default function ProductForm({
   const [form, setForm] = useState<FormState>(() => toFormState(initial, lockedBrand));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
   const [error, setError] = useState("");
+  const [submittedIssues, setSubmittedIssues] = useState<ProductValidationIssue[]>([]);
+  const [saveFailed, setSaveFailed] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | undefined>();
+  const [activeSection, setActiveSection] = useState<ProductEditorSectionId>("basic");
 
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
@@ -182,6 +197,7 @@ export default function ProductForm({
   const [savedSnapshot, setSavedSnapshot] = useState(form);
   const [justSaved, setJustSaved] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Partial<Record<ProductEditorSectionId, HTMLElement>>>({});
 
   // Storage folder for image uploads: the real product id once one exists,
   // otherwise a stable per-session temporary id so images can be uploaded
@@ -192,6 +208,30 @@ export default function ProductForm({
     () => JSON.stringify(form) !== JSON.stringify(savedSnapshot),
     [form, savedSnapshot]
   );
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id.startsWith("product-section-")) {
+          setActiveSection(visible.target.id.replace("product-section-", "") as ProductEditorSectionId);
+        }
+      },
+      { rootMargin: "-25% 0px -60% 0px", threshold: [0.05, 0.25, 0.6] }
+    );
+    for (const section of Object.values(sectionRefs.current)) if (section) observer.observe(section);
+    return () => observer.disconnect();
+  }, []);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -321,14 +361,20 @@ export default function ProductForm({
 
   const submit = async (targetStatus: ProductStatus) => {
     const payload = buildPayload(targetStatus);
+    const issues = validateProductSections(payload);
     const validationError = validateProductInput(payload);
     if (validationError) {
       setError(validationError);
+      setSubmittedIssues(issues);
+      const first = issues[0];
+      if (first) requestAnimationFrame(() => navigateToIssue(first));
       return;
     }
 
     setSubmittingStatus(targetStatus);
     setError("");
+    setSubmittedIssues([]);
+    setSaveFailed(false);
 
     try {
       const res = await fetch(
@@ -342,6 +388,7 @@ export default function ProductForm({
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Something went wrong");
+        setSaveFailed(true);
         return;
       }
 
@@ -358,77 +405,63 @@ export default function ProductForm({
       const nextForm = { ...form, status: targetStatus, inventoryVariants: nextVariants };
       setForm(nextForm);
       setSavedSnapshot(nextForm);
+      setLastSavedAt(new Date());
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
     } catch {
       setError("Something went wrong. Please try again.");
+      setSaveFailed(true);
     } finally {
       setSubmittingStatus(null);
     }
   };
 
-  const handleCancel = () => router.push(cancelHref);
+  const handleCancel = () => {
+    if (!hasUnsavedChanges || window.confirm("You have unsaved changes. Leave this product editor?")) router.push(cancelHref);
+  };
   const handlePreview = () =>
     previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const submitting = submittingStatus !== null;
-
-  const ActionToolbar = (
-    <div className="flex flex-wrap items-center gap-2.5">
-      {!isBrandPortal && (
-        <button
-          type="button"
-          onClick={() => submit("draft")}
-          disabled={submitting}
-          className="rounded-md border border-stone-150 px-4 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submittingStatus === "draft" ? "Saving…" : "Save as Draft"}
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={handlePreview}
-        className="rounded-md border border-stone-150 px-4 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-stone-50"
-      >
-        Preview
-      </button>
-      <button
-        type="button"
-        onClick={handleCancel}
-        className="rounded-md border border-stone-150 px-4 py-2.5 text-[13.5px] font-semibold text-ink transition-colors hover:bg-stone-50"
-      >
-        Cancel
-      </button>
-      <button
-        type="button"
-        onClick={() => submit("published")}
-        disabled={submitting}
-        className="rounded-md bg-ink px-5 py-2.5 text-[13.5px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {isBrandPortal
-          ? submittingStatus === "published"
-            ? "Submitting…"
-            : "Submit for Review"
-          : submittingStatus === "published"
-          ? "Publishing…"
-          : "Publish Product"}
-      </button>
-      {hasUnsavedChanges && !submitting && (
-        <span className="text-[12.5px] font-medium text-ink-soft/50">Unsaved changes</span>
-      )}
-    </div>
+  const currentIssues = validateProductSections(buildPayload(form.status));
+  const completedSections = new Set<ProductEditorSectionId>(
+    PRODUCT_EDITOR_SECTIONS.filter((section) => !currentIssues.some((issue) => issue.section === section.id)).map((section) => section.id)
   );
+  const saveState: EditorSaveState = submitting ? "saving" : saveFailed ? "failed" : hasUnsavedChanges ? "unsaved" : "saved";
+
+  function navigateToSection(sectionId: ProductEditorSectionId) {
+    const target = sectionRefs.current[sectionId];
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    requestAnimationFrame(() => target?.focus({ preventScroll: true }));
+  }
+
+  function navigateToIssue(issue: ProductValidationIssue) {
+    navigateToSection(issue.section);
+    window.setTimeout(() => document.getElementById(issue.fieldId)?.focus(), 350);
+  }
 
   return (
-    <div className="grid grid-cols-1 gap-10 lg:grid-cols-[55%_45%] lg:items-start">
-      <div className="max-w-2xl space-y-8">
-        <div className="flex items-center justify-between gap-4">
-          {ActionToolbar}
-        </div>
+    <div className="min-w-0">
+      <ProductEditorHeader
+        title={form.name.trim() || (currentMode === "create" ? "New Product" : "Edit Product")}
+        status={form.status}
+        saveState={saveState}
+        lastSavedAt={lastSavedAt}
+        submitting={submitting}
+        isBrandPortal={isBrandPortal}
+        onSaveDraft={() => submit("draft")}
+        onPublish={() => submit("published")}
+        onPreview={handlePreview}
+        onBack={handleCancel}
+      />
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[190px_minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[210px_minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
+        <ProductSectionNavigation activeSection={activeSection} issues={currentIssues} completed={completedSections} onNavigate={navigateToSection} isBrandPortal={isBrandPortal} />
+        <div className="min-w-0 space-y-6">
+          <ProductErrorSummary issues={submittedIssues} onNavigate={navigateToIssue} />
 
         {error && (
-          <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
+          <p role="alert" className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
             {error}
           </p>
         )}
@@ -436,19 +469,20 @@ export default function ProductForm({
         {/* 01 — Basic Information — field order: Product Name, Brand,
             Audience, Main Category / Product Group / Product Type,
             Collection, Product SKU. */}
-        <FormSection number="01" title="Basic Information">
+        <FormSection sectionId="basic" sectionRef={(node) => { sectionRefs.current.basic = node ?? undefined; }} number="01" title="Basic Information" description="Define ownership, audience, taxonomy, Collection, and the immutable product identity." complete={completedSections.has("basic")} issueCount={currentIssues.filter((issue) => issue.section === "basic").length}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <TextField label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
-            <BrandSelect
+            <TextField id="product-name" label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
+            <div id="product-brand"><BrandSelect
               options={brandOptions}
               value={form.brandId}
               onChange={handleBrandChange}
               disabled={Boolean(lockedBrand) || mode === "edit"}
-            />
+            /></div>
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelectField
+              id="product-audience"
               label="Audience"
               required
               value={form.audience}
@@ -466,7 +500,7 @@ export default function ProductForm({
             />
           </div>
 
-          <div className="mt-4">
+          <div id="product-taxonomy" className="mt-4" tabIndex={-1}>
             <TaxonomySelector
               nodes={taxonomyNodes}
               value={form.productTypeId}
@@ -490,26 +524,36 @@ export default function ProductForm({
         </FormSection>
 
         {/* 02 — Pricing */}
-        <FormSection number="02" title="Pricing">
+        <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the default selling price used whenever a variant does not define its own final price." complete={completedSections.has("pricing")} issueCount={currentIssues.filter((issue) => issue.section === "pricing").length}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <PriceField
+              id="product-price"
               label="Price"
               required
               value={form.price}
               onChange={(v) => set("price", v)}
             />
             <PriceField
+              id="product-compare-price"
               label="Compare At Price"
               value={form.compareAtPrice}
               onChange={(v) => set("compareAtPrice", v)}
             />
           </div>
+          <div className="mt-4 flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50 px-4 py-3">
+            <div>
+              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-soft/45">Price preview</p>
+              <p className="mt-1 text-[18px] font-bold text-ink">{Number(form.price) > 0 ? `${Number(form.price).toLocaleString()} EGP` : "— EGP"}</p>
+            </div>
+            {Number(form.compareAtPrice) > Number(form.price) && <p className="text-[13px] text-ink-soft/45 line-through">{Number(form.compareAtPrice).toLocaleString()} EGP</p>}
+          </div>
+          <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price. Variant Price remains the final price for that variant.</p>
         </FormSection>
 
         {/* 03 — Media */}
-        <FormSection number="03" title="Product Media">
+        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="03" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
           <p className="mb-3 text-[12px] text-ink-soft/55">The Main Image remains the listing cover and also participates in the ordered product-detail gallery. Product media is limited to 10 unique images, including Color-mapped images.</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div id="product-media" tabIndex={-1} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ImageUploader
               label="Main Image *"
               hint="Required cover; automatically included in Gallery"
@@ -531,8 +575,8 @@ export default function ProductForm({
         </FormSection>
 
         {/* 04 — Inventory & Variants */}
-        <FormSection number="04" title="Inventory & Variants">
-          <InventoryVariantsSection
+        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="04" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
+          <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
             value={form.inventoryVariants}
             onChange={(next) => set("inventoryVariants", next)}
             availableOptionTypes={optionTypes}
@@ -544,13 +588,14 @@ export default function ProductForm({
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
-          />
+          /></div>
           <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} onChanged={loadOptions} />
         </FormSection>
 
         {/* 05 — Product Details */}
-        <FormSection number="05" title="Product Details">
+        <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Present the current descriptive, care, shipping, and model information." complete={completedSections.has("details")} issueCount={currentIssues.filter((issue) => issue.section === "details").length}>
           <TextArea
+            id="product-description"
             label="Description"
             required
             value={form.description}
@@ -625,9 +670,10 @@ export default function ProductForm({
             brand-portal submission's status is always decided by the
             review flow, never typed in here) */}
         {!isBrandPortal && (
-          <FormSection number="06" title="Visibility">
+          <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Use the existing publication and merchandising controls." complete={completedSections.has("visibility")} issueCount={currentIssues.filter((issue) => issue.section === "visibility").length}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <SelectField
+                id="product-status"
                 label="Status"
                 required
                 value={form.status}
@@ -669,12 +715,10 @@ export default function ProductForm({
           </FormSection>
         )}
 
-        <div className="flex items-center justify-between gap-4 border-t border-stone-150 pt-6">
-          {ActionToolbar}
-        </div>
+        <ProductEditorBottomBar dirty={hasUnsavedChanges} submitting={submitting} isBrandPortal={isBrandPortal} onSaveDraft={() => submit("draft")} onPublish={() => submit("published")} />
       </div>
 
-      <div ref={previewRef}>
+      <div ref={previewRef} className="min-w-0 xl:sticky xl:top-[158px] xl:h-[calc(100vh-174px)]">
         <ProductLivePreview
           form={{
             name: form.name,
@@ -704,31 +748,55 @@ export default function ProductForm({
           justSaved={justSaved}
         />
       </div>
+      </div>
     </div>
   );
 }
 
 function FormSection({
+  sectionId,
+  sectionRef,
   number,
   title,
+  description,
+  complete,
+  issueCount,
   children,
 }: {
+  sectionId: ProductEditorSectionId;
+  sectionRef: (node: HTMLElement | null) => void;
   number: string;
   title: string;
+  description: string;
+  complete: boolean;
+  issueCount: number;
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl3 border border-stone-150 bg-white p-6">
-      <h2 className="flex items-center gap-2.5 text-[15px] font-bold text-ink">
-        <span className="text-ink-soft/40">{number}</span>
-        {title}
-      </h2>
+    <section
+      id={`product-section-${sectionId}`}
+      ref={sectionRef}
+      tabIndex={-1}
+      aria-labelledby={`product-section-${sectionId}-title`}
+      className="scroll-mt-44 rounded-xl3 border border-stone-150 bg-white p-5 outline-none focus-visible:ring-2 focus-visible:ring-ink/20 sm:p-6"
+    >
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 rounded-md bg-stone-100 px-2 py-1 text-[10px] font-bold text-ink-soft/55">{number}</span>
+        <div className="min-w-0 flex-1">
+          <h2 id={`product-section-${sectionId}-title`} className="text-[15px] font-bold text-ink">{title}</h2>
+          <p className="mt-1 text-[11.5px] leading-relaxed text-ink-soft/55">{description}</p>
+        </div>
+        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${issueCount ? "bg-red-50 text-red-700" : complete ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-ink-soft/55"}`}>
+          {issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : complete ? "Complete" : "Incomplete"}
+        </span>
+      </div>
       <div className="mt-5">{children}</div>
     </section>
   );
 }
 
 function TextField({
+  id,
   label,
   type = "text",
   value,
@@ -737,6 +805,7 @@ function TextField({
   hint,
   placeholder,
 }: {
+  id?: string;
   label: string;
   type?: string;
   value: string;
@@ -752,6 +821,7 @@ function TextField({
         {required && <span className="text-red-600"> *</span>}
       </span>
       <input
+        id={id}
         type={type}
         value={value}
         placeholder={placeholder}
@@ -765,11 +835,13 @@ function TextField({
 }
 
 function PriceField({
+  id,
   label,
   value,
   onChange,
   required,
 }: {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -785,7 +857,8 @@ function PriceField({
         <span className="border-r border-stone-150 px-3 py-2.5 text-[13px] font-semibold text-ink-soft/60">
           EGP
         </span>
-        <input
+      <input
+        id={id}
           type="number"
           min={0}
           step="0.01"
@@ -800,6 +873,7 @@ function PriceField({
 }
 
 function SelectField({
+  id,
   label,
   value,
   onChange,
@@ -807,6 +881,7 @@ function SelectField({
   required,
   disabled,
 }: {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -821,6 +896,7 @@ function SelectField({
         {required && <span className="text-red-600"> *</span>}
       </span>
       <select
+        id={id}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -837,12 +913,14 @@ function SelectField({
 }
 
 function TextArea({
+  id,
   label,
   value,
   onChange,
   rows = 3,
   required,
 }: {
+  id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -856,6 +934,7 @@ function TextArea({
         {required && <span className="text-red-600"> *</span>}
       </span>
       <textarea
+        id={id}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         rows={rows}

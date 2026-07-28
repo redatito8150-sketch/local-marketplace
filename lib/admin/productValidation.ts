@@ -50,6 +50,14 @@ export interface ProductInput {
 // (option value display, e.g. ProductCard's color dots).
 export type { ProductColorOption };
 
+export type ProductEditorSectionId = "basic" | "pricing" | "media" | "inventory" | "details" | "visibility";
+
+export interface ProductValidationIssue {
+  section: ProductEditorSectionId;
+  message: string;
+  fieldId: string;
+}
+
 function validateVariants(variants: VariantRowInput[]): string | null {
   if (!Array.isArray(variants) || variants.length === 0) {
     return "Every product needs at least one variant — generate variants below, or leave every option unselected for a single default variant.";
@@ -85,55 +93,67 @@ function validateVariants(variants: VariantRowInput[]): string | null {
   return null;
 }
 
-export function validateProductInput(body: ProductInput): string | null {
-  if (!body.name?.trim()) return "Name is required";
-  if (!body.brandId?.trim()) return "A brand must be selected";
+export function validateProductSections(body: ProductInput): ProductValidationIssue[] {
+  const issues: ProductValidationIssue[] = [];
+  const add = (section: ProductEditorSectionId, message: string, fieldId: string) =>
+    issues.push({ section, message, fieldId });
+
+  if (!body.name?.trim()) add("basic", "Name is required", "product-name");
+  if (!body.brandId?.trim()) add("basic", "A brand must be selected", "product-brand");
   if (!body.audience || !VALID_AUDIENCES.includes(body.audience)) {
-    return "Audience must be selected";
+    add("basic", "Audience must be selected", "product-audience");
   }
   if (!body.productTypeId?.trim()) {
-    return "A complete Main Category / Product Group / Product Type selection is required";
+    add("basic", "A complete Main Category / Product Group / Product Type selection is required", "product-taxonomy");
   }
-  if (!Number.isFinite(body.price) || body.price <= 0) return "Price must be a positive number";
+  if (!Number.isFinite(body.price) || body.price <= 0) add("pricing", "Price must be a positive number", "product-price");
   if (
     body.compareAtPrice != null &&
     (!Number.isFinite(body.compareAtPrice) || body.compareAtPrice <= body.price)
   ) {
-    return "Compare At Price must be greater than the price";
+    add("pricing", "Compare At Price must be greater than the price", "product-compare-price");
   }
-  if (!body.image?.trim()) return "Main image is required";
-  if (!body.description?.trim()) return "Description is required";
+  if (!body.image?.trim()) add("media", "Main image is required", "product-media");
+  if (!body.description?.trim()) add("details", "Description is required", "product-description");
   if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
-    return "Invalid status";
+    add("visibility", "Invalid status", "product-status");
   }
   if (!Number.isInteger(body.defaultLowStockThreshold) || body.defaultLowStockThreshold < 0) {
-    return "Default Low Stock Alert must be a whole, non-negative number";
+    add("inventory", "Default Low Stock Alert must be a whole, non-negative number", "inventory-variants");
   }
   if (body.optionTypeIds.length > MAX_VARIANT_OPTIONS_PER_PRODUCT) {
-    return "A product can have a maximum of 3 variant options.";
+    add("inventory", "A product can have a maximum of 3 variant options.", "inventory-variants");
   }
 
   const variantError = validateVariants(body.variants);
-  if (variantError) return variantError;
+  if (variantError) add("inventory", variantError, "inventory-variants");
 
-  const allowedResult = validateAllowedCombinations(
-    body.optionTypeIds,
-    body.valueIdsByOptionType,
-    body.allowedCombinations ?? body.variants.map((variant) => variant.optionValueIds)
-  );
-  if (!allowedResult.ok) return allowedResult.error;
-  const allowedKeys = new Set(allowedResult.combinations.map((combination) => combination.comboKey));
-  const variantKeys = new Set(body.variants.map((variant) => [...variant.optionValueIds].sort().join(",")));
-  if (allowedKeys.size !== variantKeys.size || [...allowedKeys].some((key) => !variantKeys.has(key))) {
-    return "Generated variants must match the allowed combinations.";
+  if (!variantError) {
+    const allowedResult = validateAllowedCombinations(
+      body.optionTypeIds,
+      body.valueIdsByOptionType,
+      body.allowedCombinations ?? body.variants.map((variant) => variant.optionValueIds)
+    );
+    if (!allowedResult.ok) add("inventory", allowedResult.error, "allowed-combinations");
+    else {
+      const allowedKeys = new Set(allowedResult.combinations.map((combination) => combination.comboKey));
+      const variantKeys = new Set(body.variants.map((variant) => [...variant.optionValueIds].sort().join(",")));
+      if (allowedKeys.size !== variantKeys.size || [...allowedKeys].some((key) => !variantKeys.has(key))) {
+        add("inventory", "Generated variants must match the allowed combinations.", "allowed-combinations");
+      }
+    }
   }
 
   if (body.status === "published") {
     const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
     if (!hasPurchasable) {
-      return "At least one variant needs stock and an Active Selling Status before publishing";
+      add("inventory", "At least one variant needs stock and an Active Selling Status before publishing", "generated-variants");
     }
   }
 
-  return null;
+  return issues;
+}
+
+export function validateProductInput(body: ProductInput): string | null {
+  return validateProductSections(body)[0]?.message ?? null;
 }

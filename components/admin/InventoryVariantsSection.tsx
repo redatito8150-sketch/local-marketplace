@@ -184,6 +184,19 @@ export default function InventoryVariantsSection({
   const totalInventory = calculateTotalInventory(
     value.variants.map((v) => ({ quantity: v.quantity, sellingStatus: v.sellingStatus, isArchived: false }))
   );
+  const stockCounts = value.variants.reduce(
+    (counts, variant) => {
+      const status = calculateStockStatus(
+        variant.quantity,
+        effectiveLowStockThreshold(variant.lowStockThresholdOverride, value.defaultLowStockThreshold)
+      );
+      if (variant.sellingStatus === "active") counts.active += 1;
+      if (status === "low_stock") counts.low += 1;
+      if (status === "out_of_stock") counts.out += 1;
+      return counts;
+    },
+    { active: 0, low: 0, out: 0 }
+  );
 
   const labelFor = (valueId: string) => availableOptionValues.find((v) => v.id === valueId)?.label ?? "—";
 
@@ -294,9 +307,18 @@ export default function InventoryVariantsSection({
         <p className="mt-1 text-[12px] text-ink-soft/55">
           Inventory is tracked automatically for every variant.
         </p>
-        <div className="mt-2 rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5">
-          <span className="text-[12.5px] font-medium text-ink-soft/70">Total Inventory</span>
-          <p className="text-[20px] font-bold text-ink">{totalInventory}</p>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            ["Total Inventory", totalInventory],
+            ["Active Variants", stockCounts.active],
+            ["Low Stock", stockCounts.low],
+            ["Out of Stock", stockCounts.out],
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-md border border-stone-150 bg-stone-50 px-3 py-2.5">
+              <span className="text-[10.5px] font-medium text-ink-soft/60">{label}</span>
+              <p className="text-[18px] font-bold text-ink">{count}</p>
+            </div>
+          ))}
         </div>
       </div>
 
