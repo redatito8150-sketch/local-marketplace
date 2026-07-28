@@ -36,7 +36,7 @@ function randomSuffix(): string {
 // queue. An admin viewing this brand's portal (isImpersonating) never
 // creates on the brand's behalf — only the real owner/assistant does.
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

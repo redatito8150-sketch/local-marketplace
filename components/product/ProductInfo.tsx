@@ -15,6 +15,7 @@ import ColorSwatch from "@/components/admin/ColorSwatch";
 export default function ProductInfo({
   product,
   disableActions = false,
+  disabledActionReason,
   onColorImageChange,
 }: {
   product: ProductDetail;
@@ -23,6 +24,7 @@ export default function ProductInfo({
   // the admin's own real cart/wishlist (those contexts are global). Default
   // stays false so the real product page's behavior is unchanged.
   disableActions?: boolean;
+  disabledActionReason?: string;
   // Reports the mapped image for the currently selected Color (if any) up
   // to the page, which passes it to ProductGallery as `featuredImage` —
   // this is the only way a Color selection is allowed to affect the
@@ -356,6 +358,11 @@ export default function ProductInfo({
           />
         </button>
       </div>
+      {disableActions && disabledActionReason && (
+        <p role="note" className="mt-2 text-center text-[11.5px] font-medium text-ink-soft/60">
+          {disabledActionReason}
+        </p>
+      )}
 
       {/* Shipping note */}
       <div className="mt-7 flex items-start gap-2.5 rounded-lg bg-stone-50 p-4">

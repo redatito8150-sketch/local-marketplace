@@ -32,7 +32,7 @@ async function loadOwnedProduct(id: string, brandId: string) {
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
@@ -203,9 +203,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 // deletion-request gate). Product ids are reused as URL slugs elsewhere,
 // so archiving instead of deleting also means a later "un-revert" doesn't
 // need to regenerate a fresh id.
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

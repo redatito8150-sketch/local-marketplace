@@ -22,6 +22,16 @@ export interface BrandOwnerContext {
   // account, which the brand-portal UI uses to hide Page Content/Logs and
   // narrow which product actions are available (Round 3).
   accessLevel: BrandAccessLevel;
+  setupStatus: "setup_required" | "in_progress" | "ready_for_review" | "complete" | null;
+  isActive: boolean;
+  availableBrands: Array<{
+    id: string;
+    slug: string;
+    name: string;
+    accessLevel: BrandAccessLevel;
+    setupStatus: BrandOwnerContext["setupStatus"];
+    isActive: boolean;
+  }>;
 }
 
 // Parallel to requireAdminUser()/requireStaffRole() but for the separate,
@@ -46,50 +56,97 @@ export async function requireBrandOwner(
     .maybeSingle();
   const isAdmin = Boolean(profile?.is_admin);
 
-  const { data: ownedBrand } = await supabase
+  const { data: ownedBrands } = await supabase
     .from("brands")
-    .select("id, slug, name")
+    .select("id, slug, name, setup_status, is_active")
     .eq("owner_user_id", user.id)
-    .maybeSingle();
+    .order("name");
 
-  if (ownedBrand) {
-    return {
-      user,
-      brandId: ownedBrand.id,
-      brandSlug: ownedBrand.slug,
-      brandName: ownedBrand.name,
-      isAdmin,
-      isImpersonating: false,
-      accessLevel: "owner",
-    };
-  }
-
-  // Not the owner — check the assistant link (brand_staff) before falling
-  // through to the admin-override path.
-  const { data: staffRow } = await supabase
+  const { data: staffRows } = await supabase
     .from("brand_staff")
     .select("brand_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (staffRow) {
-    const { data: staffBrand } = await supabase
+    .eq("user_id", user.id);
+  const staffBrandIds = [...new Set((staffRows ?? []).map((row) => row.brand_id))];
+  const { data: staffBrands } = staffBrandIds.length
+    ? await supabase
       .from("brands")
-      .select("id, slug, name")
-      .eq("id", staffRow.brand_id)
-      .maybeSingle();
+      .select("id, slug, name, setup_status, is_active")
+      .in("id", staffBrandIds)
+      .order("name")
+    : { data: [] };
 
-    if (staffBrand) {
-      return {
-        user,
-        brandId: staffBrand.id,
-        brandSlug: staffBrand.slug,
-        brandName: staffBrand.name,
-        isAdmin,
-        isImpersonating: false,
+  const membershipMap = new Map<string, BrandOwnerContext["availableBrands"][number]>();
+  for (const brand of ownedBrands ?? []) {
+    membershipMap.set(brand.id, {
+      id: brand.id,
+      slug: brand.slug,
+      name: brand.name,
+      accessLevel: "owner",
+      setupStatus: brand.setup_status,
+      isActive: brand.is_active,
+    });
+  }
+  for (const brand of staffBrands ?? []) {
+    if (!membershipMap.has(brand.id)) {
+      membershipMap.set(brand.id, {
+        id: brand.id,
+        slug: brand.slug,
+        name: brand.name,
         accessLevel: "assistant",
-      };
+        setupStatus: brand.setup_status,
+        isActive: brand.is_active,
+      });
     }
+  }
+  let availableBrands = [...membershipMap.values()];
+
+  // Compatibility for conversions made before owner_user_id became the
+  // authoritative relation. Only the authenticated user's converted
+  // application and its stored brand id/slug can be used.
+  if (!availableBrands.length) {
+    const { data: legacyApplications } = await supabase
+      .from("brand_applications")
+      .select("converted_brand_id, approved_brand_id")
+      .eq("applicant_user_id", user.id)
+      .eq("status", "converted_to_brand");
+    const legacyIds = (legacyApplications ?? []).map((row) => row.converted_brand_id).filter(Boolean) as string[];
+    const legacySlugs = (legacyApplications ?? []).map((row) => row.approved_brand_id).filter(Boolean) as string[];
+    if (legacyIds.length || legacySlugs.length) {
+      const filters = [
+        legacyIds.length ? `id.in.(${legacyIds.join(",")})` : "",
+        legacySlugs.length ? `slug.in.(${legacySlugs.join(",")})` : "",
+      ].filter(Boolean).join(",");
+      const { data: legacyBrands } = await supabase
+        .from("brands")
+        .select("id, slug, name, setup_status, is_active")
+        .or(filters);
+      availableBrands = (legacyBrands ?? []).map((brand) => ({
+        id: brand.id,
+        slug: brand.slug,
+        name: brand.name,
+        accessLevel: "owner" as const,
+        setupStatus: brand.setup_status,
+        isActive: brand.is_active,
+      }));
+    }
+  }
+
+  const selectedMembership = overrideSlug
+    ? availableBrands.find((brand) => brand.slug === overrideSlug)
+    : availableBrands[0];
+  if (selectedMembership) {
+    return {
+      user,
+      brandId: selectedMembership.id,
+      brandSlug: selectedMembership.slug,
+      brandName: selectedMembership.name,
+      isAdmin,
+      isImpersonating: false,
+      accessLevel: selectedMembership.accessLevel,
+      setupStatus: selectedMembership.setupStatus,
+      isActive: selectedMembership.isActive,
+      availableBrands,
+    };
   }
 
   if (!isAdmin) return null;
@@ -103,6 +160,9 @@ export async function requireBrandOwner(
       isAdmin: true,
       isImpersonating: false,
       accessLevel: "owner",
+      setupStatus: null,
+      isActive: true,
+      availableBrands: [],
     };
   }
 
@@ -111,7 +171,7 @@ export async function requireBrandOwner(
   // resolve the name.
   const { data: targetBrand } = await supabase
     .from("brands")
-    .select("id, slug, name")
+    .select("id, slug, name, setup_status, is_active")
     .eq("slug", overrideSlug)
     .maybeSingle();
 
@@ -124,5 +184,8 @@ export async function requireBrandOwner(
     isAdmin: true,
     isImpersonating: true,
     accessLevel: "owner",
+    setupStatus: targetBrand.setup_status,
+    isActive: targetBrand.is_active,
+    availableBrands: [],
   };
 }

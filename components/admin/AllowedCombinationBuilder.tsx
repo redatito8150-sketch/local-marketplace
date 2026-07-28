@@ -35,7 +35,11 @@ export default function AllowedCombinationBuilder({
 
   if (groups.length === 1) {
     return (
-      <section aria-label="Allowed combinations" className="space-y-2">
+      <section aria-label="Included values" className="space-y-2">
+        <div>
+          <h5 className="text-[12px] font-semibold text-ink">Included Values</h5>
+          <p className="text-[11.5px] text-ink-soft/55">Choose the {groups[0].label} values sold for this product. No combination matrix is needed.</p>
+        </div>
         <CombinationHeader count={allowed.length} summary={summary} />
         <div className="flex flex-wrap gap-2">
           {groups[0].values.map((choice) => (

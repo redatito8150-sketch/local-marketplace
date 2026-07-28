@@ -55,6 +55,7 @@ export default async function EditBrandPortalProductPage(
         taxonomy={taxonomy}
         taxonomyNodes={taxonomyNodes}
         lockedBrand={{ id: owner.brandId, name: owner.brandName ?? owner.brandSlug ?? "" }}
+        brandSlug={owner.brandSlug ?? undefined}
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}
       />

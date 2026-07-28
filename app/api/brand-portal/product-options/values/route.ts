@@ -6,7 +6,7 @@ import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

@@ -62,6 +62,7 @@ interface ProductFormProps {
   // "Submit for Review" action label (the write itself still publishes
   // immediately per the Instant-Publish model — see CLAUDE.md).
   lockedBrand?: { id: string; name: string };
+  brandSlug?: string;
   apiBasePath?: string;
   cancelHref?: string;
 }
@@ -172,12 +173,14 @@ export default function ProductForm({
   taxonomy = DEFAULT_PRODUCT_TAXONOMY,
   taxonomyNodes,
   lockedBrand,
+  brandSlug,
   apiBasePath = "/api/admin/products",
   cancelHref = "/admin/products",
 }: ProductFormProps) {
   const router = useRouter();
   const isBrandPortal = Boolean(lockedBrand);
   const optionsApiBase = isBrandPortal ? "/api/brand-portal" : "/api/admin";
+  const brandQuery = isBrandPortal && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
   const [form, setForm] = useState<FormState>(() => toFormState(initial, lockedBrand));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
   const [error, setError] = useState("");
@@ -246,7 +249,7 @@ export default function ProductForm({
       optionsApiBase === "/api/admin"
         ? `/api/admin/product-options?brandId=${encodeURIComponent(form.brandId)}`
         : "/api/brand-portal/product-options";
-    const res = await fetch(url);
+    const res = await fetch(`${url}${brandQuery}`);
     const data = await res.json();
     if (res.ok) {
       setOptionTypes(data.optionTypes ?? []);
@@ -263,7 +266,7 @@ export default function ProductForm({
   }, [form.brandId]);
 
   const handleCreateOptionType = async (name: string): Promise<OptionTypeOption> => {
-    const res = await fetch(`${optionsApiBase}/product-options/types`, {
+    const res = await fetch(`${optionsApiBase}/product-options/types${brandQuery}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(optionsApiBase === "/api/admin" ? { brandId: form.brandId, name } : { name }),
@@ -280,7 +283,7 @@ export default function ProductForm({
     label: string,
     colorInput?: NewColorInput
   ): Promise<OptionValueOption> => {
-    const res = await fetch(`${optionsApiBase}/product-options/values`, {
+    const res = await fetch(`${optionsApiBase}/product-options/values${brandQuery}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -377,8 +380,9 @@ export default function ProductForm({
     setSaveFailed(false);
 
     try {
+      const targetUrl = currentMode === "create" ? apiBasePath : `${apiBasePath}/${currentProductId}`;
       const res = await fetch(
-        currentMode === "create" ? apiBasePath : `${apiBasePath}/${currentProductId}`,
+        `${targetUrl}${brandQuery}`,
         {
           method: currentMode === "create" ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -497,6 +501,7 @@ export default function ProductForm({
               value={form.collectionId}
               onChange={(v) => set("collectionId", v)}
               apiBasePath={optionsApiBase}
+              brandSlug={brandSlug}
             />
           </div>
 
@@ -585,11 +590,12 @@ export default function ProductForm({
             onCreateOptionValue={handleCreateOptionValue}
             currency="EGP"
             productSkuPreview={form.sku || "(generated after first save)"}
+            productPrice={Number(form.price) || 0}
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
           /></div>
-          <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} onChanged={loadOptions} />
+          <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
         </FormSection>
 
         {/* 05 — Product Details */}

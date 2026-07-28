@@ -3,9 +3,10 @@ import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { optionTypeReferences } from "@/lib/admin/reusableDataLifecycle";
+import { validateOptionTypeName } from "@/lib/admin/optionValidation";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   const { id } = await params;
   const { data: type } = await supabaseAdmin.from("option_types").select("id, brand_id, is_system").eq("id", id).maybeSingle();
@@ -21,8 +22,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
   else if (body.action === "restore") Object.assign(patch, { is_archived: false, archived_at: null });
-  else if (body.action === "rename" && typeof body.name === "string" && body.name.trim()) Object.assign(patch, { name: body.name.trim(), key: normalizeOptionKey(body.name) });
+  else if (body.action === "rename" && typeof body.name === "string" && body.name.trim()) {
+    const name = body.name.trim();
+    const validationError = validateOptionTypeName(name);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+    Object.assign(patch, { name, key: normalizeOptionKey(name) });
+  }
   else return NextResponse.json({ error: "Invalid management action" }, { status: 400 });
   const { error } = await supabaseAdmin.from("option_types").update(patch).eq("id", id);
-  return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ updated: true });
+  return error
+    ? NextResponse.json({ error: error.code === "23505" ? "That option type already exists for your brand" : error.message }, { status: error.code === "23505" ? 409 : 500 })
+    : NextResponse.json({ updated: true });
 }

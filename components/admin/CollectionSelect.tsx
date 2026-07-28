@@ -26,11 +26,13 @@ export default function CollectionSelect({
   value,
   onChange,
   apiBasePath,
+  brandSlug,
 }: {
   brandId: string;
   value: string;
   onChange: (collectionId: string) => void;
   apiBasePath: "/api/brand-portal" | "/api/admin";
+  brandSlug?: string;
 }) {
   const [options, setOptions] = useState<CollectionOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -41,7 +43,7 @@ export default function CollectionSelect({
   const listUrl = brandId
     ? apiBasePath === "/api/admin"
       ? `/api/admin/collections?brandId=${encodeURIComponent(brandId)}`
-      : "/api/brand-portal/collections"
+      : `/api/brand-portal/collections${brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : ""}`
     : null;
 
   const loadCollections = async () => {
@@ -114,6 +116,7 @@ export default function CollectionSelect({
         <CreateCollectionModal
           brandId={brandId}
           apiBasePath={apiBasePath}
+          brandSlug={brandSlug}
           onClose={() => setModalOpen(false)}
           onCreated={async (id) => {
             setModalOpen(false);
@@ -134,7 +137,8 @@ export default function CollectionSelect({
                   const name = action === "rename" ? window.prompt("New Collection name", option.name) : undefined;
                   if (action === "rename" && !name?.trim()) return;
                   if (action === "delete" && !window.confirm(`Delete "${option.name}" permanently?`)) return;
-                  const response = await fetch(`${apiBasePath}/collections/${option.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, ...(apiBasePath === "/api/admin" ? { brandId } : {}) }) });
+                  const brandQuery = apiBasePath === "/api/brand-portal" && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
+                  const response = await fetch(`${apiBasePath}/collections/${option.id}${brandQuery}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, ...(apiBasePath === "/api/admin" ? { brandId } : {}) }) });
                   const data = await response.json();
                   if (!response.ok) { setManagementError(data.error ?? "Management action failed"); return; }
                   setManagementError(""); await loadCollections(); if (action === "delete" && value === option.id) onChange("");
@@ -151,11 +155,13 @@ export default function CollectionSelect({
 function CreateCollectionModal({
   brandId,
   apiBasePath,
+  brandSlug,
   onClose,
   onCreated,
 }: {
   brandId: string;
   apiBasePath: "/api/brand-portal" | "/api/admin";
+  brandSlug?: string;
   onClose: () => void;
   onCreated: (id: string) => void;
 }) {
@@ -173,7 +179,8 @@ function CreateCollectionModal({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch(`${apiBasePath}/collections`, {
+      const brandQuery = apiBasePath === "/api/brand-portal" && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
+      const res = await fetch(`${apiBasePath}/collections${brandQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
