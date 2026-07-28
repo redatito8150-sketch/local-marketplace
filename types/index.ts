@@ -361,6 +361,8 @@ export interface ProductReview {
 export interface ProductColorOption {
   name: string;
   hex: string;
+  swatchType?: OptionSwatchType;
+  secondaryColor?: string;
 }
 
 export interface ProductDetail extends ProductTaxonomyFields {
@@ -422,6 +424,7 @@ export interface ProductRecord extends ProductTaxonomyFields {
   inStock: boolean;
   isNew: boolean;
   variants?: ProductVariant[];
+  colorImages?: Record<string, string>;
   // Reusable signal for the later Publishing & Visibility phase.
   variantReadiness?: ProductVariantReadiness;
   // ── Brand-portal review workflow (Round 3) ────────────────────────────

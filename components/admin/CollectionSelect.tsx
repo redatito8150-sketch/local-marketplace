@@ -35,6 +35,8 @@ export default function CollectionSelect({
   const [options, setOptions] = useState<CollectionOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [managementError, setManagementError] = useState("");
 
   const listUrl = brandId
     ? apiBasePath === "/api/admin"
@@ -54,7 +56,6 @@ export default function CollectionSelect({
       if (res.ok) {
         setOptions(
           (data.collections ?? [])
-            .filter((c: { isActive: boolean }) => c.isActive)
             .map((c: { id: string; name: string; slug: string; isActive: boolean }) => ({
               id: c.id,
               name: c.name,
@@ -89,7 +90,7 @@ export default function CollectionSelect({
           className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-ink-soft/40"
         >
           <option value="">No collection</option>
-          {options.map((option) => (
+          {options.filter((option) => option.isActive || option.id === value).map((option) => (
             <option key={option.id} value={option.id}>
               {option.name}
             </option>
@@ -105,6 +106,9 @@ export default function CollectionSelect({
         <Plus className="h-3.5 w-3.5" strokeWidth={2} />
         Create Collection
       </button>
+      <button type="button" disabled={!brandId || options.length === 0} onClick={() => setManageOpen(true)} className="ml-3 mt-1.5 text-[12px] font-semibold text-ink hover:underline disabled:opacity-40">
+        Manage Collections
+      </button>
 
       {modalOpen && (
         <CreateCollectionModal
@@ -117,6 +121,28 @@ export default function CollectionSelect({
             onChange(id);
           }}
         />
+      )}
+      {manageOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-label="Manage collections">
+          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl3 bg-white p-6 shadow-card">
+            <div className="flex items-center justify-between"><h3 className="font-bold">Manage Collections</h3><button type="button" onClick={() => setManageOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
+            {managementError && <p className="mt-3 rounded bg-red-50 p-2 text-[12px] text-red-700">{managementError}</p>}
+            <div className="mt-4 space-y-2">
+              {options.map((option) => <div key={option.id} className="flex flex-wrap items-center gap-2 rounded border border-stone-150 p-3">
+                <span className="mr-auto text-[13px] font-semibold">{option.name}</span>
+                {(["rename", option.isActive ? "archive" : "restore", "delete"] as const).map((action) => <button key={action} type="button" className="rounded border px-2 py-1 text-[11.5px] capitalize" onClick={async () => {
+                  const name = action === "rename" ? window.prompt("New Collection name", option.name) : undefined;
+                  if (action === "rename" && !name?.trim()) return;
+                  if (action === "delete" && !window.confirm(`Delete "${option.name}" permanently?`)) return;
+                  const response = await fetch(`${apiBasePath}/collections/${option.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, ...(apiBasePath === "/api/admin" ? { brandId } : {}) }) });
+                  const data = await response.json();
+                  if (!response.ok) { setManagementError(data.error ?? "Management action failed"); return; }
+                  setManagementError(""); await loadCollections(); if (action === "delete" && value === option.id) onChange("");
+                }}>{action}</button>)}
+              </div>)}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -25,7 +25,10 @@ export function buildProductPersistencePayload(
     compare_at_price: body.compareAtPrice ?? null,
     currency: body.currency,
     image: body.image,
-    images: body.images?.length ? body.images : [body.image],
+    // One authoritative product-detail order. The cover is always present,
+    // followed by merchant-ordered gallery images and then any mapped Color
+    // image not already represented by the same stable URL.
+    images: [...new Set([body.image, ...(body.images ?? []), ...Object.values(body.colorImages ?? {})].filter(Boolean))].slice(0, 10),
     description: body.description,
     details: body.details,
     care_instructions: body.careInstructions,

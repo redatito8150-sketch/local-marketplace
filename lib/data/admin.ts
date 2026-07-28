@@ -215,6 +215,8 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
   const variantsByProduct = await getVariantsForProducts([id], supabaseAdmin);
   const variants = variantsByProduct.get(id) ?? [];
   const record = attachVariantDerivedFields(toProductRecord(row, ctx), variants);
+  const { data: colorImages } = await supabaseAdmin.from("product_color_images").select("option_value_id, image_url").eq("product_id", id);
+  record.colorImages = Object.fromEntries((colorImages ?? []).map((item) => [item.option_value_id as string, item.image_url as string]));
   record.variantReadiness = calculateVariantReadiness(variants, row.status);
   return record;
 }

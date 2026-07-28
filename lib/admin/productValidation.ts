@@ -1,5 +1,6 @@
 import type { Audience, ProductColorOption, ProductStatus, SellingStatus } from "@/types";
-import { MAX_VARIANT_OPTIONS_PER_PRODUCT, MAX_VARIANTS_PER_PRODUCT, calculateVariantCombinationCount } from "../inventory/variantCombinations.ts";
+import { MAX_VARIANT_OPTIONS_PER_PRODUCT } from "../inventory/variantCombinations.ts";
+import { validateAllowedCombinations } from "../inventory/allowedCombinations.ts";
 
 const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
 const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
@@ -39,6 +40,7 @@ export interface ProductInput {
   defaultLowStockThreshold: number;
   optionTypeIds: string[];
   valueIdsByOptionType: Record<string, string[]>;
+  allowedCombinations?: string[][];
   variants: VariantRowInput[];
   colorImages: Record<string, string>;
 }
@@ -111,15 +113,20 @@ export function validateProductInput(body: ProductInput): string | null {
     return "A product can have a maximum of 3 variant options.";
   }
 
-  const expectedTotal = calculateVariantCombinationCount(
-    body.optionTypeIds.map((id) => ({ optionTypeId: id, valueIds: body.valueIdsByOptionType[id] ?? [] }))
-  );
-  if (expectedTotal > MAX_VARIANTS_PER_PRODUCT) {
-    return `This selection would generate ${expectedTotal} variants, which exceeds the maximum of ${MAX_VARIANTS_PER_PRODUCT}.`;
-  }
-
   const variantError = validateVariants(body.variants);
   if (variantError) return variantError;
+
+  const allowedResult = validateAllowedCombinations(
+    body.optionTypeIds,
+    body.valueIdsByOptionType,
+    body.allowedCombinations ?? body.variants.map((variant) => variant.optionValueIds)
+  );
+  if (!allowedResult.ok) return allowedResult.error;
+  const allowedKeys = new Set(allowedResult.combinations.map((combination) => combination.comboKey));
+  const variantKeys = new Set(body.variants.map((variant) => [...variant.optionValueIds].sort().join(",")));
+  if (allowedKeys.size !== variantKeys.size || [...allowedKeys].some((key) => !variantKeys.has(key))) {
+    return "Generated variants must match the allowed combinations.";
+  }
 
   if (body.status === "published") {
     const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);

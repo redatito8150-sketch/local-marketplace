@@ -189,6 +189,27 @@ export async function replaceProductColorImages(params: {
   return { ok: true };
 }
 
+export async function replaceProductMedia(params: {
+  productId: string;
+  coverUrl: string;
+  galleryUrls: string[];
+  colorImages: Record<string, string>;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const orderedUrls = [...new Set([params.coverUrl, ...params.galleryUrls, ...Object.values(params.colorImages)].filter(Boolean))].slice(0, 10);
+  const colorByUrl = new Map(Object.entries(params.colorImages).map(([valueId, url]) => [url, valueId]));
+  const { error: deleteError } = await supabaseAdmin.from("product_media").delete().eq("product_id", params.productId);
+  if (deleteError) return { ok: false, error: `Failed to reset product media: ${deleteError.message}` };
+  if (!orderedUrls.length) return { ok: true };
+  const { error } = await supabaseAdmin.from("product_media").insert(orderedUrls.map((url, displayOrder) => ({
+    product_id: params.productId,
+    storage_reference: url,
+    display_order: displayOrder,
+    is_cover: url === params.coverUrl,
+    color_option_value_id: colorByUrl.get(url) ?? null,
+  })));
+  return error ? { ok: false, error: `Failed to save product media: ${error.message}` } : { ok: true };
+}
+
 // Replaces a product's option-type/value selections (product_options /
 // product_option_values) — small, no independent history of their own, so
 // a delete-then-reinsert is safe (unlike product_variants, which must be

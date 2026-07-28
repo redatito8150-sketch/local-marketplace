@@ -2,17 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import type { OptionSwatchType, SellingStatus } from "@/types";
+import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import ColorOptionPicker, { type NewColorInput } from "./ColorOptionPicker";
 import ColorSwatch from "./ColorSwatch";
 import ImageUploader from "./ImageUploader";
+import AllowedCombinationBuilder from "./AllowedCombinationBuilder";
+import SizeValueSelector from "./SizeValueSelector";
 import {
   buildComboKey,
-  calculateVariantCombinationCount,
-  generateVariantCombinations,
   MAX_VARIANT_OPTIONS_PER_PRODUCT,
 } from "@/lib/inventory/variantCombinations";
+import {
+  reconcileAllowedCombinationPool,
+  validateAllowedCombinations,
+  variantChangeSummary,
+} from "@/lib/inventory/allowedCombinations";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { calculateTotalInventory } from "@/lib/inventory/readiness";
 
@@ -21,6 +26,8 @@ export interface OptionTypeOption {
   name: string;
   key: string;
   isSystem: boolean;
+  brandId?: string;
+  isArchived?: boolean;
 }
 export interface OptionValueOption {
   id: string;
@@ -29,6 +36,8 @@ export interface OptionValueOption {
   swatchType?: OptionSwatchType;
   primaryColor?: string;
   secondaryColor?: string;
+  brandId?: string;
+  isArchived?: boolean;
 }
 
 export interface VariantRow {
@@ -44,6 +53,7 @@ export interface InventoryVariantsValue {
   defaultLowStockThreshold: number;
   optionTypeIds: string[]; // ordered, max 3
   valueIdsByOptionType: Record<string, string[]>;
+  allowedCombinations: string[][];
   variants: VariantRow[];
   colorImages: Record<string, string>; // optionValueId -> url
 }
@@ -74,6 +84,8 @@ export default function InventoryVariantsSection({
   currency,
   productSkuPreview,
   disabled,
+  taxonomyNodes,
+  productTypeId,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -84,6 +96,8 @@ export default function InventoryVariantsSection({
   currency: "USD" | "EGP";
   productSkuPreview: string;
   disabled?: boolean;
+  taxonomyNodes: TaxonomyNode[];
+  productTypeId: string;
 }) {
   const [pendingGenerateNotice, setPendingGenerateNotice] = useState<string | null>(null);
   const [collapsedColors, setCollapsedColors] = useState<Set<string>>(new Set());
@@ -99,7 +113,11 @@ export default function InventoryVariantsSection({
       const nextTypeIds = value.optionTypeIds.filter((id) => id !== optionTypeId);
       const nextValueIds = { ...value.valueIdsByOptionType };
       delete nextValueIds[optionTypeId];
-      set({ optionTypeIds: nextTypeIds, valueIdsByOptionType: nextValueIds });
+      set({
+        optionTypeIds: nextTypeIds,
+        valueIdsByOptionType: nextValueIds,
+        allowedCombinations: reconcileAllowedCombinationPool(value.allowedCombinations, nextValueIds),
+      });
       return;
     }
     if (value.optionTypeIds.length >= MAX_VARIANT_OPTIONS_PER_PRODUCT) {
@@ -112,7 +130,11 @@ export default function InventoryVariantsSection({
   const toggleValue = (optionTypeId: string, valueId: string) => {
     const current = value.valueIdsByOptionType[optionTypeId] ?? [];
     const next = current.includes(valueId) ? current.filter((id) => id !== valueId) : [...current, valueId];
-    set({ valueIdsByOptionType: { ...value.valueIdsByOptionType, [optionTypeId]: next } });
+    const nextValueIds = { ...value.valueIdsByOptionType, [optionTypeId]: next };
+    set({
+      valueIdsByOptionType: nextValueIds,
+      allowedCombinations: reconcileAllowedCombinationPool(value.allowedCombinations, nextValueIds),
+    });
   };
 
   const selectionsForGeneration = useMemo(
@@ -124,14 +146,20 @@ export default function InventoryVariantsSection({
     [value.optionTypeIds, value.valueIdsByOptionType]
   );
 
-  const expectedTotal = calculateVariantCombinationCount(selectionsForGeneration);
-
   const handleGenerate = () => {
-    const result = generateVariantCombinations(selectionsForGeneration);
+    const result = validateAllowedCombinations(
+      value.optionTypeIds,
+      value.valueIdsByOptionType,
+      value.allowedCombinations
+    );
     if (!result.ok) {
       setPendingGenerateNotice(result.error);
       return;
     }
+    const summary = variantChangeSummary(value.variants, result.combinations.map((combination) => combination.optionValueIds));
+    if (summary.removed > 0 && !window.confirm(
+      `${summary.preserved} variants will be preserved.\n${summary.created} variants will be created.\n${summary.removed} variants will be removed or archived.\n${summary.affectedQuantity} inventory units are affected.\n\nContinue?`
+    )) return;
     setPendingGenerateNotice(null);
 
     const existingByCombo = new Map(value.variants.map((v) => [buildComboKey(v.optionValueIds), v]));
@@ -294,7 +322,7 @@ export default function InventoryVariantsSection({
         <h3 className="text-[13px] font-semibold text-ink">Variant Options</h3>
         <p className="mt-1 text-[12px] text-ink-soft/55">Up to 3 option types per product.</p>
         <div className="mt-2 flex flex-wrap gap-2">
-          {availableOptionTypes.map((type) => {
+          {availableOptionTypes.filter((type) => !type.isArchived || value.optionTypeIds.includes(type.id)).map((type) => {
             const active = value.optionTypeIds.includes(type.id);
             return (
               <button
@@ -318,8 +346,8 @@ export default function InventoryVariantsSection({
           {value.optionTypeIds.map((optionTypeId) => {
             const type = availableOptionTypes.find((t) => t.id === optionTypeId);
             if (!type) return null;
-            const valuesForType = availableOptionValues.filter((v) => v.optionTypeId === optionTypeId);
             const selectedIds = value.valueIdsByOptionType[optionTypeId] ?? [];
+            const valuesForType = availableOptionValues.filter((v) => v.optionTypeId === optionTypeId && (!v.isArchived || selectedIds.includes(v.id)));
 
             if (type.key === "color") {
               return (
@@ -331,6 +359,24 @@ export default function InventoryVariantsSection({
                   onToggle={(id) => toggleValue(optionTypeId, id)}
                   onCreate={async (input) => {
                     const created = await onCreateOptionValue(optionTypeId, input.label, input);
+                    toggleValue(optionTypeId, created.id);
+                  }}
+                />
+              );
+            }
+
+            if (type.key === "size") {
+              return (
+                <SizeValueSelector
+                  key={optionTypeId}
+                  options={valuesForType}
+                  selectedIds={selectedIds}
+                  taxonomyNodes={taxonomyNodes}
+                  productTypeId={productTypeId}
+                  disabled={disabled}
+                  onToggle={(id) => toggleValue(optionTypeId, id)}
+                  onCreate={async (label) => {
+                    const created = await onCreateOptionValue(optionTypeId, label);
                     toggleValue(optionTypeId, created.id);
                   }}
                 />
@@ -354,6 +400,24 @@ export default function InventoryVariantsSection({
           })}
         </div>
 
+        <div className="mt-5">
+          <h4 className="mb-2 text-[12.5px] font-semibold text-ink">Allowed Combination Builder</h4>
+          <AllowedCombinationBuilder
+            groups={selectionsForGeneration.map((selection) => ({
+              id: selection.optionTypeId,
+              label: availableOptionTypes.find((type) => type.id === selection.optionTypeId)?.name ?? "Option",
+              values: selection.valueIds.map((id) => ({
+                id,
+                label: availableOptionValues.find((option) => option.id === id)?.label ?? id,
+              })),
+            }))}
+            allowed={value.allowedCombinations}
+            existing={value.variants}
+            onChange={(allowedCombinations) => set({ allowedCombinations })}
+            disabled={disabled}
+          />
+        </div>
+
         <div className="mt-4 flex items-center gap-3">
           <button
             type="button"
@@ -361,7 +425,7 @@ export default function InventoryVariantsSection({
             onClick={handleGenerate}
             className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Generate Variants{expectedTotal > 0 ? ` (${expectedTotal})` : ""}
+            Generate Variants{value.allowedCombinations.length > 0 ? ` (${value.allowedCombinations.length})` : ""}
           </button>
           {pendingGenerateNotice && (
             <span className="text-[12.5px] font-medium text-red-600">{pendingGenerateNotice}</span>

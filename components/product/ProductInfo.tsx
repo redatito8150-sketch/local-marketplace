@@ -10,6 +10,7 @@ import { formatPrice } from "@/lib/format";
 import { effectiveVariantPrice } from "@/lib/inventory/pricing";
 import { calculateStockStatus, effectiveLowStockThreshold, isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import StarRating from "@/components/shared/StarRating";
+import ColorSwatch from "@/components/admin/ColorSwatch";
 
 export default function ProductInfo({
   product,
@@ -33,10 +34,21 @@ export default function ProductInfo({
   const wishlisted = isWishlisted(product.id);
 
   const variants = useMemo(() => product.variants ?? [], [product.variants]);
-  const colorLabels = [...new Set(variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Color").map((o) => o.label)))];
+  const colorLabels = [...new Set(variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName.toLowerCase() === "color").map((o) => o.label)))];
+  const customOptionGroups = useMemo(() => {
+    const groups = new Map<string, { id: string; name: string; values: string[] }>();
+    for (const variant of variants) for (const option of variant.optionValues) {
+      if (["color", "size"].includes(option.optionTypeName.toLowerCase())) continue;
+      const group = groups.get(option.optionTypeId) ?? { id: option.optionTypeId, name: option.optionTypeName, values: [] };
+      if (!group.values.includes(option.label)) group.values.push(option.label);
+      groups.set(option.optionTypeId, group);
+    }
+    return [...groups.values()];
+  }, [variants]);
 
   const [selectedColor, setSelectedColor] = useState<string | undefined>(colorLabels[0]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedCustom, setSelectedCustom] = useState<Record<string, string>>({});
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [sizeError, setSizeError] = useState(false);
@@ -53,11 +65,13 @@ export default function ProductInfo({
   const resolvedVariant = useMemo(() => {
     if (!hasVariants) return undefined;
     return variants.find((v) => {
-      const color = v.optionValues.find((o) => o.optionTypeName === "Color")?.label;
-      const size = v.optionValues.find((o) => o.optionTypeName === "Size")?.label;
-      return (color ?? "") === (selectedColor ?? "") && (size ?? "") === (selectedSize ?? "");
+      const color = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "color")?.label;
+      const size = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
+      return (color ?? "") === (selectedColor ?? "") &&
+        (size ?? "") === (selectedSize ?? "") &&
+        customOptionGroups.every((group) => v.optionValues.some((option) => option.optionTypeId === group.id && option.label === selectedCustom[group.id]));
     });
-  }, [hasVariants, variants, selectedColor, selectedSize]);
+  }, [hasVariants, variants, selectedColor, selectedSize, selectedCustom, customOptionGroups]);
 
   const displayPrice = effectiveVariantPrice(resolvedVariant?.variantPrice, product.price);
 
@@ -69,9 +83,10 @@ export default function ProductInfo({
   // color, when one's picked) is out of stock, paused, or discontinued.
   const isSizeDisabled = (size: string): boolean => {
     const matching = variants.filter((v) => {
-      const vSize = v.optionValues.find((o) => o.optionTypeName === "Size")?.label;
-      const vColor = v.optionValues.find((o) => o.optionTypeName === "Color")?.label;
-      return vSize === size && (!selectedColor || vColor === selectedColor);
+      const vSize = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
+      const vColor = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "color")?.label;
+      return vSize === size && (!selectedColor || vColor === selectedColor) &&
+        Object.entries(selectedCustom).every(([typeId, label]) => v.optionValues.some((option) => option.optionTypeId === typeId && option.label === label));
     });
     if (matching.length === 0) return false;
     return !matching.some((v) => isVariantPurchasable({ sellingStatus: v.sellingStatus, quantity: v.quantity, isArchived: v.isArchived, productStatus: product.status }));
@@ -200,10 +215,7 @@ export default function ProductInfo({
                     : "border-stone-150 hover:border-ink/40"
                 }`}
               >
-                <span
-                  className="h-5 w-5 rounded-full border border-black/10"
-                  style={{ backgroundColor: color.hex }}
-                />
+                <ColorSwatch swatchType={color.swatchType} primaryColor={color.hex} secondaryColor={color.secondaryColor} size={20} />
               </button>
             ))}
           </div>
@@ -261,6 +273,23 @@ export default function ProductInfo({
           )}
         </div>
       )}
+
+      {customOptionGroups.map((group) => (
+        <div className="mt-7" key={group.id}>
+          <p className="text-[13px] font-medium text-ink">{group.name}</p>
+          <div className="mt-3 flex flex-wrap gap-2.5">
+            {group.values.map((choice) => {
+              const available = variants.some((variant) => {
+                const color = variant.optionValues.find((option) => option.optionTypeName.toLowerCase() === "color")?.label;
+                const size = variant.optionValues.find((option) => option.optionTypeName.toLowerCase() === "size")?.label;
+                return variant.optionValues.some((option) => option.optionTypeId === group.id && option.label === choice) &&
+                  (!selectedColor || color === selectedColor) && (!selectedSize || size === selectedSize);
+              });
+              return <button key={choice} type="button" disabled={!available} onClick={() => setSelectedCustom((current) => ({ ...current, [group.id]: choice }))} className={`rounded-md border px-3 py-2 text-[13px] ${selectedCustom[group.id] === choice ? "border-ink bg-ink text-cream" : "border-stone-150"} disabled:cursor-not-allowed disabled:opacity-35`}>{choice}</button>;
+            })}
+          </div>
+        </div>
+      ))}
 
       {/* Quantity + Add to cart */}
       <div className="mt-8 flex items-center gap-3">

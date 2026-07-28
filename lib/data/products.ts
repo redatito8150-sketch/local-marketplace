@@ -36,7 +36,7 @@ export function attachVariantDerivedFields<T extends { sizes: string[]; colors: 
   for (const variant of variants) {
     for (const option of variant.optionValues) {
       if (option.optionTypeName === "Color" && !colorMap.has(option.optionValueId)) {
-        colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8" });
+        colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8", swatchType: option.swatchType, secondaryColor: option.secondaryColor });
       }
     }
   }
@@ -509,7 +509,7 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
     for (const variant of variants) {
       for (const option of variant.optionValues) {
         if (option.optionTypeName === "Color" && !colorMap.has(option.optionValueId)) {
-          colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8" });
+          colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8", swatchType: option.swatchType, secondaryColor: option.secondaryColor });
         }
       }
     }
@@ -575,6 +575,15 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
       .filter((r) => r.option_values)
       .map((r) => [r.option_values!.label, r.image_url])
   );
+  const { data: orderedMedia } = await supabase
+    .from("product_media")
+    .select("storage_reference")
+    .eq("product_id", id)
+    .eq("is_archived", false)
+    .order("display_order", { ascending: true });
+  detail.images = orderedMedia?.length
+    ? orderedMedia.map((media) => media.storage_reference as string)
+    : [...new Set([row.image, ...detail.images, ...Object.values(detail.colorImages)].filter(Boolean))];
 
   // Related products: same Product Type as this one. product_type_id is
   // NOT NULL post-migration, but this query still guards against a falsy

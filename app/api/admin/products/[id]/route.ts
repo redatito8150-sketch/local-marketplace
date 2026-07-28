@@ -11,6 +11,7 @@ import {
   syncProductVariants,
   replaceProductOptionSelections,
   replaceProductColorImages,
+  replaceProductMedia,
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 
@@ -82,6 +83,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!colorImagesResult.ok) {
     return NextResponse.json({ error: `Product updated, but ${colorImagesResult.error}` }, { status: 500 });
   }
+  const mediaResult = await replaceProductMedia({ productId: params.id, coverUrl: body.image, galleryUrls: body.images ?? [], colorImages: body.colorImages });
+  if (!mediaResult.ok) return NextResponse.json({ error: `Product updated, but ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
 
