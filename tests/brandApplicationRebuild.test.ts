@@ -89,6 +89,34 @@ test("drafts remain partial while final submission is server-authoritatively com
   assert.equal(brandApplicationDataSchema.safeParse({ brandName: "Started" }).success, false);
 });
 
+test("draft autosave accepts the initialized empty UI state", () => {
+  const parsed = brandApplicationDraftPayloadSchema.safeParse({
+    applicationData: {
+      fullName: "Reda Gad",
+      businessEmail: "redatito8150@gmail.com",
+      phone: "01124605939",
+      applicantRole: "founder",
+      preferredContactMethod: "email",
+      country: "Egypt",
+      city: "Cairo",
+      targetAudiences: [],
+      salesChannels: [],
+      socialLinks: {},
+      productCategories: [],
+      inventoryModels: [],
+      shippingCoverage: [],
+      returnsAccepted: true,
+      exchangesAccepted: true,
+      agreementAccurate: false,
+      agreementAuthorized: false,
+      agreementReview: false,
+    },
+    currentStep: 1,
+  });
+
+  assert.equal(parsed.success, true);
+});
+
 test("structured errors identify step, section, field, and blocking status", () => {
   const parsed = brandApplicationDataSchema.safeParse({ ...validData, businessEmail: "bad" });
   assert.equal(parsed.success, false);

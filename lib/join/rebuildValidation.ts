@@ -126,8 +126,37 @@ export const brandApplicationDataSchema = brandApplicationDataObjectSchema
     { path: ["legalBusinessName"], message: "Registered businesses must provide their legal registration details" }
   );
 
+// Drafts intentionally accept incomplete values. Autosave includes initialized
+// empty arrays and unchecked agreements, which must remain valid until submit.
+export const brandApplicationDraftDataSchema = brandApplicationDataObjectSchema.partial().extend({
+  fullName: text(120).optional(),
+  businessEmail: text(254).optional(),
+  phone: text(40).optional(),
+  brandName: text(120).optional(),
+  country: text(80).optional(),
+  city: text(80).optional(),
+  shortDescription: text(160).optional(),
+  fullBrandStory: text(1500).optional(),
+  brandDifference: text(800).optional(),
+  returnWindow: text(80).optional(),
+  targetAudiences: z.array(z.enum(TARGET_AUDIENCES)).max(TARGET_AUDIENCES.length).optional(),
+  salesChannels: z.array(z.enum(SALES_CHANNELS)).max(SALES_CHANNELS.length).optional(),
+  productCategories: z.array(z.enum(APPLICATION_CATEGORIES)).max(APPLICATION_CATEGORIES.length).optional(),
+  inventoryModels: z
+    .array(z.enum(["in_stock", "made_to_order", "pre_order", "limited_drops", "seasonal", "consignment"]))
+    .max(6)
+    .optional(),
+  shippingCoverage: z
+    .array(z.enum(["cairo_giza", "alexandria", "major_cities", "nationwide", "selected_areas", "international"]))
+    .max(6)
+    .optional(),
+  agreementAccurate: z.boolean().optional(),
+  agreementAuthorized: z.boolean().optional(),
+  agreementReview: z.boolean().optional(),
+});
+
 export const brandApplicationDraftPayloadSchema = z.object({
-  applicationData: brandApplicationDataObjectSchema.partial(),
+  applicationData: brandApplicationDraftDataSchema,
   currentStep: z.number().int().min(1).max(5),
   lockVersion: z.number().int().nonnegative().optional(),
 });
