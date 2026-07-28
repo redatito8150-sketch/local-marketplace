@@ -8,6 +8,8 @@ import { sendEmail } from "@/lib/email/sendEmail";
 import { applicationSubmittedEmail } from "@/lib/email/templates/brandApplication";
 import { ApplicationServiceError, submitApplication } from "@/lib/join/applicationService";
 import { submitApplicationSchema } from "@/lib/join/validation";
+import { brandApplicationSubmitPayloadSchema, structuredErrors } from "@/lib/join/rebuildValidation";
+import { submitRebuiltApplication } from "@/lib/join/rebuildService";
 
 export async function POST(request: NextRequest) {
   const user = await requireUser();
@@ -26,16 +28,31 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const parsed = submitApplicationSchema.safeParse(body);
+  const isRebuiltPayload =
+    typeof body === "object" && body !== null && "applicationData" in body;
+  const parsed = isRebuiltPayload
+    ? brandApplicationSubmitPayloadSchema.safeParse(body)
+    : submitApplicationSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid application data" },
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid application data",
+        validationErrors: isRebuiltPayload ? structuredErrors(parsed.error) : undefined,
+      },
       { status: 400 }
     );
   }
 
   try {
-    const application = await submitApplication(user.id, parsed.data);
+    const application = isRebuiltPayload
+      ? await submitRebuiltApplication(
+          user,
+          parsed.data as import("@/lib/join/rebuildValidation").BrandApplicationSubmitPayload
+        )
+      : await submitApplication(
+          user.id,
+          parsed.data as import("@/lib/join/validation").SubmitApplicationInput
+        );
 
     await notify(
       "brand_application_submitted",

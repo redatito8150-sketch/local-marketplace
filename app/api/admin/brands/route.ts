@@ -16,6 +16,10 @@ const CONVERSION_ERROR_MESSAGES: Record<string, string> = {
   ALREADY_CONVERTED: "This application has already been converted to a brand.",
   NOT_APPROVED: "The source application must be approved before creating a brand from it.",
   MISSING_SLUG: "A slug is required.",
+  MISSING_SKU_PREFIX: "A SKU prefix is required.",
+  INVALID_SKU_PREFIX: "The SKU prefix must contain 2–6 uppercase letters or numbers.",
+  APPLICATION_HAS_NO_OWNER: "This legacy application has no linked user account and cannot be converted automatically.",
+  CONVERSION_LINK_BROKEN: "This application was converted but its brand link is missing.",
 };
 
 export async function POST(request: NextRequest) {

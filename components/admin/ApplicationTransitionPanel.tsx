@@ -30,6 +30,9 @@ export default function ApplicationTransitionPanel({
   const router = useRouter();
   const [pendingAction, setPendingAction] = useState<ApplicationStatus | null>(null);
   const [reason, setReason] = useState("");
+  const [requestedSections, setRequestedSections] = useState<string[]>([]);
+  const [requestedFields, setRequestedFields] = useState("");
+  const [responseDeadline, setResponseDeadline] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,7 +47,19 @@ export default function ApplicationTransitionPanel({
       const res = await fetch(`/api/admin/applications/${applicationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, reason: reasonText || undefined }),
+        body: JSON.stringify({
+          status,
+          reason: reasonText || undefined,
+          requestedSections: status === "changes_requested" ? requestedSections : undefined,
+          requestedFields:
+            status === "changes_requested"
+              ? requestedFields.split(",").map((field) => field.trim()).filter(Boolean)
+              : undefined,
+          responseDeadline:
+            status === "changes_requested" && responseDeadline
+              ? new Date(`${responseDeadline}T23:59:59`).toISOString()
+              : undefined,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -53,6 +68,9 @@ export default function ApplicationTransitionPanel({
       }
       setPendingAction(null);
       setReason("");
+      setRequestedSections([]);
+      setRequestedFields("");
+      setResponseDeadline("");
       router.refresh();
     } finally {
       setSaving(false);
@@ -102,6 +120,53 @@ export default function ApplicationTransitionPanel({
             rows={3}
             className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-900 outline-none focus:border-mahalyred/40"
           />
+          {pendingAction === "changes_requested" && (
+            <div className="mt-4 space-y-3">
+              <div>
+                <p className="text-[12.5px] font-semibold text-slate-700">Sections to reopen</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {["contact", "brand_overview", "business_verification", "products_operations"].map((section) => {
+                    const active = requestedSections.includes(section);
+                    return (
+                      <button
+                        key={section}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() =>
+                          setRequestedSections((current) =>
+                            active ? current.filter((value) => value !== section) : [...current, section]
+                          )
+                        }
+                        className={`rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+                          active ? "border-mahalyred bg-red-50 text-mahalyred" : "border-slate-200 bg-white"
+                        }`}
+                      >
+                        {section.replaceAll("_", " ")}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <label className="block text-[12.5px] font-semibold text-slate-700">
+                Specific field keys (comma separated)
+                <input
+                  value={requestedFields}
+                  onChange={(event) => setRequestedFields(event.target.value)}
+                  placeholder="businessEmail, commercialRegistrationNumber"
+                  className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-normal"
+                />
+              </label>
+              <label className="block text-[12.5px] font-semibold text-slate-700">
+                Response deadline (optional)
+                <input
+                  type="date"
+                  value={responseDeadline}
+                  onChange={(event) => setResponseDeadline(event.target.value)}
+                  className="mt-2 w-full rounded-md border border-slate-200 bg-white px-3 py-2 font-normal"
+                />
+              </label>
+            </div>
+          )}
           <div className="mt-3 flex gap-2">
             <button
               type="button"
@@ -116,6 +181,9 @@ export default function ApplicationTransitionPanel({
               onClick={() => {
                 setPendingAction(null);
                 setReason("");
+                setRequestedSections([]);
+                setRequestedFields("");
+                setResponseDeadline("");
               }}
               className="rounded-md border border-slate-200 px-4 py-2 text-[12.5px] font-semibold text-slate-600"
             >

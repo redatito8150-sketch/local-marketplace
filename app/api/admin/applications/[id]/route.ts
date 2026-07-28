@@ -49,7 +49,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  let body: { status?: unknown; reason?: unknown; adminNotes?: unknown };
+  let body: {
+    status?: unknown;
+    reason?: unknown;
+    adminNotes?: unknown;
+    requestedSections?: unknown;
+    requestedFields?: unknown;
+    responseDeadline?: unknown;
+    applicantMessage?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -95,10 +103,27 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     update.reviewed_by = admin.id;
     if (nextStatus === "rejected") {
       update.rejection_reason = reason;
+      update.applicant_visible_message =
+        typeof body.applicantMessage === "string" && body.applicantMessage.trim()
+          ? body.applicantMessage.trim()
+          : reason;
       update.reapplication_allowed_at = computeReapplicationAllowedAt();
     }
     if (nextStatus === "changes_requested") {
+      const requestedSections = Array.isArray(body.requestedSections)
+        ? body.requestedSections.filter((value): value is string => typeof value === "string")
+        : [];
+      const requestedFields = Array.isArray(body.requestedFields)
+        ? body.requestedFields.filter((value): value is string => typeof value === "string")
+        : [];
       update.changes_requested_message = reason;
+      update.applicant_visible_message = reason;
+      update.requested_sections = requestedSections;
+      update.requested_fields = requestedFields;
+      update.information_response_deadline =
+        typeof body.responseDeadline === "string" && body.responseDeadline
+          ? body.responseDeadline
+          : null;
     }
   }
 
@@ -119,6 +144,49 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       admin.id,
       reason || null
     );
+  }
+
+  if (nextStatus === "changes_requested" && nextStatus !== application.status) {
+    const requestedSections = Array.isArray(body.requestedSections)
+      ? body.requestedSections.filter((value): value is string => typeof value === "string")
+      : [];
+    const requestedFields = Array.isArray(body.requestedFields)
+      ? body.requestedFields.filter((value): value is string => typeof value === "string")
+      : [];
+    const { error: requestError } = await supabaseAdmin
+      .from("brand_application_information_requests")
+      .insert({
+        application_id: application.id,
+        requested_sections: requestedSections,
+        requested_fields: requestedFields,
+        message: reason,
+        response_deadline:
+          typeof body.responseDeadline === "string" && body.responseDeadline
+            ? body.responseDeadline
+            : null,
+        requested_by: admin.id,
+      });
+    if (requestError) return safeErrorResponse("admin.applications.information-request", requestError);
+
+    const { data: latestRevision } = await supabaseAdmin
+      .from("brand_application_revisions")
+      .select("revision_number")
+      .eq("application_id", application.id)
+      .order("revision_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    await supabaseAdmin.from("brand_application_revisions").insert({
+      application_id: application.id,
+      revision_number: (latestRevision?.revision_number ?? 0) + 1,
+      snapshot: {
+        applicationData: application.applicationData ?? {},
+        requestedSections,
+        requestedFields,
+        message: reason,
+      },
+      event_type: "information_requested",
+      created_by: admin.id,
+    });
   }
 
   await logAudit({
