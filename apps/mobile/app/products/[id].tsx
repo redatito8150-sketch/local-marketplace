@@ -30,7 +30,7 @@ export default function ProductDetailsRoute() {
   const [quantity, setQuantity] = useState(1);
   const query = useQuery({ queryKey: ["product", id], queryFn: () => getProduct(id), enabled: Boolean(id), refetchInterval: 60_000 });
   const reviews = useQuery({ queryKey: ["reviews", "product", id], queryFn: () => getReviews({ productId: id }), enabled: Boolean(id) });
-  const related = useQuery({ queryKey: ["products", "related", query.data?.category, id], queryFn: () => getProducts({ category: query.data?.category ?? undefined, limit: 8 }), enabled: Boolean(query.data?.category) });
+  const related = useQuery({ queryKey: ["products", "related", query.data?.audience, id], queryFn: () => getProducts({ audience: query.data?.audience ?? undefined, limit: 8 }), enabled: Boolean(query.data?.audience) });
   if (query.isLoading) return <LoadingState label="Loading product…" />;
   if (query.isError) return <ErrorState message="We couldn't load this product." onRetry={() => query.refetch()} />;
   const product = query.data;

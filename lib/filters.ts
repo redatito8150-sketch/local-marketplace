@@ -1,4 +1,5 @@
 import type { FilterGroup, Product } from "@/types";
+import type { MarketplaceCatalogFacetRow } from "@/lib/data/products";
 
 // Fallback price bounds when no products are available to derive a real
 // range from (e.g. an empty catalog) — the project's own configured floor
@@ -86,7 +87,7 @@ const DISCOUNTED_GROUP: FilterGroup = {
   options: [{ id: "discounted-only", label: "On Sale" }],
 };
 
-export type ProductFacet = Pick<Product, "brand" | "category" | "sizes" | "colors" | "productCategory" | "productType" | "collection" | "material" | "fit" | "compareAtPrice" | "price">;
+export type ProductFacet = MarketplaceCatalogFacetRow;
 
 export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGroup[] {
   const groups: FilterGroup[] = [
@@ -95,7 +96,7 @@ export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGr
     PRICE_GROUP,
     countedGroup("size", "Size", products.flatMap((product) => product.sizes)),
     countedGroup("color", "Color", products.flatMap((product) => product.colors.map((color) => color.name))),
-    countedGroup("productCategory", "Category", products.map((product) => product.productCategory)),
+    countedGroup("mainCategory", "Category", products.map((product) => product.mainCategory)),
     countedGroup("productType", "Product Type", products.map((product) => product.productType)),
     countedGroup("collection", "Collection", products.map((product) => product.collection)),
     countedGroup("material", "Material", products.map((product) => product.material)),
@@ -115,7 +116,26 @@ export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGr
 // shown on this page (real brand names, real taxonomy values, real
 // sizes/colors) instead of a hardcoded list disconnected from the catalog.
 // Groups with no real options on this page (e.g. nothing has a Fit set
-// yet) are dropped so the sidebar doesn't show empty sections.
+// yet) are dropped so the sidebar doesn't show empty sections. Builds
+// directly off `Product[]` (already-resolved taxonomy/collection display
+// names) rather than reusing buildMarketplaceFilterGroups, whose
+// ProductFacet shape comes from a separate, unresolved facet query.
 export function buildDynamicFilterGroups(products: Product[]): FilterGroup[] {
-  return buildMarketplaceFilterGroups(products);
+  const groups: FilterGroup[] = [
+    countedGroup("audience", "Audience", products.map((product) => product.category)),
+    countedGroup("brand", "Brand", products.map((product) => product.brand)),
+    PRICE_GROUP,
+    countedGroup("size", "Size", products.flatMap((product) => product.sizes)),
+    countedGroup("color", "Color", products.flatMap((product) => product.colors.map((color) => color.name))),
+    countedGroup("mainCategory", "Category", products.map((product) => product.mainCategory)),
+    countedGroup("productType", "Product Type", products.map((product) => product.productTypeName)),
+    countedGroup("collection", "Collection", products.map((product) => product.collectionName)),
+    countedGroup("material", "Material", products.map((product) => product.material)),
+    countedGroup("fit", "Fit", products.map((product) => product.fit)),
+    AVAILABILITY_GROUP,
+    RATING_GROUP,
+    FEATURED_GROUP,
+    ...(products.some((product) => product.compareAtPrice != null) ? [DISCOUNTED_GROUP] : []),
+  ];
+  return groups.filter((group) => group.id === "price" ? products.length > 0 : group.options.length > 0);
 }

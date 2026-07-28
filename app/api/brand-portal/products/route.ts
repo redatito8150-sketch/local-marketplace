@@ -8,6 +8,8 @@ import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductCreate } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
+import { buildProductPersistencePayload } from "@/lib/admin/productPersistence";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 function slugify(value: string): string {
@@ -30,7 +32,7 @@ function randomSuffix(): string {
 // creates on the brand's behalf — only the real owner/assistant does.
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner();
-  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+  if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -45,8 +47,7 @@ export async function POST(request: NextRequest) {
   const body: ProductInput = await request.json();
   // Never trust the client for which brand this belongs to, even though
   // the form locks it — force it server-side to the caller's own brand.
-  body.brandSlug = owner.brandSlug;
-  body.brandName = owner.brandName ?? body.brandName;
+  body.brandId = owner.brandId;
 
   const validationError = validateProductInput(body);
   if (validationError) {
@@ -57,11 +58,14 @@ export async function POST(request: NextRequest) {
   if (!taxonomy.valid) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
-  body.productCategory = taxonomy.productCategory ?? body.productCategory;
-  body.productType = taxonomy.productType ?? body.productType;
-  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+  body.productTypeId = taxonomy.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(body.sku, body.variants);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandId);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  const duplicateSku = await findDuplicateSku(body.variants);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -69,7 +73,28 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { data: generatedSku, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
+    p_brand_id: body.brandId,
+  });
+  if (skuError || !generatedSku) {
+    return NextResponse.json(
+      {
+        error: skuError?.message?.includes("sku_prefix")
+          ? "Your brand doesn't have a SKU prefix configured yet — ask an admin to set one before creating products"
+          : "Failed to generate a product SKU",
+      },
+      { status: 400 }
+    );
+  }
+
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
+  const productPayload = buildProductPersistencePayload(body, legacy, {
+    status: "published",
+    publishDate: new Date().toISOString(),
+    submittedBy: owner.user.id,
+  });
+  productPayload.sku = generatedSku;
+  productPayload.featured = false;
 
   const baseSlug = slugify(body.name) || "product";
   let id = "";
@@ -77,42 +102,7 @@ export async function POST(request: NextRequest) {
 
   for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
     id = `${baseSlug}-${randomSuffix()}`;
-    const { error } = await supabaseAdmin.from("products").insert({
-      id,
-      name: body.name,
-      brand_name: body.brandName,
-      brand_slug: body.brandSlug,
-      category: body.category || null,
-      product_category: body.productCategory || null,
-      product_type: body.productType || null,
-      product_type_id: body.productTypeId || null,
-      collection: body.collection || null,
-      material: body.material || null,
-      fit: body.fit || null,
-      price: body.price,
-      compare_at_price: body.compareAtPrice ?? null,
-      currency: body.currency,
-      image: body.image,
-      images: body.images?.length ? body.images : [body.image],
-      colors: legacy.colors,
-      sizes: legacy.sizes,
-      description: body.description,
-      details: body.details,
-      care_instructions: body.careInstructions,
-      shipping_returns: body.shippingReturns,
-      model_height: body.modelHeight || null,
-      model_wearing: body.modelWearing || null,
-      sku: body.sku?.trim() || id,
-      in_stock: legacy.inStock,
-      is_new: body.isNew,
-      is_unisex: body.isUnisex,
-      unavailable_sizes: legacy.unavailableSizes,
-      track_inventory: body.trackInventory,
-      featured: false,
-      status: "published",
-      publish_date: new Date().toISOString(),
-      submitted_by: owner.user.id,
-    });
+    const { error } = await supabaseAdmin.from("products").insert({ id, ...productPayload });
 
     if (!error) {
       inserted = true;
@@ -160,7 +150,7 @@ export async function POST(request: NextRequest) {
     entityId: id,
     action: "create",
     after: body,
-    brandSlug: owner.brandSlug,
+    brandSlug: owner.brandSlug ?? undefined,
   });
 
   await notify(
@@ -175,5 +165,5 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  return NextResponse.json({ id });
+  return NextResponse.json({ id, sku: generatedSku });
 }

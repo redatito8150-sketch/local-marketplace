@@ -14,7 +14,7 @@ export default async function NewBrandPortalProductPage(
 ) {
   const searchParams = await props.searchParams;
   const owner = await requireBrandOwner(searchParams.brand);
-  if (!owner || !owner.brandSlug) redirect("/brand-portal/products");
+  if (!owner || !owner.brandId) redirect("/brand-portal/products");
 
   const [taxonomy, taxonomyNodes] = await Promise.all([
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
@@ -37,7 +37,7 @@ export default async function NewBrandPortalProductPage(
         brandOptions={[]}
         taxonomy={taxonomy}
         taxonomyNodes={taxonomyNodes}
-        lockedBrand={{ slug: owner.brandSlug, name: owner.brandName ?? owner.brandSlug }}
+        lockedBrand={{ id: owner.brandId, name: owner.brandName ?? owner.brandSlug ?? "" }}
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}
       />

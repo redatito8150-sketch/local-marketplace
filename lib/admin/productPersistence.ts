@@ -8,11 +8,17 @@ export interface LegacyProductFields {
   inStock: boolean;
 }
 
+// Builds the products row payload for an INSERT. brand_id is included here
+// (an insert always sets it once) — never call this for an UPDATE and pass
+// the result straight through, since a product's brand must never change
+// after creation. The update path (replace_product_with_variants RPC)
+// structurally excludes brand_id/brand_slug/brand_name/sku from its SET
+// list, so those columns are safe from this payload even if accidentally
+// included.
 export function buildProductPersistencePayload(
   body: ProductInput,
   legacy: LegacyProductFields,
   overrides?: {
-    brandSlug?: string | null;
     status?: ProductInput["status"];
     publishDate?: string | null;
     submittedBy?: string | null;
@@ -21,13 +27,10 @@ export function buildProductPersistencePayload(
 ) {
   const payload: Record<string, unknown> = {
     name: body.name,
-    brand_name: body.brandName,
-    brand_slug: overrides?.brandSlug ?? body.brandSlug ?? null,
-    category: body.category || null,
-    product_category: body.productCategory || null,
-    product_type: body.productType || null,
-    product_type_id: body.productTypeId || null,
-    collection: body.collection || null,
+    brand_id: body.brandId,
+    audience: body.audience,
+    product_type_id: body.productTypeId,
+    collection_id: body.collectionId || null,
     material: body.material || null,
     fit: body.fit || null,
     price: body.price,
@@ -43,10 +46,8 @@ export function buildProductPersistencePayload(
     shipping_returns: body.shippingReturns,
     model_height: body.modelHeight || null,
     model_wearing: body.modelWearing || null,
-    sku: body.sku?.trim(),
     in_stock: legacy.inStock,
     is_new: body.isNew,
-    is_unisex: body.isUnisex,
     unavailable_sizes: legacy.unavailableSizes,
     track_inventory: body.trackInventory,
     featured: body.featured,

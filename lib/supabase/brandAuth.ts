@@ -5,6 +5,10 @@ export type BrandAccessLevel = "owner" | "assistant";
 
 export interface BrandOwnerContext {
   user: User;
+  // The real ownership FK — the only thing product/collection/brand_staff
+  // writes should ever be scoped by. brandSlug stays available for
+  // building public URLs only.
+  brandId: string | null;
   brandSlug: string | null;
   brandName: string | null;
   isAdmin: boolean;
@@ -44,13 +48,14 @@ export async function requireBrandOwner(
 
   const { data: ownedBrand } = await supabase
     .from("brands")
-    .select("slug, name")
+    .select("id, slug, name")
     .eq("owner_user_id", user.id)
     .maybeSingle();
 
   if (ownedBrand) {
     return {
       user,
+      brandId: ownedBrand.id,
       brandSlug: ownedBrand.slug,
       brandName: ownedBrand.name,
       isAdmin,
@@ -63,20 +68,21 @@ export async function requireBrandOwner(
   // through to the admin-override path.
   const { data: staffRow } = await supabase
     .from("brand_staff")
-    .select("brand_slug")
+    .select("brand_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
   if (staffRow) {
     const { data: staffBrand } = await supabase
       .from("brands")
-      .select("slug, name")
-      .eq("slug", staffRow.brand_slug)
+      .select("id, slug, name")
+      .eq("id", staffRow.brand_id)
       .maybeSingle();
 
     if (staffBrand) {
       return {
         user,
+        brandId: staffBrand.id,
         brandSlug: staffBrand.slug,
         brandName: staffBrand.name,
         isAdmin,
@@ -91,6 +97,7 @@ export async function requireBrandOwner(
   if (!overrideSlug) {
     return {
       user,
+      brandId: null,
       brandSlug: null,
       brandName: null,
       isAdmin: true,
@@ -104,13 +111,14 @@ export async function requireBrandOwner(
   // resolve the name.
   const { data: targetBrand } = await supabase
     .from("brands")
-    .select("slug, name")
+    .select("id, slug, name")
     .eq("slug", overrideSlug)
     .maybeSingle();
 
   if (!targetBrand) return null;
   return {
     user,
+    brandId: targetBrand.id,
     brandSlug: targetBrand.slug,
     brandName: targetBrand.name,
     isAdmin: true,

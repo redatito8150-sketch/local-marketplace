@@ -1,6 +1,8 @@
 import { supabase } from "@/lib/supabase/client";
 import type { TaxonomyLevel, TaxonomyNode } from "@/types";
 
+export { resolveTaxonomyPath, type TaxonomyPath } from "@/lib/taxonomyPath";
+
 interface TaxonomyNodeRow {
   id: string;
   parent_id: string | null;
@@ -39,3 +41,19 @@ export async function getTaxonomyTree(): Promise<TaxonomyNode[]> {
   if (error) throw new Error(`getTaxonomyTree failed: ${error.message}`);
   return ((data as TaxonomyNodeRow[] | null) ?? []).map(toTaxonomyNode);
 }
+
+// Same shape, but including inactive nodes — used for *resolving* an
+// already-saved product's taxonomy path for display (a node deactivated
+// after a product was saved against it must still resolve correctly),
+// never for a selectable picker (see getTaxonomyTree above for that).
+export async function getFullTaxonomyTree(): Promise<TaxonomyNode[]> {
+  const { data, error } = await supabase
+    .from("taxonomy_nodes")
+    .select("id, parent_id, level, name, slug, sort_order, is_active")
+    .order("level", { ascending: true })
+    .order("sort_order", { ascending: true });
+
+  if (error) throw new Error(`getFullTaxonomyTree failed: ${error.message}`);
+  return ((data as TaxonomyNodeRow[] | null) ?? []).map(toTaxonomyNode);
+}
+

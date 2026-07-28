@@ -40,8 +40,9 @@ test("validateTaxonomyChain accepts a fully valid Main Category -> Product Group
   assert.deepEqual(result, {
     valid: true,
     productTypeId: "type-tshirts",
-    productCategory: "Clothing",
-    productType: "T-Shirts",
+    mainCategory: "Clothing",
+    productGroup: "Tops",
+    productTypeName: "T-Shirts",
   });
 });
 
@@ -76,9 +77,9 @@ test("validateTaxonomyChain rejects a node at the wrong level", () => {
 
 const baseProduct: ProductInput = {
   name: "T-Shirt",
-  brandName: "Nola",
-  productCategory: "Clothing",
-  productType: "T-Shirts",
+  brandId: "brand-1",
+  productTypeId: "type-tshirts",
+  audience: "unisex",
   price: 500,
   currency: "EGP",
   image: "/tshirt.jpg",
@@ -89,7 +90,6 @@ const baseProduct: ProductInput = {
   careInstructions: [],
   shippingReturns: "",
   isNew: false,
-  isUnisex: false,
   trackInventory: true,
   featured: false,
   status: "draft",
@@ -98,24 +98,23 @@ const baseProduct: ProductInput = {
   ],
 };
 
-test("buildProductPersistencePayload writes product_type_id when present", () => {
-  const payload = buildProductPersistencePayload(
-    { ...baseProduct, productTypeId: "type-tshirts" },
-    { colors: [], sizes: ["M"], unavailableSizes: [], inStock: true }
-  );
-  assert.equal(payload.product_type_id, "type-tshirts");
-});
-
-test("buildProductPersistencePayload writes a null product_type_id when absent (legacy product)", () => {
+test("buildProductPersistencePayload always writes brand_id, audience, and product_type_id", () => {
   const payload = buildProductPersistencePayload(baseProduct, {
     colors: [],
     sizes: ["M"],
     unavailableSizes: [],
     inStock: true,
   });
-  assert.equal(payload.product_type_id, null);
-  // The legacy text fields still persist unchanged — an existing product
-  // outside the new taxonomy tree keeps working exactly as before.
-  assert.equal(payload.product_category, "Clothing");
-  assert.equal(payload.product_type, "T-Shirts");
+  assert.equal(payload.brand_id, "brand-1");
+  assert.equal(payload.audience, "unisex");
+  assert.equal(payload.product_type_id, "type-tshirts");
+  assert.equal(payload.collection_id, null);
+});
+
+test("buildProductPersistencePayload writes collection_id when a collection is selected", () => {
+  const payload = buildProductPersistencePayload(
+    { ...baseProduct, collectionId: "collection-1" },
+    { colors: [], sizes: ["M"], unavailableSizes: [], inStock: true }
+  );
+  assert.equal(payload.collection_id, "collection-1");
 });

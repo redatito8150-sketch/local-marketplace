@@ -14,6 +14,7 @@ import {
   deriveProductImages,
   type ProductPreviewFormValues,
 } from "@/lib/admin/buildPreviewProduct";
+import type { TaxonomyNode } from "@/types";
 
 // Wrapped locally (not edited at the source) so unrelated field edits don't
 // re-render pieces of the preview that don't depend on them.
@@ -23,11 +24,13 @@ const MemoProductAccordion = memo(ProductAccordion);
 
 export default function ProductLivePreview({
   form,
+  taxonomyNodes,
   productId,
   hasUnsavedChanges,
   justSaved,
 }: {
   form: ProductPreviewFormValues;
+  taxonomyNodes: TaxonomyNode[];
   productId?: string;
   hasUnsavedChanges: boolean;
   justSaved: boolean;
@@ -46,7 +49,10 @@ export default function ProductLivePreview({
     [form.image, form.images]
   );
 
-  const previewProduct = useMemo(() => buildPreviewProduct(form, productId), [form, productId]);
+  const previewProduct = useMemo(
+    () => buildPreviewProduct(form, taxonomyNodes, productId),
+    [form, taxonomyNodes, productId]
+  );
 
   const previewAccordion = useMemo(
     () => ({
@@ -168,8 +174,9 @@ export default function ProductLivePreview({
             >
               <div key={refreshKey}>
                 <ProductBreadcrumb
-                  categoryLabel={previewProduct.categoryLabel}
-                  categoryHref={previewProduct.categoryHref}
+                  mainCategory={previewProduct.mainCategory}
+                  productGroup={previewProduct.productGroup}
+                  productTypeName={previewProduct.productTypeName}
                   productName={previewProduct.name}
                 />
 

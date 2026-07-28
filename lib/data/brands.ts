@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { logError } from "@/lib/errorLog";
 import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
-import { ProductRow, toProductCard } from "@/lib/data/products";
+import { ProductRow, toProductCard, loadDisplayContext } from "@/lib/data/products";
 import {
   BrandPageContent,
   BrandInfoBadge,
@@ -13,6 +13,7 @@ import {
 } from "@/types";
 
 interface BrandRow {
+  id: string;
   slug: string;
   name: string;
   tagline: string;
@@ -108,7 +109,8 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   // Full Product shape (not the old lightweight BrandProduct) so the real
   // filter/sort system and the storefront's own ProductCard — with working
   // Add to Cart and star ratings — can be reused verbatim on brand pages.
-  const productCards = productRowsTyped.map(toProductCard);
+  const displayCtx = await loadDisplayContext(productRowsTyped);
+  const productCards = productRowsTyped.map((row) => toProductCard(row, displayCtx));
   const variantsByProduct = await getVariantsForProducts(productCards.map((c) => c.id));
   const products = productCards.map((c) => ({
     ...c,
@@ -123,6 +125,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   });
 
   return {
+    id: brand.id,
     slug: brand.slug,
     name: brand.name,
     tagline: brand.tagline,

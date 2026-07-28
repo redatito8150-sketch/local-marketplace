@@ -47,8 +47,9 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
       <Header />
 
       <ProductBreadcrumb
-        categoryLabel={product.categoryLabel}
-        categoryHref={product.categoryHref}
+        mainCategory={product.mainCategory}
+        productGroup={product.productGroup}
+        productTypeName={product.productTypeName}
         productName={product.name}
       />
 

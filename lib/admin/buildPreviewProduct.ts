@@ -1,7 +1,8 @@
-import { CATEGORIES } from "@/content/categories";
 import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
+import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
+import { primaryShopCategoryForAudience } from "@/lib/audience";
 import type { VariantInput } from "@/lib/admin/productValidation";
-import type { CategorySlug, ProductColorOption, ProductDetail } from "@/types";
+import type { Audience, ProductColorOption, ProductDetail, TaxonomyNode } from "@/types";
 import { parseLines } from "./parseTextInputs";
 
 // Keep this in sync with next.config.js `images.remotePatterns` — a URL
@@ -30,11 +31,9 @@ export function isPreviewImageSafe(url: string): boolean {
 export interface ProductPreviewFormValues {
   name: string;
   brandName: string;
-  brandSlug: string;
-  category: "" | "women" | "men" | "kids";
-  productCategory: string;
-  productType: string;
-  collection: string;
+  audience: Audience | "";
+  productTypeId: string;
+  collectionName: string;
   price: string;
   compareAtPrice: string;
   image: string;
@@ -66,6 +65,7 @@ export function deriveProductImages(image: string, images: string[]): string[] {
 
 export function buildPreviewProduct(
   form: ProductPreviewFormValues,
+  taxonomyNodes: TaxonomyNode[],
   id?: string
 ): ProductDetail {
   const safeImages = deriveProductImages(form.image, form.images);
@@ -74,17 +74,15 @@ export function buildPreviewProduct(
   // preview shows exactly what will actually be saved.
   const legacy = deriveLegacyFieldsFromVariants(form.variants, form.colors, form.trackInventory);
 
-  const category = (form.category || undefined) as CategorySlug | undefined;
-  const categoryLabel = category
-    ? CATEGORIES[category].label
-    : form.brandName.trim() || "Brand";
-  const categoryHref = category ? `/shop/${category}` : "#";
+  const audience = (form.audience || "unisex") as Audience;
+  const categorySlug = primaryShopCategoryForAudience(audience);
+  const path = resolveTaxonomyPath(taxonomyNodes, form.productTypeId);
 
   return {
     id: id ?? "preview",
     name: form.name.trim() || "Untitled product",
     brandName: form.brandName.trim() || "Brand name",
-    brandSlug: form.brandSlug || undefined,
+    brandSlug: undefined,
     price: Number(form.price) || 0,
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
     currency: "EGP",
@@ -101,13 +99,16 @@ export function buildPreviewProduct(
     reviews: [],
     sku: form.sku.trim() || "SKU-PREVIEW",
     inStock: legacy.inStock,
-    categorySlug: category,
-    categoryLabel,
-    categoryHref,
+    categorySlug,
+    categoryHref: `/shop/${categorySlug}`,
     relatedIds: [],
-    productCategory: form.productCategory || undefined,
-    productType: form.productType || undefined,
-    collection: form.collection || undefined,
+    productTypeId: form.productTypeId,
+    mainCategory: path?.mainCategory ?? "",
+    productGroup: path?.productGroup ?? "",
+    productTypeName: path?.productTypeName ?? "",
+    audience,
+    collectionId: undefined,
+    collectionName: form.collectionName || undefined,
     material: form.material || undefined,
     fit: form.fit || undefined,
     modelHeight: form.modelHeight || undefined,

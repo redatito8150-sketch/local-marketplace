@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { toProductCard, type ProductRow } from "@/lib/data/products";
+import { toProductCard, loadDisplayContext, type ProductRow } from "@/lib/data/products";
 import type { Product } from "@/types";
 
 interface RecentlyViewedRow {
@@ -26,7 +26,7 @@ export async function getRecentlyViewedForUser(
     throw new Error(`getRecentlyViewedForUser(${userId}) failed: ${error.message}`);
   }
 
-  return ((data ?? []) as unknown as RecentlyViewedRow[])
-    .filter((row) => row.products)
-    .map((row) => toProductCard(row.products!));
+  const rows = ((data ?? []) as unknown as RecentlyViewedRow[]).filter((row) => row.products);
+  const displayCtx = await loadDisplayContext(rows.map((row) => row.products!));
+  return rows.map((row) => toProductCard(row.products!, displayCtx));
 }

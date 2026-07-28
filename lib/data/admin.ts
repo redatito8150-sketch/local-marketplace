@@ -1,7 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { toBrandApplicationRecord } from "@/lib/join/applicationService";
+import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import {
+  Audience,
   AuditLogRecord,
   BrandApplicationRecord,
   BrandCategoryTab,
@@ -9,7 +11,6 @@ import {
   BrandRecord,
   BrandShopTheLookTile,
   BrandValue,
-  CategorySlug,
   CouponRecord,
   LowStockVariantRecord,
   NotificationRecord,
@@ -21,6 +22,8 @@ import {
   ProductStatus,
   ProfileRecord,
   ProfileRole,
+  TaxonomyLevel,
+  TaxonomyNode,
 } from "@/types";
 
 interface ProductRow {
@@ -28,11 +31,10 @@ interface ProductRow {
   name: string;
   brand_name: string;
   brand_slug: string | null;
-  category: CategorySlug | null;
-  product_category: string | null;
-  product_type: string | null;
-  product_type_id: string | null;
-  collection: string | null;
+  brand_id: string;
+  product_type_id: string;
+  audience: Audience;
+  collection_id: string | null;
   material: string | null;
   fit: string | null;
   price: number;
@@ -51,7 +53,6 @@ interface ProductRow {
   sku: string;
   in_stock: boolean;
   is_new: boolean;
-  is_unisex: boolean;
   unavailable_sizes: string[];
   track_inventory: boolean;
   featured: boolean;
@@ -66,17 +67,45 @@ interface ProductRow {
   paused_by_brand: boolean;
 }
 
-function toProductRecord(row: ProductRow): ProductRecord {
+// Per-batch lookup context for the display-only fields resolved from
+// product_type_id/collection_id — loaded once per admin list/detail read
+// rather than per row.
+interface AdminProductDisplayContext {
+  taxonomyTree: TaxonomyNode[];
+  collectionNamesById: Map<string, string>;
+}
+
+async function loadAdminProductDisplayContext(rows: ProductRow[]): Promise<AdminProductDisplayContext> {
+  const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
+  const [taxonomyTree, collectionNamesById] = await Promise.all([
+    getFullTaxonomyTreeForAdmin(),
+    loadCollectionNamesForAdmin(collectionIds),
+  ]);
+  return { taxonomyTree, collectionNamesById };
+}
+
+async function loadCollectionNamesForAdmin(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabaseAdmin.from("collections").select("id, name").in("id", ids);
+  if (error) throw new Error(`loadCollectionNamesForAdmin failed: ${error.message}`);
+  return new Map((data ?? []).map((row) => [row.id as string, row.name as string]));
+}
+
+function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): ProductRecord {
+  const path = resolveTaxonomyPath(ctx.taxonomyTree, row.product_type_id);
   return {
     id: row.id,
     name: row.name,
     brandName: row.brand_name,
-    brandSlug: row.brand_slug ?? undefined,
-    category: row.category ?? undefined,
-    productCategory: row.product_category ?? undefined,
-    productType: row.product_type ?? undefined,
-    productTypeId: row.product_type_id ?? undefined,
-    collection: row.collection ?? undefined,
+    brandSlug: row.brand_slug ?? "",
+    brandId: row.brand_id,
+    productTypeId: row.product_type_id,
+    mainCategory: path?.mainCategory ?? "",
+    productGroup: path?.productGroup ?? "",
+    productTypeName: path?.productTypeName ?? "",
+    audience: row.audience,
+    collectionId: row.collection_id ?? undefined,
+    collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     price: Number(row.price),
@@ -96,7 +125,6 @@ function toProductRecord(row: ProductRow): ProductRecord {
     sku: row.sku,
     inStock: row.in_stock,
     isNew: row.is_new,
-    isUnisex: row.is_unisex,
     trackInventory: row.track_inventory,
     featured: row.featured,
     status: row.status,
@@ -122,7 +150,9 @@ export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
   if (error) {
     throw new Error(`getAllProductsForAdmin failed: ${error.message}`);
   }
-  return (data as ProductRow[]).map(toProductRecord);
+  const rows = data as ProductRow[];
+  const ctx = await loadAdminProductDisplayContext(rows);
+  return rows.map((row) => toProductRecord(row, ctx));
 }
 
 // Sidebar badge for the "Brand Activity" page — Instant-Publish means a
@@ -172,17 +202,21 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
   }
   if (!data) return null;
 
-  const record = toProductRecord(data as ProductRow);
+  const row = data as ProductRow;
+  const ctx = await loadAdminProductDisplayContext([row]);
+  const record = toProductRecord(row, ctx);
   const variantsByProduct = await getVariantsForProducts([id], supabaseAdmin);
   record.variants = variantsByProduct.get(id) ?? [];
   return record;
 }
 
 interface BrandRow {
+  id: string;
   slug: string;
   name: string;
   tagline: string;
   category: string;
+  is_active: boolean;
   founded_year: number | null;
   city: string;
   hero_image: string;
@@ -200,14 +234,19 @@ interface BrandRow {
   similar_brand_slugs: string[];
   shop_the_look: BrandShopTheLookTile[];
   owner_user_id: string | null;
+  sku_prefix: string;
 }
 
-function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
+function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean): BrandRecord {
   return {
+    id: row.id,
     slug: row.slug,
     name: row.name,
     tagline: row.tagline,
     category: row.category,
+    isActive: row.is_active,
+    skuPrefix: row.sku_prefix,
+    hasProducts,
     foundedYear: row.founded_year ?? undefined,
     city: row.city,
     heroImage: row.hero_image,
@@ -227,6 +266,19 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
     ownerUserId: row.owner_user_id ?? undefined,
     ownerEmail,
   };
+}
+
+// Which of the given brand ids currently have >=1 product — drives the
+// BrandForm SKU Prefix lock display (the DB trigger is the real
+// enforcement; this is read-only UI context).
+async function getBrandIdsWithProducts(brandIds: string[]): Promise<Set<string>> {
+  if (brandIds.length === 0) return new Set();
+  const { data, error } = await supabaseAdmin
+    .from("products")
+    .select("brand_id")
+    .in("brand_id", brandIds);
+  if (error) throw new Error(`getBrandIdsWithProducts failed: ${error.message}`);
+  return new Set((data ?? []).map((row) => row.brand_id as string));
 }
 
 // owner_user_id has no email on the brands row itself — batch-look-up the
@@ -260,9 +312,16 @@ export async function getAllBrandsForAdmin(): Promise<BrandRecord[]> {
     throw new Error(`getAllBrandsForAdmin failed: ${error.message}`);
   }
   const rows = data as BrandRow[];
-  const emailByOwner = await getOwnerEmailsByUserId(rows);
+  const [emailByOwner, brandIdsWithProducts] = await Promise.all([
+    getOwnerEmailsByUserId(rows),
+    getBrandIdsWithProducts(rows.map((r) => r.id)),
+  ]);
   return rows.map((row) =>
-    toBrandRecord(row, row.owner_user_id ? emailByOwner.get(row.owner_user_id) : undefined)
+    toBrandRecord(
+      row,
+      row.owner_user_id ? emailByOwner.get(row.owner_user_id) : undefined,
+      brandIdsWithProducts.has(row.id)
+    )
   );
 }
 
@@ -275,16 +334,16 @@ export async function getAllBrandStaffForAdmin(): Promise<
 > {
   const { data, error } = await supabaseAdmin
     .from("brand_staff")
-    .select("user_id, brand_slug, brands(name)");
+    .select("user_id, brand_id, brands(slug, name)");
 
   if (error) {
     throw new Error(`getAllBrandStaffForAdmin failed: ${error.message}`);
   }
-  return ((data ?? []) as unknown as { user_id: string; brand_slug: string; brands: { name: string } | null }[]).map(
+  return ((data ?? []) as unknown as { user_id: string; brand_id: string; brands: { slug: string; name: string } | null }[]).map(
     (row) => ({
       userId: row.user_id,
-      brandSlug: row.brand_slug,
-      brandName: row.brands?.name ?? row.brand_slug,
+      brandSlug: row.brands?.slug ?? row.brand_id,
+      brandName: row.brands?.name ?? row.brand_id,
     })
   );
 }
@@ -301,11 +360,13 @@ export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null
   }
   if (!data) return null;
   const row = data as BrandRow;
+  const brandIdsWithProducts = await getBrandIdsWithProducts([row.id]);
+  const hasProducts = brandIdsWithProducts.has(row.id);
   if (row.owner_user_id) {
     const emailByOwner = await getOwnerEmailsByUserId([row]);
-    return toBrandRecord(row, emailByOwner.get(row.owner_user_id));
+    return toBrandRecord(row, emailByOwner.get(row.owner_user_id), hasProducts);
   }
-  return toBrandRecord(data as BrandRow);
+  return toBrandRecord(row, undefined, hasProducts);
 }
 
 interface OrderItemRow {
@@ -757,4 +818,28 @@ export async function getSiteContentRowForAdmin(
   }
   if (!data) return null;
   return { value: data.value, updatedAt: data.updated_at };
+}
+
+// Admin view of the full taxonomy tree (/admin/products/categories) —
+// unlike lib/data/taxonomy.ts's getTaxonomyTree(), this includes inactive
+// nodes too, since "display... Active status" is the point of this view.
+export async function getFullTaxonomyTreeForAdmin(): Promise<TaxonomyNode[]> {
+  const { data, error } = await supabaseAdmin
+    .from("taxonomy_nodes")
+    .select("id, parent_id, level, name, slug, sort_order, is_active")
+    .order("level", { ascending: true })
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw new Error(`getFullTaxonomyTreeForAdmin failed: ${error.message}`);
+  }
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    parentId: row.parent_id as string | null,
+    level: row.level as TaxonomyLevel,
+    name: row.name as string,
+    slug: row.slug as string,
+    sortOrder: row.sort_order as number,
+    isActive: row.is_active as boolean,
+  }));
 }

@@ -167,20 +167,33 @@ export interface ProductVariant {
   updatedAt: string;
 }
 
-// ── New product-level taxonomy/merchandising fields ─────────────────────────
-// All optional/nullable in the DB, so every mapping function that doesn't
-// set them yet (nothing does until Phase 2/3) keeps compiling unchanged.
+// The Basic Information "Audience" field — the sole source of truth for
+// who a product is for. Required on every product (DB: NOT NULL + CHECK,
+// no null/"None" option, no automatic "Unisex" fallback). The old Gender
+// pair (`products.category` 'women'|'men'|'kids' + `is_unisex` boolean)
+// has been removed from the schema entirely — /shop/women|men|kids
+// routing now derives its audience filter from this column via
+// lib/audience.ts instead of reading a stored category.
+export type Audience = "men" | "women" | "unisex" | "kids_baby";
+
+// ── Product-level taxonomy/merchandising fields ─────────────────────────────
 export interface ProductTaxonomyFields {
-  productCategory?: string;
-  productType?: string;
-  // The resolved Product Type leaf in the new hierarchical taxonomy
-  // (taxonomy_nodes) — additive alongside productCategory/productType
-  // above, which stay the read path for the rest of the app. Undefined for
-  // any product not yet matched into the new tree (see the migration's
-  // backfill note); the product form falls back to showing its existing
-  // productCategory/productType as-is when this is unset.
-  productTypeId?: string;
-  collection?: string;
+  // The resolved Product Type leaf (Level 3) in the hierarchical taxonomy
+  // (taxonomy_nodes) — the only classification a product stores; the full
+  // Main Category / Product Group / Product Type path is resolved via
+  // parent relationships, never stored redundantly on the product itself.
+  productTypeId: string;
+  // Display-only, resolved from productTypeId — never stored, never sent
+  // as input.
+  mainCategory: string;
+  productGroup: string;
+  productTypeName: string;
+  audience: Audience;
+  // The brand-owned collection this product belongs to (collections
+  // table), scoped to the product's own brand — optional, a product need
+  // not belong to a collection.
+  collectionId?: string;
+  collectionName?: string;
   material?: string;
   fit?: string;
   compareAtPrice?: number;
@@ -298,8 +311,11 @@ export interface ProductDetail extends ProductTaxonomyFields {
   reviews: ProductReview[];
   sku: string;
   inStock: boolean;
-  categorySlug?: CategorySlug;
-  categoryLabel: string;
+  // The /shop/women|men|kids section this product's audience maps to —
+  // derived from `audience` (lib/audience.ts), never stored. The taxonomy
+  // breadcrumb text itself (Main Category / Product Group / Product Type)
+  // comes from ProductTaxonomyFields' mainCategory/productGroup/productTypeName.
+  categorySlug: CategorySlug;
   categoryHref: string;
   relatedIds: string[];
   variants?: ProductVariant[];
@@ -311,8 +327,11 @@ export interface ProductRecord extends ProductTaxonomyFields {
   id: string;
   name: string;
   brandName: string;
-  brandSlug?: string;
-  category?: CategorySlug;
+  brandSlug: string;
+  // The real ownership FK — immutable after creation. brandSlug/brandName
+  // above stay in sync with it automatically (a DB trigger derives them),
+  // and are used only for display/linking.
+  brandId: string;
   price: number;
   currency: "USD" | "EGP";
   image: string;
@@ -327,7 +346,6 @@ export interface ProductRecord extends ProductTaxonomyFields {
   sku: string;
   inStock: boolean;
   isNew: boolean;
-  isUnisex: boolean;
   variants?: ProductVariant[];
   // ── Brand-portal review workflow (Round 3) ────────────────────────────
   // `pendingChanges` is a staged edit (same shape as the form submits,
@@ -345,10 +363,23 @@ export interface ProductRecord extends ProductTaxonomyFields {
 // ── Admin (raw `brands` row shape, used by the admin CRUD form/API) ────────
 
 export interface BrandRecord {
+  // The real relational key — ownership/authorization/FK integrity for
+  // products, collections, and brand_staff all point at this, never at
+  // slug. Read-only; assigned once by the DB on creation.
+  id: string;
   slug: string;
   name: string;
   tagline: string;
   category: string;
+  isActive: boolean;
+  // Admin-managed, required before this brand can create a product through
+  // the server-generated SKU path (next_product_sku RPC). Read-only for
+  // brand owners, and locked (DB trigger) once the brand has any product.
+  skuPrefix: string;
+  // True once this brand has >=1 product — drives the BrandForm's SKU
+  // Prefix field lock in the UI (the DB trigger is the real enforcement;
+  // this is read-only display context, never trusted for authorization).
+  hasProducts?: boolean;
   foundedYear?: number;
   city: string;
   heroImage: string;
@@ -367,6 +398,22 @@ export interface BrandRecord {
   shopTheLook: BrandShopTheLookTile[];
   ownerUserId?: string;
   ownerEmail?: string;
+}
+
+// ── Collections (Supabase `collections` table) — brand-owned, replaces the
+// old global free-text product.collection value. ───────────────────────────
+export interface CollectionRecord {
+  id: string;
+  brandId: string;
+  name: string;
+  slug: string;
+  description?: string;
+  coverImageUrl?: string;
+  isActive: boolean;
+  publishedAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
@@ -698,6 +745,7 @@ export interface AuditLogRecord {
 }
 
 export interface BrandPageContent {
+  id: string;
   slug: string;
   name: string;
   tagline: string;

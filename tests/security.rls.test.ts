@@ -147,3 +147,166 @@ test(
     );
   }
 );
+
+// ============================================================================
+// Basic-info-rebuild correction (2026-07-30): brand_id architecture —
+// next_product_sku concurrency/uniqueness, sku_prefix locking, and the
+// cross-brand collection guard. Every test here creates its own disposable
+// brand (never touches a real one, e.g. 'mahaly') and deletes it in a
+// `finally` block, same "never mutates real data" principle as the rest of
+// this file.
+// ============================================================================
+
+// Untyped (no generated Database type) Supabase client, same as every
+// other client in this file; typing this helper's param any more strictly
+// than `any` just fights the client's own overly-strict inferred generics
+// for no benefit in a test file.
+async function createDisposableBrand(admin: any, overrides: Record<string, unknown> = {}) {
+  const suffix = Math.random().toString(36).slice(2, 8);
+  const { data, error } = await admin
+    .from("brands")
+    .insert({
+      slug: `test-brand-${suffix}`,
+      name: `Test Brand ${suffix}`,
+      tagline: "x",
+      category: "Clothing",
+      sku_prefix: `T${suffix.slice(0, 4).toUpperCase()}`,
+      city: "Cairo",
+      hero_image: "/x.jpg",
+      about_description: "x",
+      about_image: "/x.jpg",
+      story_image: "/x.jpg",
+      story_body: "x",
+      ...overrides,
+    })
+    .select("id, slug, sku_prefix")
+    .single();
+  if (error) throw new Error(`createDisposableBrand failed: ${error.message}`);
+  return data as { id: string; slug: string; sku_prefix: string };
+}
+
+test(
+  "next_product_sku is concurrency-safe and produces unique, sequential, correctly-prefixed values",
+  { skip: !hasCredentials || !serviceRoleKey },
+  async () => {
+    const admin = createClient(supabaseUrl!, serviceRoleKey!);
+    const brand = await createDisposableBrand(admin);
+    try {
+      const [a, b, c] = await Promise.all([
+        admin.rpc("next_product_sku", { p_brand_id: brand.id }),
+        admin.rpc("next_product_sku", { p_brand_id: brand.id }),
+        admin.rpc("next_product_sku", { p_brand_id: brand.id }),
+      ]);
+      for (const result of [a, b, c]) assert.ifError(result.error);
+      const skus = [a.data, b.data, c.data] as string[];
+
+      // Unique — no two concurrent calls ever produced the same SKU.
+      assert.equal(new Set(skus).size, 3, `expected 3 unique SKUs, got ${JSON.stringify(skus)}`);
+      // Correctly prefixed.
+      for (const sku of skus) assert.match(sku, new RegExp(`^${brand.sku_prefix}-\\d{6}$`));
+      // Sequential — the 3 sequence numbers are exactly {1,2,3} in some order,
+      // proving the counter used real row-locked increments (INSERT ... ON
+      // CONFLICT ... RETURNING), not a racy count(*)+1.
+      const sequences = skus.map((sku) => Number(sku.split("-")[1])).sort((x, y) => x - y);
+      assert.deepEqual(sequences, [1, 2, 3]);
+    } finally {
+      await admin.from("brands").delete().eq("id", brand.id);
+    }
+  }
+);
+
+test(
+  "sku_prefix cannot be changed once the brand has a product",
+  { skip: !hasCredentials || !serviceRoleKey },
+  async () => {
+    const admin = createClient(supabaseUrl!, serviceRoleKey!);
+    const brand = await createDisposableBrand(admin);
+    try {
+      const { data: leaf } = await admin
+        .from("taxonomy_nodes")
+        .select("id")
+        .eq("level", 3)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      assert.ok(leaf, "expected at least one Level 3 taxonomy node to exist");
+
+      const { data: sku } = await admin.rpc("next_product_sku", { p_brand_id: brand.id });
+      const { error: productError } = await admin.from("products").insert({
+        id: `test-product-${Math.random().toString(36).slice(2, 8)}`,
+        name: "Test product",
+        brand_id: brand.id,
+        audience: "unisex",
+        product_type_id: leaf!.id,
+        price: 100,
+        currency: "EGP",
+        image: "/x.jpg",
+        description: "x",
+        shipping_returns: "x",
+        sku,
+        status: "draft",
+      });
+      assert.ifError(productError);
+
+      const { error: renameError } = await admin
+        .from("brands")
+        .update({ sku_prefix: "OTHER1" })
+        .eq("id", brand.id);
+      assert.ok(renameError, "expected the sku_prefix lock trigger to reject the change");
+      assert.match(renameError!.message, /SKU prefix cannot be changed/i);
+    } finally {
+      await admin.from("products").delete().eq("brand_id", brand.id);
+      await admin.from("brands").delete().eq("id", brand.id);
+    }
+  }
+);
+
+test(
+  "a product cannot be assigned a collection belonging to a different brand",
+  { skip: !hasCredentials || !serviceRoleKey },
+  async () => {
+    const admin = createClient(supabaseUrl!, serviceRoleKey!);
+    const brandA = await createDisposableBrand(admin);
+    const brandB = await createDisposableBrand(admin);
+    try {
+      const { data: leaf } = await admin
+        .from("taxonomy_nodes")
+        .select("id")
+        .eq("level", 3)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      assert.ok(leaf, "expected at least one Level 3 taxonomy node to exist");
+
+      const { data: collection, error: collectionError } = await admin
+        .from("collections")
+        .insert({ brand_id: brandA.id, name: "A's collection", slug: "as-collection" })
+        .select("id")
+        .single();
+      assert.ifError(collectionError);
+
+      const { data: sku } = await admin.rpc("next_product_sku", { p_brand_id: brandB.id });
+      const { error: productError } = await admin.from("products").insert({
+        id: `test-product-${Math.random().toString(36).slice(2, 8)}`,
+        name: "Test product",
+        brand_id: brandB.id,
+        audience: "unisex",
+        product_type_id: leaf!.id,
+        collection_id: collection!.id,
+        price: 100,
+        currency: "EGP",
+        image: "/x.jpg",
+        description: "x",
+        shipping_returns: "x",
+        sku,
+        status: "draft",
+      });
+      assert.ok(productError, "expected the cross-brand collection guard trigger to reject the insert");
+      assert.match(productError!.message, /different brand/i);
+    } finally {
+      await admin.from("products").delete().eq("brand_id", brandB.id);
+      await admin.from("collections").delete().eq("brand_id", brandA.id);
+      await admin.from("brands").delete().in("id", [brandA.id, brandB.id]);
+    }
+  }
+);

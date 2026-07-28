@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 
 interface AnalyticsOrderItemRow {
   product_id: string | null;
@@ -134,7 +135,7 @@ interface CategoryOrderItemRow {
   price: number;
   currency: "USD" | "EGP";
   quantity: number;
-  products: { product_category: string | null } | null;
+  products: { product_type_id: string | null } | null;
 }
 
 interface CategoryOrderRow {
@@ -145,12 +146,18 @@ interface CategoryOrderRow {
 // Joins through products (not stored redundantly on order_items) — an item
 // whose product was later deleted has no category to attribute to, so it's
 // bucketed as "Uncategorized" rather than dropped, keeping the total in
-// sync with getDailyRevenueTrend's for the same window.
+// sync with getDailyRevenueTrend's for the same window. Category here means
+// Main Category (taxonomy_nodes Level 1), resolved from the product's
+// product_type_id — nothing reads the old flat product_category text
+// column anymore.
 export async function getRevenueByCategory(days = 30): Promise<CategoryRevenueEntry[]> {
-  const { data, error } = await supabaseAdmin
-    .from("orders")
-    .select("created_at, order_items(price, currency, quantity, products(product_category))")
-    .neq("status", "cancelled");
+  const [{ data, error }, taxonomyTree] = await Promise.all([
+    supabaseAdmin
+      .from("orders")
+      .select("created_at, order_items(price, currency, quantity, products(product_type_id))")
+      .neq("status", "cancelled"),
+    getFullTaxonomyTree(),
+  ]);
 
   if (error) {
     throw new Error(`getRevenueByCategory failed: ${error.message}`);
@@ -164,7 +171,10 @@ export async function getRevenueByCategory(days = 30): Promise<CategoryRevenueEn
     if (new Date(order.created_at) < cutoff) continue;
     for (const item of order.order_items ?? []) {
       if (item.currency !== "EGP") continue;
-      const category = item.products?.product_category ?? "Uncategorized";
+      const path = item.products?.product_type_id
+        ? resolveTaxonomyPath(taxonomyTree, item.products.product_type_id)
+        : null;
+      const category = path?.mainCategory ?? "Uncategorized";
       byCategory.set(category, (byCategory.get(category) ?? 0) + Number(item.price) * item.quantity);
     }
   }

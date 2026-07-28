@@ -17,8 +17,14 @@ export type Product = {
   name: string;
   brand_name: string;
   brand_slug: string | null;
-  category: string | null;
-  product_category: string | null;
+  // "men" | "women" | "unisex" | "kids_baby" — the sole source of truth for
+  // who a product is for (replaces the old category/is_unisex pair).
+  audience: string | null;
+  // The resolved Product Type leaf (Level 3) in the hierarchical taxonomy —
+  // replaces the old free-text product_category. Mobile doesn't resolve
+  // this to a display path (Main Category / Product Group / Product Type)
+  // the way the web app does; it's kept as an opaque id for filtering.
+  product_type_id: string | null;
   price: number;
   compare_at_price: number | null;
   currency: "EGP" | "USD";
@@ -38,13 +44,13 @@ export type Product = {
   variants?: ProductVariant[];
 };
 
-const productSelect = "id,name,brand_name,brand_slug,category,product_category,price,compare_at_price,currency,image,images,rating,review_count,colors,sizes,unavailable_sizes,description,details,care_instructions,shipping_returns,in_stock,track_inventory";
+const productSelect = "id,name,brand_name,brand_slug,audience,product_type_id,price,compare_at_price,currency,image,images,rating,review_count,colors,sizes,unavailable_sizes,description,details,care_instructions,shipping_returns,in_stock,track_inventory";
 
 export type ProductSort = "newest" | "price-asc" | "price-desc" | "top-rated";
 export type ProductQueryOptions = {
   query?: string;
-  category?: string;
-  productCategory?: string;
+  audience?: string;
+  productTypeId?: string;
   brand?: string;
   color?: string;
   size?: string;
@@ -59,8 +65,7 @@ export type ProductQueryOptions = {
 };
 
 export type CatalogFacets = {
-  categories: string[];
-  productCategories: string[];
+  audiences: string[];
   brands: string[];
   colors: string[];
   sizes: string[];
@@ -104,8 +109,8 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   const page = Math.max(options.page ?? 0, 0);
   let request = supabase.from("products").select(productSelect, { count: "exact" })
     .eq("status", "published").eq("paused_by_brand", false);
-  if (options.category) request = request.eq("category", options.category);
-  if (options.productCategory) request = request.eq("product_category", options.productCategory);
+  if (options.audience) request = request.eq("audience", options.audience);
+  if (options.productTypeId) request = request.eq("product_type_id", options.productTypeId);
   if (options.brand) request = request.eq("brand_name", options.brand);
   if (options.color) request = request.contains("colors", [{ name: options.color }]);
   if (options.size) request = request.contains("sizes", [options.size]);
@@ -116,7 +121,7 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   if (options.maxPrice != null) request = request.lte("price", options.maxPrice);
   if (options.query?.trim()) {
     const safe = options.query.trim().replace(/[%_,().]/g, " ").slice(0, 80);
-    request = request.or(`name.ilike.%${safe}%,brand_name.ilike.%${safe}%,category.ilike.%${safe}%,product_category.ilike.%${safe}%`);
+    request = request.or(`name.ilike.%${safe}%,brand_name.ilike.%${safe}%`);
   }
   if (options.sort === "price-asc") request = request.order("price", { ascending: true });
   else if (options.sort === "price-desc") request = request.order("price", { ascending: false });
@@ -133,15 +138,14 @@ export async function getProducts(options: ProductQueryOptions = {}) {
 
 export async function getCatalogFacets(): Promise<CatalogFacets> {
   const { data, error } = await supabase.from("products")
-    .select("category,product_category,brand_name,colors,sizes,price")
+    .select("audience,brand_name,colors,sizes,price")
     .eq("status", "published").eq("paused_by_brand", false).limit(2000);
   if (error) throw new Error("We couldn't load catalog filters.");
   const rows = data ?? [];
   const unique = (values: (string | null | undefined)[]) =>
     [...new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))].sort();
   return {
-    categories: unique(rows.map((row) => row.category)),
-    productCategories: unique(rows.map((row) => row.product_category)),
+    audiences: unique(rows.map((row) => row.audience)),
     brands: unique(rows.map((row) => row.brand_name)),
     colors: unique(rows.flatMap((row) => ((row.colors as ProductColor[] | null) ?? []).map((color) => color.name))),
     sizes: unique(rows.flatMap((row) => (row.sizes as string[] | null) ?? [])),

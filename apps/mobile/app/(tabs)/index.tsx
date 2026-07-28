@@ -15,8 +15,8 @@ import { useAppTheme } from "@/theme/ThemeProvider";
 const moodTitles: Record<string, string> = {
   women: "Effortless elegance",
   men: "Modern essentials",
-  kids: "Little adventures",
-  home: "Quiet living",
+  kids_baby: "Little adventures",
+  unisex: "Made for everyone",
 };
 
 export default function HomeRoute() {
@@ -35,8 +35,8 @@ export default function HomeRoute() {
     : [...products].sort((left, right) => right.rating - left.rating || right.review_count - left.review_count);
   const moods = [...new Map(
     products
-      .filter((product) => product.category && product.image)
-      .map((product) => [product.category!, product])
+      .filter((product) => product.audience && product.image)
+      .map((product) => [product.audience!, product])
   ).entries()].slice(0, 4);
 
   return (
@@ -130,12 +130,12 @@ export default function HomeRoute() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={{ gap: spacing.sm, paddingRight: spacing.md }}
               >
-                {moods.map(([category, product]) => (
+                {moods.map(([audience, product]) => (
                   <MoodCard
-                    key={category}
-                    category={category}
+                    key={audience}
+                    category={audience}
                     image={product.image}
-                    title={moodTitles[category.toLowerCase()] ?? `The ${category} edit`}
+                    title={moodTitles[audience.toLowerCase()] ?? `The ${audience} edit`}
                   />
                 ))}
               </ScrollView>

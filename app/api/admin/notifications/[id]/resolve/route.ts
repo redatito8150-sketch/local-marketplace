@@ -7,12 +7,9 @@ import { notify } from "@/lib/notify";
 interface BeforeProductSnapshot {
   id: string;
   name: string;
-  brand_name: string;
-  brand_slug: string | null;
-  category: string | null;
-  product_category: string | null;
-  product_type: string | null;
-  collection: string | null;
+  audience: string;
+  product_type_id: string;
+  collection_id: string | null;
   material: string | null;
   fit: string | null;
   price: number;
@@ -28,10 +25,8 @@ interface BeforeProductSnapshot {
   shipping_returns: string;
   model_height: string | null;
   model_wearing: string | null;
-  sku: string;
   in_stock: boolean;
   is_new: boolean;
-  is_unisex: boolean;
   unavailable_sizes: string[];
   track_inventory: boolean;
   status: string;
@@ -126,16 +121,16 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const before = auditEntry.before_value as BeforeProductSnapshot;
     const { variants, ...productFields } = before;
 
+    // brand_id/brand_slug/brand_name and sku are never part of this update
+    // — both are immutable after creation, so a revert can never change
+    // them even though the before-snapshot technically still has them.
     const { error } = await supabaseAdmin
       .from("products")
       .update({
         name: productFields.name,
-        brand_name: productFields.brand_name,
-        brand_slug: productFields.brand_slug,
-        category: productFields.category,
-        product_category: productFields.product_category,
-        product_type: productFields.product_type,
-        collection: productFields.collection,
+        audience: productFields.audience,
+        product_type_id: productFields.product_type_id,
+        collection_id: productFields.collection_id,
         material: productFields.material,
         fit: productFields.fit,
         price: productFields.price,
@@ -151,10 +146,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         shipping_returns: productFields.shipping_returns,
         model_height: productFields.model_height,
         model_wearing: productFields.model_wearing,
-        sku: productFields.sku,
         in_stock: productFields.in_stock,
         is_new: productFields.is_new,
-        is_unisex: productFields.is_unisex,
         unavailable_sizes: productFields.unavailable_sizes,
         track_inventory: productFields.track_inventory,
         status: "published",

@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { SlidersHorizontal, ChevronDown, Check } from "lucide-react";
 import { FilterGroup } from "@/types";
-import { PRODUCT_CATEGORIES } from "@/content/productTaxonomy";
 import { parsePriceRangeValue } from "@/lib/filters";
 import PriceRangeFilter from "./PriceRangeFilter";
 
-// Same canonical-value check as HorizontalFilters — kept local since each
-// file already imports its own small set of filter helpers rather than
-// sharing a UI-less "constants" module for a single string.
-const CLOTHING_CATEGORY = "Clothing" satisfies (typeof PRODUCT_CATEGORIES)[number];
+// Same canonical Main Category value as HorizontalFilters — kept local
+// since each file already imports its own small set of filter helpers
+// rather than sharing a UI-less "constants" module for a single string.
+const CLOTHING_CATEGORY = "Clothing";
 
 function FilterSection({
   group,
@@ -117,7 +116,7 @@ export default function FilterSidebar({
   // sits above the product grid, since the layout stacks to one column
   // below the `lg` breakpoint. Always expanded at `lg` and up.
   const [mobileOpen, setMobileOpen] = useState(false);
-  const clothingSelected = (selected.productCategory ?? []).includes(CLOTHING_CATEGORY);
+  const clothingSelected = (selected.mainCategory ?? []).includes(CLOTHING_CATEGORY);
 
   return (
     <aside className="w-full lg:w-[240px] lg:flex-none">

@@ -32,7 +32,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
   const [orders, variants, products, bestSellers, brand, activity] = await Promise.all([
     getOrdersForBrand(owner.brandSlug, owner.isImpersonating),
     getVariantsForBrand(owner.brandSlug, owner.isImpersonating),
-    getProductsForBrand(owner.brandSlug, owner.isImpersonating),
+    getProductsForBrand(owner.brandId!, owner.isImpersonating),
     getBestSellingProductsForBrand(owner.brandSlug, 4),
     owner.accessLevel === "owner" ? getBrandForAdmin(owner.brandSlug) : Promise.resolve(null),
     owner.accessLevel === "owner" ? getAuditLogsForBrand(owner.brandSlug, 6) : Promise.resolve([]),

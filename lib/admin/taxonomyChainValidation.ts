@@ -11,7 +11,7 @@ export interface TaxonomyChainRow {
 }
 
 export type TaxonomyResolution =
-  | { valid: true; productTypeId?: string; productCategory?: string; productType?: string }
+  | { valid: true; productTypeId: string; mainCategory: string; productGroup: string; productTypeName: string }
   | { valid: false; error: string };
 
 export function validateTaxonomyChain(
@@ -39,7 +39,8 @@ export function validateTaxonomyChain(
   return {
     valid: true,
     productTypeId: leaf.id,
-    productCategory: mainCategory.name,
-    productType: leaf.name,
+    mainCategory: mainCategory.name,
+    productGroup: group.name,
+    productTypeName: leaf.name,
   };
 }

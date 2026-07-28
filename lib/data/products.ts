@@ -1,15 +1,18 @@
 import { supabase } from "@/lib/supabase/client";
 import { logError } from "@/lib/errorLog";
 import { getVariantsForProducts } from "@/lib/data/variants";
+import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
+import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/audience";
 import {
+  Audience,
   CategorySlug,
   Product,
   ProductDetail,
   ProductReview,
   ProductColorOption,
   ProductStatus,
+  TaxonomyNode,
 } from "@/types";
-import { CATEGORIES } from "@/content/categories";
 import { parsePriceRangeValue } from "@/lib/filters";
 
 export interface ProductRow {
@@ -17,10 +20,10 @@ export interface ProductRow {
   name: string;
   brand_name: string;
   brand_slug: string | null;
-  category: CategorySlug | null;
-  product_category: string | null;
-  product_type: string | null;
-  collection: string | null;
+  brand_id: string;
+  product_type_id: string;
+  audience: Audience;
+  collection_id: string | null;
   material: string | null;
   fit: string | null;
   price: number;
@@ -41,13 +44,39 @@ export interface ProductRow {
   sku: string;
   in_stock: boolean;
   is_new: boolean;
-  is_unisex: boolean;
   unavailable_sizes: string[];
   track_inventory: boolean;
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
   paused_by_brand: boolean;
+}
+
+// Per-request lookup context for the display-only fields resolved from
+// product_type_id/collection_id — loaded once and reused across a batch
+// of rows instead of re-querying per product. Exported so other data-layer
+// modules that map ProductRow -> Product (lib/data/brands.ts,
+// lib/data/collections.ts) can build the same context instead of
+// duplicating this logic.
+export interface DisplayContext {
+  taxonomyTree: TaxonomyNode[];
+  collectionNamesById: Map<string, string>;
+}
+
+export async function loadDisplayContext(rows: ProductRow[]): Promise<DisplayContext> {
+  const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
+  const [taxonomyTree, collectionNamesById] = await Promise.all([
+    getFullTaxonomyTree(),
+    loadCollectionNames(collectionIds),
+  ]);
+  return { taxonomyTree, collectionNamesById };
+}
+
+async function loadCollectionNames(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase.from("collections").select("id, name").in("id", ids);
+  if (error) throw new Error(`loadCollectionNames failed: ${error.message}`);
+  return new Map((data ?? []).map((row) => [row.id as string, row.name as string]));
 }
 
 const REVIEW_AUTHORS = ["Mona K.", "Youssef A.", "Salma R.", "Karim T.", "Nadine H."];
@@ -69,10 +98,11 @@ function generateReviews(count: number, rating: number): ProductReview[] {
   }));
 }
 
-export function toProductCard(row: ProductRow): Product {
+export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
+  const path = resolveTaxonomyPath(ctx.taxonomyTree, row.product_type_id);
   return {
     id: row.id,
-    category: (row.category ?? "women") as CategorySlug,
+    category: primaryShopCategoryForAudience(row.audience),
     brand: row.brand_name,
     name: row.name,
     price: Number(row.price),
@@ -83,9 +113,13 @@ export function toProductCard(row: ProductRow): Product {
     sizes: row.sizes ?? [],
     colors: row.colors ?? [],
     inStock: row.in_stock,
-    productCategory: row.product_category ?? undefined,
-    productType: row.product_type ?? undefined,
-    collection: row.collection ?? undefined,
+    productTypeId: row.product_type_id,
+    mainCategory: path?.mainCategory ?? "",
+    productGroup: path?.productGroup ?? "",
+    productTypeName: path?.productTypeName ?? "",
+    audience: row.audience,
+    collectionId: row.collection_id ?? undefined,
+    collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
@@ -93,15 +127,9 @@ export function toProductCard(row: ProductRow): Product {
   };
 }
 
-function toProductDetail(row: ProductRow): ProductDetail {
-  const categoryLabel = row.category
-    ? CATEGORIES[row.category].label
-    : row.brand_name;
-  const categoryHref = row.category
-    ? `/shop/${row.category}`
-    : row.brand_slug
-    ? `/brands/${row.brand_slug}`
-    : "/";
+function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
+  const path = resolveTaxonomyPath(ctx.taxonomyTree, row.product_type_id);
+  const categorySlug = primaryShopCategoryForAudience(row.audience);
 
   return {
     id: row.id,
@@ -124,13 +152,16 @@ function toProductDetail(row: ProductRow): ProductDetail {
     reviews: generateReviews(row.review_count, row.rating),
     sku: row.sku,
     inStock: row.in_stock,
-    categorySlug: row.category ?? undefined,
-    categoryLabel,
-    categoryHref,
+    categorySlug,
+    categoryHref: `/shop/${categorySlug}`,
     relatedIds: [], // filled in by getProductById after a second query
-    productCategory: row.product_category ?? undefined,
-    productType: row.product_type ?? undefined,
-    collection: row.collection ?? undefined,
+    productTypeId: row.product_type_id,
+    mainCategory: path?.mainCategory ?? "",
+    productGroup: path?.productGroup ?? "",
+    productTypeName: path?.productTypeName ?? "",
+    audience: row.audience,
+    collectionId: row.collection_id ?? undefined,
+    collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     modelHeight: row.model_height ?? undefined,
@@ -142,57 +173,22 @@ function toProductDetail(row: ProductRow): ProductDetail {
   };
 }
 
-// A unisex product is stored under one category (women or men) with
-// is_unisex = true, meaning it should also appear under the other one.
-// Kids has no pairing.
-const PAIRED_CATEGORY: Partial<Record<CategorySlug, CategorySlug>> = {
-  women: "men",
-  men: "women",
-};
-
 export async function getProductsByCategory(
   category: CategorySlug
 ): Promise<Product[]> {
-  const pairedCategory = PAIRED_CATEGORY[category];
+  const { data, error } = await supabase
+    .from("products")
+    .select("*")
+    .in("audience", shopCategoryAudiences(category))
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .order("created_at", { ascending: true });
 
-  const queries = [
-    supabase
-      .from("products")
-      .select("*")
-      .eq("category", category)
-      .eq("status", "published")
-      .eq("paused_by_brand", false)
-      .order("created_at", { ascending: true }),
-  ];
-  if (pairedCategory) {
-    queries.push(
-      supabase
-        .from("products")
-        .select("*")
-        .eq("category", pairedCategory)
-        .eq("is_unisex", true)
-        .eq("status", "published")
-        .eq("paused_by_brand", false)
-    );
-  }
+  if (error) throw new Error(`getProductsByCategory(${category}) failed: ${error.message}`);
 
-  const results = await Promise.all(queries);
-  for (const result of results) {
-    if (result.error) {
-      throw new Error(`getProductsByCategory(${category}) failed: ${result.error.message}`);
-    }
-  }
-
-  const seen = new Set<string>();
-  const merged = results
-    .flatMap((result) => result.data ?? [])
-    .filter((row) => {
-      if (seen.has(row.id)) return false;
-      seen.add(row.id);
-      return true;
-    });
-
-  const cards = (merged as ProductRow[]).map(toProductCard);
+  const rows = (data as ProductRow[]) ?? [];
+  const ctx = await loadDisplayContext(rows);
+  const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
   return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
@@ -203,7 +199,7 @@ export async function getProductCountLabel(
   const { count, error } = await supabase
     .from("products")
     .select("id", { count: "exact", head: true })
-    .eq("category", category)
+    .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
     .eq("paused_by_brand", false);
 
@@ -230,7 +226,9 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     throw new Error(`getNewArrivals failed: ${error.message}`);
   }
 
-  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const rows = ((data as ProductRow[]) ?? []);
+  const ctx = await loadDisplayContext(rows);
+  const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
   return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
 }
@@ -256,7 +254,9 @@ export async function getAllActiveProducts(
 
   const { data, error } = await query.limit(safeLimit);
   if (error) throw new Error(`getAllActiveProducts failed: ${error.message}`);
-  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const rows = ((data as ProductRow[]) ?? []);
+  const ctx = await loadDisplayContext(rows);
+  const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
   return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
 }
@@ -271,14 +271,16 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
     .eq("status", "published")
     .eq("paused_by_brand", false);
   if (error) throw new Error(`getActiveProductsByIds failed: ${error.message}`);
-  const byId = new Map(((data as ProductRow[]) ?? []).map((row) => [row.id, toProductCard(row)]));
+  const rows = ((data as ProductRow[]) ?? []);
+  const ctx = await loadDisplayContext(rows);
+  const byId = new Map(rows.map((row) => [row.id, toProductCard(row, ctx)]));
   const cards = selected.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
   return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
 }
 
 export type MarketplaceCatalogFilters = Partial<Record<
-  "audience" | "brand" | "productCategory" | "productType" | "collection" | "material" | "fit" | "size" | "color" | "price" | "availability" | "rating" | "featured" | "discounted",
+  "audience" | "brand" | "mainCategory" | "productType" | "collection" | "material" | "fit" | "size" | "color" | "price" | "availability" | "rating" | "featured" | "discounted",
   string[]
 >>;
 
@@ -290,10 +292,39 @@ export type MarketplaceCatalogOptions = {
   filters?: MarketplaceCatalogFilters;
 };
 
+// Level-3 (Product Type) node ids whose resolved path matches the given
+// Main Category / Product Type name filters — used to translate a
+// name-based filter selection into a `product_type_id` list the DB query
+// can actually filter on, since products no longer store those names.
+function matchingProductTypeIds(
+  tree: TaxonomyNode[],
+  mainCategories?: string[],
+  productTypes?: string[]
+): string[] {
+  return tree
+    .filter((node) => node.level === 3)
+    .filter((leaf) => {
+      const path = resolveTaxonomyPath(tree, leaf.id);
+      if (!path) return false;
+      if (mainCategories?.length && !mainCategories.includes(path.mainCategory)) return false;
+      if (productTypes?.length && !productTypes.includes(path.productTypeName)) return false;
+      return true;
+    })
+    .map((leaf) => leaf.id);
+}
+
 export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptions = {}) {
   const pageSize = Math.max(1, Math.min(options.pageSize ?? 24, 48));
   const page = Math.max(1, options.page ?? 1);
   const filters = options.filters ?? {};
+
+  const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
+  const needsCollectionLookup = Boolean(filters.collection?.length);
+  const [taxonomyTree, collectionIds] = await Promise.all([
+    needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
+    needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
+  ]);
+
   let query = supabase
     .from("products")
     .select("*", { count: "exact" })
@@ -302,11 +333,15 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
   if (search) query = query.or(`name.ilike.%${search}%,brand_name.ilike.%${search}%`);
-  if (filters.audience?.length) query = query.in("category", filters.audience);
+  if (filters.audience?.length) query = query.in("audience", filters.audience);
   if (filters.brand?.length) query = query.in("brand_name", filters.brand);
-  if (filters.productCategory?.length) query = query.in("product_category", filters.productCategory);
-  if (filters.productType?.length) query = query.in("product_type", filters.productType);
-  if (filters.collection?.length) query = query.in("collection", filters.collection);
+  if (needsTaxonomyLookup) {
+    const ids = matchingProductTypeIds(taxonomyTree, filters.mainCategory, filters.productType);
+    query = query.in("product_type_id", ids.length ? ids : ["__none__"]);
+  }
+  if (needsCollectionLookup) {
+    query = query.in("collection_id", collectionIds && collectionIds.length ? collectionIds : ["__none__"]);
+  }
   if (filters.material?.length) query = query.in("material", filters.material);
   if (filters.fit?.length) query = query.in("fit", filters.fit);
   if (filters.size?.length) query = query.overlaps("sizes", filters.size);
@@ -331,7 +366,9 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   const from = (page - 1) * pageSize;
   const { data, count, error } = await query.range(from, from + pageSize - 1);
   if (error) throw new Error(`getMarketplaceCatalogPage failed: ${error.message}`);
-  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
+  const rows = ((data as ProductRow[]) ?? []);
+  const ctx = await loadDisplayContext(rows);
+  const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
   return {
     products: cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] })),
@@ -341,27 +378,69 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   };
 }
 
-export async function getMarketplaceCatalogFacets() {
+async function resolveCollectionIdsByName(names: string[]): Promise<string[]> {
+  const { data, error } = await supabase.from("collections").select("id, name").in("name", names);
+  if (error) throw new Error(`resolveCollectionIdsByName failed: ${error.message}`);
+  return (data ?? []).map((row) => row.id as string);
+}
+
+export interface MarketplaceCatalogFacetRow {
+  brand: string;
+  category: CategorySlug;
+  mainCategory?: string;
+  productType?: string;
+  collection?: string;
+  material?: string;
+  fit?: string;
+  sizes: string[];
+  colors: ProductColorOption[];
+  compareAtPrice?: number;
+  price: number;
+}
+
+export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogFacetRow[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("brand_name, category, product_category, product_type, collection, material, fit, sizes, colors, compare_at_price, price")
+    .select("brand_name, audience, product_type_id, collection_id, material, fit, sizes, colors, compare_at_price, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .limit(2000);
   if (error) throw new Error(`getMarketplaceCatalogFacets failed: ${error.message}`);
-  return (data ?? []).map((row) => ({
-    brand: row.brand_name as string,
-    category: (row.category ?? "women") as CategorySlug,
-    productCategory: (row.product_category as string | null) ?? undefined,
-    productType: (row.product_type as string | null) ?? undefined,
-    collection: (row.collection as string | null) ?? undefined,
-    material: (row.material as string | null) ?? undefined,
-    fit: (row.fit as string | null) ?? undefined,
-    sizes: (row.sizes as string[] | null) ?? [],
-    colors: (row.colors as ProductColorOption[] | null) ?? [],
-    compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
-    price: Number(row.price),
-  }));
+  const rows = (data ?? []) as {
+    brand_name: string;
+    audience: Audience;
+    product_type_id: string;
+    collection_id: string | null;
+    material: string | null;
+    fit: string | null;
+    sizes: string[] | null;
+    colors: ProductColorOption[] | null;
+    compare_at_price: number | null;
+    price: number;
+  }[];
+
+  const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
+  const [taxonomyTree, collectionNamesById] = await Promise.all([
+    getFullTaxonomyTree(),
+    loadCollectionNames(collectionIds),
+  ]);
+
+  return rows.map((row) => {
+    const path = resolveTaxonomyPath(taxonomyTree, row.product_type_id);
+    return {
+      brand: row.brand_name,
+      category: primaryShopCategoryForAudience(row.audience),
+      mainCategory: path?.mainCategory,
+      productType: path?.productTypeName,
+      collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,
+      material: row.material ?? undefined,
+      fit: row.fit ?? undefined,
+      sizes: row.sizes ?? [],
+      colors: row.colors ?? [],
+      compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
+      price: Number(row.price),
+    };
+  });
 }
 
 export async function getProductById(id: string): Promise<ProductDetail | null> {
@@ -387,24 +466,31 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
     return null;
 
   const row = data as ProductRow;
-  const detail = toProductDetail(row);
+  const ctx = await loadDisplayContext([row]);
+  const detail = toProductDetail(row, ctx);
 
   const variantsByProduct = await getVariantsForProducts([id]);
   detail.variants = variantsByProduct.get(id) ?? [];
 
-  // Related products: same category if it's a shop item, same brand otherwise.
-  let relatedQuery = supabase
+  // Related products: same Product Type as this one. product_type_id is
+  // NOT NULL post-migration, but this query still guards against a falsy
+  // value defensively (`.eq()` with a JS null/undefined value sends the
+  // literal string "null" to PostgREST, which fails a uuid column outright
+  // rather than matching no rows).
+  if (!row.product_type_id) {
+    detail.relatedIds = [];
+    return detail;
+  }
+
+  const { data: relatedRows, error: relatedError } = await supabase
     .from("products")
     .select("id")
     .neq("id", id)
     .eq("status", "published")
     .eq("paused_by_brand", false)
+    .eq("product_type_id", row.product_type_id)
     .limit(4);
-  relatedQuery = row.category
-    ? relatedQuery.eq("category", row.category)
-    : relatedQuery.eq("brand_slug", row.brand_slug ?? "__none__");
 
-  const { data: relatedRows, error: relatedError } = await relatedQuery;
   if (relatedError) {
     // Related products are supplementary, not critical — degrade quietly
     // rather than failing the whole product page over a secondary query.

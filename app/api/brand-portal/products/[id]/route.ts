@@ -8,18 +8,19 @@ import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
 } from "@/lib/admin/productPersistence";
 import { checkRateLimit } from "@/lib/rateLimit";
 
-async function loadOwnedProduct(id: string, brandSlug: string) {
+async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
     .from("products")
     .select("*")
     .eq("id", id)
-    .eq("brand_slug", brandSlug)
+    .eq("brand_id", brandId)
     .maybeSingle();
   return data;
 }
@@ -27,7 +28,7 @@ async function loadOwnedProduct(id: string, brandSlug: string) {
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const owner = await requireBrandOwner();
-  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+  if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -35,7 +36,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
-  const existing = await loadOwnedProduct(params.id, owner.brandSlug);
+  const existing = await loadOwnedProduct(params.id, owner.brandId);
   if (!existing) {
     return NextResponse.json({ error: "Product not found" }, { status: 404 });
   }
@@ -67,7 +68,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       action: paused ? "pause" : "unpause",
       before: { pausedByBrand: existing.paused_by_brand },
       after: { pausedByBrand: paused },
-      brandSlug: owner.brandSlug,
+      brandSlug: owner.brandSlug ?? undefined,
     });
     await notify(
       "product_updated",
@@ -90,8 +91,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Revert restores, so it's captured in full here rather than relying on
   // partial diff data.
   const productBody = body as ProductInput;
-  productBody.brandSlug = owner.brandSlug;
-  productBody.brandName = owner.brandName ?? productBody.brandName;
+  // Brand is immutable after creation — whatever the client sends is
+  // ignored, always the caller's own brand.
+  productBody.brandId = owner.brandId;
 
   const validationError = validateProductInput(productBody);
   if (validationError) {
@@ -102,11 +104,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!taxonomy.valid) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
-  productBody.productCategory = taxonomy.productCategory ?? productBody.productCategory;
-  productBody.productType = taxonomy.productType ?? productBody.productType;
-  productBody.productTypeId = taxonomy.productTypeId ?? productBody.productTypeId;
+  productBody.productTypeId = taxonomy.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(productBody.sku, productBody.variants, params.id);
+  const collectionCheck = await resolveCollectionOwnership(productBody.collectionId, owner.brandId);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  const duplicateSku = await findDuplicateSku(productBody.variants, params.id);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -126,15 +131,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   );
 
   const productPayload = buildProductPersistencePayload(productBody, legacy, {
-    brandSlug: owner.brandSlug,
     status: "published",
     publishDate: existing.publish_date ?? new Date().toISOString(),
     submittedBy: owner.user.id,
     clearReviewState: true,
   });
-  // Featured merchandising remains an admin-only decision.
+  // Featured merchandising remains an admin-only decision. Brand identity
+  // and SKU are immutable after creation — the RPC's SET list already
+  // excludes them structurally, but they're stripped here too so the
+  // payload never even claims to change them.
   delete productPayload.featured;
-  productPayload.sku ||= params.id;
+  delete productPayload.brand_id;
   const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
     p_product_id: params.id,
     p_product: productPayload,
@@ -156,7 +163,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     action: "update",
     before: { ...existing, variants: existingVariants ?? [] },
     after: productBody,
-    brandSlug: owner.brandSlug,
+    brandSlug: owner.brandSlug ?? undefined,
   });
 
   await notify(
@@ -183,7 +190,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const owner = await requireBrandOwner();
-  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+  if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -191,7 +198,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
-  const existing = await loadOwnedProduct(params.id, owner.brandSlug);
+  const existing = await loadOwnedProduct(params.id, owner.brandId);
   if (!existing) {
     return NextResponse.json({ error: "Product not found" }, { status: 404 });
   }
@@ -215,7 +222,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     entityId: params.id,
     action: "archive",
     before: existing,
-    brandSlug: owner.brandSlug,
+    brandSlug: owner.brandSlug ?? undefined,
   });
 
   await notify(

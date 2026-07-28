@@ -45,7 +45,8 @@ export type AuditEntityType =
   | "coupon"
   | "site_content"
   | "page"
-  | "review";
+  | "review"
+  | "collection";
 
 // Green = something was added, red = something was removed, orange for
 // everything else (edits, status flips, reverts). Used only for the

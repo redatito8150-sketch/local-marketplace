@@ -19,7 +19,7 @@ export function MoodCard({ category, image, title }: MoodCardProps) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Shop ${title}`}
-      onPress={() => router.push(`/products?category=${encodeURIComponent(category)}&title=${encodeURIComponent(title)}` as Href)}
+      onPress={() => router.push(`/products?audience=${encodeURIComponent(category)}&title=${encodeURIComponent(title)}` as Href)}
       style={({ pressed }) => ({
         width: 238,
         height: 156,

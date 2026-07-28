@@ -79,7 +79,7 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
     const selectedPriceIds = selected.price ?? [];
     const selectedSizeIds = selected.size ?? [];
     const selectedColorIds = selected.color ?? [];
-    const selectedCategoryIds = selected.productCategory ?? [];
+    const selectedCategoryIds = selected.mainCategory ?? [];
     const selectedTypeIds = selected.productType ?? [];
     const selectedCollectionIds = selected.collection ?? [];
     const selectedMaterialIds = selected.material ?? [];
@@ -125,21 +125,21 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
 
       if (
         selectedCategoryIds.length > 0 &&
-        (!product.productCategory || !selectedCategoryIds.includes(product.productCategory))
+        (!product.mainCategory || !selectedCategoryIds.includes(product.mainCategory))
       ) {
         return false;
       }
 
       if (
         selectedTypeIds.length > 0 &&
-        (!product.productType || !selectedTypeIds.includes(product.productType))
+        (!product.productTypeName || !selectedTypeIds.includes(product.productTypeName))
       ) {
         return false;
       }
 
       if (
         selectedCollectionIds.length > 0 &&
-        (!product.collection || !selectedCollectionIds.includes(product.collection))
+        (!product.collectionName || !selectedCollectionIds.includes(product.collectionName))
       ) {
         return false;
       }

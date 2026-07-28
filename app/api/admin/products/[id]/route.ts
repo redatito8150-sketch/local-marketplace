@@ -7,6 +7,7 @@ import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
@@ -19,7 +20,21 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  const { data: existing } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("id", params.id)
+    .maybeSingle();
+  if (!existing) {
+    return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  }
+  const previousStatus = existing.status;
+
   const body: ProductInput = await request.json();
+  // Brand is immutable after creation (SKU ownership, collections, and
+  // audit history all key off it) — whatever the client sends is ignored.
+  body.brandId = existing.brand_id;
+
   const validationError = validateProductInput(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
@@ -29,11 +44,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!taxonomy.valid) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
-  body.productCategory = taxonomy.productCategory ?? body.productCategory;
-  body.productType = taxonomy.productType ?? body.productType;
-  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+  body.productTypeId = taxonomy.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(body.sku, body.variants, params.id);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandId);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  const duplicateSku = await findDuplicateSku(body.variants, params.id);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -43,15 +61,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
 
-  const { data: existing } = await supabaseAdmin
-    .from("products")
-    .select("*")
-    .eq("id", params.id)
-    .maybeSingle();
-  const previousStatus = existing?.status;
-
   const productPayload = buildProductPersistencePayload(body, legacy);
-  productPayload.sku ||= params.id;
+  // Brand and SKU are immutable after creation — the RPC's SET list
+  // already excludes them structurally, but they're stripped here too so
+  // the payload never even claims to change them.
+  delete productPayload.brand_id;
   const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
     p_product_id: params.id,
     p_product: productPayload,
@@ -74,14 +88,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   };
   if (previousStatus !== body.status) {
     if (body.status === "published") {
-      await notify("product_published", `Product published: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_published", `Product published: ${body.name}`, existing.brand_name, notifyMeta);
     } else if (body.status === "archived") {
-      await notify("product_archived", `Product archived: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_archived", `Product archived: ${body.name}`, existing.brand_name, notifyMeta);
     } else {
-      await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
     }
   } else {
-    await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
+    await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
   }
 
   await logAudit({

@@ -1,5 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 
 // Every query here uses the cookie-aware anon client by default (never
 // supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
@@ -159,7 +160,7 @@ export interface BrandProductListItem {
   image: string;
   price: number;
   currency: "USD" | "EGP";
-  category?: string;
+  mainCategory?: string;
   productType?: string;
   collection?: string;
   featured: boolean;
@@ -178,9 +179,8 @@ interface BrandProductRow {
   image: string;
   price: number;
   currency: "USD" | "EGP";
-  product_category: string | null;
-  product_type: string | null;
-  collection: string | null;
+  product_type_id: string;
+  collection_id: string | null;
   featured: boolean;
   in_stock: boolean;
   created_at: string;
@@ -195,40 +195,53 @@ interface BrandProductRow {
 // here — `products` has a public `using (true)` SELECT policy already
 // (needed for the storefront to read published rows with the anon client),
 // so the cookie client sees every status for this brand once scoped by
-// brand_slug; nothing extra needed to include unreviewed submissions.
+// brand_id; nothing extra needed to include unreviewed submissions.
 export async function getProductsForBrand(
-  brandSlug: string,
+  brandId: string,
   impersonating = false
 ): Promise<BrandProductListItem[]> {
   const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, image, price, currency, product_category, product_type, collection, featured, in_stock, created_at, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_type_id, collection_id, featured, in_stock, created_at, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
     )
-    .eq("brand_slug", brandSlug)
+    .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
 
   if (error) {
-    throw new Error(`getProductsForBrand(${brandSlug}) failed: ${error.message}`);
+    throw new Error(`getProductsForBrand(${brandId}) failed: ${error.message}`);
   }
 
-  return ((data as BrandProductRow[]) ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    image: row.image,
-    price: Number(row.price),
-    currency: row.currency,
-    category: row.product_category ?? undefined,
-    productType: row.product_type ?? undefined,
-    collection: row.collection ?? undefined,
-    featured: row.featured,
-    inStock: row.in_stock,
-    createdAt: row.created_at,
-    status: row.status,
-    pausedByBrand: row.paused_by_brand,
-    hasPendingEdit: row.pending_changes != null,
-    reviewNotes: row.review_notes ?? undefined,
-    deletionRequestedAt: row.deletion_requested_at ?? undefined,
-  }));
+  const rows = (data as BrandProductRow[]) ?? [];
+  const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
+  const [taxonomyTree, collectionNamesById] = await Promise.all([
+    getFullTaxonomyTree(),
+    collectionIds.length
+      ? supabase.from("collections").select("id, name").in("id", collectionIds)
+        .then(({ data }) => new Map((data ?? []).map((r) => [r.id as string, r.name as string])))
+      : Promise.resolve(new Map<string, string>()),
+  ]);
+
+  return rows.map((row) => {
+    const path = resolveTaxonomyPath(taxonomyTree, row.product_type_id);
+    return {
+      id: row.id,
+      name: row.name,
+      image: row.image,
+      price: Number(row.price),
+      currency: row.currency,
+      mainCategory: path?.mainCategory,
+      productType: path?.productTypeName,
+      collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,
+      featured: row.featured,
+      inStock: row.in_stock,
+      createdAt: row.created_at,
+      status: row.status,
+      pausedByBrand: row.paused_by_brand,
+      hasPendingEdit: row.pending_changes != null,
+      reviewNotes: row.review_notes ?? undefined,
+      deletionRequestedAt: row.deletion_requested_at ?? undefined,
+    };
+  });
 }

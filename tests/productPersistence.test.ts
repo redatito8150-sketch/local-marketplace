@@ -8,11 +8,9 @@ import type { ProductInput } from "../lib/admin/productValidation.ts";
 
 const product: ProductInput = {
   name: "Linen Shirt",
-  brandName: "Nola",
-  brandSlug: "nola",
-  category: "women",
-  productCategory: "Clothing",
-  productType: "Shirts",
+  brandId: "brand-nola",
+  productTypeId: "type-shirts",
+  audience: "women",
   price: 1200,
   currency: "EGP",
   image: "/shirt.jpg",
@@ -23,9 +21,7 @@ const product: ProductInput = {
   details: ["Linen"],
   careInstructions: ["Cold wash"],
   shippingReturns: "14 days",
-  sku: " SHIRT-1 ",
   isNew: true,
-  isUnisex: false,
   trackInventory: true,
   featured: false,
   status: "published",
@@ -49,10 +45,13 @@ test("maps a validated product form to database field names", () => {
     inStock: true,
   });
 
-  assert.equal(payload.brand_slug, "nola");
-  assert.equal(payload.product_category, "Clothing");
-  assert.equal(payload.sku, "SHIRT-1");
+  assert.equal(payload.brand_id, "brand-nola");
+  assert.equal(payload.audience, "women");
+  assert.equal(payload.product_type_id, "type-shirts");
   assert.deepEqual(payload.unavailable_sizes, []);
+  // sku is never part of this payload — always server-generated (insert)
+  // or left untouched (update), never client-supplied.
+  assert.equal("sku" in payload, false);
 });
 
 test("supports controlled publish overrides without mutating the input", () => {
@@ -60,16 +59,15 @@ test("supports controlled publish overrides without mutating the input", () => {
     product,
     { colors: product.colors, sizes: ["M"], unavailableSizes: [], inStock: true },
     {
-      brandSlug: "owned-brand",
       status: "published",
       submittedBy: "00000000-0000-0000-0000-000000000001",
       clearReviewState: true,
     }
   );
 
-  assert.equal(payload.brand_slug, "owned-brand");
   assert.equal(payload.pending_changes, null);
-  assert.equal(product.brandSlug, "nola");
+  assert.equal(payload.submitted_by, "00000000-0000-0000-0000-000000000001");
+  assert.equal(product.brandId, "brand-nola");
 });
 
 test("maps variants without accepting product identity from the client", () => {

@@ -13,7 +13,7 @@ import CatalogControls, { CatalogEmptyState } from "@/components/category/Catalo
 // already checked instead of just scrolling to an unfiltered grid.
 const URL_PARAM_TO_GROUP: Record<string, string> = {
   type: "productType",
-  category: "productCategory",
+  category: "mainCategory",
   material: "material",
   collection: "collection",
   fit: "fit",
@@ -71,7 +71,7 @@ export default function BrandShoppingArea({
     const tabLabel = categoryTabs.find((t) => t.id === activeTab)?.label;
     if (!tabLabel) return sortedProducts;
     const matches = sortedProducts.filter(
-      (p) => p.collection?.toLowerCase() === tabLabel.toLowerCase()
+      (p) => p.collectionName?.toLowerCase() === tabLabel.toLowerCase()
     );
     return matches.length > 0 ? matches : sortedProducts;
   }, [sortedProducts, activeTab, categoryTabs]);
