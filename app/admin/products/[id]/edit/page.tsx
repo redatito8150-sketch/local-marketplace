@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getProductForAdmin } from "@/lib/data/admin";
-import { getFeaturedBrands } from "@/lib/data/brands";
+import { getProductForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
@@ -10,12 +9,13 @@ import ProductForm from "@/components/admin/ProductForm";
 
 export default async function EditProductPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const [product, brandOptions, taxonomy, taxonomyNodes] = await Promise.all([
+  const [product, brands, taxonomy, taxonomyNodes] = await Promise.all([
     getProductForAdmin(params.id),
-    getFeaturedBrands(),
+    getAllBrandsForAdmin(),
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
     getTaxonomyTree(),
   ]);
+  const brandOptions = brands.map((brand) => ({ id: brand.id, name: brand.name }));
 
   if (!product) notFound();
 

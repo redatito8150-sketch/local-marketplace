@@ -18,16 +18,16 @@ function slugPreview(name: string): string {
 }
 
 // Brand-scoped Collection dropdown + inline "Create Collection" modal.
-// Reloads its option list whenever `brandSlug` changes (the parent form is
+// Reloads its option list whenever `brandId` changes (the parent form is
 // responsible for clearing the selected collectionId on that same change —
 // see ProductForm's brand-change handler).
 export default function CollectionSelect({
-  brandSlug,
+  brandId,
   value,
   onChange,
   apiBasePath,
 }: {
-  brandSlug: string;
+  brandId: string;
   value: string;
   onChange: (collectionId: string) => void;
   apiBasePath: "/api/brand-portal" | "/api/admin";
@@ -36,9 +36,9 @@ export default function CollectionSelect({
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const listUrl = brandSlug
+  const listUrl = brandId
     ? apiBasePath === "/api/admin"
-      ? `/api/admin/collections?brand=${encodeURIComponent(brandSlug)}`
+      ? `/api/admin/collections?brandId=${encodeURIComponent(brandId)}`
       : "/api/brand-portal/collections"
     : null;
 
@@ -69,14 +69,14 @@ export default function CollectionSelect({
   };
 
   useEffect(() => {
-    // Fetching from the network on a prop change (brandSlug) is the
+    // Fetching from the network on a prop change (brandId) is the
     // canonical use of an effect — the setState calls inside
     // loadCollections happen in its own later microtask/callback, not
     // synchronously in the effect body itself.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadCollections();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [brandSlug]);
+  }, [brandId]);
 
   return (
     <div>
@@ -84,7 +84,7 @@ export default function CollectionSelect({
         <span className="text-[12.5px] font-medium text-ink-soft/70">Collection</span>
         <select
           value={value}
-          disabled={!brandSlug || loading}
+          disabled={!brandId || loading}
           onChange={(event) => onChange(event.target.value)}
           className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-ink-soft/40"
         >
@@ -98,7 +98,7 @@ export default function CollectionSelect({
       </label>
       <button
         type="button"
-        disabled={!brandSlug}
+        disabled={!brandId}
         onClick={() => setModalOpen(true)}
         className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-soft/40 disabled:no-underline"
       >
@@ -108,7 +108,7 @@ export default function CollectionSelect({
 
       {modalOpen && (
         <CreateCollectionModal
-          brandSlug={brandSlug}
+          brandId={brandId}
           apiBasePath={apiBasePath}
           onClose={() => setModalOpen(false)}
           onCreated={async (id) => {
@@ -123,12 +123,12 @@ export default function CollectionSelect({
 }
 
 function CreateCollectionModal({
-  brandSlug,
+  brandId,
   apiBasePath,
   onClose,
   onCreated,
 }: {
-  brandSlug: string;
+  brandId: string;
   apiBasePath: "/api/brand-portal" | "/api/admin";
   onClose: () => void;
   onCreated: (id: string) => void;
@@ -153,7 +153,7 @@ function CreateCollectionModal({
         body: JSON.stringify({
           name: name.trim(),
           description: description.trim() || undefined,
-          ...(apiBasePath === "/api/admin" ? { brandSlug } : {}),
+          ...(apiBasePath === "/api/admin" ? { brandId } : {}),
         }),
       });
       const data = await res.json();

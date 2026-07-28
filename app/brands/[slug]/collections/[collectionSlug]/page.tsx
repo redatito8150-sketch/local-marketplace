@@ -13,27 +13,28 @@ export async function generateMetadata({
   params: Promise<{ slug: string; collectionSlug: string }>;
 }): Promise<Metadata> {
   const { slug, collectionSlug } = await params;
-  const collection = await getPublicCollectionBySlug(slug, collectionSlug);
+  const brand = await getBrandContent(slug);
+  const collection = brand ? await getPublicCollectionBySlug(brand.id, collectionSlug) : null;
   return collection ? { title: `${collection.name} | Mahaly`, description: collection.description } : {};
 }
 
 // A collection page only ever shows products belonging to BOTH this exact
-// brand AND this exact collection id — getPublicCollectionBySlug already
-// scopes the lookup by brand_slug, and the product filter below re-checks
-// collectionId against that same resolved collection, so there is no path
-// from this URL to another brand's products or another brand's collection
-// reusing the same slug.
+// brand AND this exact collection id. The slug is used only to resolve the
+// brand; once resolved, the collection lookup is scoped by brand.id (not
+// slug), and the product filter below re-checks collectionId against that
+// same resolved collection — so a collection slug belonging to a different
+// brand can never resolve here (it 404s, since getPublicCollectionBySlug
+// scoped to this brand's id would find nothing).
 export default async function BrandCollectionPage({
   params,
 }: {
   params: Promise<{ slug: string; collectionSlug: string }>;
 }) {
   const { slug, collectionSlug } = await params;
-  const [brand, collection] = await Promise.all([
-    getBrandContent(slug),
-    getPublicCollectionBySlug(slug, collectionSlug),
-  ]);
-  if (!brand || !collection) notFound();
+  const brand = await getBrandContent(slug);
+  if (!brand) notFound();
+  const collection = await getPublicCollectionBySlug(brand.id, collectionSlug);
+  if (!collection) notFound();
 
   const products = brand.products.filter((product) => product.collectionId === collection.id);
 

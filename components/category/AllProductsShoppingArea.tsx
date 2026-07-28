@@ -10,7 +10,7 @@ import type { FilterGroup, Product, SortOption, ViewMode } from "@/types";
 import { CATALOG_FILTER_QUERY_KEYS } from "@/lib/catalogQuery";
 import { encodePriceRangeValue } from "@/lib/filters";
 
-export default function AllProductsShoppingArea({ products, filterGroups, productTypeRelations, selected: initialSelected, sort: initialSort, search: initialSearch, total, page, totalPages, priceBounds }: { products: Product[]; filterGroups: FilterGroup[]; productTypeRelations: { productCategory?: string; productType?: string }[]; selected: Record<string, string[]>; sort: SortOption; search: string; total: number; page: number; totalPages: number; priceBounds: { min: number; max: number } }) {
+export default function AllProductsShoppingArea({ products, filterGroups, productTypeRelations, selected: initialSelected, sort: initialSort, search: initialSearch, total, page, totalPages, priceBounds }: { products: Product[]; filterGroups: FilterGroup[]; productTypeRelations: { mainCategory?: string; productType?: string }[]; selected: Record<string, string[]>; sort: SortOption; search: string; total: number; page: number; totalPages: number; priceBounds: { min: number; max: number } }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

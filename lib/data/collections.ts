@@ -10,7 +10,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Product } from "@/types";
-import { ProductRow, toProductCard } from "./products";
+import { ProductRow, toProductCard, loadDisplayContext } from "./products";
 
 // Ranks product ids by total quantity sold, optionally restricted to orders
 // placed within the last `sinceDays` days (for "Trending" vs. all-time
@@ -62,13 +62,15 @@ async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
     throw new Error(`getProductCardsByIds failed: ${error.message}`);
   }
 
-  const byId = new Map((data as ProductRow[] | null)?.map((row) => [row.id, row]));
+  const rows = (data as ProductRow[] | null) ?? [];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const displayCtx = await loadDisplayContext(rows);
   // Preserve the caller's ranking (sold-quantity order) rather than
   // whatever order Postgres happens to return rows in.
   return ids
     .map((id) => byId.get(id))
     .filter((row): row is ProductRow => Boolean(row))
-    .map(toProductCard);
+    .map((row) => toProductCard(row, displayCtx));
 }
 
 export async function getBestSellingProducts(limit: number = 24): Promise<Product[]> {
@@ -153,5 +155,7 @@ export async function getBestSellingProductsForBrand(
   if (error) {
     throw new Error(`getBestSellingProductsForBrand(${brandSlug}) fallback failed: ${error.message}`);
   }
-  return ((data ?? []) as ProductRow[]).map(toProductCard);
+  const rows = (data ?? []) as ProductRow[];
+  const displayCtx = await loadDisplayContext(rows);
+  return rows.map((row) => toProductCard(row, displayCtx));
 }

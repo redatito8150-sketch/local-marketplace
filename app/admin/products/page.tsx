@@ -20,9 +20,9 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
     if (normalizedQuery && !`${product.name} ${product.brandName} ${product.sku}`.toLowerCase().includes(normalizedQuery)) return false;
     if (params.status && product.status !== params.status) return false;
     if (params.brand && product.brandSlug !== params.brand) return false;
-    if (params.category && product.category !== params.category) return false;
-    if (params.productType && product.productType !== params.productType) return false;
-    if (params.collection && product.collection !== params.collection) return false;
+    if (params.category && product.mainCategory !== params.category) return false;
+    if (params.productType && product.productTypeName !== params.productType) return false;
+    if (params.collection && product.collectionName !== params.collection) return false;
     if (params.inventory === "in" && !product.inStock) return false;
     if (params.inventory === "out" && product.inStock) return false;
     if (params.featured === "yes" && !product.featured) return false;
@@ -36,9 +36,9 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
   const unique = (values: Array<string | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
   const brands = unique(allProducts.map((product) => product.brandSlug));
   const brandLabels = new Map(allProducts.map((product) => [product.brandSlug, product.brandName]));
-  const categories = unique(allProducts.map((product) => product.category));
-  const productTypes = unique(allProducts.map((product) => product.productType));
-  const collections = unique(allProducts.map((product) => product.collection));
+  const categories = unique(allProducts.map((product) => product.mainCategory));
+  const productTypes = unique(allProducts.map((product) => product.productTypeName));
+  const collections = unique(allProducts.map((product) => product.collectionName));
   const activeCount = [params.q, params.status, params.brand, params.category, params.productType, params.collection, params.inventory, params.featured, params.minPrice, params.maxPrice, params.sort].filter(Boolean).length;
 
   return (

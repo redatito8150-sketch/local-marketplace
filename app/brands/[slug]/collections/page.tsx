@@ -16,7 +16,7 @@ export default async function CollectionsPage({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const brand = await getBrandContent(slug);
   if (!brand) notFound();
-  const collections = await getPublicCollectionsForBrand(slug);
+  const collections = await getPublicCollectionsForBrand(brand.id);
 
   return <section className="mx-auto max-w-brand px-5 py-14 sm:px-6 lg:px-10 lg:py-20">
     <div className="max-w-xl"><p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#8f2335]">Curated by {brand.name}</p><h2 className="mt-2 font-serif text-3xl text-[#261f1b] sm:text-4xl">Collections & complete looks</h2><p className="mt-4 text-sm leading-6 text-[#736861]">Considered combinations, designed to be worn together and made entirely from this brand’s current catalogue.</p></div>

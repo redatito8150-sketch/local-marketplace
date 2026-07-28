@@ -37,6 +37,7 @@ export interface FormState {
   tagline: string;
   category: string;
   skuPrefix: string;
+  isActive: boolean;
   foundedYear: string;
   city: string;
   heroImage: string;
@@ -62,6 +63,7 @@ function toFormState(brand?: BrandRecord): FormState {
     tagline: brand?.tagline ?? "",
     category: brand?.category ?? "",
     skuPrefix: brand?.skuPrefix ?? "",
+    isActive: brand?.isActive ?? true,
     foundedYear: brand?.foundedYear ? String(brand.foundedYear) : "",
     city: brand?.city ?? "Cairo",
     heroImage: brand?.heroImage ?? "",
@@ -171,7 +173,12 @@ export default function BrandForm({
       name: form.name.trim(),
       tagline: form.tagline.trim(),
       category: form.category.trim(),
-      ...(isBrandPortal ? {} : { skuPrefix: form.skuPrefix.trim().toUpperCase() || undefined }),
+      // Always included (even in brand-portal scope, where the field isn't
+      // shown/editable) — validateBrandInput now requires it unconditionally,
+      // and the brand-portal's own PATCH route never writes sku_prefix
+      // anyway, so resending the existing value here is a no-op for it.
+      skuPrefix: form.skuPrefix.trim().toUpperCase(),
+      ...(isBrandPortal ? {} : { isActive: form.isActive }),
       foundedYear: form.foundedYear ? Number(form.foundedYear) : undefined,
       city: form.city.trim(),
       heroImage: form.heroImage.trim(),
@@ -258,8 +265,31 @@ export default function BrandForm({
           label="SKU Prefix"
           value={form.skuPrefix}
           onChange={(v) => set("skuPrefix", v.toUpperCase())}
-          hint="2–6 letters/numbers, e.g. KMT — required before this brand can create products. Not shown to or editable by the brand owner."
+          required
+          disabled={Boolean(initial?.hasProducts)}
+          hint={
+            initial?.hasProducts
+              ? "Locked — this brand already has products, so its SKU prefix can no longer be changed."
+              : "2–6 letters/numbers, e.g. KMT — required, uniquely identifies this brand's product SKUs. Not shown to or editable by the brand owner."
+          }
         />
+      )}
+
+      {!isBrandPortal && (
+        <label className="flex items-center justify-between rounded-md border border-stone-150 px-3.5 py-2.5">
+          <span>
+            <span className="block text-[13.5px] font-medium text-ink">Active</span>
+            <span className="block text-[11.5px] text-ink-soft/50">
+              An inactive brand cannot generate new product SKUs
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.isActive}
+            onChange={(e) => set("isActive", e.target.checked)}
+            className="h-5 w-9 flex-none accent-ink"
+          />
+        </label>
       )}
 
       <TextField

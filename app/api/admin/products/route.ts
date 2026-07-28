@@ -6,7 +6,7 @@ import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
-import { deriveCategoryFromAudience } from "@/lib/admin/productPersistence";
+import { buildProductPersistencePayload } from "@/lib/admin/productPersistence";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 
@@ -38,36 +38,23 @@ export async function POST(request: NextRequest) {
   if (!taxonomy.valid) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
-  // The server-resolved category/type (derived from the taxonomy tree, not
-  // trusted from the client) wins whenever a productTypeId was submitted —
-  // otherwise body.productCategory/productType pass through unchanged, so
-  // saving without touching the new taxonomy selects never loses an
-  // existing legacy category.
-  body.productCategory = taxonomy.productCategory ?? body.productCategory;
-  body.productType = taxonomy.productType ?? body.productType;
-  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+  body.productTypeId = taxonomy.productTypeId;
 
-  if (body.brandSlug) {
-    const { data: brandRow } = await supabaseAdmin
-      .from("brands")
-      .select("slug")
-      .eq("slug", body.brandSlug)
-      .maybeSingle();
-    if (!brandRow) {
-      return NextResponse.json({ error: "Selected brand was not found" }, { status: 400 });
-    }
+  const { data: brandRow } = await supabaseAdmin
+    .from("brands")
+    .select("id, name")
+    .eq("id", body.brandId)
+    .maybeSingle();
+  if (!brandRow) {
+    return NextResponse.json({ error: "Selected brand was not found" }, { status: 400 });
   }
 
-  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandSlug);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandId);
   if (!collectionCheck.valid) {
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  const { category, isUnisex } = deriveCategoryFromAudience(body.audience);
-  body.category = category ?? body.category;
-  body.isUnisex = isUnisex;
-
-  const duplicateSku = await findDuplicateSku(body.brandSlug ? undefined : body.sku, body.variants);
+  const duplicateSku = await findDuplicateSku(body.variants);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -75,30 +62,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // A brand-scoped product's SKU is always server-generated — the client's
-  // `sku` field is completely ignored the moment a real brand is selected.
-  // Only a legacy brand-less product (category text products predating
-  // this taxonomy round) can still fall back to a typed value or the
-  // generated product id.
-  let generatedSku: string | null = null;
-  if (body.brandSlug) {
-    const { data: skuValue, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
-      p_brand_slug: body.brandSlug,
-    });
-    if (skuError || !skuValue) {
-      return NextResponse.json(
-        {
-          error: skuError?.message?.includes("sku_prefix")
-            ? "This brand has no SKU prefix configured yet — set one in Brand settings first"
-            : "Failed to generate a product SKU",
-        },
-        { status: 400 }
-      );
-    }
-    generatedSku = skuValue as string;
+  // Every product's SKU is always server-generated — the client never
+  // supplies or overrides it.
+  const { data: generatedSku, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
+    p_brand_id: body.brandId,
+  });
+  if (skuError || !generatedSku) {
+    return NextResponse.json(
+      {
+        error: skuError?.message?.includes("sku_prefix")
+          ? "This brand has no SKU prefix configured yet — set one in Brand settings first"
+          : "Failed to generate a product SKU",
+      },
+      { status: 400 }
+    );
   }
 
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
+  const productPayload = buildProductPersistencePayload(body, legacy);
+  productPayload.sku = generatedSku;
 
   const baseSlug = slugify(body.name) || "product";
   let id = "";
@@ -106,43 +88,7 @@ export async function POST(request: NextRequest) {
 
   for (let attempt = 0; attempt < 3 && !inserted; attempt++) {
     id = `${baseSlug}-${randomSuffix()}`;
-    const { error } = await supabaseAdmin.from("products").insert({
-      id,
-      name: body.name,
-      brand_name: body.brandName,
-      brand_slug: body.brandSlug || null,
-      category: body.category || null,
-      audience: body.audience || null,
-      product_category: body.productCategory || null,
-      product_type: body.productType || null,
-      product_type_id: body.productTypeId || null,
-      collection: body.collection || null,
-      collection_id: body.collectionId || null,
-      material: body.material || null,
-      fit: body.fit || null,
-      price: body.price,
-      compare_at_price: body.compareAtPrice ?? null,
-      currency: body.currency,
-      image: body.image,
-      images: body.images?.length ? body.images : [body.image],
-      colors: legacy.colors,
-      sizes: legacy.sizes,
-      description: body.description,
-      details: body.details,
-      care_instructions: body.careInstructions,
-      shipping_returns: body.shippingReturns,
-      model_height: body.modelHeight || null,
-      model_wearing: body.modelWearing || null,
-      sku: generatedSku ?? body.sku?.trim() ?? id,
-      in_stock: legacy.inStock,
-      is_new: body.isNew,
-      is_unisex: body.isUnisex,
-      unavailable_sizes: legacy.unavailableSizes,
-      track_inventory: body.trackInventory,
-      featured: body.featured,
-      status: body.status,
-      publish_date: body.publishDate ?? null,
-    });
+    const { error } = await supabaseAdmin.from("products").insert({ id, ...productPayload });
 
     if (!error) {
       inserted = true;
@@ -186,7 +132,7 @@ export async function POST(request: NextRequest) {
   await notify(
     body.status === "published" ? "product_published" : "product_created",
     body.status === "published" ? `Product published: ${body.name}` : `Product created: ${body.name}`,
-    body.brandName,
+    brandRow.name,
     {
       entityId: id,
       entityIdLabel: "Product ID",
@@ -204,5 +150,5 @@ export async function POST(request: NextRequest) {
     after: body,
   });
 
-  return NextResponse.json({ id, sku: generatedSku ?? body.sku?.trim() ?? id });
+  return NextResponse.json({ id, sku: generatedSku });
 }

@@ -32,7 +32,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       name: body.name,
       tagline: body.tagline,
       category: body.category,
-      sku_prefix: body.skuPrefix?.trim().toUpperCase() || null,
+      sku_prefix: body.skuPrefix.trim().toUpperCase(),
+      is_active: body.isActive ?? true,
       founded_year: body.foundedYear ?? null,
       city: body.city,
       hero_image: body.heroImage,
@@ -53,10 +54,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     .eq("slug", params.slug);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to update brand: ${error.message}` },
-      { status: 500 }
-    );
+    // The DB trigger's own message is already clear and user-facing —
+    // pass it through as-is instead of wrapping it in "Failed to update
+    // brand: ...".
+    const message = error.message.includes("SKU prefix cannot be changed")
+      ? error.message
+      : `Failed to update brand: ${error.message}`;
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   await logAudit({

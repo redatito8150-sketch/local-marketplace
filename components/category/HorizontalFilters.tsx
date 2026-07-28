@@ -3,17 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import type { FilterGroup, Product } from "@/types";
-import { PRODUCT_CATEGORIES } from "@/content/productTaxonomy";
 import { parsePriceRangeValue } from "@/lib/filters";
 import { useClickOutside } from "@/lib/hooks/useClickOutside";
 import PriceRangeFilter from "./PriceRangeFilter";
 
-// The exact canonical category value from the codebase (content/
-// productTaxonomy.ts), checked at compile time rather than duplicated as a
-// bare string — Product Type only gets highlighted for this specific
-// category, not just any category whose display text happens to say
-// "Clothing".
-const CLOTHING_CATEGORY = "Clothing" satisfies (typeof PRODUCT_CATEGORIES)[number];
+// Product Type only gets highlighted for this specific Main Category
+// (taxonomy_nodes Level 1 name), not just any category whose display text
+// happens to say "Clothing".
+const CLOTHING_CATEGORY = "Clothing";
 
 function FilterOptions({
   group,
@@ -101,7 +98,7 @@ export default function HorizontalFilters({
   selected: Record<string, string[]>;
   onToggle: (groupId: string, optionId: string) => void;
   onClear: () => void;
-  productTypeRelations?: { productCategory?: string; productType?: string }[];
+  productTypeRelations?: { mainCategory?: string; productType?: string }[];
   priceBounds: { min: number; max: number };
   onPriceChange: (min: number, max: number) => void;
 }) {
@@ -110,22 +107,27 @@ export default function HorizontalFilters({
   const [mobileOpen, setMobileOpen] = useState(false);
   const activeCount = Object.values(selected).reduce((sum, ids) => sum + ids.length, 0);
   const selectedCategories = useMemo(
-    () => selected.productCategory ?? [],
-    [selected.productCategory]
+    () => selected.mainCategory ?? [],
+    [selected.mainCategory]
   );
   const clothingSelected = selectedCategories.includes(CLOTHING_CATEGORY);
+
+  const relations = useMemo(
+    () => productTypeRelations ?? products.map((p) => ({ mainCategory: p.mainCategory, productType: p.productTypeName })),
+    [products, productTypeRelations]
+  );
 
   const supportedProductTypes = useMemo(() => {
     if (selectedCategories.length === 0) return [];
     return Array.from(
       new Set(
-        (productTypeRelations ?? products)
-          .filter((product) => product.productCategory && selectedCategories.includes(product.productCategory))
-          .map((product) => product.productType)
+        relations
+          .filter((relation) => relation.mainCategory && selectedCategories.includes(relation.mainCategory))
+          .map((relation) => relation.productType)
           .filter((type): type is string => Boolean(type))
       )
     );
-  }, [products, productTypeRelations, selectedCategories]);
+  }, [relations, selectedCategories]);
 
   const productTypeGroup = groups.find((group) => group.id === "productType");
   const contextualProductTypeGroup = productTypeGroup && supportedProductTypes.length > 0
@@ -133,7 +135,7 @@ export default function HorizontalFilters({
     : null;
 
   const visibleIds = [
-    "productCategory",
+    "mainCategory",
     ...(contextualProductTypeGroup ? ["productType"] : []),
     "size",
     "color",
@@ -143,7 +145,7 @@ export default function HorizontalFilters({
     .map((id) => id === "productType" ? contextualProductTypeGroup : groups.find((group) => group.id === id))
     .filter((group): group is FilterGroup => Boolean(group));
   const fullPanelIds = [
-    "productCategory",
+    "mainCategory",
     "productType",
     "size",
     "color",
@@ -163,15 +165,15 @@ export default function HorizontalFilters({
     .filter((group): group is FilterGroup => Boolean(group));
 
   const handleToggle = (groupId: string, optionId: string) => {
-    if (groupId === "productCategory") {
-      const current = selected.productCategory ?? [];
+    if (groupId === "mainCategory") {
+      const current = selected.mainCategory ?? [];
       const nextCategories = current.includes(optionId)
         ? current.filter((id) => id !== optionId)
         : [...current, optionId];
       const nextTypes = new Set(
-        (productTypeRelations ?? products)
-          .filter((product) => product.productCategory && nextCategories.includes(product.productCategory))
-          .map((product) => product.productType)
+        relations
+          .filter((relation) => relation.mainCategory && nextCategories.includes(relation.mainCategory))
+          .map((relation) => relation.productType)
           .filter((type): type is string => Boolean(type))
       );
       (selected.productType ?? []).forEach((type) => {

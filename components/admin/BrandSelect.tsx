@@ -4,15 +4,16 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
 export interface BrandOption {
-  slug: string;
+  id: string;
   name: string;
 }
 
 // Searchable combobox over the real brand list — replaces the old plain
-// free-text Brand input for admins. Accessible combobox pattern (role,
-// aria-expanded/aria-controls, arrow-key navigation, Escape, click-outside
-// close), modeled after this project's existing SearchAutocomplete/
-// SearchableSelect conventions.
+// free-text Brand input for admins. Value/onChange operate on the brand's
+// real id (the ownership FK), never its slug. Accessible combobox pattern
+// (role, aria-expanded/aria-controls, arrow-key navigation, Escape,
+// click-outside close), modeled after this project's existing
+// SearchAutocomplete/SearchableSelect conventions.
 export default function BrandSelect({
   options,
   value,
@@ -21,7 +22,7 @@ export default function BrandSelect({
 }: {
   options: BrandOption[];
   value: string;
-  onChange: (slug: string) => void;
+  onChange: (id: string) => void;
   disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -29,7 +30,7 @@ export default function BrandSelect({
   const containerRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
 
-  const selected = options.find((option) => option.slug === value);
+  const selected = options.find((option) => option.id === value);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -60,7 +61,7 @@ export default function BrandSelect({
       <label className="block">
         <span className="text-[12.5px] font-medium text-ink-soft/70">Brand</span>
         <div className="mt-1.5 w-full rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5 text-[14px] text-ink-soft/70">
-          {selected?.name ?? value ?? "—"}
+          {selected?.name ?? "—"}
         </div>
       </label>
     );
@@ -104,15 +105,15 @@ export default function BrandSelect({
               <li className="px-3 py-2 text-[13px] text-ink-soft/50">No brands match &quot;{query}&quot;</li>
             )}
             {filtered.map((option) => {
-              const isSelected = option.slug === value;
+              const isSelected = option.id === value;
               return (
-                <li key={option.slug}>
+                <li key={option.id}>
                   <button
                     type="button"
                     role="option"
                     aria-selected={isSelected}
                     onClick={() => {
-                      onChange(option.slug);
+                      onChange(option.id);
                       setQuery("");
                       setOpen(false);
                     }}

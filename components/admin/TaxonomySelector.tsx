@@ -14,19 +14,10 @@ export default function TaxonomySelector({
   nodes,
   value,
   onChange,
-  legacyCategory,
-  legacyType,
 }: {
   nodes: TaxonomyNode[];
   value: string;
   onChange: (productTypeId: string) => void;
-  // Shown as read-only context when this product's existing category
-  // predates the new taxonomy (or belongs to a Main Category not seeded
-  // into it yet) and no matching leaf could be resolved — so an admin/brand
-  // editing an older product can see what's still stored instead of the
-  // selects just looking silently empty.
-  legacyCategory?: string;
-  legacyType?: string;
 }) {
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selectedType = value ? byId.get(value) : undefined;
@@ -68,7 +59,6 @@ export default function TaxonomySelector({
     if (value) onChange("");
   };
 
-  const showLegacyNotice = !value && !mainId && Boolean(legacyCategory || legacyType);
   const mainNode = mainId ? byId.get(mainId) : undefined;
   const groupNode = groupId ? byId.get(groupId) : undefined;
   const typeNode = value ? byId.get(value) : undefined;
@@ -107,14 +97,6 @@ export default function TaxonomySelector({
       {fullPathSelected && (
         <p className="mt-2 text-[12px] font-medium text-ink-soft/60">
           {mainNode!.name} / {groupNode!.name} / {typeNode!.name}
-        </p>
-      )}
-      {showLegacyNotice && (
-        <p className="mt-2 text-[11.5px] text-ink-soft/50">
-          Currently stored as &quot;{legacyCategory}
-          {legacyType ? ` / ${legacyType}` : ""}&quot; — not yet part of the new taxonomy. Leave
-          unset to keep it as-is, or pick a Main Category above to move this product into the new
-          structure.
         </p>
       )}
     </div>

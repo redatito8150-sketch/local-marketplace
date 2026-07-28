@@ -20,14 +20,14 @@ function slugify(value: string): string {
 // own brand only.
 export async function GET() {
   const owner = await requireBrandOwner();
-  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+  if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("collections")
     .select("*")
-    .eq("brand_slug", owner.brandSlug)
+    .eq("brand_id", owner.brandId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -38,7 +38,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner();
-  if (!owner || owner.isImpersonating || !owner.brandSlug) {
+  if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("collections")
       .insert({
-        brand_slug: owner.brandSlug,
+        brand_id: owner.brandId,
         name,
         slug: attempt === 0 ? slug : `${baseSlug}-${attempt + 1}`,
         description,
@@ -100,8 +100,8 @@ export async function POST(request: NextRequest) {
     entityType: "collection",
     entityId: created.id,
     action: "create",
-    after: { name, slug, brandSlug: owner.brandSlug },
-    brandSlug: owner.brandSlug,
+    after: { name, slug, brandId: owner.brandId },
+    brandSlug: owner.brandSlug ?? undefined,
   });
 
   return NextResponse.json({ id: created.id, slug });

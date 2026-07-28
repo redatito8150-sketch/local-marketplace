@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { getFeaturedBrands } from "@/lib/data/brands";
+import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import ProductForm from "@/components/admin/ProductForm";
 
 export default async function NewProductPage() {
-  const [brandOptions, taxonomy, taxonomyNodes] = await Promise.all([
-    getFeaturedBrands(),
+  const [brands, taxonomy, taxonomyNodes] = await Promise.all([
+    getAllBrandsForAdmin(),
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
     getTaxonomyTree(),
   ]);
+  const brandOptions = brands.map((brand) => ({ id: brand.id, name: brand.name }));
 
   return (
     <div>

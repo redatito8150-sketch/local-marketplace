@@ -10,7 +10,6 @@ import {
   type ProductInput,
   type VariantInput,
 } from "@/lib/admin/productValidation";
-import { deriveCategoryFromAudience } from "@/lib/admin/productPersistence";
 import { reconcileVariants } from "@/lib/admin/variantGrid";
 import ImageUploader from "@/components/admin/ImageUploader";
 import VariantGrid from "@/components/admin/VariantGrid";
@@ -34,39 +33,30 @@ interface ProductFormProps {
   brandOptions: BrandOption[];
   // Admin-editable (Round 2 Phase 2) — falls back to the static defaults so
   // any caller that doesn't fetch site_content still works unchanged. Only
-  // Materials/Fits still come from this — Category/Product Type/Collection
-  // are driven by `taxonomyNodes`/CollectionSelect instead.
+  // Materials/Fits still come from this — Main Category/Product Group/
+  // Product Type/Collection are driven by `taxonomyNodes`/CollectionSelect
+  // instead.
   taxonomy?: ProductTaxonomyContent;
   // The flat, active Main Category -> Product Group -> Product Type tree
   // (lib/data/taxonomy.ts) backing the cascading taxonomy selects.
   taxonomyNodes: TaxonomyNode[];
-  // Brand-portal mode (Round 3 Phase 2): forces the brand field to one
-  // brand (shown read-only, never editable — a brand owner/assistant can
-  // never reassign their own product to a different brand), submits to a
+  // Brand-portal mode: forces the brand field to one brand (shown
+  // read-only, never editable — a brand owner/assistant can never
+  // reassign their own product to a different brand), submits to a
   // different API base path, and replaces Draft/Publish with a single
-  // "Submit for Review" action — brand-portal products always go through
-  // admin review, never straight to "published".
-  lockedBrand?: { slug: string; name: string };
+  // "Submit for Review" action label (the write itself still publishes
+  // immediately per the Instant-Publish model — see CLAUDE.md).
+  lockedBrand?: { id: string; name: string };
   apiBasePath?: string;
   cancelHref?: string;
 }
 
 interface FormState {
   name: string;
-  brandName: string;
-  brandSlug: string;
+  brandId: string;
+  brandName: string; // display-only (preview + locked-brand label), never submitted
   audience: Audience | "";
-  // Derived from `audience` (deriveCategoryFromAudience) whenever it
-  // changes — never set directly by the UI anymore, kept only because
-  // ProductLivePreview's shape still needs category/isUnisex to render the
-  // Women/Men/Kids preview context and /shop/women|men|kids stays driven
-  // by these underneath.
-  category: "" | "women" | "men" | "kids";
-  isUnisex: boolean;
-  productCategory: string;
-  productType: string;
   productTypeId: string;
-  collection: string;
   collectionId: string;
   sku: string;
   price: string;
@@ -102,24 +92,14 @@ function toDatetimeLocalValue(iso: string): string {
 
 function toFormState(
   product?: ProductRecord,
-  lockedBrand?: { slug: string; name: string }
+  lockedBrand?: { id: string; name: string }
 ): FormState {
   return {
     name: product?.name ?? "",
+    brandId: lockedBrand?.id ?? product?.brandId ?? "",
     brandName: lockedBrand?.name ?? product?.brandName ?? "",
-    brandSlug: lockedBrand?.slug ?? product?.brandSlug ?? "",
     audience: product?.audience ?? "",
-    // Not derived from `audience` here on purpose — an existing product
-    // with no audience yet (needs review) still has a real, current
-    // category/isUnisex the preview and /shop pages already use; that
-    // stays intact until the admin/brand owner actively picks a new
-    // Audience value (handleAudienceChange derives it from then on).
-    category: product?.category ?? "",
-    isUnisex: product?.isUnisex ?? false,
-    productCategory: product?.productCategory ?? "",
-    productType: product?.productType ?? "",
     productTypeId: product?.productTypeId ?? "",
-    collection: product?.collection ?? "",
     collectionId: product?.collectionId ?? "",
     sku: product?.sku ?? "",
     price: product ? String(product.price) : "",
@@ -208,47 +188,19 @@ export default function ProductForm({
     }));
   }, [form.colors, form.sizesText]);
 
-  // Resolves a Product Type selection from TaxonomySelector into the
-  // submitted productCategory/productType text (derived from the tree, not
-  // typed) — clearing both back to empty when the cascading selects reset
-  // partway through (Main/Group changed away from a previously-complete
-  // selection), per the "changing a parent level clears its children" rule.
   const handleTaxonomyChange = (productTypeId: string) => {
-    if (!productTypeId) {
-      setForm((f) => ({ ...f, productTypeId: "", productCategory: "", productType: "" }));
-      return;
-    }
-    const leaf = taxonomyNodes.find((node) => node.id === productTypeId);
-    const group = leaf ? taxonomyNodes.find((node) => node.id === leaf.parentId) : undefined;
-    const main = group ? taxonomyNodes.find((node) => node.id === group.parentId) : undefined;
-    setForm((f) => ({
-      ...f,
-      productTypeId,
-      productCategory: main?.name ?? "",
-      productType: leaf?.name ?? "",
-    }));
+    setForm((f) => ({ ...f, productTypeId }));
   };
 
-  // Audience is the one source of truth going forward — category/isUnisex
-  // are derived from it right here so the live preview and the eventual
-  // submit payload never disagree with what the dropdown shows. No
-  // fallback: picking an audience always sets a real one of the 4 values,
-  // never leaves it silently blank or defaults to Unisex.
   const handleAudienceChange = (audience: Audience) => {
-    const derived = deriveCategoryFromAudience(audience);
-    setForm((f) => ({
-      ...f,
-      audience,
-      category: derived.category ?? "",
-      isUnisex: derived.isUnisex,
-    }));
+    setForm((f) => ({ ...f, audience }));
   };
 
-  const handleBrandChange = (brandSlug: string) => {
-    const brand = brandOptions.find((option) => option.slug === brandSlug);
+  const handleBrandChange = (brandId: string) => {
+    const brand = brandOptions.find((option) => option.id === brandId);
     setForm((f) => ({
       ...f,
-      brandSlug,
+      brandId,
       brandName: brand?.name ?? f.brandName,
       // A different brand's collections are a different list entirely —
       // never keep a collection selected from the brand just left behind.
@@ -279,14 +231,9 @@ export default function ProductForm({
 
   const buildPayload = (targetStatus: ProductStatus): ProductInput => ({
     name: form.name.trim(),
-    brandName: (lockedBrand?.name ?? form.brandName).trim(),
-    brandSlug: lockedBrand?.slug ?? (form.brandSlug || undefined),
-    category: form.category || undefined,
-    audience: form.audience || undefined,
-    productCategory: form.productCategory || undefined,
-    productType: form.productType || undefined,
-    productTypeId: form.productTypeId || undefined,
-    collection: form.collection || undefined,
+    brandId: lockedBrand?.id ?? form.brandId,
+    audience: form.audience as Audience,
+    productTypeId: form.productTypeId,
     collectionId: form.collectionId || undefined,
     price: Number(form.price),
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
@@ -303,9 +250,7 @@ export default function ProductForm({
     shippingReturns: form.shippingReturns.trim(),
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
-    sku: form.sku.trim() || undefined,
     isNew: form.isNew,
-    isUnisex: form.isUnisex,
     trackInventory: form.trackInventory,
     featured: form.featured,
     status: targetStatus,
@@ -432,7 +377,7 @@ export default function ProductForm({
             <TextField label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
             <BrandSelect
               options={brandOptions}
-              value={form.brandSlug}
+              value={form.brandId}
               onChange={handleBrandChange}
               disabled={Boolean(lockedBrand) || mode === "edit"}
             />
@@ -450,7 +395,7 @@ export default function ProductForm({
               ]}
             />
             <CollectionSelect
-              brandSlug={form.brandSlug}
+              brandId={form.brandId}
               value={form.collectionId}
               onChange={(v) => set("collectionId", v)}
               apiBasePath={isBrandPortal ? "/api/brand-portal" : "/api/admin"}
@@ -462,8 +407,6 @@ export default function ProductForm({
               nodes={taxonomyNodes}
               value={form.productTypeId}
               onChange={handleTaxonomyChange}
-              legacyCategory={form.productCategory}
-              legacyType={form.productType}
             />
           </div>
 
@@ -761,7 +704,8 @@ export default function ProductForm({
 
       <div ref={previewRef}>
         <ProductLivePreview
-          form={form}
+          form={{ ...form, collectionName: "" }}
+          taxonomyNodes={taxonomyNodes}
           productId={currentProductId}
           hasUnsavedChanges={hasUnsavedChanges}
           justSaved={justSaved}

@@ -39,8 +39,8 @@ export default async function ShopAllPage(props: { searchParams: Promise<Record<
     const selected = parseCatalogFilterValues(params[key]).filter((value) => allowed.get(key)?.has(value));
     if (selected.length) filters[key] = selected;
   }
-  if (filters.productCategory?.length && filters.productType?.length) {
-    const supported = new Set(facets.filter((facet) => facet.productCategory && filters.productCategory?.includes(facet.productCategory)).map((facet) => facet.productType).filter((type): type is string => Boolean(type)));
+  if (filters.mainCategory?.length && filters.productType?.length) {
+    const supported = new Set(facets.filter((facet) => facet.mainCategory && filters.mainCategory?.includes(facet.mainCategory)).map((facet) => facet.productType).filter((type): type is string => Boolean(type)));
     filters.productType = filters.productType.filter((type) => supported.has(type));
     if (!filters.productType.length) delete filters.productType;
   }
@@ -54,5 +54,5 @@ export default async function ShopAllPage(props: { searchParams: Promise<Record<
   if (page > totalPages) result = await getMarketplaceCatalogPage({ search, sort, page: totalPages, pageSize: 24, filters });
 
   const stateKey = JSON.stringify({ filters, sort, search, page: result.page });
-  return <main className="min-h-screen bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ productCategory, productType }) => ({ productCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} priceBounds={priceBounds} /><Footer /></main>;
+  return <main className="min-h-screen bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ mainCategory, productType }) => ({ mainCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} priceBounds={priceBounds} /><Footer /></main>;
 }

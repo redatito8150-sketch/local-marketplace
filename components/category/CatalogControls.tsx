@@ -29,7 +29,7 @@ export default function CatalogControls({
   onViewModeChange: (mode: ViewMode) => void;
   sort: SortOption;
   onSortChange: (sort: SortOption) => void;
-  productTypeRelations?: { productCategory?: string; productType?: string }[];
+  productTypeRelations?: { mainCategory?: string; productType?: string }[];
   priceBounds: { min: number; max: number };
   onPriceChange: (min: number, max: number) => void;
 }) {

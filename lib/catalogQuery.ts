@@ -1,5 +1,5 @@
 export const CATALOG_FILTER_QUERY_KEYS = [
-  "audience", "brand", "productCategory", "productType", "collection", "material",
+  "audience", "brand", "mainCategory", "productType", "collection", "material",
   "fit", "size", "color", "price", "availability", "rating", "featured", "discounted",
 ] as const;
 

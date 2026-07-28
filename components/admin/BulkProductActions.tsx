@@ -126,7 +126,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
               </td>
               <td className="px-5 py-3 text-ink-soft/70">{product.brandName}</td>
               <td className="px-5 py-3 capitalize text-ink-soft/70">
-                {product.category ?? "—"}
+                {product.mainCategory || "—"}
               </td>
               <td className="px-5 py-3 font-medium text-ink">
                 {formatPrice(product.price, product.currency)}

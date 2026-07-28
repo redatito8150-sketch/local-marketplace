@@ -23,15 +23,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  const brandSlug = request.nextUrl.searchParams.get("brand");
-  if (!brandSlug) {
-    return NextResponse.json({ error: "A brand query param is required" }, { status: 400 });
+  const brandId = request.nextUrl.searchParams.get("brandId");
+  if (!brandId) {
+    return NextResponse.json({ error: "A brandId query param is required" }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
     .from("collections")
     .select("*")
-    .eq("brand_slug", brandSlug)
+    .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -47,16 +47,16 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const brandSlug = typeof body.brandSlug === "string" ? body.brandSlug.trim() : "";
+  const brandId = typeof body.brandId === "string" ? body.brandId.trim() : "";
   const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!brandSlug) {
+  if (!brandId) {
     return NextResponse.json({ error: "A brand is required" }, { status: 400 });
   }
   if (!name) {
     return NextResponse.json({ error: "Collection name is required" }, { status: 400 });
   }
 
-  const { data: brand } = await supabaseAdmin.from("brands").select("slug").eq("slug", brandSlug).maybeSingle();
+  const { data: brand } = await supabaseAdmin.from("brands").select("id").eq("id", brandId).maybeSingle();
   if (!brand) {
     return NextResponse.json({ error: "Brand not found" }, { status: 404 });
   }
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from("collections")
       .insert({
-        brand_slug: brandSlug,
+        brand_id: brandId,
         name,
         slug: attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`,
         description,
@@ -102,8 +102,7 @@ export async function POST(request: NextRequest) {
     entityType: "collection",
     entityId: created.id,
     action: "create",
-    after: { name, slug: created.slug, brandSlug },
-    brandSlug,
+    after: { name, slug: created.slug, brandId },
   });
 
   return NextResponse.json({ id: created.id, slug: created.slug });

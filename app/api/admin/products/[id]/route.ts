@@ -11,7 +11,6 @@ import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnersh
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
-  deriveCategoryFromAudience,
 } from "@/lib/admin/productPersistence";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -34,8 +33,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const body: ProductInput = await request.json();
   // Brand is immutable after creation (SKU ownership, collections, and
   // audit history all key off it) — whatever the client sends is ignored.
-  body.brandSlug = existing.brand_slug ?? undefined;
-  body.brandName = existing.brand_name;
+  body.brandId = existing.brand_id;
 
   const validationError = validateProductInput(body);
   if (validationError) {
@@ -46,28 +44,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!taxonomy.valid) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
-  body.productCategory = taxonomy.productCategory ?? body.productCategory;
-  body.productType = taxonomy.productType ?? body.productType;
-  body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
+  body.productTypeId = taxonomy.productTypeId;
 
-  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandSlug);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandId);
   if (!collectionCheck.valid) {
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  // Audience present -> derive category/is_unisex from it. Absent -> keep
-  // whatever the product already had (an edit that doesn't touch Audience
-  // must never blank out the existing shop-category placement).
-  if (body.audience) {
-    const derived = deriveCategoryFromAudience(body.audience);
-    body.category = derived.category ?? body.category;
-    body.isUnisex = derived.isUnisex;
-  } else {
-    body.category = existing.category ?? undefined;
-    body.isUnisex = Boolean(existing.is_unisex);
-  }
-
-  const duplicateSku = await findDuplicateSku(undefined, body.variants, params.id);
+  const duplicateSku = await findDuplicateSku(body.variants, params.id);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -78,8 +62,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
 
   const productPayload = buildProductPersistencePayload(body, legacy);
-  // The SKU never changes on edit, regardless of what was submitted.
-  productPayload.sku = existing.sku;
+  // Brand and SKU are immutable after creation — the RPC's SET list
+  // already excludes them structurally, but they're stripped here too so
+  // the payload never even claims to change them.
+  delete productPayload.brand_id;
   const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
     p_product_id: params.id,
     p_product: productPayload,
@@ -102,14 +88,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   };
   if (previousStatus !== body.status) {
     if (body.status === "published") {
-      await notify("product_published", `Product published: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_published", `Product published: ${body.name}`, existing.brand_name, notifyMeta);
     } else if (body.status === "archived") {
-      await notify("product_archived", `Product archived: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_archived", `Product archived: ${body.name}`, existing.brand_name, notifyMeta);
     } else {
-      await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
+      await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
     }
   } else {
-    await notify("product_updated", `Product updated: ${body.name}`, body.brandName, notifyMeta);
+    await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
   }
 
   await logAudit({
