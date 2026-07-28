@@ -71,6 +71,137 @@ update brand_staff bs set brand_id = b.id
 alter table brand_staff alter column brand_id set not null;
 alter table brand_staff drop constraint if exists brand_staff_brand_slug_user_id_key;
 alter table brand_staff drop constraint if exists brand_staff_brand_slug_fkey;
+
+-- ============================================================================
+-- Three live RLS policies (products, product_variants, review_replies —
+-- all from supabase/schema.sql / 20260726000003_reviews_system.sql) join
+-- against brand_staff.brand_slug, which is about to be dropped below.
+-- Discovered only by actually running this migration against the live
+-- database (2BP01: cannot drop column brand_slug ... other objects
+-- depend on it) — Postgres refuses a bare DROP COLUMN here, and CASCADE
+-- would silently delete these policies rather than fix them, leaving
+-- brand owners/assistants unable to read their own products/variants/
+-- replies. Rewritten here to join through brand_staff.brand_id instead,
+-- before the column drop, so nothing is ever actually broken.
+-- ============================================================================
+drop policy if exists "Brand members can read their products" on public.products;
+create policy "Brand members can read their products"
+  on public.products for select
+  to authenticated
+  using (
+    brand_id in (
+      select b.id from public.brands b where b.owner_user_id = auth.uid()
+    )
+    or brand_id in (
+      select bs.brand_id from public.brand_staff bs where bs.user_id = auth.uid()
+    )
+  );
+
+drop policy if exists "Brand members can read their product variants" on public.product_variants;
+create policy "Brand members can read their product variants"
+  on public.product_variants for select
+  to authenticated
+  using (
+    exists (
+      select 1
+      from public.products p
+      where p.id = product_variants.product_id
+        and (
+          p.brand_id in (
+            select b.id from public.brands b where b.owner_user_id = auth.uid()
+          )
+          or p.brand_id in (
+            select bs.brand_id from public.brand_staff bs where bs.user_id = auth.uid()
+          )
+        )
+    )
+  );
+
+drop policy if exists "Brand members manage own replies" on public.review_replies;
+create policy "Brand members manage own replies" on public.review_replies for all to authenticated
+using (
+  exists (select 1 from public.brands b where b.slug=brand_slug and b.owner_user_id=(select auth.uid()))
+  or exists (
+    select 1 from public.brand_staff s
+    join public.brands b on b.id = s.brand_id
+    where b.slug = review_replies.brand_slug and s.user_id = (select auth.uid())
+  )
+)
+with check (
+  replied_by=(select auth.uid())
+  and exists (
+    select 1 from public.reviews r join public.products p on p.id=r.product_id
+    where r.id=review_id and p.brand_slug=brand_slug
+  )
+  and (
+    exists (select 1 from public.brands b where b.slug=brand_slug and b.owner_user_id=(select auth.uid()))
+    or exists (
+      select 1 from public.brand_staff s
+      join public.brands b on b.id = s.brand_id
+      where b.slug = review_replies.brand_slug and s.user_id = (select auth.uid())
+    )
+  )
+);
+
 alter table brand_staff drop column if exists brand_slug;
 alter table brand_staff drop constraint if exists brand_staff_brand_id_user_id_key;
 alter table brand_staff add constraint brand_staff_brand_id_user_id_key unique (brand_id, user_id);
+
+-- ============================================================================
+-- set_user_access() (supabase/schema.sql) inserts into brand_staff by
+-- brand_slug — same discovery as the policies above. Its own parameter
+-- stays p_brand_slug (the admin Users page picks a brand by slug), but it
+-- now resolves that to brand_id before writing, since brand_staff no
+-- longer has a brand_slug column at all.
+-- ============================================================================
+create or replace function public.set_user_access(
+  p_user_id uuid,
+  p_access text,
+  p_brand_slug text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_is_admin boolean;
+  v_brand_id uuid;
+begin
+  if p_access not in ('customer', 'brand_owner', 'brand_assistant', 'staff', 'manager', 'admin') then
+    raise exception 'Invalid access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant') and nullif(p_brand_slug, '') is null then
+    raise exception 'A brand is required for this access level';
+  end if;
+  if p_access in ('brand_owner', 'brand_assistant') then
+    select id into v_brand_id from public.brands where slug = p_brand_slug;
+    if v_brand_id is null then
+      raise exception 'Brand not found';
+    end if;
+  end if;
+
+  update public.brands set owner_user_id = null
+  where owner_user_id = p_user_id
+    and (p_access <> 'brand_owner' or slug <> p_brand_slug);
+  if p_access = 'brand_owner' then
+    update public.brands set owner_user_id = p_user_id where slug = p_brand_slug;
+  end if;
+
+  delete from public.brand_staff where user_id = p_user_id;
+  if p_access = 'brand_assistant' then
+    insert into public.brand_staff (brand_id, user_id)
+    values (v_brand_id, p_user_id)
+    on conflict (brand_id, user_id) do nothing;
+  end if;
+
+  v_is_admin := p_access in ('staff', 'manager', 'admin');
+  update public.profiles set is_admin = v_is_admin, role = p_access where id = p_user_id;
+  if not found then raise exception 'User profile not found'; end if;
+end;
+$$;
+
+revoke all on function public.set_user_access(uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.set_user_access(uuid, text, text)
+  to service_role;
