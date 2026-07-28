@@ -20,7 +20,10 @@ export interface ProductRow {
   category: CategorySlug | null;
   product_category: string | null;
   product_type: string | null;
+  product_type_id: string | null;
+  audience: string | null;
   collection: string | null;
+  collection_id: string | null;
   material: string | null;
   fit: string | null;
   price: number;
@@ -85,7 +88,10 @@ export function toProductCard(row: ProductRow): Product {
     inStock: row.in_stock,
     productCategory: row.product_category ?? undefined,
     productType: row.product_type ?? undefined,
+    productTypeId: row.product_type_id ?? undefined,
+    audience: (row.audience as Product["audience"]) ?? undefined,
     collection: row.collection ?? undefined,
+    collectionId: row.collection_id ?? undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
@@ -131,6 +137,7 @@ function toProductDetail(row: ProductRow): ProductDetail {
     productCategory: row.product_category ?? undefined,
     productType: row.product_type ?? undefined,
     collection: row.collection ?? undefined,
+    collectionId: row.collection_id ?? undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     modelHeight: row.model_height ?? undefined,

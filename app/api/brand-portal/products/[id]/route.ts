@@ -8,9 +8,11 @@ import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
+  deriveCategoryFromAudience,
 } from "@/lib/admin/productPersistence";
 import { checkRateLimit } from "@/lib/rateLimit";
 
@@ -106,7 +108,21 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   productBody.productType = taxonomy.productType ?? productBody.productType;
   productBody.productTypeId = taxonomy.productTypeId ?? productBody.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(productBody.sku, productBody.variants, params.id);
+  const collectionCheck = await resolveCollectionOwnership(productBody.collectionId, owner.brandSlug);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  if (productBody.audience) {
+    const derived = deriveCategoryFromAudience(productBody.audience);
+    productBody.category = derived.category ?? productBody.category;
+    productBody.isUnisex = derived.isUnisex;
+  } else {
+    productBody.category = existing.category ?? undefined;
+    productBody.isUnisex = Boolean(existing.is_unisex);
+  }
+
+  const duplicateSku = await findDuplicateSku(undefined, productBody.variants, params.id);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -134,7 +150,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   });
   // Featured merchandising remains an admin-only decision.
   delete productPayload.featured;
-  productPayload.sku ||= params.id;
+  // The SKU never changes on edit, regardless of what was submitted.
+  productPayload.sku = existing.sku;
   const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
     p_product_id: params.id,
     p_product: productPayload,

@@ -7,9 +7,11 @@ import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import {
   buildProductPersistencePayload,
   buildVariantPersistencePayload,
+  deriveCategoryFromAudience,
 } from "@/lib/admin/productPersistence";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -19,7 +21,22 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
+  const { data: existing } = await supabaseAdmin
+    .from("products")
+    .select("*")
+    .eq("id", params.id)
+    .maybeSingle();
+  if (!existing) {
+    return NextResponse.json({ error: "Product not found" }, { status: 404 });
+  }
+  const previousStatus = existing.status;
+
   const body: ProductInput = await request.json();
+  // Brand is immutable after creation (SKU ownership, collections, and
+  // audit history all key off it) — whatever the client sends is ignored.
+  body.brandSlug = existing.brand_slug ?? undefined;
+  body.brandName = existing.brand_name;
+
   const validationError = validateProductInput(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
@@ -33,7 +50,24 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   body.productType = taxonomy.productType ?? body.productType;
   body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(body.sku, body.variants, params.id);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandSlug);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  // Audience present -> derive category/is_unisex from it. Absent -> keep
+  // whatever the product already had (an edit that doesn't touch Audience
+  // must never blank out the existing shop-category placement).
+  if (body.audience) {
+    const derived = deriveCategoryFromAudience(body.audience);
+    body.category = derived.category ?? body.category;
+    body.isUnisex = derived.isUnisex;
+  } else {
+    body.category = existing.category ?? undefined;
+    body.isUnisex = Boolean(existing.is_unisex);
+  }
+
+  const duplicateSku = await findDuplicateSku(undefined, body.variants, params.id);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
@@ -43,15 +77,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
 
-  const { data: existing } = await supabaseAdmin
-    .from("products")
-    .select("*")
-    .eq("id", params.id)
-    .maybeSingle();
-  const previousStatus = existing?.status;
-
   const productPayload = buildProductPersistencePayload(body, legacy);
-  productPayload.sku ||= params.id;
+  // The SKU never changes on edit, regardless of what was submitted.
+  productPayload.sku = existing.sku;
   const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
     p_product_id: params.id,
     p_product: productPayload,

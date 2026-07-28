@@ -21,6 +21,8 @@ import {
   ProductStatus,
   ProfileRecord,
   ProfileRole,
+  TaxonomyLevel,
+  TaxonomyNode,
 } from "@/types";
 
 interface ProductRow {
@@ -32,7 +34,9 @@ interface ProductRow {
   product_category: string | null;
   product_type: string | null;
   product_type_id: string | null;
+  audience: string | null;
   collection: string | null;
+  collection_id: string | null;
   material: string | null;
   fit: string | null;
   price: number;
@@ -76,7 +80,9 @@ function toProductRecord(row: ProductRow): ProductRecord {
     productCategory: row.product_category ?? undefined,
     productType: row.product_type ?? undefined,
     productTypeId: row.product_type_id ?? undefined,
+    audience: (row.audience as ProductRecord["audience"]) ?? undefined,
     collection: row.collection ?? undefined,
+    collectionId: row.collection_id ?? undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
     price: Number(row.price),
@@ -200,6 +206,7 @@ interface BrandRow {
   similar_brand_slugs: string[];
   shop_the_look: BrandShopTheLookTile[];
   owner_user_id: string | null;
+  sku_prefix: string | null;
 }
 
 function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
@@ -208,6 +215,7 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string): BrandRecord {
     name: row.name,
     tagline: row.tagline,
     category: row.category,
+    skuPrefix: row.sku_prefix ?? undefined,
     foundedYear: row.founded_year ?? undefined,
     city: row.city,
     heroImage: row.hero_image,
@@ -757,4 +765,28 @@ export async function getSiteContentRowForAdmin(
   }
   if (!data) return null;
   return { value: data.value, updatedAt: data.updated_at };
+}
+
+// Admin view of the full taxonomy tree (/admin/products/categories) —
+// unlike lib/data/taxonomy.ts's getTaxonomyTree(), this includes inactive
+// nodes too, since "display... Active status" is the point of this view.
+export async function getFullTaxonomyTreeForAdmin(): Promise<TaxonomyNode[]> {
+  const { data, error } = await supabaseAdmin
+    .from("taxonomy_nodes")
+    .select("id, parent_id, level, name, slug, sort_order, is_active")
+    .order("level", { ascending: true })
+    .order("sort_order", { ascending: true });
+
+  if (error) {
+    throw new Error(`getFullTaxonomyTreeForAdmin failed: ${error.message}`);
+  }
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    parentId: row.parent_id as string | null,
+    level: row.level as TaxonomyLevel,
+    name: row.name as string,
+    slug: row.slug as string,
+    sortOrder: row.sort_order as number,
+    isActive: row.is_active as boolean,
+  }));
 }

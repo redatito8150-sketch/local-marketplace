@@ -69,6 +69,10 @@ export default function TaxonomySelector({
   };
 
   const showLegacyNotice = !value && !mainId && Boolean(legacyCategory || legacyType);
+  const mainNode = mainId ? byId.get(mainId) : undefined;
+  const groupNode = groupId ? byId.get(groupId) : undefined;
+  const typeNode = value ? byId.get(value) : undefined;
+  const fullPathSelected = Boolean(mainNode && groupNode && typeNode);
 
   return (
     <div>
@@ -86,7 +90,7 @@ export default function TaxonomySelector({
           required
           value={groupId}
           onChange={handleGroupChange}
-          placeholder="Select product group"
+          placeholder={mainId ? "Select product group" : "Select a main category first"}
           options={groupOptions}
           disabled={!mainId}
         />
@@ -95,11 +99,16 @@ export default function TaxonomySelector({
           required
           value={value}
           onChange={onChange}
-          placeholder="Select product type"
+          placeholder={groupId ? "Select product type" : "Select a product group first"}
           options={typeOptions}
           disabled={!groupId}
         />
       </div>
+      {fullPathSelected && (
+        <p className="mt-2 text-[12px] font-medium text-ink-soft/60">
+          {mainNode!.name} / {groupNode!.name} / {typeNode!.name}
+        </p>
+      )}
       {showLegacyNotice && (
         <p className="mt-2 text-[11.5px] text-ink-soft/50">
           Currently stored as &quot;{legacyCategory}

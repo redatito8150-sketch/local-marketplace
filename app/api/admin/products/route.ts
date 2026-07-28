@@ -5,6 +5,8 @@ import { validateProductInput, type ProductInput } from "@/lib/admin/productVali
 import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
+import { deriveCategoryFromAudience } from "@/lib/admin/productPersistence";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 
@@ -45,12 +47,55 @@ export async function POST(request: NextRequest) {
   body.productType = taxonomy.productType ?? body.productType;
   body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(body.sku, body.variants);
+  if (body.brandSlug) {
+    const { data: brandRow } = await supabaseAdmin
+      .from("brands")
+      .select("slug")
+      .eq("slug", body.brandSlug)
+      .maybeSingle();
+    if (!brandRow) {
+      return NextResponse.json({ error: "Selected brand was not found" }, { status: 400 });
+    }
+  }
+
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandSlug);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  const { category, isUnisex } = deriveCategoryFromAudience(body.audience);
+  body.category = category ?? body.category;
+  body.isUnisex = isUnisex;
+
+  const duplicateSku = await findDuplicateSku(body.brandSlug ? undefined : body.sku, body.variants);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
       { status: 400 }
     );
+  }
+
+  // A brand-scoped product's SKU is always server-generated — the client's
+  // `sku` field is completely ignored the moment a real brand is selected.
+  // Only a legacy brand-less product (category text products predating
+  // this taxonomy round) can still fall back to a typed value or the
+  // generated product id.
+  let generatedSku: string | null = null;
+  if (body.brandSlug) {
+    const { data: skuValue, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
+      p_brand_slug: body.brandSlug,
+    });
+    if (skuError || !skuValue) {
+      return NextResponse.json(
+        {
+          error: skuError?.message?.includes("sku_prefix")
+            ? "This brand has no SKU prefix configured yet — set one in Brand settings first"
+            : "Failed to generate a product SKU",
+        },
+        { status: 400 }
+      );
+    }
+    generatedSku = skuValue as string;
   }
 
   const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
@@ -67,10 +112,12 @@ export async function POST(request: NextRequest) {
       brand_name: body.brandName,
       brand_slug: body.brandSlug || null,
       category: body.category || null,
+      audience: body.audience || null,
       product_category: body.productCategory || null,
       product_type: body.productType || null,
       product_type_id: body.productTypeId || null,
       collection: body.collection || null,
+      collection_id: body.collectionId || null,
       material: body.material || null,
       fit: body.fit || null,
       price: body.price,
@@ -86,7 +133,7 @@ export async function POST(request: NextRequest) {
       shipping_returns: body.shippingReturns,
       model_height: body.modelHeight || null,
       model_wearing: body.modelWearing || null,
-      sku: body.sku?.trim() || id,
+      sku: generatedSku ?? body.sku?.trim() ?? id,
       in_stock: legacy.inStock,
       is_new: body.isNew,
       is_unisex: body.isUnisex,
@@ -157,5 +204,5 @@ export async function POST(request: NextRequest) {
     after: body,
   });
 
-  return NextResponse.json({ id });
+  return NextResponse.json({ id, sku: generatedSku ?? body.sku?.trim() ?? id });
 }

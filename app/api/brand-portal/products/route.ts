@@ -8,6 +8,8 @@ import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductCreate } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
+import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
+import { deriveCategoryFromAudience } from "@/lib/admin/productPersistence";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 function slugify(value: string): string {
@@ -61,10 +63,36 @@ export async function POST(request: NextRequest) {
   body.productType = taxonomy.productType ?? body.productType;
   body.productTypeId = taxonomy.productTypeId ?? body.productTypeId;
 
-  const duplicateSku = await findDuplicateSku(body.sku, body.variants);
+  const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandSlug);
+  if (!collectionCheck.valid) {
+    return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
+  }
+
+  const { category, isUnisex } = deriveCategoryFromAudience(body.audience);
+  body.category = category ?? body.category;
+  body.isUnisex = isUnisex;
+
+  const duplicateSku = await findDuplicateSku(undefined, body.variants);
   if (duplicateSku) {
     return NextResponse.json(
       { error: `SKU "${duplicateSku}" is already used by another product` },
+      { status: 400 }
+    );
+  }
+
+  // Brand-portal products always belong to a real brand (enforced above),
+  // so the SKU is always server-generated — the client's `sku` field is
+  // never used.
+  const { data: generatedSku, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
+    p_brand_slug: body.brandSlug,
+  });
+  if (skuError || !generatedSku) {
+    return NextResponse.json(
+      {
+        error: skuError?.message?.includes("sku_prefix")
+          ? "Your brand doesn't have a SKU prefix configured yet — ask an admin to set one before creating products"
+          : "Failed to generate a product SKU",
+      },
       { status: 400 }
     );
   }
@@ -83,10 +111,12 @@ export async function POST(request: NextRequest) {
       brand_name: body.brandName,
       brand_slug: body.brandSlug,
       category: body.category || null,
+      audience: body.audience || null,
       product_category: body.productCategory || null,
       product_type: body.productType || null,
       product_type_id: body.productTypeId || null,
       collection: body.collection || null,
+      collection_id: body.collectionId || null,
       material: body.material || null,
       fit: body.fit || null,
       price: body.price,
@@ -102,7 +132,7 @@ export async function POST(request: NextRequest) {
       shipping_returns: body.shippingReturns,
       model_height: body.modelHeight || null,
       model_wearing: body.modelWearing || null,
-      sku: body.sku?.trim() || id,
+      sku: generatedSku,
       in_stock: legacy.inStock,
       is_new: body.isNew,
       is_unisex: body.isUnisex,
@@ -175,5 +205,5 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  return NextResponse.json({ id });
+  return NextResponse.json({ id, sku: generatedSku });
 }

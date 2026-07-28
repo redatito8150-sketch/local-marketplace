@@ -36,6 +36,7 @@ export interface FormState {
   name: string;
   tagline: string;
   category: string;
+  skuPrefix: string;
   foundedYear: string;
   city: string;
   heroImage: string;
@@ -60,6 +61,7 @@ function toFormState(brand?: BrandRecord): FormState {
     name: brand?.name ?? "",
     tagline: brand?.tagline ?? "",
     category: brand?.category ?? "",
+    skuPrefix: brand?.skuPrefix ?? "",
     foundedYear: brand?.foundedYear ? String(brand.foundedYear) : "",
     city: brand?.city ?? "Cairo",
     heroImage: brand?.heroImage ?? "",
@@ -169,6 +171,7 @@ export default function BrandForm({
       name: form.name.trim(),
       tagline: form.tagline.trim(),
       category: form.category.trim(),
+      ...(isBrandPortal ? {} : { skuPrefix: form.skuPrefix.trim().toUpperCase() || undefined }),
       foundedYear: form.foundedYear ? Number(form.foundedYear) : undefined,
       city: form.city.trim(),
       heroImage: form.heroImage.trim(),
@@ -249,6 +252,15 @@ export default function BrandForm({
         />
         <TextField label="City" value={form.city} onChange={(v) => set("city", v)} required />
       </div>
+
+      {!isBrandPortal && (
+        <TextField
+          label="SKU Prefix"
+          value={form.skuPrefix}
+          onChange={(v) => set("skuPrefix", v.toUpperCase())}
+          hint="2–6 letters/numbers, e.g. KMT — required before this brand can create products. Not shown to or editable by the brand owner."
+        />
+      )}
 
       <TextField
         label="Hero image URL"

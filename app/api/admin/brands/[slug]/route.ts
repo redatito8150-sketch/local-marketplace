@@ -32,6 +32,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       name: body.name,
       tagline: body.tagline,
       category: body.category,
+      sku_prefix: body.skuPrefix?.trim().toUpperCase() || null,
       founded_year: body.foundedYear ?? null,
       city: body.city,
       hero_image: body.heroImage,

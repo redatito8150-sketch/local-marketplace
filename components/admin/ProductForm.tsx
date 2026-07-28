@@ -3,29 +3,39 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
-import type { ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
+import type { Audience, ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
 import { parseCsv, parseLines } from "@/lib/admin/parseTextInputs";
 import {
   validateProductInput,
   type ProductInput,
   type VariantInput,
 } from "@/lib/admin/productValidation";
+import { deriveCategoryFromAudience } from "@/lib/admin/productPersistence";
 import { reconcileVariants } from "@/lib/admin/variantGrid";
 import ImageUploader from "@/components/admin/ImageUploader";
 import VariantGrid from "@/components/admin/VariantGrid";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
 import TaxonomySelector from "@/components/admin/TaxonomySelector";
+import BrandSelect, { type BrandOption } from "@/components/admin/BrandSelect";
+import CollectionSelect from "@/components/admin/CollectionSelect";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
+
+const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
+  { value: "men", label: "Men" },
+  { value: "women", label: "Women" },
+  { value: "unisex", label: "Unisex" },
+  { value: "kids_baby", label: "Kids & Baby" },
+];
 
 interface ProductFormProps {
   mode: "create" | "edit";
   productId?: string;
   initial?: ProductRecord;
-  brandOptions: { slug: string; name: string }[];
+  brandOptions: BrandOption[];
   // Admin-editable (Round 2 Phase 2) — falls back to the static defaults so
-  // any caller that doesn't fetch site_content still works unchanged.
-  // Only Collections/Materials/Fits still come from this — Category/Product
-  // Type are driven by `taxonomyNodes` below instead.
+  // any caller that doesn't fetch site_content still works unchanged. Only
+  // Materials/Fits still come from this — Category/Product Type/Collection
+  // are driven by `taxonomyNodes`/CollectionSelect instead.
   taxonomy?: ProductTaxonomyContent;
   // The flat, active Main Category -> Product Group -> Product Type tree
   // (lib/data/taxonomy.ts) backing the cascading taxonomy selects.
@@ -45,11 +55,19 @@ interface FormState {
   name: string;
   brandName: string;
   brandSlug: string;
-  category: "" | "women" | "men" | "kids"; // labeled "Gender" in this form
+  audience: Audience | "";
+  // Derived from `audience` (deriveCategoryFromAudience) whenever it
+  // changes — never set directly by the UI anymore, kept only because
+  // ProductLivePreview's shape still needs category/isUnisex to render the
+  // Women/Men/Kids preview context and /shop/women|men|kids stays driven
+  // by these underneath.
+  category: "" | "women" | "men" | "kids";
+  isUnisex: boolean;
   productCategory: string;
   productType: string;
   productTypeId: string;
   collection: string;
+  collectionId: string;
   sku: string;
   price: string;
   compareAtPrice: string;
@@ -71,7 +89,6 @@ interface FormState {
   featured: boolean;
   publishDate: string;
   isNew: boolean;
-  isUnisex: boolean;
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -91,11 +108,19 @@ function toFormState(
     name: product?.name ?? "",
     brandName: lockedBrand?.name ?? product?.brandName ?? "",
     brandSlug: lockedBrand?.slug ?? product?.brandSlug ?? "",
+    audience: product?.audience ?? "",
+    // Not derived from `audience` here on purpose — an existing product
+    // with no audience yet (needs review) still has a real, current
+    // category/isUnisex the preview and /shop pages already use; that
+    // stays intact until the admin/brand owner actively picks a new
+    // Audience value (handleAudienceChange derives it from then on).
     category: product?.category ?? "",
+    isUnisex: product?.isUnisex ?? false,
     productCategory: product?.productCategory ?? "",
     productType: product?.productType ?? "",
     productTypeId: product?.productTypeId ?? "",
     collection: product?.collection ?? "",
+    collectionId: product?.collectionId ?? "",
     sku: product?.sku ?? "",
     price: product ? String(product.price) : "",
     compareAtPrice: product?.compareAtPrice != null ? String(product.compareAtPrice) : "",
@@ -126,7 +151,6 @@ function toFormState(
     featured: product?.featured ?? false,
     publishDate: product?.publishDate ? toDatetimeLocalValue(product.publishDate) : "",
     isNew: product?.isNew ?? false,
-    isUnisex: product?.isUnisex ?? false,
   };
 }
 
@@ -205,6 +229,33 @@ export default function ProductForm({
     }));
   };
 
+  // Audience is the one source of truth going forward — category/isUnisex
+  // are derived from it right here so the live preview and the eventual
+  // submit payload never disagree with what the dropdown shows. No
+  // fallback: picking an audience always sets a real one of the 4 values,
+  // never leaves it silently blank or defaults to Unisex.
+  const handleAudienceChange = (audience: Audience) => {
+    const derived = deriveCategoryFromAudience(audience);
+    setForm((f) => ({
+      ...f,
+      audience,
+      category: derived.category ?? "",
+      isUnisex: derived.isUnisex,
+    }));
+  };
+
+  const handleBrandChange = (brandSlug: string) => {
+    const brand = brandOptions.find((option) => option.slug === brandSlug);
+    setForm((f) => ({
+      ...f,
+      brandSlug,
+      brandName: brand?.name ?? f.brandName,
+      // A different brand's collections are a different list entirely —
+      // never keep a collection selected from the brand just left behind.
+      collectionId: "",
+    }));
+  };
+
   const updateColor = (index: number, patch: Partial<ProductColorOption>) => {
     setForm((f) => ({
       ...f,
@@ -231,10 +282,12 @@ export default function ProductForm({
     brandName: (lockedBrand?.name ?? form.brandName).trim(),
     brandSlug: lockedBrand?.slug ?? (form.brandSlug || undefined),
     category: form.category || undefined,
+    audience: form.audience || undefined,
     productCategory: form.productCategory || undefined,
     productType: form.productType || undefined,
     productTypeId: form.productTypeId || undefined,
     collection: form.collection || undefined,
+    collectionId: form.collectionId || undefined,
     price: Number(form.price),
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
     currency: "EGP",
@@ -252,7 +305,7 @@ export default function ProductForm({
     modelWearing: form.modelWearing || undefined,
     sku: form.sku.trim() || undefined,
     isNew: form.isNew,
-    isUnisex: form.category !== "kids" && form.isUnisex,
+    isUnisex: form.isUnisex,
     trackInventory: form.trackInventory,
     featured: form.featured,
     status: targetStatus,
@@ -290,8 +343,12 @@ export default function ProductForm({
       // product it just made instead of re-posting a duplicate next save.
       setCurrentProductId(data.id);
       if (currentMode === "create") setCurrentMode("edit");
-      setForm((f) => ({ ...f, status: targetStatus }));
-      setSavedSnapshot({ ...form, status: targetStatus });
+      // The server-generated SKU only exists after the first successful
+      // save — reflect it in the now-read-only field immediately rather
+      // than waiting on a full page reload.
+      const nextSku = typeof data.sku === "string" && data.sku ? data.sku : form.sku;
+      setForm((f) => ({ ...f, status: targetStatus, sku: nextSku }));
+      setSavedSnapshot({ ...form, status: targetStatus, sku: nextSku });
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
@@ -367,35 +424,36 @@ export default function ProductForm({
           </p>
         )}
 
-        {/* 01 — Basic Information */}
+        {/* 01 — Basic Information — field order: Product Name, Brand,
+            Audience, Main Category / Product Group / Product Type,
+            Collection, Product SKU. */}
         <FormSection number="01" title="Basic Information">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
-            {lockedBrand ? (
-              <div>
-                <span className="text-[12.5px] font-medium text-ink-soft/70">Brand</span>
-                <div className="mt-1.5 w-full rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5 text-[14px] text-ink-soft/70">
-                  {lockedBrand.name}
-                </div>
-              </div>
-            ) : (
-              <TextField
-                label="Brand"
-                required
-                value={form.brandName}
-                onChange={(v) => set("brandName", v)}
-              />
-            )}
+            <BrandSelect
+              options={brandOptions}
+              value={form.brandSlug}
+              onChange={handleBrandChange}
+              disabled={Boolean(lockedBrand) || mode === "edit"}
+            />
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelectField
-              label="Gender"
-              value={form.category}
-              onChange={(v) => set("category", v as FormState["category"])}
+              label="Audience"
+              required
+              value={form.audience}
+              onChange={(v) => handleAudienceChange(v as Audience)}
               options={[
-                { value: "", label: "None (brand-only product)" },
-                { value: "women", label: "Women" },
-                { value: "men", label: "Men" },
-                { value: "kids", label: "Kids" },
+                { value: "", label: "Select audience" },
+                ...AUDIENCE_OPTIONS,
               ]}
+            />
+            <CollectionSelect
+              brandSlug={form.brandSlug}
+              value={form.collectionId}
+              onChange={(v) => set("collectionId", v)}
+              apiBasePath={isBrandPortal ? "/api/brand-portal" : "/api/admin"}
             />
           </div>
 
@@ -409,35 +467,18 @@ export default function ProductForm({
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <SelectField
-              label="Collection"
-              value={form.collection}
-              onChange={(v) => set("collection", v)}
-              options={[
-                { value: "", label: "None" },
-                ...taxonomy.collections.map((c) => ({ value: c, label: c })),
-              ]}
-            />
-          </div>
-
-          {(form.category === "women" || form.category === "men") && (
-            <label className="mt-4 flex items-center gap-2 text-[13.5px] text-ink">
-              <input
-                type="checkbox"
-                checked={form.isUnisex}
-                onChange={(e) => set("isUnisex", e.target.checked)}
-              />
-              Unisex (also show in Men &amp; Women)
-            </label>
-          )}
-
           <div className="mt-4">
-            <TextField
-              label="SKU (optional, auto-generated if left blank)"
-              value={form.sku}
-              onChange={(v) => set("sku", v)}
-            />
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Product SKU</span>
+            {form.sku ? (
+              <div className="mt-1.5 flex items-center justify-between gap-2 rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5">
+                <code className="select-all text-[14px] text-ink">{form.sku}</code>
+                <span className="text-[11px] font-medium text-ink-soft/45">Read-only</span>
+              </div>
+            ) : (
+              <div className="mt-1.5 rounded-md border border-dashed border-stone-150 px-3.5 py-2.5 text-[13px] text-ink-soft/50">
+                Generated automatically after saving
+              </div>
+            )}
           </div>
         </FormSection>
 

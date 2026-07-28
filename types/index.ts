@@ -167,6 +167,14 @@ export interface ProductVariant {
   updatedAt: string;
 }
 
+// The Basic Information "Audience" field — replaces the old implicit
+// Gender (category + a separate is_unisex boolean). Stable, stored values;
+// never derived from a UI label. `products.category`/`is_unisex` stay in
+// place underneath (untouched, still driving /shop/women|men|kids routing)
+// — `audience` is resolved to that pair server-side on save so the rest of
+// the app needs no changes. See supabase/migrations/20260729000002_audience_field.sql.
+export type Audience = "men" | "women" | "unisex" | "kids_baby";
+
 // ── New product-level taxonomy/merchandising fields ─────────────────────────
 // All optional/nullable in the DB, so every mapping function that doesn't
 // set them yet (nothing does until Phase 2/3) keeps compiling unchanged.
@@ -180,7 +188,16 @@ export interface ProductTaxonomyFields {
   // backfill note); the product form falls back to showing its existing
   // productCategory/productType as-is when this is unset.
   productTypeId?: string;
+  // Undefined means "needs audience review" (legacy data or never set) —
+  // the product keeps working/displaying exactly as before, but the form
+  // requires a real value before the next save.
+  audience?: Audience;
   collection?: string;
+  // The brand-owned collection this product belongs to (collections
+  // table) — replaces the old global free-text `collection` above as the
+  // source of truth going forward; that field is left populated for
+  // whatever existing products already have it.
+  collectionId?: string;
   material?: string;
   fit?: string;
   compareAtPrice?: number;
@@ -349,6 +366,10 @@ export interface BrandRecord {
   name: string;
   tagline: string;
   category: string;
+  // Admin-managed, required before this brand can create a product through
+  // the server-generated SKU path (lib/data/taxonomy.ts's next_product_sku
+  // RPC) — never editable by a brand owner.
+  skuPrefix?: string;
   foundedYear?: number;
   city: string;
   heroImage: string;
@@ -367,6 +388,22 @@ export interface BrandRecord {
   shopTheLook: BrandShopTheLookTile[];
   ownerUserId?: string;
   ownerEmail?: string;
+}
+
+// ── Collections (Supabase `collections` table) — brand-owned, replaces the
+// old global free-text product.collection value. ───────────────────────────
+export interface CollectionRecord {
+  id: string;
+  brandSlug: string;
+  name: string;
+  slug: string;
+  description?: string;
+  coverImageUrl?: string;
+  isActive: boolean;
+  publishedAt?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
