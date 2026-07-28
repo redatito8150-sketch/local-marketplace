@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { collectionReferences } from "@/lib/admin/reusableDataLifecycle";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   const { id } = await params;
   const { data: collection } = await supabaseAdmin.from("collections").select("id, brand_id").eq("id", id).maybeSingle();

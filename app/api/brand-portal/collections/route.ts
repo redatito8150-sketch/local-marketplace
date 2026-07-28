@@ -18,8 +18,8 @@ function slugify(value: string): string {
 // storefront read is limited to active+published). Never trust a `brand`
 // query param here the way admin routes do — this is always the caller's
 // own brand only.
-export async function GET() {
-  const owner = await requireBrandOwner();
+export async function GET(request: NextRequest) {
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
@@ -37,7 +37,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner();
+  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileEdit, History, LayoutDashboard, MessageSquare, Package, ShoppingBag, ShoppingCart } from "lucide-react";
+import { ArrowLeft, FileEdit, FolderKanban, History, LayoutDashboard, MessageSquare, Package, ShoppingBag, ShoppingCart } from "lucide-react";
+import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 
 const GROUPS = [
   { items: [{ label: "Overview", href: "/brand-portal", icon: LayoutDashboard }] },
@@ -10,6 +11,7 @@ const GROUPS = [
     label: "Catalog",
     items: [
       { label: "Products", href: "/brand-portal/products", icon: ShoppingCart },
+      { label: "Collections", href: "/brand-portal/collections", icon: FolderKanban },
       { label: "Inventory", href: "/brand-portal/stock", icon: Package },
     ],
   },
@@ -17,6 +19,7 @@ const GROUPS = [
 ];
 
 export default function BrandPortalNav({ showPageContent = true }: { showPageContent?: boolean }) {
+  const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const brand = useSearchParams().get("brand");
   const withBrand = (href: string) => (brand ? `${href}?brand=${brand}` : href);
@@ -35,7 +38,7 @@ export default function BrandPortalNav({ showPageContent = true }: { showPageCon
     <nav aria-label="Brand portal navigation" className="space-y-6">
       {groups.map((group, index) => (
         <div key={group.label ?? index}>
-          {group.label && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#a29489]">{group.label}</p>}
+          {group.label && !collapsed && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[#a29489]">{group.label}</p>}
           <div className="space-y-1">
             {group.items.map((item) => {
               const active = activeHref === item.href;
@@ -44,10 +47,12 @@ export default function BrandPortalNav({ showPageContent = true }: { showPageCon
                   key={item.href}
                   href={withBrand(item.href)}
                   aria-current={active ? "page" : undefined}
-                  className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${active ? "bg-[#3b332d] text-white shadow-sm" : "text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27]"}`}
+                  aria-label={item.label}
+                  title={collapsed ? item.label : undefined}
+                  className={`group flex min-h-10 items-center rounded-xl py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${collapsed ? "justify-center px-2" : "gap-3 px-3"} ${active ? "bg-[#3b332d] text-white shadow-sm" : "text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27]"}`}
                 >
                   <item.icon className={`h-[17px] w-[17px] ${active ? "text-white" : "text-[#a29489] group-hover:text-[#574b43]"}`} strokeWidth={1.8} />
-                  {item.label}
+                  {!collapsed && item.label}
                 </Link>
               );
             })}
@@ -55,8 +60,8 @@ export default function BrandPortalNav({ showPageContent = true }: { showPageCon
         </div>
       ))}
       <div className="border-t border-[#e3dcd3] pt-4">
-        <Link href="/" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27]">
-          <ArrowLeft className="h-[17px] w-[17px] text-[#a29489]" /> Storefront
+        <Link href="/" aria-label="Storefront" title={collapsed ? "Storefront" : undefined} className={`flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
+          <ArrowLeft className="h-[17px] w-[17px] text-[#a29489]" /> {!collapsed && "Storefront"}
         </Link>
       </div>
     </nav>

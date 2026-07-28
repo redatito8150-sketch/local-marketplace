@@ -3,11 +3,12 @@
 import { useState } from "react";
 import type { OptionTypeOption, OptionValueOption } from "./InventoryVariantsSection";
 
-export default function CustomOptionManager({ optionTypes, optionValues, apiBasePath, brandId, onChanged }: {
+export default function CustomOptionManager({ optionTypes, optionValues, apiBasePath, brandId, brandSlug, onChanged }: {
   optionTypes: OptionTypeOption[];
   optionValues: OptionValueOption[];
   apiBasePath: "/api/admin" | "/api/brand-portal";
   brandId: string;
+  brandSlug?: string;
   onChanged: () => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -18,7 +19,8 @@ export default function CustomOptionManager({ optionTypes, optionValues, apiBase
     const name = action === "rename" ? window.prompt("New name", currentName) : undefined;
     if (action === "rename" && !name?.trim()) return;
     if (action === "delete" && !window.confirm(`Delete "${currentName}" permanently? Referenced historical data will be protected.`)) return;
-    const response = await fetch(`${apiBasePath}/product-options/${kind}/${id}`, {
+    const brandQuery = apiBasePath === "/api/brand-portal" && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
+    const response = await fetch(`${apiBasePath}/product-options/${kind}/${id}${brandQuery}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, name, ...(apiBasePath === "/api/admin" ? { brandId } : {}) }),
     });
