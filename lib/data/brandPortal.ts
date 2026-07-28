@@ -205,7 +205,6 @@ interface BrandProductRow {
   product_type_id: string;
   collection_id: string | null;
   featured: boolean;
-  in_stock: boolean;
   created_at: string;
   status: string;
   paused_by_brand: boolean;
@@ -227,7 +226,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, image, price, currency, product_type_id, collection_id, featured, in_stock, created_at, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_type_id, collection_id, featured, created_at, status, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
@@ -238,12 +237,13 @@ export async function getProductsForBrand(
 
   const rows = (data as BrandProductRow[]) ?? [];
   const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
-  const [taxonomyTree, collectionNamesById] = await Promise.all([
+  const [taxonomyTree, collectionNamesById, variantsByProduct] = await Promise.all([
     getFullTaxonomyTree(),
     collectionIds.length
       ? supabase.from("collections").select("id, name").in("id", collectionIds)
         .then(({ data }) => new Map((data ?? []).map((r) => [r.id as string, r.name as string])))
       : Promise.resolve(new Map<string, string>()),
+    getVariantsForProducts(rows.map((row) => row.id), supabase),
   ]);
 
   return rows.map((row) => {
@@ -258,7 +258,9 @@ export async function getProductsForBrand(
       productType: path?.productTypeName,
       collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,
       featured: row.featured,
-      inStock: row.in_stock,
+      inStock: (variantsByProduct.get(row.id) ?? []).some(
+        (variant) => variant.sellingStatus === "active" && variant.quantity > 0
+      ),
       createdAt: row.created_at,
       status: row.status,
       pausedByBrand: row.paused_by_brand,
