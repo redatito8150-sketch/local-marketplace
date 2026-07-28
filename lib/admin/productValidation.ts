@@ -6,9 +6,11 @@ const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
 const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
 
 export interface VariantRowInput {
+  id?: string;
   optionValueIds: string[];
   sku?: string;
   quantity: number;
+  openingStock?: number;
   variantPrice?: number;
   lowStockThresholdOverride?: number;
   sellingStatus: SellingStatus;
@@ -67,6 +69,9 @@ function validateVariants(variants: VariantRowInput[]): string | null {
   for (const variant of variants) {
     if (!Number.isInteger(variant.quantity) || variant.quantity < 0) {
       return "Each variant needs a whole, non-negative quantity";
+    }
+    if (!variant.id && (!Number.isInteger(variant.openingStock ?? variant.quantity) || (variant.openingStock ?? variant.quantity) < 0)) {
+      return "Opening Stock must be a whole, non-negative number";
     }
     if (
       variant.lowStockThresholdOverride != null &&

@@ -41,9 +41,11 @@ export interface OptionValueOption {
 }
 
 export interface VariantRow {
+  id?: string;
   optionValueIds: string[];
   sku?: string;
   quantity: number;
+  openingStock?: number;
   variantPrice?: number;
   lowStockThresholdOverride?: number;
   sellingStatus: SellingStatus;
@@ -87,6 +89,7 @@ export default function InventoryVariantsSection({
   disabled,
   taxonomyNodes,
   productTypeId,
+  inventoryHref,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -100,6 +103,7 @@ export default function InventoryVariantsSection({
   disabled?: boolean;
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
+  inventoryHref?: string;
 }) {
   const [pendingGenerateNotice, setPendingGenerateNotice] = useState<string | null>(null);
   const [collapsedColors, setCollapsedColors] = useState<Set<string>>(new Set());
@@ -188,6 +192,7 @@ export default function InventoryVariantsSection({
       return {
         optionValueIds,
         quantity: 0,
+        openingStock: 0,
         sellingStatus: "active" as SellingStatus,
       };
     });
@@ -265,13 +270,25 @@ export default function InventoryVariantsSection({
           )}
         </td>
         <td className="px-3 py-2">
-          <input
-            type="number"
-            min={0}
-            value={variant.quantity}
-            onChange={(e) => updateVariant(comboKey, { quantity: Math.max(0, Number(e.target.value)) })}
-            className="w-16 rounded border border-stone-150 px-2 py-1 text-[12.5px] outline-none focus:border-ink/30"
-          />
+          {variant.id ? (
+            <div>
+              <strong className="text-[13px]">{variant.quantity}</strong>
+              <p className="text-[10.5px] text-ink-soft/50">Managed from Inventory</p>
+            </div>
+          ) : (
+            <input
+              aria-label="Opening Stock"
+              type="number"
+              min={0}
+              step={1}
+              value={variant.openingStock ?? variant.quantity}
+              onChange={(e) => {
+                const openingStock = Math.max(0, Math.trunc(Number(e.target.value) || 0));
+                updateVariant(comboKey, { openingStock, quantity: openingStock });
+              }}
+              className="w-20 rounded border border-stone-150 px-2 py-1 text-[12.5px] outline-none focus:border-ink/30"
+            />
+          )}
         </td>
         <td className="px-3 py-2">
           <input
@@ -324,11 +341,12 @@ export default function InventoryVariantsSection({
       <div>
         <h3 className="text-[13px] font-semibold text-ink">Inventory Summary</h3>
         <p className="mt-1 text-[12px] text-ink-soft/55">
-          Inventory is tracked automatically for every variant.
+          Set Opening Stock only when creating a new variant. After saving, all stock changes are managed from Inventory and recorded in history.
         </p>
+        {inventoryHref && <a href={inventoryHref} className="mt-2 inline-flex text-[12px] font-semibold text-ink underline">Open Inventory</a>}
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            ["Total Inventory", totalInventory],
+            ["Total Current Stock", totalInventory],
             ["Active Variants", stockCounts.active],
             ["Low Stock", stockCounts.low],
             ["Out of Stock", stockCounts.out],
@@ -551,7 +569,7 @@ export default function InventoryVariantsSection({
                             <tr>
                               <th className="px-3 py-2 font-medium">Options</th>
                               <th className="px-3 py-2 font-medium">SKU</th>
-                              <th className="px-3 py-2 font-medium">Qty</th>
+                              <th className="px-3 py-2 font-medium">Inventory</th>
                               <th className="px-3 py-2 font-medium">Low stock</th>
                               <th className="px-3 py-2 font-medium">Variant Price</th>
                               <th className="px-3 py-2 font-medium">Selling Status</th>
@@ -575,7 +593,7 @@ export default function InventoryVariantsSection({
                   <tr>
                     <th className="px-3 py-2 font-medium">Options</th>
                     <th className="px-3 py-2 font-medium">SKU</th>
-                    <th className="px-3 py-2 font-medium">Qty</th>
+                    <th className="px-3 py-2 font-medium">Inventory</th>
                     <th className="px-3 py-2 font-medium">Low stock</th>
                     <th className="px-3 py-2 font-medium">Variant Price</th>
                     <th className="px-3 py-2 font-medium">Selling Status</th>

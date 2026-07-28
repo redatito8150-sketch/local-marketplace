@@ -122,6 +122,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
     valueIdsByOptionType,
     allowedCombinations: (product?.variants ?? []).map((v) => v.optionValues.map((s) => s.optionValueId)),
     variants: (product?.variants ?? []).map((v) => ({
+      id: v.id,
       optionValueIds: v.optionValues.map((s) => s.optionValueId),
       sku: v.sku,
       quantity: v.quantity,
@@ -197,6 +198,7 @@ export default function ProductForm({
   // switch to PATCHing from then on instead of POSTing a duplicate.
   const [currentMode, setCurrentMode] = useState(mode);
   const [currentProductId, setCurrentProductId] = useState(productId);
+  const saveOperationKey = useRef(crypto.randomUUID());
   const [savedSnapshot, setSavedSnapshot] = useState(form);
   const [justSaved, setJustSaved] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
@@ -385,7 +387,7 @@ export default function ProductForm({
         `${targetUrl}${brandQuery}`,
         {
           method: currentMode === "create" ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "Idempotency-Key": saveOperationKey.current },
           body: JSON.stringify(payload),
         }
       );
@@ -408,6 +410,7 @@ export default function ProductForm({
         : form.inventoryVariants;
       const nextForm = { ...form, status: targetStatus, inventoryVariants: nextVariants };
       setForm(nextForm);
+      saveOperationKey.current = crypto.randomUUID();
       setSavedSnapshot(nextForm);
       setLastSavedAt(new Date());
       setJustSaved(true);
@@ -594,6 +597,11 @@ export default function ProductForm({
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
+            inventoryHref={currentProductId ? (
+              isBrandPortal
+                ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
+                : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`
+            ) : undefined}
           /></div>
           <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
         </FormSection>

@@ -149,6 +149,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     productId: params.id,
     productSku: existing.sku as string,
     submitted: productBody.variants,
+    actorId: owner.user.id,
+    operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated, but ${variantsResult.error}` }, { status: 500 });

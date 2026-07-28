@@ -1,14 +1,14 @@
 import { redirect } from "next/navigation";
-import Image from "next/image";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
-import { getVariantsForBrand } from "@/lib/data/brandPortal";
+import { getInventoryHistoryForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import InventoryManager from "@/components/brand-portal/InventoryManager";
 
-type StockParams = { brand?: string; q?: string; level?: string; sort?: string };
+type StockParams = { brand?: string; q?: string; level?: string; sort?: string; product?: string };
 
 export default async function BrandPortalStockPage(props: { searchParams: Promise<StockParams> }) {
   const params = await props.searchParams;
@@ -16,21 +16,23 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
   if (!owner) redirect("/account");
   if (!owner.brandSlug) { const brands = await getAllBrandsForAdmin(); return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />; }
   const allVariants = await getVariantsForBrand(owner.brandSlug, owner.isImpersonating);
+  const history = await getInventoryHistoryForBrand(owner.brandId!, owner.isImpersonating);
   const query = params.q?.trim().toLowerCase();
   const variants = allVariants.filter((variant) => {
     if (query && !`${variant.productName} ${variant.color ?? ""} ${variant.size ?? ""}`.toLowerCase().includes(query)) return false;
     if (params.level === "healthy" && variant.stockStatus !== "in_stock") return false;
     if (params.level === "low" && variant.stockStatus !== "low_stock") return false;
     if (params.level === "out" && variant.stockStatus !== "out_of_stock") return false;
+    if (params.product && variant.productId !== params.product) return false;
     return true;
   });
   variants.sort((a, b) => params.sort === "stock-asc" ? a.quantity - b.quantity : params.sort === "stock-desc" ? b.quantity - a.quantity : a.productName.localeCompare(b.productName));
-  const activeCount = [params.q, params.level, params.sort].filter(Boolean).length;
+  const activeCount = [params.q, params.level, params.sort, params.product].filter(Boolean).length;
 
   return (
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
-      <DashboardPageHeader eyebrow="Catalog" title={`Inventory (${variants.length})`} description={`${allVariants.length} variants. Inventory remains read-only in the portal, preserving the current centralized update workflow.`} />
+      <DashboardPageHeader eyebrow="Catalog" title={`Inventory (${variants.length})`} description={`${allVariants.length} variants. Adjustments are atomic and every change is recorded in inventory history.`} />
       <DashboardFilters action="/brand-portal/stock" clearHref={`/brand-portal/stock${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`} activeCount={activeCount}>
         {owner.isImpersonating && <input type="hidden" name="brand" value={owner.brandSlug} />}
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Product, color or size" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
@@ -38,11 +40,7 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
         <DashboardFilterField label="Sort"><select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}><option value="">Product name</option><option value="stock-asc">Lowest stock</option><option value="stock-desc">Highest stock</option></select></DashboardFilterField>
       </DashboardFilters>
       <DashboardPanel className="mt-6">
-        {variants.length ? <div className="overflow-x-auto"><table className="w-full min-w-[720px] text-left text-[13px]"><thead className="border-b border-[#e8e0d7] bg-[#fbf8f4] text-[10.5px] uppercase tracking-[0.08em] text-[#897b70]"><tr><th className="px-5 py-3 font-semibold">Product</th><th className="px-5 py-3 font-semibold">Variant</th><th className="px-5 py-3 font-semibold">Available</th><th className="px-5 py-3 font-semibold">Threshold</th><th className="px-5 py-3 font-semibold">Selling Status</th><th className="px-5 py-3 font-semibold">Stock Status</th></tr></thead><tbody className="divide-y divide-[#eee7de]">{variants.map((variant) => {
-          const combo = [variant.color, variant.size].filter(Boolean).join(" / ") || "Default";
-          const stockLabel = variant.stockStatus === "out_of_stock" ? "Out of stock" : variant.stockStatus === "low_stock" ? "Low stock" : "Healthy";
-          return <tr key={variant.variantId} className="hover:bg-[#fbf8f4]"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="relative h-11 w-11 flex-none overflow-hidden rounded-xl bg-[#f1eae2]"><Image src={variant.image} alt={variant.productName} fill className="object-cover" /></div><p className="font-bold text-[#302b27]">{variant.productName}</p></div></td><td className="px-5 py-4 text-[#75685f]">{combo}</td><td className="px-5 py-4 text-lg font-bold text-[#302b27]">{variant.quantity}</td><td className="px-5 py-4 text-[#75685f]">{variant.lowStockThreshold}</td><td className="px-5 py-4 capitalize text-[#75685f]">{variant.sellingStatus}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${variant.stockStatus === "out_of_stock" ? "bg-red-50 text-red-700" : variant.stockStatus === "low_stock" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{stockLabel}</span></td></tr>;
-        })}</tbody></table></div> : <DashboardEmptyState title="No matching inventory" description={activeCount ? "Clear or adjust the filters to see more variants." : "Product variants will appear here after catalog setup."} />}
+        {variants.length ? <InventoryManager variants={variants} history={history} brandSlug={owner.brandSlug ?? undefined} /> : <DashboardEmptyState title="No matching inventory" description={activeCount ? "Clear or adjust the filters to see more variants." : "Product variants will appear here after catalog setup."} />}
       </DashboardPanel>
     </div>
   );
