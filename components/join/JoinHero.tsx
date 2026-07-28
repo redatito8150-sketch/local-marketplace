@@ -29,9 +29,9 @@ export default function JoinHero({ content }: { content: JoinHeroContent }) {
 
         {/* Center content */}
         <motion.div
-          initial={reduceMotion ? undefined : { opacity: 0, y: 24 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.7, ease: "easeOut" }}
+          transition={{ duration: reduceMotion ? 0 : 0.7, ease: "easeOut" }}
           className="flex flex-col items-center justify-center px-8 py-16 text-center lg:px-14 lg:py-0"
         >
           <span className="text-xs font-semibold uppercase tracking-[0.2em] text-cream/60">
