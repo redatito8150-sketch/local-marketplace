@@ -7,11 +7,30 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 export default function ProductGallery({
   images,
   alt,
+  featuredImage,
 }: {
   images: string[];
   alt: string;
+  // An explicit Color selection (never gallery navigation itself) may set
+  // this to swap the primary image — arrows/thumbnails/swipe only ever
+  // change `active` locally and never report back up, so they can never
+  // affect the selected Color/Size/variant/price/stock status.
+  featuredImage?: string;
 }) {
   const [active, setActive] = useState(0);
+  // Adjusts local nav state when the prop changes, without an effect (the
+  // React-recommended pattern for this) — a Color selection updates
+  // `featuredImage`, which should move the gallery, but the gallery's own
+  // arrow/thumbnail navigation must never report back up (see the prop's
+  // doc comment above).
+  const [syncedFeaturedImage, setSyncedFeaturedImage] = useState(featuredImage);
+  if (featuredImage !== syncedFeaturedImage) {
+    setSyncedFeaturedImage(featuredImage);
+    if (featuredImage) {
+      const index = images.indexOf(featuredImage);
+      if (index >= 0) setActive(index);
+    }
+  }
 
   const goTo = (index: number) => {
     setActive((index + images.length) % images.length);

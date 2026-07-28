@@ -138,12 +138,11 @@ export interface FilterGroup {
   options: FilterOption[];
 }
 
-// ── Product Variants (Color + Size combinations) ───────────────────────────
-// Additive to the flat product-level sizes/colors/unavailableSizes/sku/
-// inStock fields, not a replacement — a product with no variant rows keeps
-// working off those flat fields exactly as before. `variants` stays
-// optional everywhere it appears so every existing call site (which never
-// supplies it) keeps type-checking unchanged.
+// ── Inventory & Variants ─────────────────────────────────────────────────────
+// Variant-level inventory is the sole source of truth for every product —
+// see lib/inventory/stockStatus.ts for the one shared Stock Status
+// calculation used by every interface (product form, brand/admin
+// inventory pages, cart/checkout).
 
 export type ProductStatus =
   | "draft"
@@ -151,20 +150,90 @@ export type ProductStatus =
   | "changes_requested"
   | "published"
   | "archived";
-export type VariantAvailabilityStatus = "available" | "unavailable" | "discontinued";
+
+// Manually controlled ("Selling Status" — independent of the automatically
+// calculated Stock Status below). active = normal; paused = temporarily
+// unavailable even with stock; discontinued = never sold again, kept for
+// history.
+export type SellingStatus = "active" | "paused" | "discontinued";
+
+// Automatically calculated, read-only — never stored, always derived from
+// quantity + the effective low-stock threshold.
+export type StockStatus = "in_stock" | "low_stock" | "out_of_stock";
+
+export type OptionSwatchType = "single" | "split" | "multicolor";
+
+// A reusable option type (Color, Size — system, brandId undefined) or a
+// brand's own private option type (e.g. "Length" — brandId set, visible
+// and reusable only by that brand).
+export interface OptionType {
+  id: string;
+  brandId?: string;
+  name: string;
+  key: string;
+  isSystem: boolean;
+  sortOrder: number;
+}
+
+export interface OptionValue {
+  id: string;
+  optionTypeId: string;
+  brandId?: string;
+  label: string;
+  key: string;
+  skuToken: string;
+  sortOrder: number;
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
+
+// One selected option value, denormalized onto a variant for display
+// (option type name + the chosen value's label) — resolved server-side
+// from product_variant_values / option_values, never stored redundantly.
+export interface VariantOptionSelection {
+  optionTypeId: string;
+  optionTypeName: string;
+  optionValueId: string;
+  label: string;
+  // Only present when optionTypeName is "Color" — carried here so the
+  // storefront/admin never need a second lookup just to render a swatch
+  // next to a variant's selected color.
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
+}
 
 export interface ProductVariant {
   id: string;
   productId: string;
-  color?: string;
-  size?: string;
-  sku?: string;
+  sku: string;
   quantity: number;
-  lowStockThreshold: number;
-  priceOverride?: number;
-  availabilityStatus: VariantAvailabilityStatus;
+  // Nullable — null means "use products.defaultLowStockThreshold".
+  lowStockThresholdOverride?: number;
+  // The final selling price for this variant — null means "use the
+  // product's own base Price" (see effectiveVariantPrice in
+  // lib/inventory/pricing.ts). Not a delta/adjustment.
+  variantPrice?: number;
+  sellingStatus: SellingStatus;
+  isArchived: boolean;
+  optionValues: VariantOptionSelection[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProductColorImage {
+  optionValueId: string;
+  imageUrl: string;
+}
+
+// Reusable readiness signal for the later Publishing & Visibility phase —
+// resolved server-side from a product's live variant set.
+export interface ProductVariantReadiness {
+  hasAtLeastOneVariant: boolean;
+  hasActivePurchasableVariant: boolean;
+  hasValidInventory: boolean;
+  hasValidVariantCombinations: boolean;
 }
 
 // The Basic Information "Audience" field — the sole source of truth for
@@ -199,10 +268,10 @@ export interface ProductTaxonomyFields {
   compareAtPrice?: number;
   modelHeight?: string;
   modelWearing?: string;
-  trackInventory?: boolean;
   featured?: boolean;
   status?: ProductStatus;
   publishDate?: string;
+  defaultLowStockThreshold?: number;
 }
 
 export interface Product extends ProductTaxonomyFields {
@@ -215,8 +284,11 @@ export interface Product extends ProductTaxonomyFields {
   rating: number;
   reviewCount: number;
   image: string;
+  // Derived from the live variant set (never stored) — every distinct
+  // size/color offered by an in-stock, purchasable variant.
   sizes: string[];
   colors: ProductColorOption[];
+  // True when at least one variant is purchasable (active + quantity > 0).
   inStock: boolean;
   variants?: ProductVariant[];
 }
@@ -319,6 +391,9 @@ export interface ProductDetail extends ProductTaxonomyFields {
   categoryHref: string;
   relatedIds: string[];
   variants?: ProductVariant[];
+  // Color label -> mapped image URL (product_color_images), used to swap
+  // the gallery's primary image on an explicit color selection.
+  colorImages?: Record<string, string>;
 }
 
 // ── Admin (raw `products` row shape, used by the admin CRUD form/API) ──────
@@ -347,6 +422,8 @@ export interface ProductRecord extends ProductTaxonomyFields {
   inStock: boolean;
   isNew: boolean;
   variants?: ProductVariant[];
+  // Reusable signal for the later Publishing & Visibility phase.
+  variantReadiness?: ProductVariantReadiness;
   // ── Brand-portal review workflow (Round 3) ────────────────────────────
   // `pendingChanges` is a staged edit (same shape as the form submits,
   // including variants) for an already-published product — the fields
@@ -796,6 +873,8 @@ export interface LowStockVariantRecord {
   size?: string;
   quantity: number;
   lowStockThreshold: number;
+  sellingStatus: SellingStatus;
+  stockStatus: StockStatus;
 }
 
 // ── Admin (raw `audit_logs` row shape) ──────────────────────────────────────

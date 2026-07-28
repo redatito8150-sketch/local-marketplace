@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
-import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
-import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
@@ -11,8 +9,14 @@ import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import {
   buildProductPersistencePayload,
-  buildVariantPersistencePayload,
 } from "@/lib/admin/productPersistence";
+import {
+  syncProductVariants,
+  replaceProductOptionSelections,
+  replaceProductColorImages,
+} from "@/lib/admin/variantPersistence";
+import { loadProductVariants } from "@/lib/admin/loadProductVariants";
+import { loadProductColorImages, loadProductOptionSelections } from "@/lib/admin/loadProductOptionSelections";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 async function loadOwnedProduct(id: string, brandId: string) {
@@ -111,49 +115,53 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  const duplicateSku = await findDuplicateSku(productBody.variants, params.id);
-  if (duplicateSku) {
-    return NextResponse.json(
-      { error: `SKU "${duplicateSku}" is already used by another product` },
-      { status: 400 }
-    );
-  }
+  const existingVariants = await loadProductVariants(params.id);
+  const existingOptionSelections = await loadProductOptionSelections(params.id);
+  const existingColorImages = await loadProductColorImages(params.id);
 
-  const { data: existingVariants } = await supabaseAdmin
-    .from("product_variants")
-    .select("*")
-    .eq("product_id", params.id);
-
-  const legacy = deriveLegacyFieldsFromVariants(
-    productBody.variants,
-    productBody.colors,
-    productBody.trackInventory
-  );
-
-  const productPayload = buildProductPersistencePayload(productBody, legacy, {
+  const productPayload = buildProductPersistencePayload(productBody, {
     status: "published",
     publishDate: existing.publish_date ?? new Date().toISOString(),
     submittedBy: owner.user.id,
     clearReviewState: true,
   });
   // Featured merchandising remains an admin-only decision. Brand identity
-  // and SKU are immutable after creation — the RPC's SET list already
-  // excludes them structurally, but they're stripped here too so the
-  // payload never even claims to change them.
+  // is immutable after creation.
   delete productPayload.featured;
   delete productPayload.brand_id;
-  const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
-    p_product_id: params.id,
-    p_product: productPayload,
-    p_variants: buildVariantPersistencePayload(productBody),
-  });
 
+  const { error } = await supabaseAdmin.from("products").update(productPayload).eq("id", params.id);
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save edit: ${error.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `Failed to save edit: ${error.message}` }, { status: 500 });
   }
+
+  const optionsResult = await replaceProductOptionSelections({
+    productId: params.id,
+    optionTypeIdsInOrder: productBody.optionTypeIds,
+    valueIdsByOptionType: new Map(Object.entries(productBody.valueIdsByOptionType)),
+  });
+  if (!optionsResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${optionsResult.error}` }, { status: 500 });
+  }
+
+  const variantsResult = await syncProductVariants({
+    productId: params.id,
+    productSku: existing.sku as string,
+    submitted: productBody.variants,
+  });
+  if (!variantsResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${variantsResult.error}` }, { status: 500 });
+  }
+
+  const colorImagesResult = await replaceProductColorImages({
+    productId: params.id,
+    colorImages: productBody.colorImages,
+  });
+  if (!colorImagesResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${colorImagesResult.error}` }, { status: 500 });
+  }
+
+  const variants = await loadProductVariants(params.id);
 
   const auditLogId = await logAudit({
     actorId: owner.user.id,
@@ -161,7 +169,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     entityType: "product",
     entityId: params.id,
     action: "update",
-    before: { ...existing, variants: existingVariants ?? [] },
+    before: {
+      ...existing,
+      variants: existingVariants,
+      optionSelections: existingOptionSelections,
+      colorImages: existingColorImages,
+    },
     after: productBody,
     brandSlug: owner.brandSlug ?? undefined,
   });
@@ -179,7 +192,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
   );
 
-  return NextResponse.json({ id: params.id });
+  return NextResponse.json({ id: params.id, variants });
 }
 
 // Instant-Publish: removes the product from the storefront immediately

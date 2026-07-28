@@ -1,7 +1,6 @@
 export type SelectableVariant = {
-  size: string | null;
-  color: string | null;
-  price_override: number | null;
+  optionValues: { optionTypeName: string; label: string }[];
+  variant_price: number | null;
 };
 
 export function findProductVariant<T extends SelectableVariant>(
@@ -11,30 +10,39 @@ export function findProductVariant<T extends SelectableVariant>(
 ) {
   const normalizedSize = size.trim().toLowerCase();
   const normalizedColor = color.trim().toLowerCase();
-  return variants?.find((variant) =>
-    (variant.size ?? "").trim().toLowerCase() === normalizedSize &&
-    (variant.color ?? "").trim().toLowerCase() === normalizedColor
-  );
+  return variants?.find((variant) => {
+    const variantSize = (variant.optionValues.find((o) => o.optionTypeName === "Size")?.label ?? "")
+      .trim()
+      .toLowerCase();
+    const variantColor = (variant.optionValues.find((o) => o.optionTypeName === "Color")?.label ?? "")
+      .trim()
+      .toLowerCase();
+    return variantSize === normalizedSize && variantColor === normalizedColor;
+  });
 }
 
 export function resolveProductPrice(
   product: { price: number },
   variant?: SelectableVariant
 ) {
-  return variant?.price_override ?? product.price;
+  return variant?.variant_price ?? product.price;
 }
 
+// Every product now tracks inventory at variant level unconditionally —
+// there is no "tracksInventory" toggle to check anymore, so a selected
+// variant is only purchasable when it's Active *and* in stock.
 export function isProductSelectionUnavailable(input: {
   hasVariants: boolean;
-  selectedVariant?: SelectableVariant & { availability_status?: string; quantity?: number };
-  tracksInventory: boolean;
+  selectedVariant?: SelectableVariant & { selling_status?: string; quantity?: number };
   selectedSize: string;
   unavailableSizes: string[];
 }) {
-  const { hasVariants, selectedVariant, tracksInventory, selectedSize, unavailableSizes } = input;
+  const { hasVariants, selectedVariant, selectedSize, unavailableSizes } = input;
   return Boolean(
-    (hasVariants && (!selectedVariant || selectedVariant.availability_status !== "available")) ||
-    (tracksInventory && selectedVariant && (selectedVariant.quantity ?? 0) < 1) ||
+    (hasVariants &&
+      (!selectedVariant ||
+        selectedVariant.selling_status !== "active" ||
+        (selectedVariant.quantity ?? 0) < 1)) ||
     unavailableSizes.includes(selectedSize)
   );
 }

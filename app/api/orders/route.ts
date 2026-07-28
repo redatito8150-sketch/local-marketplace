@@ -10,6 +10,8 @@ import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRe
 import { getRequestUser } from "@/lib/supabase/requestUser";
 import { readOrderIdempotency, storeOrderIdempotency } from "@/lib/orders/idempotency";
 import { getOrdersForUser } from "@/lib/data/orders";
+import { getVariantsForProducts } from "@/lib/data/variants";
+import { isVariantPurchasable, calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
@@ -62,18 +64,15 @@ export async function POST(request: NextRequest) {
   // client-submitted values — the client only sends product id +
   // size/color/quantity, never a price or variant id we'd act on directly.
   const productIds = [...new Set(items.map((i) => i.productId))];
-  const [
-    { data: products, error: productsError },
-    { data: variantRows, error: variantsError },
-  ] = await Promise.all([
+  const [{ data: products, error: productsError }, variantsByProduct] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, price, currency, image, sizes, unavailable_sizes, status, paused_by_brand, in_stock, track_inventory")
+      .select("id, name, brand_name, brand_slug, price, currency, image, status, paused_by_brand, default_low_stock_threshold")
       .in("id", productIds),
-    supabaseAdmin
-      .from("product_variants")
-      .select("id, product_id, color, size, price_override, quantity, availability_status")
-      .in("product_id", productIds),
+    getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
+      logError("Order variant lookup failed", error.message);
+      return null;
+    }),
   ]);
 
   if (productsError) {
@@ -83,8 +82,7 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-  if (variantsError) {
-    logError("Order variant lookup failed", variantsError.message);
+  if (variantsByProduct === null) {
     return NextResponse.json(
       { error: "We couldn't validate your cart. Please try again." },
       { status: 500 }
@@ -95,22 +93,9 @@ export async function POST(request: NextRequest) {
 
   for (const item of items) {
     const product = productById.get(item.productId);
-    if (
-      !product ||
-      product.status !== "published" ||
-      product.paused_by_brand ||
-      !product.in_stock
-    ) {
+    if (!product || product.status !== "published" || product.paused_by_brand) {
       return NextResponse.json(
         { error: "An item in your cart is no longer available" },
-        { status: 400 }
-      );
-    }
-    // Legacy per-size flag — still enforced for any product not yet using
-    // variants; place_order does the precise per-variant stock check below.
-    if (product.unavailable_sizes?.includes(item.size)) {
-      return NextResponse.json(
-        { error: `Size ${item.size} is currently unavailable for ${product.name}` },
         { status: 400 }
       );
     }
@@ -123,44 +108,35 @@ export async function POST(request: NextRequest) {
   try {
     rpcItems = items.map((item) => {
       const product = productById.get(item.productId)!;
-      const productVariants = (variantRows ?? []).filter(
-        (variant) => variant.product_id === item.productId
-      );
+      const productVariants = variantsByProduct.get(item.productId) ?? [];
       const normalizeOption = (value: string | null | undefined) =>
         value?.trim().toLowerCase() ?? "";
-      const variant = productVariants.find(
-        (candidate) =>
-          normalizeOption(candidate.color) === normalizeOption(item.color) &&
-          normalizeOption(candidate.size) === normalizeOption(item.size)
-      );
+      const variant = productVariants.find((candidate) => {
+        const color = candidate.optionValues.find((o) => o.optionTypeName === "Color")?.label;
+        const size = candidate.optionValues.find((o) => o.optionTypeName === "Size")?.label;
+        return (
+          normalizeOption(color) === normalizeOption(item.color) &&
+          normalizeOption(size) === normalizeOption(item.size)
+        );
+      });
 
-      if (productVariants.length > 0 && !variant) {
+      if (!variant) {
         throw new Error(`INVALID_VARIANT:${product.name}`);
       }
-      if (variant && variant.availability_status !== "available") {
+      if (!isVariantPurchasable(variant)) {
         throw new Error(`UNAVAILABLE_VARIANT:${product.name}`);
       }
-      if (product.track_inventory && productVariants.length === 0) {
-        throw new Error(`MISSING_INVENTORY_VARIANT:${product.name}`);
-      }
-      if (product.track_inventory && variant && variant.quantity < item.quantity) {
+      if (variant.quantity < item.quantity) {
         throw new Error(`INSUFFICIENT_STOCK:${product.name}`);
-      }
-      if (
-        productVariants.length === 0 &&
-        product.sizes?.length &&
-        !product.sizes.includes(item.size)
-      ) {
-        throw new Error(`INVALID_VARIANT:${product.name}`);
       }
 
       return {
         product_id: product.id,
-        variant_id: variant?.id ?? "",
+        variant_id: variant.id,
         name: product.name,
         brand: product.brand_name,
         brand_slug: product.brand_slug ?? "",
-        price: variant?.price_override ?? Number(product.price),
+        price: variant.variantPrice ?? Number(product.price),
         currency: product.currency,
         size: item.size,
         color: item.color ?? "",
@@ -175,9 +151,7 @@ export async function POST(request: NextRequest) {
     const publicMessage =
       code === "INSUFFICIENT_STOCK"
         ? `${productName} no longer has enough stock — please update your cart.`
-        : code === "MISSING_INVENTORY_VARIANT"
-          ? `${productName} is temporarily unavailable while its inventory is updated.`
-          : `${productName} no longer offers the selected options.`;
+        : `${productName} no longer offers the selected options.`;
     return NextResponse.json({ error: publicMessage }, { status });
   }
 
@@ -264,13 +238,18 @@ export async function POST(request: NextRequest) {
   if (touchedVariantIds.length > 0) {
     const { data: lowStockVariants } = await supabaseAdmin
       .from("product_variants")
-      .select("id, product_id, color, size, quantity, low_stock_threshold")
+      .select("id, product_id, quantity, low_stock_threshold_override")
       .in("id", touchedVariantIds);
 
     for (const variant of lowStockVariants ?? []) {
-      if (variant.quantity <= variant.low_stock_threshold) {
-        const product = productById.get(variant.product_id);
-        const combo = [variant.color, variant.size].filter(Boolean).join(" / ") || "default";
+      const product = productById.get(variant.product_id);
+      const threshold = effectiveLowStockThreshold(
+        variant.low_stock_threshold_override,
+        product?.default_low_stock_threshold ?? 5
+      );
+      if (calculateStockStatus(variant.quantity, threshold) !== "in_stock") {
+        const touched = rpcItems.find((i) => i.variant_id === variant.id);
+        const combo = [touched?.color, touched?.size].filter(Boolean).join(" / ") || "default";
         await notify(
           "low_stock",
           `Low stock: ${product?.name ?? variant.product_id}`,

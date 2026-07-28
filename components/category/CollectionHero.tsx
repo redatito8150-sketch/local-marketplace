@@ -7,13 +7,12 @@ import { Plus, ShoppingBag, X } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useCart } from "@/context/CartContext";
 import { calculateCollectionTotal, formatPrice, resolveActivePrice } from "@/lib/format";
+import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import type { Product, ProductVariant } from "@/types";
 import type { CollectionPageConfig } from "./collectionPageConfig";
 
 function availableVariant(product: Product): ProductVariant | undefined {
-  return product.variants?.find(
-    (variant) => variant.availabilityStatus === "available" && variant.quantity > 0
-  );
+  return product.variants?.find((variant) => isVariantPurchasable(variant));
 }
 
 function ColorSwatches({ product }: { product: Product }) {
@@ -63,8 +62,8 @@ export default function CollectionHero({ products, config }: { products: Product
         price: resolveActivePrice(product, variant),
         currency: product.currency,
         image: product.image,
-        size: variant?.size ?? product.sizes[0] ?? "",
-        color: variant?.color,
+        size: variant?.optionValues.find((o) => o.optionTypeName === "Size")?.label ?? product.sizes[0] ?? "",
+        color: variant?.optionValues.find((o) => o.optionTypeName === "Color")?.label,
         quantity: 1,
       });
     });

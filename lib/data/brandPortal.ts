@@ -1,6 +1,9 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
+import { getVariantsForProducts } from "@/lib/data/variants";
+import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import type { SellingStatus, StockStatus } from "@/types";
 
 // Every query here uses the cookie-aware anon client by default (never
 // supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
@@ -112,16 +115,17 @@ export interface BrandVariant {
   size?: string;
   quantity: number;
   lowStockThreshold: number;
+  sellingStatus: SellingStatus;
+  stockStatus: StockStatus;
 }
 
 interface BrandVariantRow {
   id: string;
   product_id: string;
-  color: string | null;
-  size: string | null;
   quantity: number;
-  low_stock_threshold: number;
-  products: { id: string; name: string; image: string; brand_slug: string | null } | null;
+  low_stock_threshold_override: number | null;
+  selling_status: SellingStatus;
+  products: { id: string; name: string; image: string; brand_slug: string | null; default_low_stock_threshold: number } | null;
 }
 
 // Read-only for v1 — brand owners see their stock, only admin/staff edit
@@ -133,25 +137,44 @@ export async function getVariantsForBrand(
   const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("product_variants")
-    .select("id, product_id, color, size, quantity, low_stock_threshold, products!inner(id, name, image, brand_slug)")
-    .eq("products.brand_slug", brandSlug);
+    .select(
+      "id, product_id, quantity, low_stock_threshold_override, selling_status, products!inner(id, name, image, brand_slug, default_low_stock_threshold)"
+    )
+    .eq("products.brand_slug", brandSlug)
+    .eq("is_archived", false);
 
   if (error) {
     throw new Error(`getVariantsForBrand(${brandSlug}) failed: ${error.message}`);
   }
 
-  return ((data as unknown as BrandVariantRow[]) ?? [])
-    .filter((row) => row.products)
-    .map((row) => ({
+  const rows = ((data as unknown as BrandVariantRow[]) ?? []).filter((row) => row.products);
+  const variantsByProduct = await getVariantsForProducts(
+    [...new Set(rows.map((row) => row.product_id))],
+    impersonating ? supabaseAdmin : supabase
+  );
+  const optionValuesByVariant = new Map(
+    [...variantsByProduct.values()].flat().map((v) => [v.id, v.optionValues])
+  );
+
+  return rows.map((row) => {
+    const threshold = effectiveLowStockThreshold(
+      row.low_stock_threshold_override,
+      row.products!.default_low_stock_threshold
+    );
+    const optionValues = optionValuesByVariant.get(row.id) ?? [];
+    return {
       variantId: row.id,
       productId: row.product_id,
       productName: row.products!.name,
       image: row.products!.image,
-      color: row.color ?? undefined,
-      size: row.size ?? undefined,
+      color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
+      size: optionValues.find((o) => o.optionTypeName === "Size")?.label,
       quantity: row.quantity,
-      lowStockThreshold: row.low_stock_threshold,
-    }));
+      lowStockThreshold: threshold,
+      sellingStatus: row.selling_status,
+      stockStatus: calculateStockStatus(row.quantity, threshold),
+    };
+  });
 }
 
 export interface BrandProductListItem {

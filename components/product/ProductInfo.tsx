@@ -1,17 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Heart, Minus, Plus, Check, Truck } from "lucide-react";
 import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
+import { effectiveVariantPrice } from "@/lib/inventory/pricing";
+import { calculateStockStatus, effectiveLowStockThreshold, isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import StarRating from "@/components/shared/StarRating";
 
 export default function ProductInfo({
   product,
   disableActions = false,
+  onColorImageChange,
 }: {
   product: ProductDetail;
   // Used by the admin live-preview panel, which reuses this component
@@ -19,12 +22,20 @@ export default function ProductInfo({
   // the admin's own real cart/wishlist (those contexts are global). Default
   // stays false so the real product page's behavior is unchanged.
   disableActions?: boolean;
+  // Reports the mapped image for the currently selected Color (if any) up
+  // to the page, which passes it to ProductGallery as `featuredImage` —
+  // this is the only way a Color selection is allowed to affect the
+  // gallery's primary image (never the reverse).
+  onColorImageChange?: (url: string | undefined) => void;
 }) {
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
 
-  const [selectedColor, setSelectedColor] = useState(product.colors[0]?.name);
+  const variants = useMemo(() => product.variants ?? [], [product.variants]);
+  const colorLabels = [...new Set(variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Color").map((o) => o.label)))];
+
+  const [selectedColor, setSelectedColor] = useState<string | undefined>(colorLabels[0]);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
@@ -34,38 +45,43 @@ export default function ProductInfo({
     ? `/brands/${product.brandSlug}`
     : undefined;
 
-  const hasVariants = (product.variants?.length ?? 0) > 0;
+  const hasVariants = variants.length > 0;
 
-  // Resolves the exact Color+Size combination to a specific variant, so
-  // price overrides / availability / low-stock reflect that one
+  // Resolves the exact selected Color+Size combination to a specific
+  // variant, so Variant Price/purchasability/low-stock reflect that one
   // combination instead of the whole product.
   const resolvedVariant = useMemo(() => {
     if (!hasVariants) return undefined;
-    return product.variants!.find(
-      (v) => (v.color ?? "") === (selectedColor ?? "") && (v.size ?? "") === (selectedSize ?? "")
-    );
-  }, [hasVariants, product.variants, selectedColor, selectedSize]);
+    return variants.find((v) => {
+      const color = v.optionValues.find((o) => o.optionTypeName === "Color")?.label;
+      const size = v.optionValues.find((o) => o.optionTypeName === "Size")?.label;
+      return (color ?? "") === (selectedColor ?? "") && (size ?? "") === (selectedSize ?? "");
+    });
+  }, [hasVariants, variants, selectedColor, selectedSize]);
 
-  const displayPrice = resolvedVariant?.priceOverride ?? product.price;
+  const displayPrice = effectiveVariantPrice(resolvedVariant?.variantPrice, product.price);
+
+  useEffect(() => {
+    onColorImageChange?.(selectedColor ? product.colorImages?.[selectedColor] : undefined);
+  }, [selectedColor, product.colorImages, onColorImageChange]);
 
   // A size is disabled once every variant for it (under the selected
-  // color, when one's picked) is out of stock or unavailable. Sizes with
-  // no matching variant row at all aren't blocked — keeps working for
-  // products that predate the variant system.
+  // color, when one's picked) is out of stock, paused, or discontinued.
   const isSizeDisabled = (size: string): boolean => {
-    if (!hasVariants) return product.unavailableSizes.includes(size);
-    const matching = product.variants!.filter(
-      (v) => v.size === size && (!selectedColor || (v.color ?? "") === selectedColor)
-    );
+    const matching = variants.filter((v) => {
+      const vSize = v.optionValues.find((o) => o.optionTypeName === "Size")?.label;
+      const vColor = v.optionValues.find((o) => o.optionTypeName === "Color")?.label;
+      return vSize === size && (!selectedColor || vColor === selectedColor);
+    });
     if (matching.length === 0) return false;
-    return !matching.some((v) => v.availabilityStatus === "available" && v.quantity > 0);
+    return !matching.some((v) => isVariantPurchasable({ sellingStatus: v.sellingStatus, quantity: v.quantity, isArchived: v.isArchived, productStatus: product.status }));
   };
 
+  const effectiveThreshold = resolvedVariant
+    ? effectiveLowStockThreshold(resolvedVariant.lowStockThresholdOverride, product.defaultLowStockThreshold ?? 5)
+    : 0;
   const isLowStock =
-    Boolean(resolvedVariant) &&
-    resolvedVariant!.availabilityStatus === "available" &&
-    resolvedVariant!.quantity > 0 &&
-    resolvedVariant!.quantity <= resolvedVariant!.lowStockThreshold;
+    Boolean(resolvedVariant) && calculateStockStatus(resolvedVariant!.quantity, effectiveThreshold) === "low_stock";
 
   const handleAddToCart = () => {
     if (disableActions) return;
@@ -78,7 +94,13 @@ export default function ProductInfo({
     }
     if (
       hasVariants &&
-      (!resolvedVariant || resolvedVariant.quantity <= 0 || resolvedVariant.availabilityStatus !== "available")
+      (!resolvedVariant ||
+        !isVariantPurchasable({
+          sellingStatus: resolvedVariant.sellingStatus,
+          quantity: resolvedVariant.quantity,
+          isArchived: resolvedVariant.isArchived,
+          productStatus: product.status,
+        }))
     ) {
       setSizeError(true);
       return;
@@ -92,8 +114,8 @@ export default function ProductInfo({
       price: displayPrice,
       currency: product.currency,
       image: product.images[0],
-      // Real, matchable value — a sizeless product's variant has
-      // `size: null`, so this stays "" to match it; formatSize() turns
+      // Real, matchable value — a sizeless product's variant has no Size
+      // option at all, so this stays "" to match it; formatSize() turns
       // this into "One Size" only where it's shown to the shopper.
       size: selectedSize ?? "",
       color: selectedColor,
@@ -157,7 +179,21 @@ export default function ProductInfo({
               <button
                 key={color.name}
                 aria-label={color.name}
-                onClick={() => setSelectedColor(color.name)}
+                onClick={() => {
+                  setSelectedColor(color.name);
+                  // A different Color's Size availability may differ —
+                  // preserve the current Size if it's still valid for the
+                  // newly selected Color, otherwise clear it and ask for a
+                  // new selection rather than guessing one.
+                  if (selectedSize) {
+                    const stillValid = variants.some((v) => {
+                      const vColor = v.optionValues.find((o) => o.optionTypeName === "Color")?.label;
+                      const vSize = v.optionValues.find((o) => o.optionTypeName === "Size")?.label;
+                      return vColor === color.name && vSize === selectedSize;
+                    });
+                    if (!stillValid) setSelectedSize(null);
+                  }
+                }}
                 className={`flex h-8 w-8 items-center justify-center rounded-full border transition-all ${
                   selectedColor === color.name
                     ? "border-ink ring-2 ring-ink/20"
@@ -175,54 +211,56 @@ export default function ProductInfo({
       )}
 
       {/* Size selector */}
-      <div className="mt-7">
-        <div className="flex items-center justify-between">
-          <p className="text-[13px] font-medium text-ink">Size</p>
-          <button className="text-[12px] text-ink-soft/60 underline-offset-2 hover:underline">
-            Size guide
-          </button>
+      {product.sizes.length > 0 && (
+        <div className="mt-7">
+          <div className="flex items-center justify-between">
+            <p className="text-[13px] font-medium text-ink">Size</p>
+            <button className="text-[12px] text-ink-soft/60 underline-offset-2 hover:underline">
+              Size guide
+            </button>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2.5">
+            {product.sizes.map((size) => {
+              const unavailable = isSizeDisabled(size);
+              return (
+                <button
+                  key={size}
+                  disabled={unavailable}
+                  title={unavailable ? "Currently unavailable" : undefined}
+                  onClick={() => {
+                    if (unavailable) return;
+                    setSelectedSize(size);
+                    setSizeError(false);
+                  }}
+                  className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
+                    unavailable
+                      ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
+                      : selectedSize === size
+                      ? "border-ink bg-ink text-cream"
+                      : "border-stone-150 text-ink hover:border-ink/40"
+                  }`}
+                >
+                  {size}
+                  {unavailable && (
+                    <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-ink-soft/40" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          {sizeError && (
+            <p className="mt-2 text-[12px] font-medium text-red-600">
+              Please select a size to continue.
+            </p>
+          )}
+          {isLowStock && (
+            <p className="mt-2 flex items-center gap-1.5 text-[12px] font-medium text-amber-700">
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
+              Only {resolvedVariant!.quantity} left in stock
+            </p>
+          )}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2.5">
-          {product.sizes.map((size) => {
-            const unavailable = isSizeDisabled(size);
-            return (
-              <button
-                key={size}
-                disabled={unavailable}
-                title={unavailable ? "Currently unavailable" : undefined}
-                onClick={() => {
-                  if (unavailable) return;
-                  setSelectedSize(size);
-                  setSizeError(false);
-                }}
-                className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
-                  unavailable
-                    ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
-                    : selectedSize === size
-                    ? "border-ink bg-ink text-cream"
-                    : "border-stone-150 text-ink hover:border-ink/40"
-                }`}
-              >
-                {size}
-                {unavailable && (
-                  <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-ink-soft/40" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-        {sizeError && (
-          <p className="mt-2 text-[12px] font-medium text-red-600">
-            Please select a size to continue.
-          </p>
-        )}
-        {isLowStock && (
-          <p className="mt-2 flex items-center gap-1.5 text-[12px] font-medium text-amber-700">
-            <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} />
-            Only {resolvedVariant!.quantity} left in stock
-          </p>
-        )}
-      </div>
+      )}
 
       {/* Quantity + Add to cart */}
       <div className="mt-8 flex items-center gap-3">

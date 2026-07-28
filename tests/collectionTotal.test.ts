@@ -3,7 +3,7 @@ import test from "node:test";
 import { calculateCollectionTotal, resolveActivePrice } from "../lib/format.ts";
 
 test("resolveActivePrice uses the variant's price override when present", () => {
-  assert.equal(resolveActivePrice({ price: 500 }, { priceOverride: 450 }), 450);
+  assert.equal(resolveActivePrice({ price: 500 }, { variantPrice: 450 }), 450);
 });
 
 test("resolveActivePrice falls back to the product's own (already-active) price with no variant", () => {
@@ -23,7 +23,7 @@ test("calculateCollectionTotal resolves each product's price through the supplie
   ];
   const overrides: Record<string, number> = { a: 450 };
   const total = calculateCollectionTotal(products, (product) =>
-    product.id in overrides ? { priceOverride: overrides[product.id] } : undefined
+    product.id in overrides ? { variantPrice: overrides[product.id] } : undefined
   );
   assert.equal(total, 450 + 300);
 });

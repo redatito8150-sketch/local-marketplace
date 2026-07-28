@@ -7,6 +7,7 @@ import { Product, ViewMode } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
+import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import StarRating from "@/components/shared/StarRating";
 
 export default function ProductCard({
@@ -37,11 +38,15 @@ export default function ProductCard({
   // added a size some products don't even offer, e.g. shoes sized 38-45).
   const variants = product.variants ?? [];
   const defaultVariant =
-    variants.find((v) => v.availabilityStatus === "available" && v.quantity > 0) ?? variants[0];
+    variants.find((v) => isVariantPurchasable(v)) ?? variants[0];
   // Real, matchable value — "" for a sizeless product, matching its
-  // variant's `size: null`; formatSize() renders it as "One Size" for
-  // display only, never stored as the literal cart/order size.
-  const quickAddSize = defaultVariant?.size ?? product.sizes[0] ?? "";
+  // variant's Size option being absent; formatSize() renders it as "One
+  // Size" for display only, never stored as the literal cart/order size.
+  const quickAddSize =
+    defaultVariant?.optionValues.find((o) => o.optionTypeName === "Size")?.label ??
+    product.sizes[0] ??
+    "";
+  const quickAddColor = defaultVariant?.optionValues.find((o) => o.optionTypeName === "Color")?.label;
 
   return (
     <Link
@@ -147,11 +152,11 @@ export default function ProductCard({
               variantId: defaultVariant?.id,
               name: product.name,
               brand: product.brand,
-              price: defaultVariant?.priceOverride ?? product.price,
+              price: defaultVariant?.variantPrice ?? product.price,
               currency: product.currency,
               image: product.image,
               size: quickAddSize,
-              color: defaultVariant?.color,
+              color: quickAddColor,
               quantity: 1,
             });
           }}
