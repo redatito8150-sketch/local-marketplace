@@ -591,6 +591,68 @@ export interface BrandApplicationDocumentRecord {
   mimeType: string;
   fileSizeBytes: number;
   createdAt: string;
+  documentType?: ApplicationDocumentType;
+  uploadStatus?: "uploading" | "uploaded" | "failed" | "replaced" | "removed";
+}
+
+export type ApplicationDocumentType =
+  | "commercial_registration"
+  | "tax_card"
+  | "trademark_certificate"
+  | "authorized_representative"
+  | "other_supporting_document";
+
+export interface BrandApplicationData {
+  fullName?: string;
+  businessEmail?: string;
+  phone?: string;
+  applicantRole?: string;
+  applicantRoleOther?: string;
+  preferredContactMethod?: "email" | "phone" | "whatsapp";
+  brandName?: string;
+  brandNameAr?: string;
+  primaryCategory?: string;
+  targetAudiences?: string[];
+  country?: string;
+  city?: string;
+  foundedYear?: number;
+  shortDescription?: string;
+  fullBrandStory?: string;
+  brandDifference?: string;
+  salesChannels?: string[];
+  socialLinks?: Record<string, { handle?: string; url?: string; marketplaceName?: string }>;
+  productCountRange?: string;
+  monthlyOrdersRange?: string;
+  teamSizeRange?: string;
+  monthlySalesRange?: string;
+  businessType?: string;
+  legalBusinessName?: string;
+  commercialRegistrationNumber?: string;
+  taxRegistrationNumber?: string;
+  registrationCountry?: string;
+  operatingName?: string;
+  registrationExpectedDate?: string;
+  productCategories?: string[];
+  typicalMinimumPrice?: number;
+  typicalMaximumPrice?: number;
+  variantReadiness?: string;
+  manufacturingModel?: string;
+  manufacturingCountry?: string;
+  productionLeadTime?: string;
+  inventoryModels?: string[];
+  inventoryStorage?: string;
+  orderPreparation?: string;
+  courierPickup?: string;
+  preparationTime?: string;
+  shippingCoverage?: string[];
+  shippingProvider?: string;
+  returnsAccepted?: boolean;
+  exchangesAccepted?: boolean;
+  returnWindow?: string;
+  nonReturnableCategories?: string;
+  agreementAccurate?: boolean;
+  agreementAuthorized?: boolean;
+  agreementReview?: boolean;
 }
 
 export interface BrandApplicationStatusHistoryEntry {
@@ -672,6 +734,20 @@ export interface BrandApplicationRecord {
   convertedAt?: string;
   convertedBy?: string;
   applicantAccountSnapshot: ApplicantAccountSnapshot | null;
+  referenceNumber?: string;
+  schemaVersion?: number;
+  preferredContactMethod?: "email" | "phone" | "whatsapp";
+  applicationData?: BrandApplicationData;
+  currentStep?: number;
+  lastSavedAt?: string;
+  lockVersion?: number;
+  submittedAt?: string;
+  requestedSections?: string[];
+  requestedFields?: string[];
+  applicantVisibleMessage?: string;
+  informationResponseDeadline?: string;
+  lastResubmittedAt?: string;
+  convertedBrandId?: string;
 }
 
 // ── Admin (raw `profiles` row shape, used by the users/permissions page) ───

@@ -84,6 +84,20 @@ interface BrandApplicationRow {
   converted_at: string | null;
   converted_by: string | null;
   applicant_account_snapshot: ApplicantAccountSnapshot | null;
+  reference_number: string | null;
+  schema_version: number | null;
+  preferred_contact_method: string | null;
+  application_data: Record<string, unknown> | null;
+  current_step: number | null;
+  last_saved_at: string | null;
+  lock_version: number | null;
+  submitted_at: string | null;
+  requested_sections: string[] | null;
+  requested_fields: string[] | null;
+  applicant_visible_message: string | null;
+  information_response_deadline: string | null;
+  last_resubmitted_at: string | null;
+  converted_brand_id: string | null;
 }
 
 export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplicationRecord {
@@ -154,6 +168,22 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     convertedAt: row.converted_at ?? undefined,
     convertedBy: row.converted_by ?? undefined,
     applicantAccountSnapshot: row.applicant_account_snapshot,
+    referenceNumber: row.reference_number ?? undefined,
+    schemaVersion: row.schema_version ?? undefined,
+    preferredContactMethod:
+      (row.preferred_contact_method as BrandApplicationRecord["preferredContactMethod"]) ?? undefined,
+    applicationData:
+      (row.application_data as BrandApplicationRecord["applicationData"]) ?? undefined,
+    currentStep: row.current_step ?? undefined,
+    lastSavedAt: row.last_saved_at ?? undefined,
+    lockVersion: row.lock_version ?? undefined,
+    submittedAt: row.submitted_at ?? undefined,
+    requestedSections: row.requested_sections ?? [],
+    requestedFields: row.requested_fields ?? [],
+    applicantVisibleMessage: row.applicant_visible_message ?? undefined,
+    informationResponseDeadline: row.information_response_deadline ?? undefined,
+    lastResubmittedAt: row.last_resubmitted_at ?? undefined,
+    convertedBrandId: row.converted_brand_id ?? undefined,
   };
 }
 
@@ -451,6 +481,8 @@ export function toDocumentRecord(row: {
   mime_type: string;
   file_size_bytes: number;
   created_at: string;
+  document_type?: string | null;
+  upload_status?: string | null;
 }): BrandApplicationDocumentRecord {
   return {
     id: row.id,
@@ -460,6 +492,10 @@ export function toDocumentRecord(row: {
     mimeType: row.mime_type,
     fileSizeBytes: row.file_size_bytes,
     createdAt: row.created_at,
+    documentType:
+      (row.document_type as BrandApplicationDocumentRecord["documentType"]) ?? "other_supporting_document",
+    uploadStatus:
+      (row.upload_status as BrandApplicationDocumentRecord["uploadStatus"]) ?? "uploaded",
   };
 }
 
@@ -473,6 +509,7 @@ export async function getApplicationDocuments(
     .from("brand_application_documents")
     .select("*")
     .eq("application_id", applicationId)
+    .is("removed_at", null)
     .order("created_at", { ascending: true });
 
   if (error) {

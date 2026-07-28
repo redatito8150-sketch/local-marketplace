@@ -16,6 +16,15 @@ import {
   DOCUMENTS_BUCKET,
   MAX_DOCUMENT_SIZE_BYTES,
 } from "@/lib/join/constants";
+import type { ApplicationDocumentType } from "@/types";
+
+const DOCUMENT_TYPES: ApplicationDocumentType[] = [
+  "commercial_registration",
+  "tax_card",
+  "trademark_certificate",
+  "authorized_representative",
+  "other_supporting_document",
+];
 
 function sanitizeFileName(name: string): string {
   return (
@@ -74,9 +83,14 @@ export async function POST(request: NextRequest) {
 
   const formData = await readFormData(request);
   const file = formData.get("file");
+  const documentType = String(formData.get("documentType") ?? "other_supporting_document");
+  const replaceDocumentId = String(formData.get("replaceDocumentId") ?? "");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  }
+  if (!DOCUMENT_TYPES.includes(documentType as ApplicationDocumentType)) {
+    return NextResponse.json({ error: "Invalid document category" }, { status: 400 });
   }
   if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type)) {
     return NextResponse.json({ error: "Unsupported document type" }, { status: 400 });
@@ -109,6 +123,8 @@ export async function POST(request: NextRequest) {
       storage_path: path,
       mime_type: file.type,
       file_size_bytes: file.size,
+      document_type: documentType,
+      upload_status: "uploaded",
     })
     .select("*")
     .single();
@@ -118,5 +134,51 @@ export async function POST(request: NextRequest) {
     return safeErrorResponse("join.application.documents.post", error);
   }
 
+  if (replaceDocumentId) {
+    await supabaseAdmin
+      .from("brand_application_documents")
+      .update({ upload_status: "replaced", replaced_by: data.id })
+      .eq("id", replaceDocumentId)
+      .eq("application_id", application.id)
+      .is("removed_at", null);
+  }
+
   return NextResponse.json({ document: toDocumentRecord(data) });
+}
+
+export async function DELETE(request: NextRequest) {
+  const user = await requireUser();
+  if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+
+  const documentId = request.nextUrl.searchParams.get("documentId");
+  if (!documentId) return NextResponse.json({ error: "Document id is required" }, { status: 400 });
+
+  const application = await getMyApplication(user.id);
+  if (!application) return NextResponse.json({ error: "No application found" }, { status: 404 });
+  if (!["draft", "changes_requested"].includes(application.status)) {
+    return NextResponse.json({ error: "Documents are locked while this application is under review" }, { status: 409 });
+  }
+
+  const { data: document, error } = await supabaseAdmin
+    .from("brand_application_documents")
+    .select("id, storage_path")
+    .eq("id", documentId)
+    .eq("application_id", application.id)
+    .is("removed_at", null)
+    .maybeSingle();
+  if (error) return safeErrorResponse("join.application.documents.delete.lookup", error);
+  if (!document) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+
+  const { error: storageError } = await supabaseAdmin.storage
+    .from(DOCUMENTS_BUCKET)
+    .remove([document.storage_path]);
+  if (storageError) return safeErrorResponse("join.application.documents.delete.storage", storageError);
+
+  const { error: updateError } = await supabaseAdmin
+    .from("brand_application_documents")
+    .update({ upload_status: "removed", removed_at: new Date().toISOString() })
+    .eq("id", document.id);
+  if (updateError) return safeErrorResponse("join.application.documents.delete.record", updateError);
+
+  return NextResponse.json({ ok: true });
 }

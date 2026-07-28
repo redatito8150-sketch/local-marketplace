@@ -33,6 +33,7 @@ export default async function AdminApplicationDetailPage(
   ]);
 
   const snapshot = application.applicantAccountSnapshot;
+  const rebuilt = application.applicationData;
   const legalStatusLabel = LEGAL_STATUS_OPTIONS.find((o) => o.value === application.legalStatus)?.label;
 
   return (
@@ -75,6 +76,14 @@ export default async function AdminApplicationDetailPage(
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
         <div className="space-y-6">
+          <Section title="Application record">
+            <Field label="Reference" value={application.referenceNumber ?? application.id} />
+            <Field label="Schema version" value={String(application.schemaVersion ?? 1)} />
+            <Field
+              label="Requested fields"
+              value={application.requestedFields?.join(", ") || "—"}
+            />
+          </Section>
           {snapshot && (
             <Section title="Account vs. application info">
               <p className="mb-3 text-[12px] leading-relaxed text-slate-500">
@@ -158,6 +167,28 @@ export default async function AdminApplicationDetailPage(
               }
             />
           </Section>
+
+          {rebuilt && (
+            <>
+              <Section title="Brand overview (structured)">
+                <Field label="Primary category" value={rebuilt.primaryCategory || "—"} />
+                <Field label="Target audiences" value={rebuilt.targetAudiences?.join(", ") || "—"} />
+                <Field label="Short description" value={rebuilt.shortDescription || "—"} />
+                <Field label="What makes it different" value={rebuilt.brandDifference || "—"} />
+                <Field label="Team size" value={rebuilt.teamSizeRange?.replaceAll("_", "–") || "—"} />
+              </Section>
+              <Section title="Operational readiness (structured)">
+                <Field label="Product categories" value={rebuilt.productCategories?.join(", ") || "—"} />
+                <Field label="Variants" value={rebuilt.variantReadiness?.replaceAll("_", " ") || "—"} />
+                <Field label="Manufacturing" value={rebuilt.manufacturingModel?.replaceAll("_", " ") || "—"} />
+                <Field label="Inventory models" value={rebuilt.inventoryModels?.join(", ") || "—"} />
+                <Field label="Inventory storage" value={rebuilt.inventoryStorage?.replaceAll("_", " ") || "—"} />
+                <Field label="Order preparation" value={rebuilt.orderPreparation?.replaceAll("_", " ") || "—"} />
+                <Field label="Courier pickup" value={rebuilt.courierPickup || "—"} />
+                <Field label="Shipping coverage" value={rebuilt.shippingCoverage?.join(", ") || "—"} />
+              </Section>
+            </>
+          )}
 
           <Section title="Legal & documents">
             <Field label="Business registration status" value={legalStatusLabel ?? application.legalStatus ?? "—"} />

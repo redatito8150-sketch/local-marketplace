@@ -10,6 +10,8 @@ import {
   isWithinReapplicationCooldown,
 } from "@/lib/join/applicationService";
 import { draftApplicationSchema } from "@/lib/join/validation";
+import { brandApplicationDraftPayloadSchema, structuredErrors } from "@/lib/join/rebuildValidation";
+import { saveRebuiltDraft } from "@/lib/join/rebuildService";
 
 // Own application (or null if none exists yet) + whether a reapplication
 // cooldown is currently blocking a new one.
@@ -50,17 +52,35 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const parsed = draftApplicationSchema.safeParse(body);
+  const isRebuiltPayload =
+    typeof body === "object" && body !== null && "applicationData" in body;
+  const parsed = isRebuiltPayload
+    ? brandApplicationDraftPayloadSchema.safeParse(body)
+    : draftApplicationSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid application data" },
+      {
+        error: parsed.error.issues[0]?.message ?? "Invalid application data",
+        validationErrors: isRebuiltPayload ? structuredErrors(parsed.error) : undefined,
+      },
       { status: 400 }
     );
   }
 
   try {
+    if (isRebuiltPayload) {
+      const application = await saveRebuiltDraft(
+        user,
+        parsed.data as import("@/lib/join/rebuildValidation").BrandApplicationDraftPayload
+      );
+      return NextResponse.json({ application });
+    }
     const snapshot = await getApplicantAccountSnapshot(user);
-    const application = await createOrUpdateDraft(user.id, snapshot, parsed.data);
+    const application = await createOrUpdateDraft(
+      user.id,
+      snapshot,
+      parsed.data as import("@/lib/join/validation").DraftApplicationInput
+    );
     return NextResponse.json({ application });
   } catch (error) {
     if (error instanceof ApplicationServiceError) {

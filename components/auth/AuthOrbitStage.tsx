@@ -32,8 +32,8 @@ export default function AuthOrbitStage({ compact = false }: { compact?: boolean 
   const [cycle, setCycle] = useState(0);
 
   useEffect(() => {
-    setPhase("orbit");
     const timers = [
+      window.setTimeout(() => setPhase("orbit"), 0),
       window.setTimeout(() => setPhase("dark"), compact ? 8000 : 11000),
       window.setTimeout(() => setPhase("logo"), compact ? 8800 : 12200),
       window.setTimeout(() => setPhase("lockup"), compact ? 9900 : 13800),

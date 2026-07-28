@@ -3,14 +3,20 @@ import { getAllBrandsForAdmin, getApplicationForAdmin } from "@/lib/data/admin";
 import BrandForm, { type FormState } from "@/components/admin/BrandForm";
 
 function prefillFromApplication(application: NonNullable<Awaited<ReturnType<typeof getApplicationForAdmin>>>): Partial<FormState> {
+  const rebuilt = application.applicationData;
   return {
-    name: application.brandNameEn || application.brandName,
-    tagline: "",
-    category: application.productCategory,
-    foundedYear: application.foundingYear ? String(application.foundingYear) : "",
-    city: application.city ?? "Cairo",
-    websiteUrl: application.websiteUrl ?? "",
-    aboutDescription: application.brandStory,
+    name: rebuilt?.brandName || application.brandNameEn || application.brandName,
+    tagline: rebuilt?.shortDescription || "",
+    category: rebuilt?.primaryCategory || application.productCategory,
+    foundedYear: rebuilt?.foundedYear
+      ? String(rebuilt.foundedYear)
+      : application.foundingYear
+        ? String(application.foundingYear)
+        : "",
+    city: rebuilt?.city ?? application.city ?? "Cairo",
+    websiteUrl: rebuilt?.socialLinks?.Website?.url ?? application.websiteUrl ?? "",
+    aboutDescription: rebuilt?.fullBrandStory || application.brandStory,
+    isActive: false,
   };
 }
 
