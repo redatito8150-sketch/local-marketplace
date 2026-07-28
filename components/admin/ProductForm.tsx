@@ -2,21 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
-import type { Audience, ProductColorOption, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
-import { parseCsv, parseLines } from "@/lib/admin/parseTextInputs";
+import type { Audience, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
+import { parseLines } from "@/lib/admin/parseTextInputs";
 import {
   validateProductInput,
   type ProductInput,
-  type VariantInput,
 } from "@/lib/admin/productValidation";
-import { reconcileVariants } from "@/lib/admin/variantGrid";
 import ImageUploader from "@/components/admin/ImageUploader";
-import VariantGrid from "@/components/admin/VariantGrid";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
 import TaxonomySelector from "@/components/admin/TaxonomySelector";
 import BrandSelect, { type BrandOption } from "@/components/admin/BrandSelect";
 import CollectionSelect from "@/components/admin/CollectionSelect";
+import InventoryVariantsSection, {
+  type InventoryVariantsValue,
+  type OptionTypeOption,
+  type OptionValueOption,
+} from "@/components/admin/InventoryVariantsSection";
+import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
@@ -35,7 +37,8 @@ interface ProductFormProps {
   // any caller that doesn't fetch site_content still works unchanged. Only
   // Materials/Fits still come from this — Main Category/Product Group/
   // Product Type/Collection are driven by `taxonomyNodes`/CollectionSelect
-  // instead.
+  // instead. Material/Fit stay in Product Content & Specifications going
+  // forward and are not part of Inventory & Variants.
   taxonomy?: ProductTaxonomyContent;
   // The flat, active Main Category -> Product Group -> Product Type tree
   // (lib/data/taxonomy.ts) backing the cascading taxonomy selects.
@@ -63,12 +66,9 @@ interface FormState {
   compareAtPrice: string;
   image: string;
   images: string[];
-  trackInventory: boolean;
-  colors: ProductColorOption[];
-  sizesText: string;
   material: string;
   fit: string;
-  variants: VariantInput[];
+  inventoryVariants: InventoryVariantsValue;
   description: string;
   detailsText: string;
   careInstructionsText: string;
@@ -90,6 +90,35 @@ function toDatetimeLocalValue(iso: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
+function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsValue {
+  const optionTypeIds: string[] = [];
+  const valueIdsByOptionType: Record<string, string[]> = {};
+  for (const variant of product?.variants ?? []) {
+    for (const selection of variant.optionValues) {
+      if (!optionTypeIds.includes(selection.optionTypeId)) optionTypeIds.push(selection.optionTypeId);
+      const current = valueIdsByOptionType[selection.optionTypeId] ?? [];
+      if (!current.includes(selection.optionValueId)) {
+        valueIdsByOptionType[selection.optionTypeId] = [...current, selection.optionValueId];
+      }
+    }
+  }
+
+  return {
+    defaultLowStockThreshold: product?.defaultLowStockThreshold ?? 5,
+    optionTypeIds,
+    valueIdsByOptionType,
+    variants: (product?.variants ?? []).map((v) => ({
+      optionValueIds: v.optionValues.map((s) => s.optionValueId),
+      sku: v.sku,
+      quantity: v.quantity,
+      variantPrice: v.variantPrice,
+      lowStockThresholdOverride: v.lowStockThresholdOverride,
+      sellingStatus: v.sellingStatus,
+    })),
+    colorImages: {},
+  };
+}
+
 function toFormState(
   product?: ProductRecord,
   lockedBrand?: { id: string; name: string }
@@ -106,21 +135,9 @@ function toFormState(
     compareAtPrice: product?.compareAtPrice != null ? String(product.compareAtPrice) : "",
     image: product?.image ?? "",
     images: product?.images ?? [],
-    trackInventory: product?.trackInventory ?? true,
-    colors: product?.colors ?? [],
-    sizesText: product?.sizes?.join(", ") ?? "",
     material: product?.material ?? "",
     fit: product?.fit ?? "",
-    variants: (product?.variants ?? []).map((v) => ({
-      id: v.id,
-      color: v.color,
-      size: v.size,
-      sku: v.sku ?? "",
-      quantity: v.quantity,
-      lowStockThreshold: v.lowStockThreshold,
-      priceOverride: v.priceOverride,
-      availabilityStatus: v.availabilityStatus,
-    })),
+    inventoryVariants: toInventoryVariantsValue(product),
     description: product?.description ?? "",
     detailsText: product?.details?.join("\n") ?? "",
     careInstructionsText: product?.careInstructions?.join("\n") ?? "",
@@ -147,9 +164,13 @@ export default function ProductForm({
 }: ProductFormProps) {
   const router = useRouter();
   const isBrandPortal = Boolean(lockedBrand);
+  const optionsApiBase = isBrandPortal ? "/api/brand-portal" : "/api/admin";
   const [form, setForm] = useState<FormState>(() => toFormState(initial, lockedBrand));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
   const [error, setError] = useState("");
+
+  const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
+  const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
 
   // Save now keeps the admin on this page instead of redirecting to the
   // list, so a first-time create needs to remember the id it gets back and
@@ -173,20 +194,75 @@ export default function ProductForm({
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  // Regenerates the variant grid to match the current color/size
-  // selections whenever either changes, preserving already-entered data
-  // for combinations that still exist (see lib/admin/variantGrid.ts).
+  const loadOptions = async () => {
+    if (!form.brandId) {
+      setOptionTypes([]);
+      setOptionValues([]);
+      return;
+    }
+    const url =
+      optionsApiBase === "/api/admin"
+        ? `/api/admin/product-options?brandId=${encodeURIComponent(form.brandId)}`
+        : "/api/brand-portal/product-options";
+    const res = await fetch(url);
+    const data = await res.json();
+    if (res.ok) {
+      setOptionTypes(data.optionTypes ?? []);
+      setOptionValues(data.optionValues ?? []);
+    }
+  };
+
   useEffect(() => {
-    // Reconciling the variant grid against colors/sizes typed into a text
-    // field — needs the previous variants' entered quantities/SKUs
-    // preserved, so it's a genuine cross-render sync, not something
-    // computable from props/state alone during render.
+    // Fetching from the network on a prop/state change (brandId) is the
+    // canonical use of an effect.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm((f) => ({
-      ...f,
-      variants: reconcileVariants(f.colors, parseCsv(f.sizesText), f.variants),
-    }));
-  }, [form.colors, form.sizesText]);
+    loadOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.brandId]);
+
+  const handleCreateOptionType = async (name: string): Promise<OptionTypeOption> => {
+    const res = await fetch(`${optionsApiBase}/product-options/types`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(optionsApiBase === "/api/admin" ? { brandId: form.brandId, name } : { name }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to create option type");
+    const created: OptionTypeOption = { id: data.id, name: data.name, key: data.key, isSystem: data.isSystem };
+    setOptionTypes((prev) => [...prev, created]);
+    return created;
+  };
+
+  const handleCreateOptionValue = async (
+    optionTypeId: string,
+    label: string,
+    colorInput?: NewColorInput
+  ): Promise<OptionValueOption> => {
+    const res = await fetch(`${optionsApiBase}/product-options/values`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(optionsApiBase === "/api/admin" ? { brandId: form.brandId } : {}),
+        optionTypeId,
+        label,
+        swatchType: colorInput?.swatchType,
+        primaryColor: colorInput?.primaryColor,
+        secondaryColor: colorInput?.secondaryColor,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to create option value");
+    const created: OptionValueOption = {
+      id: data.id,
+      optionTypeId: data.optionTypeId,
+      label: data.label,
+      swatchType: data.swatchType,
+      primaryColor: data.primaryColor,
+      secondaryColor: data.secondaryColor,
+    };
+    setOptionValues((prev) => [...prev, created]);
+    return created;
+  };
 
   const handleTaxonomyChange = (productTypeId: string) => {
     setForm((f) => ({ ...f, productTypeId }));
@@ -202,32 +278,12 @@ export default function ProductForm({
       ...f,
       brandId,
       brandName: brand?.name ?? f.brandName,
-      // A different brand's collections are a different list entirely —
-      // never keep a collection selected from the brand just left behind.
+      // A different brand's collections/private options are a different
+      // pool entirely — never keep selections from the brand just left.
       collectionId: "",
+      inventoryVariants: { ...f.inventoryVariants, optionTypeIds: [], valueIdsByOptionType: {}, variants: [], colorImages: {} },
     }));
   };
-
-  const updateColor = (index: number, patch: Partial<ProductColorOption>) => {
-    setForm((f) => ({
-      ...f,
-      colors: f.colors.map((c, i) => (i === index ? { ...c, ...patch } : c)),
-    }));
-  };
-
-  const addColor = () =>
-    setForm((f) => ({ ...f, colors: [...f.colors, { name: "", hex: "#000000" }] }));
-
-  const removeColor = (index: number) =>
-    setForm((f) => ({ ...f, colors: f.colors.filter((_, i) => i !== index) }));
-
-  const totalQuantity = form.variants.reduce((sum, v) => sum + (v.quantity || 0), 0);
-  const singleVariant = form.variants.length === 1 ? form.variants[0] : null;
-  const updateSingleVariant = (patch: Partial<VariantInput>) =>
-    setForm((f) => ({
-      ...f,
-      variants: f.variants.map((v, i) => (i === 0 ? { ...v, ...patch } : v)),
-    }));
 
   const buildPayload = (targetStatus: ProductStatus): ProductInput => ({
     name: form.name.trim(),
@@ -240,8 +296,6 @@ export default function ProductForm({
     currency: "EGP",
     image: form.image.trim(),
     images: form.images,
-    colors: form.colors.filter((c) => c.name.trim() && c.hex.trim()),
-    sizes: parseCsv(form.sizesText),
     material: form.material || undefined,
     fit: form.fit || undefined,
     description: form.description.trim(),
@@ -251,11 +305,14 @@ export default function ProductForm({
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
     isNew: form.isNew,
-    trackInventory: form.trackInventory,
     featured: form.featured,
     status: targetStatus,
     publishDate: form.publishDate ? new Date(form.publishDate).toISOString() : undefined,
-    variants: form.variants,
+    defaultLowStockThreshold: form.inventoryVariants.defaultLowStockThreshold,
+    optionTypeIds: form.inventoryVariants.optionTypeIds,
+    valueIdsByOptionType: form.inventoryVariants.valueIdsByOptionType,
+    variants: form.inventoryVariants.variants,
+    colorImages: form.inventoryVariants.colorImages,
   });
 
   const submit = async (targetStatus: ProductStatus) => {
@@ -288,12 +345,15 @@ export default function ProductForm({
       // product it just made instead of re-posting a duplicate next save.
       setCurrentProductId(data.id);
       if (currentMode === "create") setCurrentMode("edit");
-      // The server-generated SKU only exists after the first successful
-      // save — reflect it in the now-read-only field immediately rather
-      // than waiting on a full page reload.
-      const nextSku = typeof data.sku === "string" && data.sku ? data.sku : form.sku;
-      setForm((f) => ({ ...f, status: targetStatus, sku: nextSku }));
-      setSavedSnapshot({ ...form, status: targetStatus, sku: nextSku });
+      // Server-generated variant SKUs only exist after a successful save —
+      // reflect them in the now-read-only fields immediately rather than
+      // waiting on a full page reload.
+      const nextVariants: InventoryVariantsValue = data.variants
+        ? { ...form.inventoryVariants, variants: data.variants }
+        : form.inventoryVariants;
+      const nextForm = { ...form, status: targetStatus, inventoryVariants: nextVariants };
+      setForm(nextForm);
+      setSavedSnapshot(nextForm);
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
@@ -398,7 +458,7 @@ export default function ProductForm({
               brandId={form.brandId}
               value={form.collectionId}
               onChange={(v) => set("collectionId", v)}
-              apiBasePath={isBrandPortal ? "/api/brand-portal" : "/api/admin"}
+              apiBasePath={optionsApiBase}
             />
           </div>
 
@@ -465,142 +525,23 @@ export default function ProductForm({
           </div>
         </FormSection>
 
-        {/* 04 — Inventory */}
-        <FormSection number="04" title="Inventory">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <span className="text-[12.5px] font-medium text-ink-soft/70">Quantity *</span>
-              {singleVariant ? (
-                <input
-                  type="number"
-                  min={0}
-                  value={singleVariant.quantity}
-                  onChange={(e) =>
-                    updateSingleVariant({ quantity: Math.max(0, Number(e.target.value)) })
-                  }
-                  className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-                />
-              ) : (
-                <div className="mt-1.5 rounded-md border border-stone-150 bg-stone-50 px-3.5 py-2.5 text-[14px] text-ink-soft/70">
-                  {totalQuantity} total — set per variant below
-                </div>
-              )}
-            </div>
-            <label className="flex items-center justify-between rounded-md border border-stone-150 px-3.5 py-2.5">
-              <span>
-                <span className="block text-[13.5px] font-medium text-ink">Track Inventory</span>
-                <span className="block text-[11.5px] text-ink-soft/50">
-                  Automatically track and reduce stock
-                </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={form.trackInventory}
-                onChange={(e) => set("trackInventory", e.target.checked)}
-                className="h-5 w-9 flex-none accent-ink"
-              />
-            </label>
-          </div>
-
-          {singleVariant && (
-            <div className="mt-4 max-w-[200px]">
-              <TextField
-                label="Low Stock Alert"
-                type="number"
-                value={String(singleVariant.lowStockThreshold)}
-                onChange={(v) =>
-                  updateSingleVariant({ lowStockThreshold: Math.max(0, Number(v) || 0) })
-                }
-                hint="Get notified when stock reaches this quantity"
-              />
-            </div>
-          )}
+        {/* 04 — Inventory & Variants */}
+        <FormSection number="04" title="Inventory & Variants">
+          <InventoryVariantsSection
+            value={form.inventoryVariants}
+            onChange={(next) => set("inventoryVariants", next)}
+            availableOptionTypes={optionTypes}
+            availableOptionValues={optionValues}
+            onCreateOptionType={handleCreateOptionType}
+            onCreateOptionValue={handleCreateOptionValue}
+            currency="EGP"
+            productSkuPreview={form.sku || "(generated after first save)"}
+            disabled={!form.brandId}
+          />
         </FormSection>
 
-        {/* 05 — Product Options */}
-        <FormSection number="05" title="Product Options">
-          <div>
-            <span className="text-[12.5px] font-medium text-ink-soft/70">Colors</span>
-            <div className="mt-1.5 space-y-2">
-              {form.colors.map((color, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="Color name"
-                    value={color.name}
-                    onChange={(e) => updateColor(i, { name: e.target.value })}
-                    className="w-full rounded-md border border-stone-150 bg-white px-3.5 py-2 text-[14px] text-ink outline-none focus:border-ink/30"
-                  />
-                  <input
-                    type="color"
-                    value={color.hex}
-                    onChange={(e) => updateColor(i, { hex: e.target.value })}
-                    className="h-9 w-12 rounded-md border border-stone-150"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeColor(i)}
-                    className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700"
-                  >
-                    <Trash2 className="h-4 w-4" strokeWidth={1.6} />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addColor}
-                className="flex items-center gap-1.5 text-[13px] font-medium text-ink hover:underline"
-              >
-                <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                Add color
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <TextField
-              label="Sizes (comma-separated, optional)"
-              value={form.sizesText}
-              onChange={(v) => set("sizesText", v)}
-            />
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Material"
-              value={form.material}
-              onChange={(v) => set("material", v)}
-              options={[
-                { value: "", label: "Select material" },
-                ...taxonomy.materials.map((m) => ({ value: m, label: m })),
-              ]}
-            />
-            <SelectField
-              label="Fit"
-              value={form.fit}
-              onChange={(v) => set("fit", v)}
-              options={[
-                { value: "", label: "Select fit" },
-                ...taxonomy.fits.map((f) => ({ value: f, label: f })),
-              ]}
-            />
-          </div>
-
-          {form.variants.length > 1 && (
-            <div className="mt-5">
-              <span className="text-[12.5px] font-medium text-ink-soft/70">Variants</span>
-              <div className="mt-1.5">
-                <VariantGrid
-                  variants={form.variants}
-                  onChange={(variants) => set("variants", variants)}
-                />
-              </div>
-            </div>
-          )}
-        </FormSection>
-
-        {/* 06 — Product Details */}
-        <FormSection number="06" title="Product Details">
+        {/* 05 — Product Details */}
+        <FormSection number="05" title="Product Details">
           <TextArea
             label="Description"
             required
@@ -646,14 +587,37 @@ export default function ProductForm({
               onChange={(v) => set("modelWearing", v)}
             />
           </div>
+          {/* Material/Fit intentionally stay here for now (unchanged
+              inputs) — they'll move into Product Content & Specifications
+              in a later phase, not into Inventory & Variants. */}
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Material"
+              value={form.material}
+              onChange={(v) => set("material", v)}
+              options={[
+                { value: "", label: "Select material" },
+                ...taxonomy.materials.map((m) => ({ value: m, label: m })),
+              ]}
+            />
+            <SelectField
+              label="Fit"
+              value={form.fit}
+              onChange={(v) => set("fit", v)}
+              options={[
+                { value: "", label: "Select fit" },
+                ...taxonomy.fits.map((f) => ({ value: f, label: f })),
+              ]}
+            />
+          </div>
         </FormSection>
 
-        {/* 07 — Visibility (admin-only: status/scheduling/featured are
+        {/* 06 — Visibility (admin-only: status/scheduling/featured are
             editorial calls the brand portal never makes directly — a
             brand-portal submission's status is always decided by the
             review flow, never typed in here) */}
         {!isBrandPortal && (
-          <FormSection number="07" title="Visibility">
+          <FormSection number="06" title="Visibility">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <SelectField
                 label="Status"
@@ -704,8 +668,28 @@ export default function ProductForm({
 
       <div ref={previewRef}>
         <ProductLivePreview
-          form={{ ...form, collectionName: "" }}
+          form={{
+            name: form.name,
+            brandName: form.brandName,
+            audience: form.audience,
+            productTypeId: form.productTypeId,
+            collectionName: "",
+            price: form.price,
+            compareAtPrice: form.compareAtPrice,
+            image: form.image,
+            images: form.images,
+            inventoryVariants: form.inventoryVariants,
+            description: form.description,
+            detailsText: form.detailsText,
+            careInstructionsText: form.careInstructionsText,
+            shippingReturns: form.shippingReturns,
+            modelHeight: form.modelHeight,
+            modelWearing: form.modelWearing,
+            sku: form.sku,
+            featured: form.featured,
+          }}
           taxonomyNodes={taxonomyNodes}
+          optionValues={optionValues}
           productId={currentProductId}
           hasUnsavedChanges={hasUnsavedChanges}
           justSaved={justSaved}

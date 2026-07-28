@@ -40,17 +40,17 @@ export function formatCompactNumber(value: number): string {
 
 /**
  * The one price-resolution rule used everywhere a product's active price is
- * charged or totaled (cart add, Complete Featured Look total): a variant's
- * override wins when one applies, otherwise the product's own price — which
- * is already the active/effective price (post-discount where relevant);
- * `compareAtPrice` is only ever the struck-through "was" price, never used
- * in a total.
+ * charged or totaled (cart add, Complete Featured Look total): Variant
+ * Price is the final price when set, otherwise the product's own price —
+ * which is already the active/effective price (post-discount where
+ * relevant); `compareAtPrice` is only ever the struck-through "was" price,
+ * never used in a total.
  */
 export function resolveActivePrice(
   product: Pick<Product, "price">,
-  variant?: Pick<ProductVariant, "priceOverride">
+  variant?: Pick<ProductVariant, "variantPrice">
 ): number {
-  return variant?.priceOverride ?? product.price;
+  return variant?.variantPrice ?? product.price;
 }
 
 /**
@@ -60,7 +60,7 @@ export function resolveActivePrice(
  */
 export function calculateCollectionTotal<T extends Pick<Product, "price">>(
   products: T[],
-  resolveVariant?: (product: T) => Pick<ProductVariant, "priceOverride"> | undefined
+  resolveVariant?: (product: T) => Pick<ProductVariant, "variantPrice"> | undefined
 ): number {
   const totalCents = products.reduce((sum, product) => {
     const variant = resolveVariant?.(product);

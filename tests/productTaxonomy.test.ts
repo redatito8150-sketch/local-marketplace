@@ -83,28 +83,22 @@ const baseProduct: ProductInput = {
   price: 500,
   currency: "EGP",
   image: "/tshirt.jpg",
-  colors: [],
-  sizes: ["M"],
   description: "A t-shirt",
   details: [],
   careInstructions: [],
   shippingReturns: "",
   isNew: false,
-  trackInventory: true,
   featured: false,
   status: "draft",
-  variants: [
-    { quantity: 1, lowStockThreshold: 1, availabilityStatus: "available" },
-  ],
+  defaultLowStockThreshold: 5,
+  optionTypeIds: [],
+  valueIdsByOptionType: {},
+  variants: [{ optionValueIds: [], quantity: 1, sellingStatus: "active" }],
+  colorImages: {},
 };
 
 test("buildProductPersistencePayload always writes brand_id, audience, and product_type_id", () => {
-  const payload = buildProductPersistencePayload(baseProduct, {
-    colors: [],
-    sizes: ["M"],
-    unavailableSizes: [],
-    inStock: true,
-  });
+  const payload = buildProductPersistencePayload(baseProduct);
   assert.equal(payload.brand_id, "brand-1");
   assert.equal(payload.audience, "unisex");
   assert.equal(payload.product_type_id, "type-tshirts");
@@ -112,9 +106,6 @@ test("buildProductPersistencePayload always writes brand_id, audience, and produ
 });
 
 test("buildProductPersistencePayload writes collection_id when a collection is selected", () => {
-  const payload = buildProductPersistencePayload(
-    { ...baseProduct, collectionId: "collection-1" },
-    { colors: [], sizes: ["M"], unavailableSizes: [], inStock: true }
-  );
+  const payload = buildProductPersistencePayload({ ...baseProduct, collectionId: "collection-1" });
   assert.equal(payload.collection_id, "collection-1");
 });

@@ -3,9 +3,13 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
+import { replaceProductColorImages, replaceProductOptionSelections, syncProductVariants } from "@/lib/admin/variantPersistence";
+import type { ProductVariant } from "@/types";
+import type { ProductOptionSelectionsSnapshot } from "@/lib/admin/loadProductOptionSelections";
 
 interface BeforeProductSnapshot {
   id: string;
+  sku: string;
   name: string;
   audience: string;
   product_type_id: string;
@@ -17,28 +21,18 @@ interface BeforeProductSnapshot {
   currency: "USD" | "EGP";
   image: string;
   images: string[];
-  colors: unknown;
-  sizes: string[];
   description: string;
   details: string[];
   care_instructions: string[];
   shipping_returns: string;
   model_height: string | null;
   model_wearing: string | null;
-  in_stock: boolean;
   is_new: boolean;
-  unavailable_sizes: string[];
-  track_inventory: boolean;
+  default_low_stock_threshold: number;
   status: string;
-  variants?: {
-    color: string | null;
-    size: string | null;
-    sku: string | null;
-    quantity: number;
-    low_stock_threshold: number;
-    price_override: number | null;
-    availability_status: string;
-  }[];
+  variants?: ProductVariant[];
+  optionSelections?: ProductOptionSelectionsSnapshot;
+  colorImages?: Record<string, string>;
 }
 
 // Instant-Publish's admin side: a brand's create/update/archive already
@@ -119,7 +113,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
   } else if (auditEntry.action === "update") {
     const before = auditEntry.before_value as BeforeProductSnapshot;
-    const { variants, ...productFields } = before;
+    const { variants, optionSelections, colorImages, ...productFields } = before;
 
     // brand_id/brand_slug/brand_name and sku are never part of this update
     // — both are immutable after creation, so a revert can never change
@@ -138,18 +132,14 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         currency: productFields.currency,
         image: productFields.image,
         images: productFields.images,
-        colors: productFields.colors,
-        sizes: productFields.sizes,
         description: productFields.description,
         details: productFields.details,
         care_instructions: productFields.care_instructions,
         shipping_returns: productFields.shipping_returns,
         model_height: productFields.model_height,
         model_wearing: productFields.model_wearing,
-        in_stock: productFields.in_stock,
         is_new: productFields.is_new,
-        unavailable_sizes: productFields.unavailable_sizes,
-        track_inventory: productFields.track_inventory,
+        default_low_stock_threshold: productFields.default_low_stock_threshold,
         status: "published",
         reviewed_by: admin.id,
         reviewed_at: nowIso,
@@ -159,33 +149,49 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Restore the variant set exactly as it stood before the edit.
-    const { error: deleteError } = await supabaseAdmin
-      .from("product_variants")
-      .delete()
-      .eq("product_id", productId);
-    if (deleteError) {
-      return NextResponse.json(
-        { error: `Reverted product fields, but restoring variants failed: ${deleteError.message}` },
-        { status: 500 }
-      );
-    }
-    if (variants && variants.length > 0) {
-      const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
-        variants.map((v) => ({
-          product_id: productId,
-          color: v.color,
-          size: v.size,
-          sku: v.sku,
-          quantity: v.quantity,
-          low_stock_threshold: v.low_stock_threshold,
-          price_override: v.price_override,
-          availability_status: v.availability_status,
-        }))
-      );
-      if (variantsError) {
+    // Restore the option selections exactly as they stood before the edit.
+    if (optionSelections) {
+      const optionsResult = await replaceProductOptionSelections({
+        productId,
+        optionTypeIdsInOrder: optionSelections.optionTypeIdsInOrder,
+        valueIdsByOptionType: new Map(Object.entries(optionSelections.valueIdsByOptionType)),
+      });
+      if (!optionsResult.ok) {
         return NextResponse.json(
-          { error: `Reverted product fields, but restoring variants failed: ${variantsError.message}` },
+          { error: `Reverted product fields, but restoring options failed: ${optionsResult.error}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Restore the variant set exactly as it stood before the edit — same
+    // safe-regen logic the normal edit path uses, so any variant that's
+    // unchanged (by combo key) keeps its id/SKU/order history intact.
+    if (variants) {
+      const variantsResult = await syncProductVariants({
+        productId,
+        productSku: productFields.sku,
+        submitted: variants.map((v) => ({
+          optionValueIds: v.optionValues.map((o) => o.optionValueId),
+          quantity: v.quantity,
+          variantPrice: v.variantPrice ?? null,
+          lowStockThresholdOverride: v.lowStockThresholdOverride ?? null,
+          sellingStatus: v.sellingStatus,
+        })),
+      });
+      if (!variantsResult.ok) {
+        return NextResponse.json(
+          { error: `Reverted product fields, but restoring variants failed: ${variantsResult.error}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (colorImages) {
+      const colorImagesResult = await replaceProductColorImages({ productId, colorImages });
+      if (!colorImagesResult.ok) {
+        return NextResponse.json(
+          { error: `Reverted product fields, but restoring color images failed: ${colorImagesResult.error}` },
           { status: 500 }
         );
       }

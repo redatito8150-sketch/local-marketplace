@@ -15,6 +15,7 @@ import {
   type ProductPreviewFormValues,
 } from "@/lib/admin/buildPreviewProduct";
 import type { TaxonomyNode } from "@/types";
+import type { OptionValueOption } from "@/components/admin/InventoryVariantsSection";
 
 // Wrapped locally (not edited at the source) so unrelated field edits don't
 // re-render pieces of the preview that don't depend on them.
@@ -25,12 +26,14 @@ const MemoProductAccordion = memo(ProductAccordion);
 export default function ProductLivePreview({
   form,
   taxonomyNodes,
+  optionValues,
   productId,
   hasUnsavedChanges,
   justSaved,
 }: {
   form: ProductPreviewFormValues;
   taxonomyNodes: TaxonomyNode[];
+  optionValues: OptionValueOption[];
   productId?: string;
   hasUnsavedChanges: boolean;
   justSaved: boolean;
@@ -50,8 +53,8 @@ export default function ProductLivePreview({
   );
 
   const previewProduct = useMemo(
-    () => buildPreviewProduct(form, taxonomyNodes, productId),
-    [form, taxonomyNodes, productId]
+    () => buildPreviewProduct(form, taxonomyNodes, optionValues, productId),
+    [form, taxonomyNodes, optionValues, productId]
   );
 
   const previewAccordion = useMemo(

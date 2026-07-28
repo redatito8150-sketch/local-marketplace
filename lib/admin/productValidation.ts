@@ -1,44 +1,29 @@
-import type { Audience, ProductColorOption, ProductStatus, VariantAvailabilityStatus } from "@/types";
+import type { Audience, ProductColorOption, ProductStatus, SellingStatus } from "@/types";
+import { MAX_VARIANT_OPTIONS_PER_PRODUCT, MAX_VARIANTS_PER_PRODUCT, calculateVariantCombinationCount } from "../inventory/variantCombinations.ts";
 
 const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
+const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
 
-// One row per Color+Size combination the admin form is submitting. `id` is
-// present only when editing a variant that already exists in the DB — the
-// API route uses it to tell "update this row" apart from "insert a new one".
-export interface VariantInput {
-  id?: string;
-  color?: string;
-  size?: string;
+export interface VariantRowInput {
+  optionValueIds: string[];
   sku?: string;
   quantity: number;
-  lowStockThreshold: number;
-  priceOverride?: number;
-  availabilityStatus: VariantAvailabilityStatus;
+  variantPrice?: number;
+  lowStockThresholdOverride?: number;
+  sellingStatus: SellingStatus;
 }
 
 export interface ProductInput {
   name: string;
-  // The real ownership FK — immutable after creation (the edit API route
-  // ignores anything the client sends here and always uses the existing
-  // product's brand_id instead).
   brandId: string;
-  // The resolved Product Type leaf id (Level 3) from the hierarchical
-  // taxonomy (taxonomy_nodes) — server-resolved and validated in the API
-  // route (lib/admin/resolveTaxonomyLeaf.ts), not trusted here.
   productTypeId: string;
   audience: Audience;
-  // The brand-owned collection (collections table) this product belongs
-  // to — optional always. Ownership (collection.brand_id === the
-  // product's own brand_id) is verified server-side against the database,
-  // not here (see resolveCollectionOwnership in the API routes).
   collectionId?: string;
   price: number;
   compareAtPrice?: number;
   currency: "USD" | "EGP";
   image: string;
   images?: string[];
-  colors: ProductColorOption[];
-  sizes: string[];
   material?: string;
   fit?: string;
   description: string;
@@ -48,16 +33,24 @@ export interface ProductInput {
   modelHeight?: string;
   modelWearing?: string;
   isNew: boolean;
-  trackInventory: boolean;
   featured: boolean;
   status: ProductStatus;
   publishDate?: string;
-  variants: VariantInput[];
+  defaultLowStockThreshold: number;
+  optionTypeIds: string[];
+  valueIdsByOptionType: Record<string, string[]>;
+  variants: VariantRowInput[];
+  colorImages: Record<string, string>;
 }
 
-function validateVariants(variants: VariantInput[]): string | null {
+// Products no longer store colors as a flat product-level field, but the
+// type stays exported since ProductColorOption is still used elsewhere
+// (option value display, e.g. ProductCard's color dots).
+export type { ProductColorOption };
+
+function validateVariants(variants: VariantRowInput[]): string | null {
   if (!Array.isArray(variants) || variants.length === 0) {
-    return "At least one variant is required (pick colors/sizes, or leave both empty for a single default variant)";
+    return "Every product needs at least one variant — generate variants below, or leave every option unselected for a single default variant.";
   }
 
   const seenCombos = new Set<string>();
@@ -65,18 +58,24 @@ function validateVariants(variants: VariantInput[]): string | null {
     if (!Number.isInteger(variant.quantity) || variant.quantity < 0) {
       return "Each variant needs a whole, non-negative quantity";
     }
-    if (!Number.isInteger(variant.lowStockThreshold) || variant.lowStockThreshold < 0) {
-      return "Each variant needs a whole, non-negative low stock threshold";
+    if (
+      variant.lowStockThresholdOverride != null &&
+      (!Number.isInteger(variant.lowStockThresholdOverride) || variant.lowStockThresholdOverride < 0)
+    ) {
+      return "Each variant's low stock override must be a whole, non-negative number";
     }
     if (
-      variant.priceOverride != null &&
-      (!Number.isFinite(variant.priceOverride) || variant.priceOverride <= 0)
+      variant.variantPrice != null &&
+      (!Number.isFinite(variant.variantPrice) || variant.variantPrice < 0)
     ) {
-      return "A variant price override must be a positive number";
+      return "Variant Price cannot be negative";
     }
-    const combo = `${variant.color ?? ""} ${variant.size ?? ""}`;
+    if (!VALID_SELLING_STATUSES.includes(variant.sellingStatus)) {
+      return "Invalid Selling Status";
+    }
+    const combo = [...variant.optionValueIds].sort().join(",");
     if (seenCombos.has(combo)) {
-      return `Duplicate variant: ${variant.color || "—"} / ${variant.size || "—"} is listed more than once`;
+      return "Duplicate variant combination detected";
     }
     seenCombos.add(combo);
   }
@@ -84,11 +83,6 @@ function validateVariants(variants: VariantInput[]): string | null {
   return null;
 }
 
-// Brand, Audience, and taxonomy are required on every product regardless
-// of status — the DB itself enforces this unconditionally (brand_id,
-// audience, product_type_id are all NOT NULL on every row), so there is no
-// "draft" exception here anymore: a product can't exist at all without
-// these three.
 export function validateProductInput(body: ProductInput): string | null {
   if (!body.name?.trim()) return "Name is required";
   if (!body.brandId?.trim()) return "A brand must be selected";
@@ -110,12 +104,28 @@ export function validateProductInput(body: ProductInput): string | null {
   if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
     return "Invalid status";
   }
+  if (!Number.isInteger(body.defaultLowStockThreshold) || body.defaultLowStockThreshold < 0) {
+    return "Default Low Stock Alert must be a whole, non-negative number";
+  }
+  if (body.optionTypeIds.length > MAX_VARIANT_OPTIONS_PER_PRODUCT) {
+    return "A product can have a maximum of 3 variant options.";
+  }
+
+  const expectedTotal = calculateVariantCombinationCount(
+    body.optionTypeIds.map((id) => ({ optionTypeId: id, valueIds: body.valueIdsByOptionType[id] ?? [] }))
+  );
+  if (expectedTotal > MAX_VARIANTS_PER_PRODUCT) {
+    return `This selection would generate ${expectedTotal} variants, which exceeds the maximum of ${MAX_VARIANTS_PER_PRODUCT}.`;
+  }
 
   const variantError = validateVariants(body.variants);
   if (variantError) return variantError;
 
-  if (body.status === "published" && body.variants.every((v) => v.quantity <= 0)) {
-    return "At least one variant needs stock before publishing";
+  if (body.status === "published") {
+    const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
+    if (!hasPurchasable) {
+      return "At least one variant needs stock and an Active Selling Status before publishing";
+    }
   }
 
   return null;

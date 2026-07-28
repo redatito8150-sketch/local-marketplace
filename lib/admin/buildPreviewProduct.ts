@@ -1,8 +1,9 @@
-import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { primaryShopCategoryForAudience } from "@/lib/audience";
-import type { VariantInput } from "@/lib/admin/productValidation";
-import type { Audience, ProductColorOption, ProductDetail, TaxonomyNode } from "@/types";
+import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { effectiveVariantPrice } from "@/lib/inventory/pricing";
+import type { Audience, ProductDetail, TaxonomyNode } from "@/types";
+import type { InventoryVariantsValue, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
 import { parseLines } from "./parseTextInputs";
 
 // Keep this in sync with next.config.js `images.remotePatterns` — a URL
@@ -25,9 +26,6 @@ export function isPreviewImageSafe(url: string): boolean {
   }
 }
 
-// Structurally matches (a subset of) ProductForm's FormState — passing the
-// real form state in satisfies this without either file importing the
-// other's type.
 export interface ProductPreviewFormValues {
   name: string;
   brandName: string;
@@ -38,10 +36,7 @@ export interface ProductPreviewFormValues {
   compareAtPrice: string;
   image: string;
   images: string[];
-  colors: ProductColorOption[];
-  material: string;
-  fit: string;
-  variants: VariantInput[];
+  inventoryVariants: InventoryVariantsValue;
   description: string;
   detailsText: string;
   careInstructionsText: string;
@@ -49,14 +44,9 @@ export interface ProductPreviewFormValues {
   modelHeight: string;
   modelWearing: string;
   sku: string;
-  trackInventory: boolean;
   featured: boolean;
 }
 
-// Images now come from real Supabase Storage uploads (already-safe URLs),
-// not admin-typed text — the gallery wins if any images were uploaded,
-// otherwise falls back to the single main image, mirroring the API
-// route's own `images.length ? images : [image]` fallback.
 export function deriveProductImages(image: string, images: string[]): string[] {
   const gallery = images.filter(Boolean);
   const list = gallery.length ? gallery : image.trim() ? [image.trim()] : [];
@@ -66,24 +56,30 @@ export function deriveProductImages(image: string, images: string[]): string[] {
 export function buildPreviewProduct(
   form: ProductPreviewFormValues,
   taxonomyNodes: TaxonomyNode[],
+  optionValues: OptionValueOption[],
   id?: string
 ): ProductDetail {
   const safeImages = deriveProductImages(form.image, form.images);
-  // Same derivation the API route uses to keep the legacy sizes/colors/
-  // unavailableSizes/inStock fields coherent with the variant grid — the
-  // preview shows exactly what will actually be saved.
-  const legacy = deriveLegacyFieldsFromVariants(form.variants, form.colors, form.trackInventory);
-
   const audience = (form.audience || "unisex") as Audience;
   const categorySlug = primaryShopCategoryForAudience(audience);
   const path = resolveTaxonomyPath(taxonomyNodes, form.productTypeId);
+
+  const productPrice = Number(form.price) || 0;
+  const { variants, defaultLowStockThreshold } = form.inventoryVariants;
+  const labelFor = (id: string) => optionValues.find((v) => v.id === id)?.label ?? "";
+  const sizes = [...new Set(variants.flatMap((v) => v.optionValueIds.map(labelFor)).filter(Boolean))];
+  const inStock = variants.some((v) => {
+    const threshold = effectiveLowStockThreshold(v.lowStockThresholdOverride, defaultLowStockThreshold);
+    return v.sellingStatus === "active" && calculateStockStatus(v.quantity, threshold) !== "out_of_stock";
+  });
+  const previewPrice = variants.length > 0 ? effectiveVariantPrice(variants[0].variantPrice, productPrice) : productPrice;
 
   return {
     id: id ?? "preview",
     name: form.name.trim() || "Untitled product",
     brandName: form.brandName.trim() || "Brand name",
     brandSlug: undefined,
-    price: Number(form.price) || 0,
+    price: previewPrice,
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
     currency: "EGP",
     images: safeImages,
@@ -91,14 +87,14 @@ export function buildPreviewProduct(
     details: parseLines(form.detailsText),
     careInstructions: parseLines(form.careInstructionsText),
     shippingReturns: form.shippingReturns.trim(),
-    sizes: legacy.sizes,
-    unavailableSizes: legacy.unavailableSizes,
-    colors: legacy.colors,
+    sizes,
+    unavailableSizes: [],
+    colors: [],
     rating: 5,
     reviewCount: 0,
     reviews: [],
     sku: form.sku.trim() || "SKU-PREVIEW",
-    inStock: legacy.inStock,
+    inStock,
     categorySlug,
     categoryHref: `/shop/${categorySlug}`,
     relatedIds: [],
@@ -109,23 +105,9 @@ export function buildPreviewProduct(
     audience,
     collectionId: undefined,
     collectionName: form.collectionName || undefined,
-    material: form.material || undefined,
-    fit: form.fit || undefined,
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
     featured: form.featured,
-    variants: form.variants.map((v, i) => ({
-      id: v.id ?? `preview-${i}`,
-      productId: id ?? "preview",
-      color: v.color,
-      size: v.size,
-      sku: v.sku,
-      quantity: v.quantity,
-      lowStockThreshold: v.lowStockThreshold,
-      priceOverride: v.priceOverride,
-      availabilityStatus: v.availabilityStatus,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })),
+    variants: [],
   };
 }

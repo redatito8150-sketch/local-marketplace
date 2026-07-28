@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
-import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
-import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { describeProductCreate } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import { buildProductPersistencePayload } from "@/lib/admin/productPersistence";
+import {
+  syncProductVariants,
+  replaceProductOptionSelections,
+  replaceProductColorImages,
+} from "@/lib/admin/variantPersistence";
+import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { checkRateLimit } from "@/lib/rateLimit";
 
 function slugify(value: string): string {
@@ -65,14 +69,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  const duplicateSku = await findDuplicateSku(body.variants);
-  if (duplicateSku) {
-    return NextResponse.json(
-      { error: `SKU "${duplicateSku}" is already used by another product` },
-      { status: 400 }
-    );
-  }
-
   const { data: generatedSku, error: skuError } = await supabaseAdmin.rpc("next_product_sku", {
     p_brand_id: body.brandId,
   });
@@ -87,8 +83,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
-  const productPayload = buildProductPersistencePayload(body, legacy, {
+  const productPayload = buildProductPersistencePayload(body, {
     status: "published",
     publishDate: new Date().toISOString(),
     submittedBy: owner.user.id,
@@ -121,27 +116,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (body.variants.length > 0) {
-    const { error: variantsError } = await supabaseAdmin.from("product_variants").insert(
-      body.variants.map((v) => ({
-        product_id: id,
-        color: v.color || null,
-        size: v.size || null,
-        sku: v.sku?.trim() || null,
-        quantity: v.quantity,
-        low_stock_threshold: v.lowStockThreshold,
-        price_override: v.priceOverride ?? null,
-        availability_status: v.availabilityStatus,
-      }))
-    );
-
-    if (variantsError) {
-      return NextResponse.json(
-        { error: `Product submitted, but saving variants failed: ${variantsError.message}` },
-        { status: 500 }
-      );
-    }
+  const optionsResult = await replaceProductOptionSelections({
+    productId: id,
+    optionTypeIdsInOrder: body.optionTypeIds,
+    valueIdsByOptionType: new Map(Object.entries(body.valueIdsByOptionType)),
+  });
+  if (!optionsResult.ok) {
+    return NextResponse.json({ error: `Product submitted, but ${optionsResult.error}` }, { status: 500 });
   }
+
+  const variantsResult = await syncProductVariants({
+    productId: id,
+    productSku: generatedSku as string,
+    submitted: body.variants,
+  });
+  if (!variantsResult.ok) {
+    return NextResponse.json({ error: `Product submitted, but ${variantsResult.error}` }, { status: 500 });
+  }
+
+  const colorImagesResult = await replaceProductColorImages({ productId: id, colorImages: body.colorImages });
+  if (!colorImagesResult.ok) {
+    return NextResponse.json({ error: `Product submitted, but ${colorImagesResult.error}` }, { status: 500 });
+  }
+
+  const variants = await loadProductVariants(id);
 
   const auditLogId = await logAudit({
     actorId: owner.user.id,
@@ -165,5 +163,5 @@ export async function POST(request: NextRequest) {
     }
   );
 
-  return NextResponse.json({ id, sku: generatedSku });
+  return NextResponse.json({ id, sku: generatedSku, variants });
 }

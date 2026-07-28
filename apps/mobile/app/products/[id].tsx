@@ -37,10 +37,10 @@ export default function ProductDetailsRoute() {
   if (!product) return <ErrorState title="Product unavailable" message="This piece is no longer published." />;
   const selectedVariant = findProductVariant(product.variants, size, color);
   const hasVariants = Boolean(product.variants?.length);
-  const selectedUnavailable = isProductSelectionUnavailable({ hasVariants, selectedVariant, tracksInventory: product.track_inventory, selectedSize: size, unavailableSizes: product.unavailable_sizes });
+  const selectedUnavailable = isProductSelectionUnavailable({ hasVariants, selectedVariant, selectedSize: size, unavailableSizes: product.unavailable_sizes });
   const activePrice = resolveProductPrice(product, selectedVariant);
   const discount = calculateDiscountPercent(activePrice, product.compare_at_price);
-  const availableQuantity = product.track_inventory && selectedVariant ? Math.max(selectedVariant.quantity, 1) : 10;
+  const availableQuantity = selectedVariant ? Math.max(selectedVariant.quantity, 1) : 10;
   const addToCart = () => cart.addItem({ productId: product.id, name: product.name, brand: product.brand_name, image: product.image, price: activePrice, currency: product.currency, size: size || "One size", color: color || undefined, quantity });
   const purchaseDisabled = !product.in_stock || selectedUnavailable || (product.sizes.length > 0 && !size) || (product.colors.length > 0 && !color);
   return (

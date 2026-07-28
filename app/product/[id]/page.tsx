@@ -2,8 +2,7 @@ import { notFound } from "next/navigation";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ProductBreadcrumb from "@/components/product/ProductBreadcrumb";
-import ProductGallery from "@/components/product/ProductGallery";
-import ProductInfo from "@/components/product/ProductInfo";
+import ProductGalleryAndInfo from "@/components/product/ProductGalleryAndInfo";
 import ProductAccordion from "@/components/product/ProductAccordion";
 import ProductReviews from "@/components/product/ProductReviews";
 import RelatedProducts from "@/components/product/RelatedProducts";
@@ -55,8 +54,7 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
 
       <section className="mx-auto max-w-screen2xl px-8 pb-16 lg:px-12">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
-          <ProductGallery images={product.images} alt={product.name} />
-          <ProductInfo product={product} />
+          <ProductGalleryAndInfo product={product} />
         </div>
 
         <div className="mt-16 grid grid-cols-1 gap-16 lg:grid-cols-2 lg:gap-16">

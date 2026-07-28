@@ -3,6 +3,7 @@ import { logError } from "@/lib/errorLog";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/audience";
+import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import {
   Audience,
   CategorySlug,
@@ -11,9 +12,40 @@ import {
   ProductReview,
   ProductColorOption,
   ProductStatus,
+  ProductVariant,
   TaxonomyNode,
 } from "@/types";
 import { parsePriceRangeValue } from "@/lib/filters";
+
+// Fills in the display fields that are computed from a product's live,
+// non-archived variant set rather than stored on the product row itself
+// (products.sizes/colors/unavailable_sizes/in_stock were removed —
+// variant-level data is the only source of truth for all of this). Every
+// call site that attaches variants to a card/detail object must go
+// through this, not just set `variants` directly.
+export function attachVariantDerivedFields<T extends { sizes: string[]; colors: ProductColorOption[]; inStock: boolean; variants?: ProductVariant[] }>(
+  product: T,
+  variants: ProductVariant[]
+): T {
+  const sizeLabels = [
+    ...new Set(
+      variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Size").map((o) => o.label))
+    ),
+  ];
+  const colorMap = new Map<string, ProductColorOption>();
+  for (const variant of variants) {
+    for (const option of variant.optionValues) {
+      if (option.optionTypeName === "Color" && !colorMap.has(option.optionValueId)) {
+        colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8" });
+      }
+    }
+  }
+  const inStock = variants.some((v) =>
+    isVariantPurchasable({ sellingStatus: v.sellingStatus, quantity: v.quantity, isArchived: v.isArchived })
+  );
+
+  return { ...product, sizes: sizeLabels, colors: [...colorMap.values()], inStock, variants };
+}
 
 export interface ProductRow {
   id: string;
@@ -42,10 +74,8 @@ export interface ProductRow {
   model_height: string | null;
   model_wearing: string | null;
   sku: string;
-  in_stock: boolean;
   is_new: boolean;
-  unavailable_sizes: string[];
-  track_inventory: boolean;
+  default_low_stock_threshold: number;
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
@@ -110,9 +140,11 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     rating: Math.round(row.rating),
     reviewCount: row.review_count,
     image: row.image,
-    sizes: row.sizes ?? [],
-    colors: row.colors ?? [],
-    inStock: row.in_stock,
+    // Filled in by attachVariantDerivedFields once this product's variants
+    // are loaded (see every caller of toProductCard below).
+    sizes: [],
+    colors: [],
+    inStock: false,
     productTypeId: row.product_type_id,
     mainCategory: path?.mainCategory ?? "",
     productGroup: path?.productGroup ?? "",
@@ -144,14 +176,16 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     details: row.details ?? [],
     careInstructions: row.care_instructions ?? [],
     shippingReturns: row.shipping_returns,
-    sizes: row.sizes ?? [],
-    unavailableSizes: row.unavailable_sizes ?? [],
-    colors: row.colors ?? [],
+    // Filled in by attachVariantDerivedFields/getProductById once this
+    // product's variants are loaded.
+    sizes: [],
+    unavailableSizes: [],
+    colors: [],
     rating: Number(row.rating),
     reviewCount: row.review_count,
     reviews: generateReviews(row.review_count, row.rating),
     sku: row.sku,
-    inStock: row.in_stock,
+    inStock: false,
     categorySlug,
     categoryHref: `/shop/${categorySlug}`,
     relatedIds: [], // filled in by getProductById after a second query
@@ -166,10 +200,10 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     fit: row.fit ?? undefined,
     modelHeight: row.model_height ?? undefined,
     modelWearing: row.model_wearing ?? undefined,
-    trackInventory: row.track_inventory,
     featured: row.featured,
     status: row.status,
     publishDate: row.publish_date ?? undefined,
+    defaultLowStockThreshold: row.default_low_stock_threshold,
   };
 }
 
@@ -190,7 +224,7 @@ export async function getProductsByCategory(
   const ctx = await loadDisplayContext(rows);
   const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
-  return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
+  return cards.map((c) => attachVariantDerivedFields(c, variantsByProduct.get(c.id) ?? []));
 }
 
 export async function getProductCountLabel(
@@ -230,7 +264,7 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   const ctx = await loadDisplayContext(rows);
   const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((c) => c.id));
-  return cards.map((c) => ({ ...c, variants: variantsByProduct.get(c.id) ?? [] }));
+  return cards.map((c) => attachVariantDerivedFields(c, variantsByProduct.get(c.id) ?? []));
 }
 
 export async function getAllActiveProducts(
@@ -239,12 +273,15 @@ export async function getAllActiveProducts(
   featuredOnly = false
 ): Promise<Product[]> {
   const safeLimit = Math.max(1, Math.min(limit, 24));
+  // in_stock no longer exists as a stored column — over-fetch a candidate
+  // set (published/not paused, same ordering) and filter down to
+  // purchasable-in-stock products in memory once variants are attached,
+  // since "in stock" can only be known from the live variant set.
   let query = supabase
     .from("products")
     .select("*")
     .eq("status", "published")
-    .eq("paused_by_brand", false)
-    .eq("in_stock", true);
+    .eq("paused_by_brand", false);
 
   if (featuredOnly) query = query.eq("featured", true);
   if (sorting === "price-asc") query = query.order("price", { ascending: true });
@@ -252,13 +289,14 @@ export async function getAllActiveProducts(
   else if (sorting === "top-rated") query = query.order("rating", { ascending: false }).order("review_count", { ascending: false });
   else query = query.order("created_at", { ascending: false });
 
-  const { data, error } = await query.limit(safeLimit);
+  const { data, error } = await query.limit(safeLimit * 3);
   if (error) throw new Error(`getAllActiveProducts failed: ${error.message}`);
   const rows = ((data as ProductRow[]) ?? []);
   const ctx = await loadDisplayContext(rows);
   const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
-  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+  const withStock = cards.map((card) => attachVariantDerivedFields(card, variantsByProduct.get(card.id) ?? []));
+  return withStock.filter((card) => card.inStock).slice(0, safeLimit);
 }
 
 export async function getActiveProductsByIds(ids: string[], limit = 20): Promise<Product[]> {
@@ -276,7 +314,7 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
   const byId = new Map(rows.map((row) => [row.id, toProductCard(row, ctx)]));
   const cards = selected.flatMap((id) => byId.has(id) ? [byId.get(id)!] : []);
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
-  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+  return cards.map((card) => attachVariantDerivedFields(card, variantsByProduct.get(card.id) ?? []));
 }
 
 export type MarketplaceCatalogFilters = Partial<Record<
@@ -313,6 +351,39 @@ function matchingProductTypeIds(
     .map((leaf) => leaf.id);
 }
 
+// Resolves which product ids have at least one non-archived variant whose
+// selected option value (of the given system option key, "size" or
+// "color") has a label in `labels` — used to translate a facet filter
+// into a product id list, since sizes/colors are no longer flat columns
+// on products.
+async function resolveProductIdsByVariantOptionLabel(optionKey: "size" | "color", labels: string[]): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("product_variant_values")
+    .select("product_variants!inner(product_id, is_archived), option_values!inner(label, option_types!inner(key))")
+    .eq("product_variants.is_archived", false)
+    .eq("option_values.option_types.key", optionKey)
+    .in("option_values.label", labels);
+  if (error) throw new Error(`resolveProductIdsByVariantOptionLabel(${optionKey}) failed: ${error.message}`);
+  const rows = (data ?? []) as unknown as { product_variants: { product_id: string } }[];
+  return [...new Set(rows.map((r) => r.product_variants.product_id))];
+}
+
+// Resolves which product ids have at least one non-archived variant that
+// is (or isn't) purchasable, for the Availability facet.
+async function resolveProductIdsByAvailability(inStock: boolean): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("product_id, quantity, selling_status, is_archived")
+    .eq("is_archived", false);
+  if (error) throw new Error(`resolveProductIdsByAvailability failed: ${error.message}`);
+  const byProduct = new Map<string, boolean>();
+  for (const row of data ?? []) {
+    const purchasable = row.selling_status === "active" && row.quantity > 0;
+    byProduct.set(row.product_id, (byProduct.get(row.product_id) ?? false) || purchasable);
+  }
+  return [...byProduct.entries()].filter(([, hasStock]) => hasStock === inStock).map(([id]) => id);
+}
+
 export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptions = {}) {
   const pageSize = Math.max(1, Math.min(options.pageSize ?? 24, 48));
   const page = Math.max(1, options.page ?? 1);
@@ -320,9 +391,14 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
   const needsCollectionLookup = Boolean(filters.collection?.length);
-  const [taxonomyTree, collectionIds] = await Promise.all([
+  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds] = await Promise.all([
     needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
     needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
+    filters.size?.length ? resolveProductIdsByVariantOptionLabel("size", filters.size) : Promise.resolve<string[] | null>(null),
+    filters.color?.length ? resolveProductIdsByVariantOptionLabel("color", filters.color) : Promise.resolve<string[] | null>(null),
+    filters.availability?.length === 1
+      ? resolveProductIdsByAvailability(filters.availability[0] === "in-stock")
+      : Promise.resolve<string[] | null>(null),
   ]);
 
   let query = supabase
@@ -344,15 +420,13 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   }
   if (filters.material?.length) query = query.in("material", filters.material);
   if (filters.fit?.length) query = query.in("fit", filters.fit);
-  if (filters.size?.length) query = query.overlaps("sizes", filters.size);
-  if (filters.color?.length) {
-    query = query.or(filters.color.map((color) => `colors.cs.${JSON.stringify([{ name: color }])}`).join(","));
-  }
+  if (sizeProductIds) query = query.in("id", sizeProductIds.length ? sizeProductIds : ["__none__"]);
+  if (colorProductIds) query = query.in("id", colorProductIds.length ? colorProductIds : ["__none__"]);
   if (filters.price?.length) {
     const range = parsePriceRangeValue(filters.price[0]);
     if (range) query = query.gte("price", range.min).lte("price", range.max);
   }
-  if (filters.availability?.length === 1) query = query.eq("in_stock", filters.availability[0] === "in-stock");
+  if (availabilityProductIds) query = query.in("id", availabilityProductIds.length ? availabilityProductIds : ["__none__"]);
   if (filters.rating?.length) query = query.gte("rating", filters.rating.includes("3-plus") ? 3 : 4);
   if (filters.featured?.length) query = query.eq("featured", true);
   if (filters.discounted?.length) query = query.not("compare_at_price", "is", null);
@@ -371,7 +445,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   const cards = rows.map((row) => toProductCard(row, ctx));
   const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
   return {
-    products: cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] })),
+    products: cards.map((card) => attachVariantDerivedFields(card, variantsByProduct.get(card.id) ?? [])),
     total: count ?? 0,
     page,
     pageSize,
@@ -401,32 +475,44 @@ export interface MarketplaceCatalogFacetRow {
 export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogFacetRow[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("brand_name, audience, product_type_id, collection_id, material, fit, sizes, colors, compare_at_price, price")
+    .select("id, brand_name, audience, product_type_id, collection_id, material, fit, compare_at_price, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .limit(2000);
   if (error) throw new Error(`getMarketplaceCatalogFacets failed: ${error.message}`);
   const rows = (data ?? []) as {
+    id: string;
     brand_name: string;
     audience: Audience;
     product_type_id: string;
     collection_id: string | null;
     material: string | null;
     fit: string | null;
-    sizes: string[] | null;
-    colors: ProductColorOption[] | null;
     compare_at_price: number | null;
     price: number;
   }[];
 
   const collectionIds = [...new Set(rows.map((r) => r.collection_id).filter((v): v is string => Boolean(v)))];
-  const [taxonomyTree, collectionNamesById] = await Promise.all([
+  const [taxonomyTree, collectionNamesById, variantsByProduct] = await Promise.all([
     getFullTaxonomyTree(),
     loadCollectionNames(collectionIds),
+    getVariantsForProducts(rows.map((r) => r.id)),
   ]);
 
   return rows.map((row) => {
     const path = resolveTaxonomyPath(taxonomyTree, row.product_type_id);
+    const variants = variantsByProduct.get(row.id) ?? [];
+    const sizes = [
+      ...new Set(variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Size").map((o) => o.label))),
+    ];
+    const colorMap = new Map<string, ProductColorOption>();
+    for (const variant of variants) {
+      for (const option of variant.optionValues) {
+        if (option.optionTypeName === "Color" && !colorMap.has(option.optionValueId)) {
+          colorMap.set(option.optionValueId, { name: option.label, hex: option.primaryColor ?? "#D9D2C8" });
+        }
+      }
+    }
     return {
       brand: row.brand_name,
       category: primaryShopCategoryForAudience(row.audience),
@@ -435,8 +521,8 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
       collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,
       material: row.material ?? undefined,
       fit: row.fit ?? undefined,
-      sizes: row.sizes ?? [],
-      colors: row.colors ?? [],
+      sizes,
+      colors: [...colorMap.values()],
       compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
       price: Number(row.price),
     };
@@ -467,10 +553,28 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
 
   const row = data as ProductRow;
   const ctx = await loadDisplayContext([row]);
-  const detail = toProductDetail(row, ctx);
 
   const variantsByProduct = await getVariantsForProducts([id]);
-  detail.variants = variantsByProduct.get(id) ?? [];
+  const variants = variantsByProduct.get(id) ?? [];
+  const detail = attachVariantDerivedFields(toProductDetail(row, ctx), variants);
+  const sizeAvailability = new Map<string, boolean>();
+  for (const variant of variants) {
+    const sizeLabel = variant.optionValues.find((o) => o.optionTypeName === "Size")?.label;
+    if (!sizeLabel) continue;
+    const purchasable = variant.sellingStatus === "active" && variant.quantity > 0 && !variant.isArchived;
+    sizeAvailability.set(sizeLabel, (sizeAvailability.get(sizeLabel) ?? false) || purchasable);
+  }
+  detail.unavailableSizes = detail.sizes.filter((size) => !sizeAvailability.get(size));
+
+  const { data: colorImageRows } = await supabase
+    .from("product_color_images")
+    .select("image_url, option_values(label)")
+    .eq("product_id", id);
+  detail.colorImages = Object.fromEntries(
+    ((colorImageRows ?? []) as unknown as { image_url: string; option_values: { label: string } | null }[])
+      .filter((r) => r.option_values)
+      .map((r) => [r.option_values!.label, r.image_url])
+  );
 
   // Related products: same Product Type as this one. product_type_id is
   // NOT NULL post-migration, but this query still guards against a falsy

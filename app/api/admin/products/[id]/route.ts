@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
-import { deriveLegacyFieldsFromVariants } from "@/lib/admin/deriveFromVariants";
-import { findDuplicateSku } from "@/lib/admin/checkDuplicateSku";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
+import { buildProductPersistencePayload } from "@/lib/admin/productPersistence";
 import {
-  buildProductPersistencePayload,
-  buildVariantPersistencePayload,
-} from "@/lib/admin/productPersistence";
+  syncProductVariants,
+  replaceProductOptionSelections,
+  replaceProductColorImages,
+} from "@/lib/admin/variantPersistence";
+import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -31,8 +32,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const previousStatus = existing.status;
 
   const body: ProductInput = await request.json();
-  // Brand is immutable after creation (SKU ownership, collections, and
-  // audit history all key off it) — whatever the client sends is ignored.
+  // Brand and SKU are immutable after creation — whatever the client
+  // sends is ignored, always the existing product's own values.
   body.brandId = existing.brand_id;
 
   const validationError = validateProductInput(body);
@@ -51,35 +52,39 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  const duplicateSku = await findDuplicateSku(body.variants, params.id);
-  if (duplicateSku) {
-    return NextResponse.json(
-      { error: `SKU "${duplicateSku}" is already used by another product` },
-      { status: 400 }
-    );
-  }
+  const productPayload = buildProductPersistencePayload(body);
+  delete productPayload.brand_id; // immutable, never part of an update
 
-  const legacy = deriveLegacyFieldsFromVariants(body.variants, body.colors, body.trackInventory);
-
-  const productPayload = buildProductPersistencePayload(body, legacy);
-  // Brand and SKU are immutable after creation — the RPC's SET list
-  // already excludes them structurally, but they're stripped here too so
-  // the payload never even claims to change them.
-  delete productPayload.brand_id;
-  const { error } = await supabaseAdmin.rpc("replace_product_with_variants", {
-    p_product_id: params.id,
-    p_product: productPayload,
-    p_variants: buildVariantPersistencePayload(body),
-  });
-
+  const { error } = await supabaseAdmin.from("products").update(productPayload).eq("id", params.id);
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to update product: ${error.message}` },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: `Failed to update product: ${error.message}` }, { status: 500 });
   }
 
-  // Product and variants were committed by one database transaction.
+  const optionsResult = await replaceProductOptionSelections({
+    productId: params.id,
+    optionTypeIdsInOrder: body.optionTypeIds,
+    valueIdsByOptionType: new Map(Object.entries(body.valueIdsByOptionType)),
+  });
+  if (!optionsResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${optionsResult.error}` }, { status: 500 });
+  }
+
+  const variantsResult = await syncProductVariants({
+    productId: params.id,
+    productSku: existing.sku as string,
+    submitted: body.variants,
+  });
+  if (!variantsResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${variantsResult.error}` }, { status: 500 });
+  }
+
+  const colorImagesResult = await replaceProductColorImages({ productId: params.id, colorImages: body.colorImages });
+  if (!colorImagesResult.ok) {
+    return NextResponse.json({ error: `Product updated, but ${colorImagesResult.error}` }, { status: 500 });
+  }
+
+  const variants = await loadProductVariants(params.id);
+
   const notifyMeta = {
     entityId: params.id,
     entityIdLabel: "Product ID",
@@ -108,7 +113,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     after: body,
   });
 
-  return NextResponse.json({ id: params.id });
+  return NextResponse.json({ id: params.id, variants });
 }
 
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {

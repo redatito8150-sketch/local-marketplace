@@ -1,7 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getVariantsForProducts } from "@/lib/data/variants";
+import { attachVariantDerivedFields } from "@/lib/data/products";
 import { toBrandApplicationRecord } from "@/lib/join/applicationService";
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
+import { calculateVariantReadiness } from "@/lib/inventory/readiness";
+import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import {
   Audience,
   AuditLogRecord,
@@ -22,6 +25,7 @@ import {
   ProductStatus,
   ProfileRecord,
   ProfileRole,
+  SellingStatus,
   TaxonomyLevel,
   TaxonomyNode,
 } from "@/types";
@@ -42,8 +46,6 @@ interface ProductRow {
   currency: "USD" | "EGP";
   image: string;
   images: string[];
-  colors: ProductColorOption[];
-  sizes: string[];
   description: string;
   details: string[];
   care_instructions: string[];
@@ -51,10 +53,8 @@ interface ProductRow {
   model_height: string | null;
   model_wearing: string | null;
   sku: string;
-  in_stock: boolean;
   is_new: boolean;
-  unavailable_sizes: string[];
-  track_inventory: boolean;
+  default_low_stock_threshold: number;
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
@@ -113,9 +113,11 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     currency: row.currency,
     image: row.image,
     images: row.images ?? [],
-    colors: row.colors ?? [],
-    sizes: row.sizes ?? [],
-    unavailableSizes: row.unavailable_sizes ?? [],
+    // Filled in by attachVariantDerivedFields once variants are attached
+    // (see getAllProductsForAdmin/getProductForAdmin below).
+    colors: [],
+    sizes: [],
+    unavailableSizes: [],
     description: row.description,
     details: row.details ?? [],
     careInstructions: row.care_instructions ?? [],
@@ -123,9 +125,9 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     modelHeight: row.model_height ?? undefined,
     modelWearing: row.model_wearing ?? undefined,
     sku: row.sku,
-    inStock: row.in_stock,
+    inStock: false,
     isNew: row.is_new,
-    trackInventory: row.track_inventory,
+    defaultLowStockThreshold: row.default_low_stock_threshold,
     featured: row.featured,
     status: row.status,
     publishDate: row.publish_date ?? undefined,
@@ -152,7 +154,13 @@ export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
   }
   const rows = data as ProductRow[];
   const ctx = await loadAdminProductDisplayContext(rows);
-  return rows.map((row) => toProductRecord(row, ctx));
+  const variantsByProduct = await getVariantsForProducts(rows.map((r) => r.id), supabaseAdmin);
+  return rows.map((row) => {
+    const variants = variantsByProduct.get(row.id) ?? [];
+    const record = attachVariantDerivedFields(toProductRecord(row, ctx), variants);
+    record.variantReadiness = calculateVariantReadiness(variants, row.status);
+    return record;
+  });
 }
 
 // Sidebar badge for the "Brand Activity" page — Instant-Publish means a
@@ -204,9 +212,10 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
 
   const row = data as ProductRow;
   const ctx = await loadAdminProductDisplayContext([row]);
-  const record = toProductRecord(row, ctx);
   const variantsByProduct = await getVariantsForProducts([id], supabaseAdmin);
-  record.variants = variantsByProduct.get(id) ?? [];
+  const variants = variantsByProduct.get(id) ?? [];
+  const record = attachVariantDerivedFields(toProductRecord(row, ctx), variants);
+  record.variantReadiness = calculateVariantReadiness(variants, row.status);
   return record;
 }
 
@@ -694,11 +703,10 @@ export async function getAuditLogsForBrand(
 interface LowStockVariantRow {
   id: string;
   product_id: string;
-  color: string | null;
-  size: string | null;
   quantity: number;
-  low_stock_threshold: number;
-  products: { id: string; name: string; brand_name: string; image: string } | null;
+  low_stock_threshold_override: number | null;
+  selling_status: SellingStatus;
+  products: { id: string; name: string; brand_name: string; image: string; default_low_stock_threshold: number } | null;
 }
 
 // Small catalog, so filtering "at or below threshold" in memory after one
@@ -707,27 +715,49 @@ interface LowStockVariantRow {
 export async function getLowStockVariantsForAdmin(): Promise<LowStockVariantRecord[]> {
   const { data, error } = await supabaseAdmin
     .from("product_variants")
-    .select("id, product_id, color, size, quantity, low_stock_threshold, products(id, name, brand_name, image)")
-    .eq("availability_status", "available")
+    .select(
+      "id, product_id, quantity, low_stock_threshold_override, selling_status, products(id, name, brand_name, image, default_low_stock_threshold)"
+    )
+    .eq("selling_status", "active")
+    .eq("is_archived", false)
     .order("quantity", { ascending: true });
 
   if (error) {
     throw new Error(`getLowStockVariantsForAdmin failed: ${error.message}`);
   }
 
-  return ((data as unknown as LowStockVariantRow[]) ?? [])
-    .filter((row) => row.quantity <= row.low_stock_threshold && row.products)
-    .map((row) => ({
-      variantId: row.id,
-      productId: row.product_id,
-      productName: row.products!.name,
-      brandName: row.products!.brand_name,
-      image: row.products!.image,
-      color: row.color ?? undefined,
-      size: row.size ?? undefined,
-      quantity: row.quantity,
-      lowStockThreshold: row.low_stock_threshold,
-    }));
+  const rows = ((data as unknown as LowStockVariantRow[]) ?? []).filter((row) => row.products);
+  const variantsByProduct = await getVariantsForProducts(
+    [...new Set(rows.map((row) => row.product_id))],
+    supabaseAdmin
+  );
+  const optionValuesByVariant = new Map(
+    [...variantsByProduct.values()].flat().map((v) => [v.id, v.optionValues])
+  );
+
+  return rows
+    .map((row) => {
+      const threshold = effectiveLowStockThreshold(
+        row.low_stock_threshold_override,
+        row.products!.default_low_stock_threshold
+      );
+      const stockStatus = calculateStockStatus(row.quantity, threshold);
+      const optionValues = optionValuesByVariant.get(row.id) ?? [];
+      return {
+        variantId: row.id,
+        productId: row.product_id,
+        productName: row.products!.name,
+        brandName: row.products!.brand_name,
+        image: row.products!.image,
+        color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
+        size: optionValues.find((o) => o.optionTypeName === "Size")?.label,
+        quantity: row.quantity,
+        lowStockThreshold: threshold,
+        sellingStatus: row.selling_status,
+        stockStatus,
+      };
+    })
+    .filter((v) => v.stockStatus !== "in_stock");
 }
 
 export async function getAuditLogsForEntity(

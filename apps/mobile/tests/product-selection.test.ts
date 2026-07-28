@@ -3,8 +3,8 @@ import test from "node:test";
 import { findProductVariant, isProductSelectionUnavailable, resolveProductPrice } from "../src/domain/product-selection.ts";
 
 const variants = [
-  { size: "M", color: "Black", price_override: 950 },
-  { size: "L", color: "Ivory", price_override: null },
+  { optionValues: [{ optionTypeName: "Size", label: "M" }, { optionTypeName: "Color", label: "Black" }], variant_price: 950 },
+  { optionValues: [{ optionTypeName: "Size", label: "L" }, { optionTypeName: "Color", label: "Ivory" }], variant_price: null },
 ];
 
 test("variant selection normalizes customer input", () => {
@@ -15,11 +15,11 @@ test("variant selection normalizes customer input", () => {
 test("active price uses a real override, including zero, before product price", () => {
   assert.equal(resolveProductPrice({ price: 1200 }, variants[0]), 950);
   assert.equal(resolveProductPrice({ price: 1200 }, variants[1]), 1200);
-  assert.equal(resolveProductPrice({ price: 1200 }, { size: null, color: null, price_override: 0 }), 0);
+  assert.equal(resolveProductPrice({ price: 1200 }, { optionValues: [], variant_price: 0 }), 0);
 });
 
 test("stock rules reject missing, unavailable, and depleted variants", () => {
-  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: undefined, tracksInventory: true, selectedSize: "M", unavailableSizes: [] }), true);
-  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: { size: "M", color: "Black", price_override: null, availability_status: "available", quantity: 0 }, tracksInventory: true, selectedSize: "M", unavailableSizes: [] }), true);
-  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: { size: "M", color: "Black", price_override: null, availability_status: "available", quantity: 4 }, tracksInventory: true, selectedSize: "M", unavailableSizes: [] }), false);
+  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: undefined, selectedSize: "M", unavailableSizes: [] }), true);
+  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: { optionValues: [], variant_price: null, selling_status: "active", quantity: 0 }, selectedSize: "M", unavailableSizes: [] }), true);
+  assert.equal(isProductSelectionUnavailable({ hasVariants: true, selectedVariant: { optionValues: [], variant_price: null, selling_status: "active", quantity: 4 }, selectedSize: "M", unavailableSizes: [] }), false);
 });

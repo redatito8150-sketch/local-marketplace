@@ -1,41 +1,39 @@
 import { supabase } from "@/lib/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ProductVariant, VariantAvailabilityStatus } from "@/types";
+import type { ProductVariant, SellingStatus } from "@/types";
 
 interface ProductVariantRow {
   id: string;
   product_id: string;
-  color: string | null;
-  size: string | null;
-  sku: string | null;
+  sku: string;
   quantity: number;
-  low_stock_threshold: number;
-  price_override: number | null;
-  availability_status: VariantAvailabilityStatus;
+  low_stock_threshold_override: number | null;
+  variant_price: number | null;
+  selling_status: SellingStatus;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 }
 
-function toProductVariant(row: ProductVariantRow): ProductVariant {
-  return {
-    id: row.id,
-    productId: row.product_id,
-    color: row.color ?? undefined,
-    size: row.size ?? undefined,
-    sku: row.sku ?? undefined,
-    quantity: row.quantity,
-    lowStockThreshold: row.low_stock_threshold,
-    priceOverride: row.price_override != null ? Number(row.price_override) : undefined,
-    availabilityStatus: row.availability_status,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
+interface VariantValueRow {
+  variant_id: string;
+  option_value_id: string;
+  option_values: {
+    label: string;
+    option_type_id: string;
+    swatch_type: string | null;
+    primary_color: string | null;
+    secondary_color: string | null;
+    option_types: { id: string; name: string } | null;
+  } | null;
 }
 
-// Single `.in(...)` query for however many product ids the caller needs
-// variants for, grouped in memory by product id — callers on a listing
-// page (search results, category grid, brand page) fetch every product's
-// variants in one round trip instead of one query per product.
+// Single `.in(...)` query (plus one more for their option values) for
+// however many product ids the caller needs variants for, grouped in
+// memory by product id — callers on a listing page (search results,
+// category grid, brand page) fetch every product's variants in one round
+// trip instead of one query per product. Archived variants are excluded —
+// they're historical only, never shown or purchasable.
 export async function getVariantsForProducts(
   productIds: string[],
   client: SupabaseClient = supabase
@@ -46,14 +44,55 @@ export async function getVariantsForProducts(
   const { data, error } = await client
     .from("product_variants")
     .select("*")
-    .in("product_id", productIds);
+    .in("product_id", productIds)
+    .eq("is_archived", false);
 
   if (error) {
     throw new Error(`getVariantsForProducts failed: ${error.message}`);
   }
 
-  for (const row of (data as ProductVariantRow[] | null) ?? []) {
-    const variant = toProductVariant(row);
+  const rows = (data as ProductVariantRow[] | null) ?? [];
+  if (rows.length === 0) return byProduct;
+
+  const { data: valueRows, error: valuesError } = await client
+    .from("product_variant_values")
+    .select("variant_id, option_value_id, option_values(label, option_type_id, swatch_type, primary_color, secondary_color, option_types(id, name))")
+    .in("variant_id", rows.map((r) => r.id));
+  if (valuesError) {
+    throw new Error(`getVariantsForProducts values failed: ${valuesError.message}`);
+  }
+
+  const valuesByVariant = new Map<string, VariantValueRow[]>();
+  for (const row of ((valueRows ?? []) as unknown as VariantValueRow[])) {
+    const list = valuesByVariant.get(row.variant_id) ?? [];
+    list.push(row);
+    valuesByVariant.set(row.variant_id, list);
+  }
+
+  for (const row of rows) {
+    const variant: ProductVariant = {
+      id: row.id,
+      productId: row.product_id,
+      sku: row.sku,
+      quantity: row.quantity,
+      lowStockThresholdOverride: row.low_stock_threshold_override ?? undefined,
+      variantPrice: row.variant_price != null ? Number(row.variant_price) : undefined,
+      sellingStatus: row.selling_status,
+      isArchived: row.is_archived,
+      optionValues: (valuesByVariant.get(row.id) ?? [])
+        .filter((v) => v.option_values)
+        .map((v) => ({
+          optionValueId: v.option_value_id,
+          label: v.option_values!.label,
+          optionTypeId: v.option_values!.option_type_id,
+          optionTypeName: v.option_values!.option_types?.name ?? "",
+          swatchType: (v.option_values!.swatch_type as ProductVariant["optionValues"][number]["swatchType"]) ?? undefined,
+          primaryColor: v.option_values!.primary_color ?? undefined,
+          secondaryColor: v.option_values!.secondary_color ?? undefined,
+        })),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
     const existing = byProduct.get(variant.productId);
     if (existing) existing.push(variant);
     else byProduct.set(variant.productId, [variant]);

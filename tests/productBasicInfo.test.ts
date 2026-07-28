@@ -3,7 +3,7 @@ import test from "node:test";
 import { validateProductInput, type ProductInput } from "../lib/admin/productValidation.ts";
 import { validateBrandInput, type BrandInput } from "../lib/admin/brandValidation.ts";
 
-const baseVariant = { quantity: 1, lowStockThreshold: 1, availabilityStatus: "available" as const };
+const baseVariant = { optionValueIds: [], quantity: 1, sellingStatus: "active" as const };
 
 const baseProduct: ProductInput = {
   name: "Test Product",
@@ -13,17 +13,18 @@ const baseProduct: ProductInput = {
   price: 500,
   currency: "EGP",
   image: "/x.jpg",
-  colors: [],
-  sizes: ["M"],
   description: "A product",
   details: [],
   careInstructions: [],
   shippingReturns: "",
   isNew: false,
-  trackInventory: true,
   featured: false,
   status: "draft",
+  defaultLowStockThreshold: 5,
+  optionTypeIds: [],
+  valueIdsByOptionType: {},
   variants: [baseVariant],
+  colorImages: {},
 };
 
 test("validateProductInput accepts a fully complete draft submission", () => {
@@ -69,7 +70,7 @@ test("validateProductInput requires stock before publishing", () => {
     status: "published",
     variants: [{ ...baseVariant, quantity: 0 }],
   });
-  assert.equal(result, "At least one variant needs stock before publishing");
+  assert.equal(result, "At least one variant needs stock and an Active Selling Status before publishing");
 });
 
 test("validateProductInput accepts a fully complete publish submission", () => {
