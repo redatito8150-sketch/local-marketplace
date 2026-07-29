@@ -86,7 +86,7 @@ export default function Header() {
     >
       <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">
         {/* Logo */}
-        <Logo />
+        <Logo size="lg" />
 
         {/* Center nav */}
         <nav className="hidden items-center gap-10 xl:flex">

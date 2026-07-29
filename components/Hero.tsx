@@ -3,22 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowRight, Leaf, ShieldCheck, Truck, RefreshCw, Headphones } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import type { HomeHeroContent, HomeHeroTilesContent } from "@/types";
 
 const TILE_ORDER: (keyof HomeHeroTilesContent)[] = ["women", "men", "kids", "home"];
 
-export const DEFAULT_HOME_BENEFITS = [
-  { icon: Leaf, title: "Curated with purpose", detail: "Handpicked local brands" },
-  { icon: ShieldCheck, title: "Secure payments", detail: "Safe & trusted checkout" },
-  { icon: Truck, title: "Fast delivery", detail: "Across Egypt" },
-  { icon: RefreshCw, title: "Easy returns", detail: "14 days to return" },
-  { icon: Headphones, title: "Support local", detail: "Empowering creators" },
-];
-
-export type HomeBenefit = { title: string; detail: string };
-
-export default function Hero({ content, tiles, benefits = DEFAULT_HOME_BENEFITS }: { content: HomeHeroContent; tiles: HomeHeroTilesContent; benefits?: HomeBenefit[] }) {
+export default function Hero({ content, tiles }: { content: HomeHeroContent; tiles: HomeHeroTilesContent }) {
   const reduceMotion = useReducedMotion();
   const reveal = {
     hidden: { opacity: 0, y: 24, filter: "blur(10px)" },
@@ -86,24 +76,6 @@ export default function Hero({ content, tiles, benefits = DEFAULT_HOME_BENEFITS 
         </div>
       </section>
 
-      <section className="border-b border-white/20 bg-cream/58 backdrop-blur-[2px]">
-        <div className="mx-auto grid max-w-[1840px] grid-cols-2 px-5 py-5 sm:grid-cols-3 lg:grid-cols-5 lg:px-12">
-          {benefits.map(({ title, detail }, index) => {
-            const Icon = DEFAULT_HOME_BENEFITS[index]?.icon ?? Leaf;
-            return (
-            <motion.div
-              key={title}
-              initial={{ opacity: 0, y: reduceMotion ? 0 : 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.55, delay: reduceMotion ? 0 : 0.8 + index * 0.08 }}
-              className={`flex items-center justify-center gap-4 px-4 py-2 ${index ? "lg:border-l lg:border-stone-150" : ""}`}
-            >
-              <Icon className="h-7 w-7 shrink-0 text-ink" strokeWidth={1.45} />
-              <div><p className="text-[11px] font-semibold text-ink">{title}</p><p className="mt-1 text-[10px] text-ink-soft/65">{detail}</p></div>
-            </motion.div>
-          )})}
-        </div>
-      </section>
     </>
   );
 }

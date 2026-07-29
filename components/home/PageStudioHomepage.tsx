@@ -1,5 +1,5 @@
 import Header from "@/components/Header";
-import Hero, { type HomeBenefit } from "@/components/Hero";
+import Hero from "@/components/Hero";
 import NewArrivalsSection from "@/components/home/NewArrivalsSection";
 import ShopByMood from "@/components/ShopByMood";
 import Sponsored from "@/components/Sponsored";
@@ -17,14 +17,6 @@ import type { ReactNode } from "react";
 import type { FeaturedBrandAndSponsoredContent, HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, ShopByMoodContent } from "@/types";
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
-const FALLBACK_BENEFITS: HomeBenefit[] = [
-  { title: "Curated with purpose", detail: "Handpicked local brands" },
-  { title: "Secure payments", detail: "Safe & trusted checkout" },
-  { title: "Fast delivery", detail: "Across Egypt" },
-  { title: "Easy returns", detail: "14 days to return" },
-  { title: "Support local", detail: "Empowering creators" },
-];
-
 function section(sections: PageSectionRecord[], key: string) {
   return sections.find((item) => item.sectionKey === key && item.visible);
 }
@@ -53,7 +45,6 @@ async function productRows(config: Record<string, unknown>, allProducts: boolean
 export default async function PageStudioHomepage({ sections, editMode = false }: { sections: PageSectionRecord[]; editMode?: boolean }) {
   const heroSection = section(sections, "home_hero");
   const tileSection = section(sections, "home_hero_tiles");
-  const benefitsSection = section(sections, "home_benefits");
   const rawHero = heroSection?.config ?? HOME_HERO;
   const heroContent: HomeHeroContent = {
     headingLines: Array.isArray(rawHero.headingLines) ? rawHero.headingLines.filter((line): line is string => typeof line === "string") : HOME_HERO.headingLines,
@@ -62,10 +53,6 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     ctaHref: typeof rawHero.ctaHref === "string" ? rawHero.ctaHref : HOME_HERO.ctaHref,
   };
   const heroTiles = normalizeTiles(tileSection?.config);
-  const benefitsValue = benefitsSection?.config.items;
-  const configuredBenefits = Array.isArray(benefitsValue) ? benefitsValue as HomeBenefit[] : [];
-  const benefits = (configuredBenefits.length ? configuredBenefits : FALLBACK_BENEFITS).map(({ title, detail }) => ({ title, detail }));
-
   const renderable = sections.filter((item) => item.visible && !["home_hero", "home_hero_tiles", "home_benefits"].includes(item.sectionKey));
   const prepared = await Promise.all(renderable.map(async (item) => {
     if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
@@ -101,7 +88,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     </EditableSectionFrame>
   ) : node;
 
-  const hero = <Hero content={heroContent} tiles={heroTiles} benefits={benefits} />;
+  const hero = <Hero content={heroContent} tiles={heroTiles} />;
 
   return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
     const { item } = entry;
