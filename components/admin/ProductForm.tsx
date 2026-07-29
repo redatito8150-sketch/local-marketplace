@@ -32,7 +32,6 @@ import {
   ProductEditorBottomBar,
   ProductEditorHeader,
   ProductErrorSummary,
-  ProductSectionNavigation,
   type EditorSaveState,
 } from "@/components/admin/ProductEditorChrome";
 
@@ -435,8 +434,6 @@ export default function ProductForm({
   const handleCancel = () => {
     if (!hasUnsavedChanges || window.confirm("You have unsaved changes. Leave this product editor?")) router.push(cancelHref);
   };
-  const handlePreview = () =>
-    previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const submitting = submittingStatus !== null;
   const currentIssues = validateProductSections(buildPayload(form.status));
@@ -516,13 +513,15 @@ export default function ProductForm({
         lastSavedAt={lastSavedAt}
         submitting={submitting}
         isBrandPortal={isBrandPortal}
+        activeSection={activeSection}
+        issues={currentIssues}
+        completed={completedSections}
+        onNavigateStep={navigateToSection}
         onSaveDraft={() => submit("draft")}
         onPublish={() => submit("published")}
-        onPreview={handlePreview}
         onBack={handleCancel}
       />
-      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[190px_minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[210px_minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
-        <ProductSectionNavigation activeSection={activeSection} issues={currentIssues} completed={completedSections} onNavigate={navigateToSection} isBrandPortal={isBrandPortal} />
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
         <div className="min-w-0 space-y-6">
           <ProductErrorSummary issues={submittedIssues} onNavigate={navigateToIssue} />
 
