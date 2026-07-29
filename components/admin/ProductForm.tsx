@@ -779,7 +779,7 @@ export default function ProductForm({
       </div>
 
       <div ref={previewRef} className="min-w-0 xl:sticky xl:top-[158px] xl:h-[calc(100vh-174px)]">
-        {activeVariantCell && activeColor && activeSize ? (
+        {activeVariantCell && activeColor && activeSize && (
           <VariantDrawer
             color={activeColor}
             size={activeSize}
@@ -799,7 +799,12 @@ export default function ProductForm({
             onSave={saveVariantFromDrawer}
             onCancel={() => setActiveVariantCell(null)}
           />
-        ) : (
+        )}
+        {/* Kept mounted (not conditionally unmounted) while the Drawer is open, only
+            visually hidden, so ProductLivePreview's own state — selected Color/Size,
+            gallery position, desktop/mobile viewport — survives the Drawer opening
+            and closing instead of resetting on remount. */}
+        <div className={activeVariantCell ? "hidden" : "contents"}>
         <ProductLivePreview
           form={{
             name: form.name,
@@ -828,7 +833,7 @@ export default function ProductForm({
           hasUnsavedChanges={hasUnsavedChanges}
           justSaved={justSaved}
         />
-        )}
+        </div>
       </div>
       </div>
     </div>
