@@ -132,6 +132,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
       variantPrice: v.variantPrice,
       lowStockThresholdOverride: v.lowStockThresholdOverride,
       sellingStatus: v.sellingStatus,
+      updatedAt: v.updatedAt,
     })),
     colorImages: product?.colorImages ?? {},
   };

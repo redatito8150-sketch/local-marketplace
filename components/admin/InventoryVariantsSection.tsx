@@ -3,6 +3,7 @@
 import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantMatrix from "./VariantMatrix";
+import VariantTree from "./VariantTree";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { calculateTotalInventory } from "@/lib/inventory/readiness";
 import type { NewColorInput } from "./ColorOptionPicker";
@@ -35,6 +36,7 @@ export interface VariantRow {
   variantPrice?: number;
   lowStockThresholdOverride?: number;
   sellingStatus: SellingStatus;
+  updatedAt?: string;
 }
 
 export interface InventoryVariantsValue {
@@ -285,11 +287,16 @@ export default function InventoryVariantsSection({
           System Color and Size option types were not found. Contact an administrator.
         </p>
       )}
-      {value.variants.length > 0 && (
-        <p className="text-[11.5px] text-ink-soft/50">
-          Variant SKU namespace: <code>{productSkuPreview}</code>
-        </p>
-      )}
+      <VariantTree
+        colorValues={colorValues}
+        sizeValues={sizeValues}
+        variants={value.variants}
+        colorImages={value.colorImages}
+        defaultLowStockThreshold={value.defaultLowStockThreshold}
+        productPublished={productPublished}
+        productSkuPreview={productSkuPreview}
+        onLocateCell={onCellClick ? (colorId, sizeId) => onCellClick(colorId, sizeId, value.variants.find((v) => v.optionValueIds.includes(colorId) && v.optionValueIds.includes(sizeId))) : undefined}
+      />
 
       {/* Legacy custom option (pre-rebuild data only) */}
       {legacyOptionTypeIds.map((optionTypeId) => {
