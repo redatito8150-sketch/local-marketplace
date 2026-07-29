@@ -39,8 +39,10 @@ test("migration provides immutable ledger, exact-once opening stock, and atomic 
 });
 
 test("Product Editor distinguishes Opening Stock from saved Current Stock", async () => {
-  const source = await readFile(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
-  assert.match(source, /variant\.id\s*\?/);
+  // Opening Stock editing moved from an inline table (pre variant-matrix-rebuild)
+  // into the Create/Edit Variant Drawer — the single write path for a Variant.
+  const source = await readFile(new URL("../components/admin/VariantDrawer.tsx", import.meta.url), "utf8");
+  assert.match(source, /isPersisted\s*\?/);
   assert.match(source, /aria-label="Opening Stock"/);
   assert.match(source, /Managed from Inventory/);
   assert.match(source, /Open Inventory/);
