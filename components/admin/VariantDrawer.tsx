@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import ColorSwatch from "./ColorSwatch";
 import ImageUploader from "./ImageUploader";
@@ -43,6 +43,18 @@ export default function VariantDrawer({
   onCancel: () => void;
 }) {
   const isPersisted = Boolean(existing?.id);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [openingStock, setOpeningStock] = useState(existing?.openingStock ?? existing?.quantity ?? 0);
   const [variantPrice, setVariantPrice] = useState<string>(existing?.variantPrice != null ? String(existing.variantPrice) : "");
   const [lowStockOverride, setLowStockOverride] = useState<string>(
@@ -72,7 +84,7 @@ export default function VariantDrawer({
             {comboLabel}
           </p>
         </div>
-        <button type="button" onClick={onCancel} aria-label="Close" className="rounded-md p-1.5 text-ink-soft/50 hover:bg-stone-100 hover:text-ink">
+        <button ref={closeButtonRef} type="button" onClick={onCancel} aria-label="Close" className="rounded-md p-1.5 text-ink-soft/50 hover:bg-stone-100 hover:text-ink">
           <X className="h-4 w-4" />
         </button>
       </div>

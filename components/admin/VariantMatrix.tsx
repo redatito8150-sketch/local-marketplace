@@ -298,6 +298,7 @@ export default function VariantMatrix({
                       <td key={size.id} className="px-3 py-2.5 text-center">
                         <button
                           type="button"
+                          id={`variant-cell-${color.id}-${size.id}`}
                           disabled={disabled}
                           onClick={() => onCellClick?.(color.id, size.id, existing)}
                           aria-label={

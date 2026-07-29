@@ -459,6 +459,16 @@ export default function ProductForm({
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
 
+  function closeVariantDrawer() {
+    const cell = activeVariantCell;
+    setActiveVariantCell(null);
+    if (cell) {
+      requestAnimationFrame(() => {
+        document.getElementById(`variant-cell-${cell.colorId}-${cell.sizeId}`)?.focus();
+      });
+    }
+  }
+
   function saveVariantFromDrawer(input: { openingStock: number; variantPrice: number | undefined; lowStockThresholdOverride: number | undefined }) {
     if (!activeVariantCell || !colorType || !sizeType) return;
     const optionValueIds = [activeVariantCell.colorId, activeVariantCell.sizeId];
@@ -483,7 +493,7 @@ export default function ProductForm({
       nextVariants = [...form.inventoryVariants.variants, newRow];
     }
     set("inventoryVariants", { ...form.inventoryVariants, variants: nextVariants });
-    setActiveVariantCell(null);
+    closeVariantDrawer();
   }
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
@@ -798,7 +808,7 @@ export default function ProductForm({
               })
             }
             onSave={saveVariantFromDrawer}
-            onCancel={() => setActiveVariantCell(null)}
+            onCancel={closeVariantDrawer}
           />
         )}
         {/* Kept mounted (not conditionally unmounted) while the Drawer is open, only
