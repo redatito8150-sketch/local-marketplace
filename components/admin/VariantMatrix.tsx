@@ -130,6 +130,7 @@ export default function VariantMatrix({
   }, [variants]);
 
   const isMultiColor = colorValues.length >= 2;
+  const colorsMissingImages = isMultiColor ? colorValues.filter((c) => !colorImages[c.id]) : [];
 
   const cellFor = (colorId: string, sizeId: string) => {
     const key = buildComboKey([colorId, sizeId].sort());
@@ -144,6 +145,13 @@ export default function VariantMatrix({
       <p className="mt-1 text-[12px] text-ink-soft/55">
         Create the variants that will be available for this product. Add opening stock and price for each variant.
       </p>
+
+      {colorsMissingImages.length > 0 && (
+        <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+          This product has multiple colors. Add a primary image for each color before publishing:{" "}
+          <strong>{colorsMissingImages.map((c) => c.label).join(", ")}</strong>.
+        </p>
+      )}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <Popover
