@@ -69,8 +69,88 @@ test("the shared editor shell exposes all six sections and reliable active-secti
   assert.match(chromeSource, /ProductErrorSummary/);
 });
 
+test("a Matrix-created variant is not blocked by a stale/empty allowedCombinations array", () => {
+  // allowedCombinations is a leftover client-state field from the old
+  // "Generate Variants + Allowed Combination Builder" flow. The Matrix +
+  // Drawer never populate it, so it stays whatever it was initialized to
+  // (typically []) even as real variants are created — validation must not
+  // require it to match body.variants.
+  const issues = validateProductSections({
+    ...validProduct,
+    optionTypeIds: ["color-type", "size-type"],
+    valueIdsByOptionType: { "color-type": ["red"], "size-type": ["m"] },
+    allowedCombinations: [],
+    variants: [{ optionValueIds: ["red", "m"], quantity: 5, sellingStatus: "active" }],
+    colorOptionTypeId: "color-type",
+  });
+  assert.deepEqual(issues, []);
+});
+
+test("publishing a single-color product does not require a dedicated Color image", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red"] },
+    colorOptionTypeId: "color-type",
+    colorImages: {},
+    variants: [{ optionValueIds: ["red"], quantity: 5, sellingStatus: "active" }],
+  });
+  assert.ok(!issues.some((issue) => issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
+test("publishing a multi-color product blocks on any color missing its mapped image", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red", "white"] },
+    colorOptionTypeId: "color-type",
+    colorImages: { red: "https://images.unsplash.com/red.jpg" },
+    variants: [
+      { optionValueIds: ["red"], quantity: 5, sellingStatus: "active" },
+      { optionValueIds: ["white"], quantity: 5, sellingStatus: "active" },
+    ],
+  });
+  assert.ok(issues.some((issue) => issue.section === "media" && issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
+test("multi-color image requirement does not block Save as Draft", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "draft",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red", "white"] },
+    colorOptionTypeId: "color-type",
+    colorImages: {},
+    variants: [
+      { optionValueIds: ["red"], quantity: 5, sellingStatus: "active" },
+      { optionValueIds: ["white"], quantity: 5, sellingStatus: "active" },
+    ],
+  });
+  assert.ok(!issues.some((issue) => issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
 test("top and bottom actions share the same submit handlers", () => {
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.ok((source.match(/onSaveDraft=\{\(\) => submit\("draft"\)\}/g) ?? []).length >= 2);
   assert.ok((source.match(/onPublish=\{\(\) => submit\("published"\)\}/g) ?? []).length >= 2);
+});
+
+test("the Variant Matrix replaced Generate Variants: no Cartesian generation button remains", () => {
+  const source = readFileSync(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /Generate Variants/);
+  assert.doesNotMatch(source, /AllowedCombinationBuilder/);
+  assert.match(source, /VariantMatrix/);
+  assert.match(source, /VariantTree/);
+});
+
+test("the Create/Edit Variant Drawer replaces the Live Preview in the same workspace while open", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  assert.match(formSource, /activeVariantCell/);
+  assert.match(formSource, /VariantDrawer/);
+  // The Preview must stay mounted (only visually hidden) so its own state
+  // survives the Drawer opening and closing, per the agreed Preview/Drawer
+  // swap behavior — a conditional unmount would silently reset it.
+  assert.doesNotMatch(formSource, /activeVariantCell[\s\S]{0,40}\?\s*<VariantDrawer[\s\S]{0,600}:\s*\(?\s*<ProductLivePreview/);
 });

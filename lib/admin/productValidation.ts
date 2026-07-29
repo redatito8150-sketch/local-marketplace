@@ -1,6 +1,5 @@
 import type { Audience, ProductColorOption, ProductStatus, SellingStatus } from "@/types";
 import { MAX_VARIANT_OPTIONS_PER_PRODUCT } from "../inventory/variantCombinations.ts";
-import { validateAllowedCombinations } from "../inventory/allowedCombinations.ts";
 
 const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
 const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
@@ -45,6 +44,7 @@ export interface ProductInput {
   allowedCombinations?: string[][];
   variants: VariantRowInput[];
   colorImages: Record<string, string>;
+  colorOptionTypeId?: string;
 }
 
 // Products no longer store colors as a flat product-level field, but the
@@ -133,19 +133,14 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   const variantError = validateVariants(body.variants);
   if (variantError) add("inventory", variantError, "inventory-variants");
 
-  if (!variantError) {
-    const allowedResult = validateAllowedCombinations(
-      body.optionTypeIds,
-      body.valueIdsByOptionType,
-      body.allowedCombinations ?? body.variants.map((variant) => variant.optionValueIds)
-    );
-    if (!allowedResult.ok) add("inventory", allowedResult.error, "allowed-combinations");
-    else {
-      const allowedKeys = new Set(allowedResult.combinations.map((combination) => combination.comboKey));
-      const variantKeys = new Set(body.variants.map((variant) => [...variant.optionValueIds].sort().join(",")));
-      if (allowedKeys.size !== variantKeys.size || [...allowedKeys].some((key) => !variantKeys.has(key))) {
-        add("inventory", "Generated variants must match the allowed combinations.", "allowed-combinations");
-      }
+  // Single-color products fall back to the Main Image (see "media" check
+  // above) — a dedicated Color image only becomes mandatory once the
+  // product has 2+ Colors, and only for publishing (Draft always saves).
+  const colorValueIds = body.colorOptionTypeId ? body.valueIdsByOptionType[body.colorOptionTypeId] ?? [] : [];
+  if (body.status === "published" && colorValueIds.length >= 2) {
+    const missingLabelIds = colorValueIds.filter((id) => !body.colorImages[id]?.trim());
+    if (missingLabelIds.length > 0) {
+      add("media", "This product has multiple colors — add a primary image for each color before publishing.", "product-media");
     }
   }
 

@@ -197,6 +197,8 @@ export default function ProductForm({
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
   const [activeVariantCell, setActiveVariantCell] = useState<{ colorId: string; sizeId: string } | null>(null);
+  const colorType = optionTypes.find((t) => t.key === "color");
+  const sizeType = optionTypes.find((t) => t.key === "size");
 
   // Save now keeps the admin on this page instead of redirecting to the
   // list, so a first-time create needs to remember the id it gets back and
@@ -367,6 +369,7 @@ export default function ProductForm({
     allowedCombinations: form.inventoryVariants.allowedCombinations,
     variants: form.inventoryVariants.variants,
     colorImages: form.inventoryVariants.colorImages,
+    colorOptionTypeId: colorType?.id,
   });
 
   const submit = async (targetStatus: ProductStatus) => {
@@ -442,8 +445,6 @@ export default function ProductForm({
   );
   const saveState: EditorSaveState = submitting ? "saving" : saveFailed ? "failed" : hasUnsavedChanges ? "unsaved" : "saved";
 
-  const colorType = optionTypes.find((t) => t.key === "color");
-  const sizeType = optionTypes.find((t) => t.key === "size");
   const activeColor = activeVariantCell ? optionValues.find((v) => v.id === activeVariantCell.colorId) : undefined;
   const activeSize = activeVariantCell ? optionValues.find((v) => v.id === activeVariantCell.sizeId) : undefined;
   const activeColorCount = colorType ? (form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).length : 0;
