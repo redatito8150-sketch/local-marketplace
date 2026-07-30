@@ -22,6 +22,7 @@ import InventoryVariantsSection, {
   type OptionValueOption,
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
+import ColorSwatch from "@/components/admin/ColorSwatch";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
@@ -610,6 +611,36 @@ export default function ProductForm({
               onChange={(urls) => set("images", urls)}
             />
           </div>
+          {colorType && (form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).length > 0 && (
+            <div className="mt-4">
+              <span className="text-[12.5px] font-medium text-ink-soft/70">Color Images</span>
+              <p className="mt-0.5 text-[11px] text-ink-soft/50">
+                Joins the gallery automatically — managed from the Variants step, not here.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                {(form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).map((colorId) => {
+                  const color = optionValues.find((v) => v.id === colorId);
+                  const url = form.inventoryVariants.colorImages[colorId];
+                  return (
+                    <div key={colorId} className="w-24">
+                      <div className="h-24 w-24 overflow-hidden rounded-lg border border-stone-150 bg-stone-50">
+                        {url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={url} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-[10px] text-ink-soft/35">No image</div>
+                        )}
+                      </div>
+                      <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-ink-soft/65">
+                        <ColorSwatch swatchType={color?.swatchType} primaryColor={color?.primaryColor} secondaryColor={color?.secondaryColor} size={12} />
+                        {color?.label ?? "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </FormSection>
 
         {/* 05 — Product Details */}
