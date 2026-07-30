@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
+import type { ProductMaterialEntry } from "@/types";
 
 interface AccordionItem {
   title: string;
@@ -34,43 +35,79 @@ export default function ProductAccordion({
   description,
   details,
   careInstructions,
+  materials,
+  fit,
   shippingReturns,
 }: {
   description: string;
   details: string[];
   careInstructions: string[];
+  materials?: ProductMaterialEntry[];
+  fit?: string;
   shippingReturns: string;
 }) {
+  // Preserves paragraph breaks as entered (a blank line separates
+  // paragraphs) instead of collapsing them into one run of text.
+  const paragraphs = description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+
   return (
     <div className="mt-2">
       <Row
         defaultOpen
         item={{
-          title: "Description & Details",
+          title: "Description & Highlights",
           content: (
             <div className="space-y-3">
-              <p>{description}</p>
-              <ul className="list-disc space-y-1.5 pl-4">
-                {details.map((d) => (
-                  <li key={d}>{d}</li>
-                ))}
-              </ul>
+              {paragraphs.map((paragraph, i) => (
+                <p key={i} className="whitespace-pre-line">{paragraph}</p>
+              ))}
+              {details.length > 0 && (
+                <ul className="list-disc space-y-1.5 pl-4">
+                  {details.map((d) => (
+                    <li key={d}>{d}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           ),
         }}
       />
-      <Row
-        item={{
-          title: "Care Instructions",
-          content: (
-            <ul className="list-disc space-y-1.5 pl-4">
-              {careInstructions.map((c) => (
-                <li key={c}>{c}</li>
-              ))}
-            </ul>
-          ),
-        }}
-      />
+      {careInstructions.length > 0 && (
+        <Row
+          item={{
+            title: "Care Instructions",
+            content: (
+              <ul className="list-disc space-y-1.5 pl-4">
+                {careInstructions.map((c) => (
+                  <li key={c}>{c}</li>
+                ))}
+              </ul>
+            ),
+          }}
+        />
+      )}
+      {materials && materials.length > 0 && (
+        <Row
+          item={{
+            title: "Materials",
+            content: (
+              <ul className="list-disc space-y-1.5 pl-4">
+                {materials.map((m) => (
+                  <li key={m.material}>{m.material} — {m.percentage}%</li>
+                ))}
+              </ul>
+            ),
+          }}
+        />
+      )}
+      {fit && (
+        <Row
+          item={{
+            title: "Fit",
+            content: <p>{fit}</p>,
+          }}
+        />
+      )}
       <Row
         item={{
           title: "Shipping & Returns",

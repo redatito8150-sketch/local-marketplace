@@ -1,6 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
-import { getProductForAdmin } from "@/lib/data/admin";
+import { getProductForAdmin, getBrandForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getTaxonomyTree } from "@/lib/data/taxonomy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
@@ -21,9 +21,10 @@ export default async function EditBrandPortalProductPage(
   const product = await getProductForAdmin(params.id);
   if (!product || product.brandId !== owner.brandId) notFound();
 
-  const [taxonomy, taxonomyNodes] = await Promise.all([
+  const [taxonomy, taxonomyNodes, lockedBrandRecord] = await Promise.all([
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
     getTaxonomyTree(),
+    owner.brandSlug ? getBrandForAdmin(owner.brandSlug) : Promise.resolve(null),
   ]);
   const productsHref = `/brand-portal/products${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`;
 
@@ -55,6 +56,11 @@ export default async function EditBrandPortalProductPage(
         taxonomy={taxonomy}
         taxonomyNodes={taxonomyNodes}
         lockedBrand={{ id: owner.brandId, name: owner.brandName ?? owner.brandSlug ?? "" }}
+        lockedBrandPolicy={lockedBrandRecord ? {
+          shippingPolicy: lockedBrandRecord.shippingPolicy,
+          returnPolicy: lockedBrandRecord.returnPolicy,
+          returnWindowDays: lockedBrandRecord.returnWindowDays,
+        } : undefined}
         brandSlug={owner.brandSlug ?? undefined}
         apiBasePath="/api/brand-portal/products"
         cancelHref={productsHref}

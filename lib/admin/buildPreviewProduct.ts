@@ -1,9 +1,8 @@
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { primaryShopCategoryForAudience } from "@/lib/audience";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
-import type { Audience, ProductDetail, TaxonomyNode } from "@/types";
+import type { Audience, ProductDetail, ProductMaterialEntry, TaxonomyNode } from "@/types";
 import type { InventoryVariantsValue, OptionTypeOption, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
-import { parseLines } from "./parseTextInputs";
 
 // Keep this in sync with next.config.js `images.remotePatterns` — a URL
 // whose host isn't here would crash next/image (this project has hit that
@@ -37,8 +36,12 @@ export interface ProductPreviewFormValues {
   images: string[];
   inventoryVariants: InventoryVariantsValue;
   description: string;
-  detailsText: string;
-  careInstructionsText: string;
+  details: string[];
+  careInstructions: string[];
+  materials: ProductMaterialEntry[];
+  fit: string;
+  // Already resolved (Brand policy or marketplace default) by the caller —
+  // see lib/admin/shippingPolicy.ts. This is display text only.
   shippingReturns: string;
   modelHeight: string;
   modelWearing: string;
@@ -94,8 +97,10 @@ export function buildPreviewProduct(
     currency: "EGP",
     images: safeImages,
     description: form.description.trim(),
-    details: parseLines(form.detailsText),
-    careInstructions: parseLines(form.careInstructionsText),
+    details: form.details.map((d) => d.trim()).filter(Boolean),
+    careInstructions: form.careInstructions,
+    materials: form.materials,
+    fit: form.fit || undefined,
     shippingReturns: form.shippingReturns.trim(),
     sizes,
     unavailableSizes: [],

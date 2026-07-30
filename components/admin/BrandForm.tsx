@@ -54,6 +54,9 @@ export interface FormState {
   values: BrandValue[];
   similarBrandSlugs: string[];
   shopTheLook: BrandShopTheLookTile[];
+  shippingPolicy: string;
+  returnPolicy: string;
+  returnWindowDays: string;
 }
 
 function toFormState(brand?: BrandRecord): FormState {
@@ -84,6 +87,9 @@ function toFormState(brand?: BrandRecord): FormState {
     shopTheLook: brand?.shopTheLook?.length
       ? brand.shopTheLook
       : [{ image: "", title: "", href: "" }],
+    shippingPolicy: brand?.shippingPolicy ?? "",
+    returnPolicy: brand?.returnPolicy ?? "",
+    returnWindowDays: brand?.returnWindowDays ? String(brand.returnWindowDays) : "",
   };
 }
 
@@ -195,6 +201,9 @@ export default function BrandForm({
       values: form.values.filter((v) => v.title.trim() && v.description.trim()),
       similarBrandSlugs: form.similarBrandSlugs,
       shopTheLook: form.shopTheLook.filter((t) => t.image.trim() && t.title.trim()),
+      shippingPolicy: form.shippingPolicy.trim() || undefined,
+      returnPolicy: form.returnPolicy.trim() || undefined,
+      returnWindowDays: form.returnWindowDays.trim() ? Number(form.returnWindowDays) : undefined,
       ...(sourceApplicationId ? { sourceApplicationId } : {}),
     };
 
@@ -350,6 +359,35 @@ export default function BrandForm({
         rows={4}
         required
       />
+
+      <div className="rounded-md border border-stone-150 p-4">
+        <span className="text-[12.5px] font-medium text-ink-soft/70">Shipping &amp; Returns policy</span>
+        <p className="mt-0.5 text-[11.5px] text-ink-soft/50">
+          Shown on every product from this brand. Leave blank to use Mahaly&apos;s marketplace default (7-day returns).
+        </p>
+        <div className="mt-3 space-y-3">
+          <TextArea
+            label="Shipping policy (optional)"
+            value={form.shippingPolicy}
+            onChange={(v) => set("shippingPolicy", v)}
+            rows={2}
+          />
+          <TextArea
+            label="Return policy (optional)"
+            value={form.returnPolicy}
+            onChange={(v) => set("returnPolicy", v)}
+            rows={2}
+          />
+          <div className="max-w-[220px]">
+            <TextField
+              label="Return window (days, optional)"
+              value={form.returnWindowDays}
+              onChange={(v) => set("returnWindowDays", v.replace(/[^0-9]/g, ""))}
+              hint="Defaults to 7 days if left blank"
+            />
+          </div>
+        </div>
+      </div>
 
       <div>
         <span className="text-[12.5px] font-medium text-ink-soft/70">Info badges</span>

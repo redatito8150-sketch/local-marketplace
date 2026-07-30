@@ -19,8 +19,10 @@ export function buildProductPersistencePayload(
     audience: body.audience,
     product_type_id: body.productTypeId,
     collection_id: body.collectionId || null,
-    material: body.material || null,
     fit: body.fit || null,
+    // Structured multi-material composition — always sent (defaults to
+    // empty), replacing the legacy single `material` text column below.
+    materials: body.materials ?? [],
     price: body.price,
     compare_at_price: body.compareAtPrice ?? null,
     currency: body.currency,
@@ -34,7 +36,6 @@ export function buildProductPersistencePayload(
     description: body.description,
     details: body.details,
     care_instructions: body.careInstructions,
-    shipping_returns: body.shippingReturns,
     model_height: body.modelHeight || null,
     model_wearing: body.modelWearing || null,
     is_new: body.isNew,
@@ -43,6 +44,14 @@ export function buildProductPersistencePayload(
     publish_date: overrides?.publishDate ?? body.publishDate ?? null,
     default_low_stock_threshold: body.defaultLowStockThreshold,
   };
+
+  // Legacy single-material text and the old per-product Shipping & Returns
+  // text are never written by the current editor (materials/shippingReturns
+  // above replaced them) — only include them if some other caller actually
+  // provides a value, so an ordinary save never silently blanks out
+  // pre-existing legacy data on an old product.
+  if (body.material !== undefined) payload.material = body.material || null;
+  if (body.shippingReturns !== undefined) payload.shipping_returns = body.shippingReturns;
 
   if (overrides?.submittedBy !== undefined) {
     payload.submitted_by = overrides.submittedBy;

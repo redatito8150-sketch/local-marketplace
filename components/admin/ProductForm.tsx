@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Audience, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
-import { parseLines } from "@/lib/admin/parseTextInputs";
+import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
 import {
   validateProductInput,
   validateProductSections,
@@ -23,6 +22,11 @@ import InventoryVariantsSection, {
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
+import HighlightsListBuilder from "@/components/admin/HighlightsListBuilder";
+import CareInstructionsPicker from "@/components/admin/CareInstructionsPicker";
+import MaterialsComposer from "@/components/admin/MaterialsComposer";
+import FitSelect from "@/components/admin/FitSelect";
+import { resolveShippingPolicy, type BrandPolicyFields } from "@/lib/admin/shippingPolicy";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
   PRODUCT_EDITOR_SECTIONS,
@@ -61,6 +65,10 @@ interface ProductFormProps {
   // "Submit for Review" action label (the write itself still publishes
   // immediately per the Instant-Publish model — see CLAUDE.md).
   lockedBrand?: { id: string; name: string };
+  // Brand-portal mode has no BrandSelect list to read policy fields from
+  // (the brand is locked) — this carries the locked brand's own Shipping &
+  // Returns policy fields so the resolved policy can still be computed.
+  lockedBrandPolicy?: BrandPolicyFields;
   brandSlug?: string;
   apiBasePath?: string;
   cancelHref?: string;
@@ -78,13 +86,16 @@ interface FormState {
   compareAtPrice: string;
   image: string;
   images: string[];
+  // Legacy single-material field — no longer editable; kept only so an
+  // existing product's old value isn't lost from FormState. `materials`
+  // (below) is the real, structured composition the editor now uses.
   material: string;
+  materials: ProductMaterialEntry[];
   fit: string;
   inventoryVariants: InventoryVariantsValue;
   description: string;
-  detailsText: string;
-  careInstructionsText: string;
-  shippingReturns: string;
+  details: string[];
+  careInstructions: string[];
   modelHeight: string;
   modelWearing: string;
   status: ProductStatus;
@@ -155,12 +166,19 @@ function toFormState(
     // (MediaGallery renders the cover in its own fixed, non-reorderable slot).
     images: (product?.images ?? []).filter((url) => url !== product?.image),
     material: product?.material ?? "",
+    // Client-side fallback for the same migration the DB backfill already
+    // does (supabase/migrations/20260803000003_product_details_rebuild.sql)
+    // — belt-and-braces in case a product predates that backfill.
+    materials: product?.materials?.length
+      ? product.materials
+      : product?.material?.trim()
+      ? [{ material: product.material.trim(), percentage: 100 }]
+      : [],
     fit: product?.fit ?? "",
     inventoryVariants: toInventoryVariantsValue(product),
     description: product?.description ?? "",
-    detailsText: product?.details?.join("\n") ?? "",
-    careInstructionsText: product?.careInstructions?.join("\n") ?? "",
-    shippingReturns: product?.shippingReturns ?? "",
+    details: product?.details ?? [],
+    careInstructions: product?.careInstructions ?? [],
     modelHeight: product?.modelHeight ?? "",
     modelWearing: product?.modelWearing ?? "",
     status: product?.status ?? "draft",
@@ -178,6 +196,7 @@ export default function ProductForm({
   taxonomy = DEFAULT_PRODUCT_TAXONOMY,
   taxonomyNodes,
   lockedBrand,
+  lockedBrandPolicy,
   brandSlug,
   apiBasePath = "/api/admin/products",
   cancelHref = "/admin/products",
@@ -350,12 +369,15 @@ export default function ProductForm({
     currency: "EGP",
     image: form.image.trim(),
     images: form.images,
-    material: form.material || undefined,
+    // Legacy `material`/`shippingReturns` are intentionally omitted — the
+    // editor no longer collects them (materials[] and the resolved Brand
+    // policy replaced them), and productPersistence.ts only overwrites
+    // those DB columns when a value is explicitly provided.
+    materials: form.materials.filter((m) => m.material.trim()),
     fit: form.fit || undefined,
     description: form.description.trim(),
-    details: parseLines(form.detailsText),
-    careInstructions: parseLines(form.careInstructionsText),
-    shippingReturns: form.shippingReturns.trim(),
+    details: form.details.map((d) => d.trim()).filter(Boolean),
+    careInstructions: form.careInstructions,
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
     isNew: form.isNew,
@@ -448,6 +470,14 @@ export default function ProductForm({
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
   const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
+
+  // Recalculates the instant a different Brand is picked (Admin) or once,
+  // from the locked Brand's own fields (brand-portal — the brand can't
+  // change there). See lib/admin/shippingPolicy.ts for the priority rule.
+  const selectedBrandPolicy: BrandPolicyFields | null = lockedBrand
+    ? lockedBrandPolicy ?? null
+    : brandOptions.find((b) => b.id === form.brandId) ?? null;
+  const resolvedShippingPolicy = resolveShippingPolicy(selectedBrandPolicy);
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
     const target = sectionRefs.current[sectionId];
@@ -618,75 +648,50 @@ export default function ProductForm({
         </FormSection>
 
         {/* 05 — Product Details */}
-        <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Present the current descriptive, care, shipping, and model information." complete={completedSections.has("details")} issueCount={currentIssues.filter((issue) => issue.section === "details").length}>
+        <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Add descriptive, material, care, fit, and policy information for this product." complete={completedSections.has("details")} issueCount={currentIssues.filter((issue) => issue.section === "details").length}>
           <TextArea
             id="product-description"
-            label="Description"
+            label="Product Description"
             required
             value={form.description}
             onChange={(v) => set("description", v)}
-            rows={3}
+            rows={6}
+            hint={`${form.description.length} / 2000 characters`}
           />
-          <div className="mt-4">
-            <TextArea
-              label="Details (one per line)"
-              value={form.detailsText}
-              onChange={(v) => set("detailsText", v)}
-              rows={3}
-            />
+
+          <div className="mt-5">
+            <HighlightsListBuilder value={form.details} onChange={(v) => set("details", v)} disabled={!form.brandId} />
           </div>
-          <div className="mt-4">
-            <TextArea
-              label="Care Instructions (one per line)"
-              value={form.careInstructionsText}
-              onChange={(v) => set("careInstructionsText", v)}
-              rows={3}
-            />
+
+          <div className="mt-5">
+            <CareInstructionsPicker value={form.careInstructions} onChange={(v) => set("careInstructions", v)} disabled={!form.brandId} />
           </div>
-          <div className="mt-4">
-            <TextArea
-              label="Shipping &amp; Returns"
-              value={form.shippingReturns}
-              onChange={(v) => set("shippingReturns", v)}
-              rows={2}
-            />
+
+          <div className="mt-5">
+            <MaterialsComposer value={form.materials} onChange={(v) => set("materials", v)} disabled={!form.brandId} />
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <TextField
-              label="Model Height (cm)"
-              placeholder="e.g. 178 cm"
-              value={form.modelHeight}
-              onChange={(v) => set("modelHeight", v)}
-            />
-            <TextField
-              label="Model Wearing"
-              placeholder="e.g. M size"
-              value={form.modelWearing}
-              onChange={(v) => set("modelWearing", v)}
-            />
-          </div>
-          {/* Material/Fit intentionally stay here for now (unchanged
-              inputs) — they'll move into Product Content & Specifications
-              in a later phase, not into Inventory & Variants. */}
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <SelectField
-              label="Material"
-              value={form.material}
-              onChange={(v) => set("material", v)}
-              options={[
-                { value: "", label: "Select material" },
-                ...taxonomy.materials.map((m) => ({ value: m, label: m })),
-              ]}
-            />
-            <SelectField
-              label="Fit"
+
+          <div className="mt-5 max-w-sm">
+            <FitSelect
               value={form.fit}
               onChange={(v) => set("fit", v)}
-              options={[
-                { value: "", label: "Select fit" },
-                ...taxonomy.fits.map((f) => ({ value: f, label: f })),
-              ]}
+              taxonomyNodes={taxonomyNodes}
+              productTypeId={form.productTypeId}
+              disabled={!form.brandId}
             />
+          </div>
+
+          <div className="mt-5 rounded-md border border-stone-150 bg-stone-50 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[12.5px] font-medium text-ink-soft/70">Shipping &amp; Returns</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${resolvedShippingPolicy.source === "brand" ? "bg-emerald-100 text-emerald-800" : "bg-stone-150 text-ink-soft/60"}`}>
+                {resolvedShippingPolicy.source === "brand" ? "Brand policy" : "Marketplace default"}
+              </span>
+            </div>
+            <p className="mt-2 text-[13px] text-ink-soft/75">{resolvedShippingPolicy.text}</p>
+            <p className="mt-1.5 text-[11px] text-ink-soft/45">
+              Resolved automatically from the selected Brand&apos;s policy, falling back to Mahaly&apos;s marketplace default. Set a Brand&apos;s own policy from its Brand settings.
+            </p>
           </div>
         </FormSection>
 
@@ -757,9 +762,11 @@ export default function ProductForm({
             images: form.images,
             inventoryVariants: form.inventoryVariants,
             description: form.description,
-            detailsText: form.detailsText,
-            careInstructionsText: form.careInstructionsText,
-            shippingReturns: form.shippingReturns,
+            details: form.details,
+            careInstructions: form.careInstructions,
+            materials: form.materials,
+            fit: form.fit,
+            shippingReturns: resolvedShippingPolicy.text,
             modelHeight: form.modelHeight,
             modelWearing: form.modelWearing,
             sku: form.sku,
@@ -944,6 +951,7 @@ function TextArea({
   onChange,
   rows = 3,
   required,
+  hint,
 }: {
   id?: string;
   label: string;
@@ -951,12 +959,16 @@ function TextArea({
   onChange: (value: string) => void;
   rows?: number;
   required?: boolean;
+  hint?: string;
 }) {
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">
-        {label}
-        {required && <span className="text-red-600"> *</span>}
+      <span className="flex items-center justify-between">
+        <span className="text-[12.5px] font-medium text-ink-soft/70">
+          {label}
+          {required && <span className="text-red-600"> *</span>}
+        </span>
+        {hint && <span className="text-[11px] text-ink-soft/40">{hint}</span>}
       </span>
       <textarea
         id={id}

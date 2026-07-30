@@ -10,7 +10,13 @@ export default async function NewProductPage() {
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
     getTaxonomyTree(),
   ]);
-  const brandOptions = brands.map((brand) => ({ id: brand.id, name: brand.name }));
+  const brandOptions = brands.map((brand) => ({
+    id: brand.id,
+    name: brand.name,
+    shippingPolicy: brand.shippingPolicy,
+    returnPolicy: brand.returnPolicy,
+    returnWindowDays: brand.returnWindowDays,
+  }));
 
   return <ProductForm mode="create" brandOptions={brandOptions} taxonomy={taxonomy} taxonomyNodes={taxonomyNodes} />;
 }

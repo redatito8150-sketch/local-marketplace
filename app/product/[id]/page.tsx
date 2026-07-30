@@ -63,6 +63,8 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
               description={product.description}
               details={product.details}
               careInstructions={product.careInstructions}
+              materials={product.materials}
+              fit={product.fit}
               shippingReturns={product.shippingReturns}
             />
           </div>

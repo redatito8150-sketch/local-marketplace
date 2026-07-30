@@ -26,12 +26,17 @@ export interface ProductInput {
   currency: "USD" | "EGP";
   image: string;
   images?: string[];
+  // Legacy single-material field — no longer sent by the editor (kept
+  // optional so an omitted value never overwrites existing legacy data).
   material?: string;
+  materials?: { material: string; percentage: number }[];
   fit?: string;
   description: string;
   details: string[];
   careInstructions: string[];
-  shippingReturns: string;
+  // Legacy — Shipping & Returns is resolved from the Brand's policy at
+  // read time (lib/admin/shippingPolicy.ts), never edited/sent per product.
+  shippingReturns?: string;
   modelHeight?: string;
   modelWearing?: string;
   isNew: boolean;
@@ -148,6 +153,23 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
     const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
     if (!hasPurchasable) {
       add("inventory", "At least one variant needs stock and an Active Selling Status before publishing", "generated-variants");
+    }
+  }
+
+  // Materials are optional, but once any are added their percentages must
+  // total exactly 100 before publishing (Draft may stay incomplete).
+  const materials = body.materials ?? [];
+  if (materials.length > 0) {
+    const total = materials.reduce((sum, m) => sum + (Number.isFinite(m.percentage) ? m.percentage : 0), 0);
+    const totalIsValid = Math.abs(total - 100) < 0.01;
+    if (body.status === "published" && !totalIsValid) {
+      add("details", `Material percentages must total exactly 100% (currently ${Math.round(total * 100) / 100}%).`, "product-materials");
+    }
+    if (materials.some((m) => !m.material?.trim())) {
+      add("details", "Every material row needs a material selected.", "product-materials");
+    }
+    if (materials.some((m) => !Number.isFinite(m.percentage) || m.percentage < 0 || m.percentage > 100)) {
+      add("details", "Each material's percentage must be between 0 and 100.", "product-materials");
     }
   }
 

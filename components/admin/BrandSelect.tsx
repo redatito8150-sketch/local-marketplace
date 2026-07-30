@@ -6,6 +6,13 @@ import { Check, ChevronDown } from "lucide-react";
 export interface BrandOption {
   id: string;
   name: string;
+  // Carried through purely so the Product Editor can resolve Shipping &
+  // Returns (lib/admin/shippingPolicy.ts) client-side and recompute it the
+  // instant the Admin picks a different Brand — BrandSelect itself never
+  // reads these.
+  shippingPolicy?: string;
+  returnPolicy?: string;
+  returnWindowDays?: number;
 }
 
 // Searchable combobox over the real brand list — replaces the old plain

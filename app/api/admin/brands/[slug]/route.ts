@@ -50,6 +50,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       values: body.values,
       similar_brand_slugs: body.similarBrandSlugs,
       shop_the_look: body.shopTheLook,
+      shipping_policy: body.shippingPolicy?.trim() || null,
+      return_policy: body.returnPolicy?.trim() || null,
+      return_window_days: body.returnWindowDays ?? null,
     })
     .eq("slug", params.slug);
 

@@ -8,7 +8,6 @@ import ProductBreadcrumb from "@/components/product/ProductBreadcrumb";
 import ProductGallery from "@/components/product/ProductGallery";
 import ProductInfo from "@/components/product/ProductInfo";
 import ProductAccordion from "@/components/product/ProductAccordion";
-import { parseLines } from "@/lib/admin/parseTextInputs";
 import {
   buildPreviewProduct,
   deriveProductImages,
@@ -63,11 +62,13 @@ export default function ProductLivePreview({
   const previewAccordion = useMemo(
     () => ({
       description: form.description.trim(),
-      details: parseLines(form.detailsText),
-      careInstructions: parseLines(form.careInstructionsText),
+      details: form.details.map((d) => d.trim()).filter(Boolean),
+      careInstructions: form.careInstructions,
+      materials: form.materials,
+      fit: form.fit || undefined,
       shippingReturns: form.shippingReturns.trim(),
     }),
-    [form.description, form.detailsText, form.careInstructionsText, form.shippingReturns]
+    [form.description, form.details, form.careInstructions, form.materials, form.fit, form.shippingReturns]
   );
 
   return (

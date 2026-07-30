@@ -245,6 +245,14 @@ export interface ProductVariantReadiness {
 // lib/audience.ts instead of reading a stored category.
 export type Audience = "men" | "women" | "unisex" | "kids_baby";
 
+// One entry in a product's multi-material composition — percentages
+// across all entries must total exactly 100 before publishing (Draft may
+// stay incomplete). Stored as `products.materials` jsonb.
+export interface ProductMaterialEntry {
+  material: string;
+  percentage: number;
+}
+
 // ── Product-level taxonomy/merchandising fields ─────────────────────────────
 export interface ProductTaxonomyFields {
   // The resolved Product Type leaf (Level 3) in the hierarchical taxonomy
@@ -263,7 +271,11 @@ export interface ProductTaxonomyFields {
   // not belong to a collection.
   collectionId?: string;
   collectionName?: string;
+  // Legacy single-material field — preserved for backward compatibility,
+  // no longer written by the editor. `materials` (below) is the
+  // structured, multi-material composition that replaced it.
   material?: string;
+  materials?: ProductMaterialEntry[];
   fit?: string;
   compareAtPrice?: number;
   modelHeight?: string;
@@ -478,6 +490,11 @@ export interface BrandRecord {
   shopTheLook: BrandShopTheLookTile[];
   ownerUserId?: string;
   ownerEmail?: string;
+  // Shipping & Returns policy priority: this Brand's fields, falling back
+  // to the marketplace default (7 days) — see lib/admin/shippingPolicy.ts.
+  shippingPolicy?: string;
+  returnPolicy?: string;
+  returnWindowDays?: number;
 }
 
 // ── Collections (Supabase `collections` table) — brand-owned, replaces the

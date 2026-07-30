@@ -4,6 +4,7 @@ import { getVariantsForProducts } from "@/lib/data/variants";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/audience";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
+import { resolveShippingPolicy } from "@/lib/admin/shippingPolicy";
 import {
   Audience,
   CategorySlug,
@@ -57,6 +58,7 @@ export interface ProductRow {
   audience: Audience;
   collection_id: string | null;
   material: string | null;
+  materials: { material: string; percentage: number }[] | null;
   fit: string | null;
   price: number;
   compare_at_price: number | null;
@@ -197,6 +199,7 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     collectionId: row.collection_id ?? undefined,
     collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
+    materials: row.materials ?? [],
     fit: row.fit ?? undefined,
     modelHeight: row.model_height ?? undefined,
     modelWearing: row.model_wearing ?? undefined,
@@ -557,6 +560,23 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   const variantsByProduct = await getVariantsForProducts([id]);
   const variants = variantsByProduct.get(id) ?? [];
   const detail = attachVariantDerivedFields(toProductDetail(row, ctx), variants);
+
+  // Shipping & Returns is resolved from the owning Brand's policy (falling
+  // back to the marketplace default), not stored per-product — see
+  // lib/admin/shippingPolicy.ts. Overrides the legacy shipping_returns
+  // column value already set by toProductDetail() above.
+  const { data: brandPolicyRow } = await supabase
+    .from("brands")
+    .select("shipping_policy, return_policy, return_window_days")
+    .eq("id", row.brand_id)
+    .maybeSingle();
+  const resolvedPolicy = resolveShippingPolicy(brandPolicyRow ? {
+    shippingPolicy: brandPolicyRow.shipping_policy as string | null,
+    returnPolicy: brandPolicyRow.return_policy as string | null,
+    returnWindowDays: brandPolicyRow.return_window_days as number | null,
+  } : null);
+  detail.shippingReturns = resolvedPolicy.text;
+
   const sizeAvailability = new Map<string, boolean>();
   for (const variant of variants) {
     const sizeLabel = variant.optionValues.find((o) => o.optionTypeName === "Size")?.label;

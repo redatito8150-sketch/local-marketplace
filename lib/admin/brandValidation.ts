@@ -27,6 +27,11 @@ export interface BrandInput {
   values: BrandValue[];
   similarBrandSlugs: string[];
   shopTheLook: BrandShopTheLookTile[];
+  // Shipping & Returns policy priority source — all optional; an unset
+  // brand falls back to the marketplace default (see lib/admin/shippingPolicy.ts).
+  shippingPolicy?: string;
+  returnPolicy?: string;
+  returnWindowDays?: number;
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -48,5 +53,11 @@ export function validateBrandInput(body: BrandInput): string | null {
   if (!body.aboutImage?.trim()) return "About image URL is required";
   if (!body.storyImage?.trim()) return "Story image URL is required";
   if (!body.storyBody?.trim()) return "Story body is required";
+  if (
+    body.returnWindowDays != null &&
+    (!Number.isInteger(body.returnWindowDays) || body.returnWindowDays <= 0)
+  ) {
+    return "Return window must be a whole number of days greater than 0";
+  }
   return null;
 }

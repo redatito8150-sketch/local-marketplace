@@ -40,6 +40,7 @@ interface ProductRow {
   audience: Audience;
   collection_id: string | null;
   material: string | null;
+  materials: { material: string; percentage: number }[] | null;
   fit: string | null;
   price: number;
   compare_at_price: number | null;
@@ -107,6 +108,7 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     collectionId: row.collection_id ?? undefined,
     collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
+    materials: row.materials ?? [],
     fit: row.fit ?? undefined,
     price: Number(row.price),
     compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
@@ -255,6 +257,9 @@ interface BrandRow {
   shop_the_look: BrandShopTheLookTile[];
   owner_user_id: string | null;
   sku_prefix: string;
+  shipping_policy: string | null;
+  return_policy: string | null;
+  return_window_days: number | null;
 }
 
 function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean): BrandRecord {
@@ -285,6 +290,9 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean
     shopTheLook: row.shop_the_look ?? [],
     ownerUserId: row.owner_user_id ?? undefined,
     ownerEmail,
+    shippingPolicy: row.shipping_policy ?? undefined,
+    returnPolicy: row.return_policy ?? undefined,
+    returnWindowDays: row.return_window_days ?? undefined,
   };
 }
 
