@@ -459,8 +459,18 @@ export default function ProductForm({
 
   const submitting = submittingStatus !== null;
   const currentIssues = validateProductSections(buildPayload(form.status));
+  // The green "Complete" badge means "actually ready to publish", not just
+  // "no errors for the current Draft/Published status" — some rules (e.g.
+  // every Color needs an image once there are 2+) only turn into a real
+  // validation issue at status: "published", so a Draft product with
+  // missing Color images would otherwise show every section as falsely
+  // Complete. Always check against "published" for the badge; the red
+  // issue-count chips below still use currentIssues, so Draft doesn't get
+  // nagged with premature errors — a not-yet-ready section just reads
+  // "Incomplete", not an error.
+  const publishReadinessIssues = validateProductSections(buildPayload("published"));
   const completedSections = new Set<ProductEditorSectionId>(
-    PRODUCT_EDITOR_SECTIONS.filter((section) => !currentIssues.some((issue) => issue.section === section.id)).map((section) => section.id)
+    PRODUCT_EDITOR_SECTIONS.filter((section) => !publishReadinessIssues.some((issue) => issue.section === section.id)).map((section) => section.id)
   );
   const saveState: EditorSaveState = submitting ? "saving" : saveFailed ? "failed" : hasUnsavedChanges ? "unsaved" : "saved";
 

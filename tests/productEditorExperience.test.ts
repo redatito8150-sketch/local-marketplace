@@ -131,6 +131,15 @@ test("multi-color image requirement does not block Save as Draft", () => {
   assert.ok(!issues.some((issue) => issue.fieldId === "product-media" && /color/i.test(issue.message)));
 });
 
+test("the 'Complete' badge reflects true publish-readiness, not just the current Draft/Published status", () => {
+  // A multi-color product missing a Color image only becomes a validation
+  // issue at status: "published" — Media must never show as Complete for
+  // it while still in Draft, or the badge lies about readiness.
+  const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  assert.match(source, /publishReadinessIssues\s*=\s*validateProductSections\(buildPayload\("published"\)\)/);
+  assert.match(source, /completedSections[\s\S]{0,120}publishReadinessIssues/);
+});
+
 test("top and bottom actions share the same submit handlers", () => {
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.ok((source.match(/onSaveDraft=\{\(\) => submit\("draft"\)\}/g) ?? []).length >= 2);
