@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Box, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
@@ -43,6 +43,7 @@ function Popover({
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const openPopover = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -56,7 +57,13 @@ function Popover({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    // Ignore scrolls that originate inside the panel itself (e.g. the Size
+    // picker's own results list) — only closing on a scroll of whatever is
+    // *behind* the popover, since its position is only computed once, at open.
+    const close = (e: Event) => {
+      if (panelRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
@@ -72,6 +79,7 @@ function Popover({
         <>
           <button type="button" aria-label="Close" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
           <div
+            ref={panelRef}
             className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-lg border border-stone-200 bg-white p-3.5 shadow-xl"
             style={{ top: coords.top, left: coords.left, right: coords.right }}
           >

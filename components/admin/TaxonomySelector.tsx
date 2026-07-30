@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Check, Search } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
@@ -34,6 +34,7 @@ export default function TaxonomySelector({
   // that Group's Product Types.
   const [path, setPath] = useState<TaxonomyNode[]>([]);
   const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const openPicker = (e: React.MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -46,7 +47,16 @@ export default function TaxonomySelector({
 
   useEffect(() => {
     if (!open) return;
-    const close = () => setOpen(false);
+    // Scroll capture-listens on window so scrolling the page behind the
+    // picker closes it (its position is only computed once, at open) — but
+    // that same capture phase also sees scroll events bubbling up from the
+    // picker's own internal results list, which would close it the instant
+    // someone tries to scroll the list. Ignore anything originating inside
+    // the panel itself.
+    const close = (e: Event) => {
+      if (panelRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
@@ -111,6 +121,7 @@ export default function TaxonomySelector({
         <>
           <button type="button" aria-label="Close" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
           <div
+            ref={panelRef}
             className="fixed z-50 max-h-[400px] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl"
             style={{ top: coords.top, left: coords.left, width: coords.width }}
           >
