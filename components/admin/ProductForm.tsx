@@ -567,8 +567,29 @@ export default function ProductForm({
           <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price. Variant Price remains the final price for that variant.</p>
         </FormSection>
 
-        {/* 03 — Media */}
-        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="03" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
+        {/* 03 — Variants (Inventory) — comes before Media because Media's
+            Color images depend on the Colors defined here. */}
+        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
+          <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
+            value={form.inventoryVariants}
+            onChange={(next) => set("inventoryVariants", next)}
+            availableOptionTypes={optionTypes}
+            availableOptionValues={optionValues}
+            onCreateOptionType={handleCreateOptionType}
+            onCreateOptionValue={handleCreateOptionValue}
+            currency="EGP"
+            productSkuPreview={form.sku || "(generated after first save)"}
+            productPrice={Number(form.price) || 0}
+            disabled={!form.brandId}
+            taxonomyNodes={taxonomyNodes}
+            productTypeId={form.productTypeId}
+            inventoryHref={inventoryHref}
+          /></div>
+          <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
+        </FormSection>
+
+        {/* 04 — Media */}
+        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
           <p className="mb-3 text-[12px] text-ink-soft/55">The Main Image remains the listing cover and also participates in the ordered product-detail gallery. Product media is limited to 10 unique images, including Color-mapped images.</p>
           <div id="product-media" tabIndex={-1} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ImageUploader
@@ -589,26 +610,6 @@ export default function ProductForm({
               onChange={(urls) => set("images", urls)}
             />
           </div>
-        </FormSection>
-
-        {/* 04 — Inventory & Variants */}
-        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="04" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
-          <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
-            value={form.inventoryVariants}
-            onChange={(next) => set("inventoryVariants", next)}
-            availableOptionTypes={optionTypes}
-            availableOptionValues={optionValues}
-            onCreateOptionType={handleCreateOptionType}
-            onCreateOptionValue={handleCreateOptionValue}
-            currency="EGP"
-            productSkuPreview={form.sku || "(generated after first save)"}
-            productPrice={Number(form.price) || 0}
-            disabled={!form.brandId}
-            taxonomyNodes={taxonomyNodes}
-            productTypeId={form.productTypeId}
-            inventoryHref={inventoryHref}
-          /></div>
-          <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
         </FormSection>
 
         {/* 05 — Product Details */}

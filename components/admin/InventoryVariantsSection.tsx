@@ -4,8 +4,6 @@ import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
 import { buildComboKey } from "@/lib/inventory/variantCombinations";
-import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
-import { calculateTotalInventory } from "@/lib/inventory/readiness";
 import type { NewColorInput } from "./ColorOptionPicker";
 
 export interface OptionTypeOption {
@@ -195,59 +193,8 @@ export default function InventoryVariantsSection({
   // variants reference it), but do not offer creating a new one.
   const legacyOptionTypeIds = value.optionTypeIds.filter((id) => id !== colorType?.id && id !== sizeType?.id);
 
-  const totalInventory = calculateTotalInventory(
-    value.variants.map((v) => ({ quantity: v.quantity, sellingStatus: v.sellingStatus, isArchived: false }))
-  );
-  const stockCounts = value.variants.reduce(
-    (counts, variant) => {
-      const status = calculateStockStatus(
-        variant.quantity,
-        effectiveLowStockThreshold(variant.lowStockThresholdOverride, value.defaultLowStockThreshold)
-      );
-      if (variant.sellingStatus === "active") counts.active += 1;
-      if (status === "low_stock") counts.low += 1;
-      if (status === "out_of_stock") counts.out += 1;
-      return counts;
-    },
-    { active: 0, low: 0, out: 0 }
-  );
-  const configurationComplete = colorValueIds.length === 0 || colorValueIds.every((id) => id);
-  const readyToPublish = value.variants.some((variant) => variant.sellingStatus === "active" && variant.quantity > 0);
-
   return (
     <div className="space-y-8">
-      {/* Inventory Summary */}
-      <div>
-        <h3 className="text-[13px] font-semibold text-ink">Inventory Summary</h3>
-        <p className="mt-1 text-[12px] text-ink-soft/55">
-          Opening stock is recorded once after publishing. Future stock changes must be managed from Inventory.
-        </p>
-        {inventoryHref && <a href={inventoryHref} className="mt-2 inline-flex text-[12px] font-semibold text-ink underline">Learn more about Inventory</a>}
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            ["Total Current Stock", totalInventory],
-            ["Active Variants", stockCounts.active],
-            ["Low Stock", stockCounts.low],
-            ["Out of Stock", stockCounts.out],
-          ].map(([label, count]) => (
-            <div key={label} className="rounded-md border border-stone-150 bg-stone-50 px-3 py-2.5">
-              <span className="text-[10.5px] font-medium text-ink-soft/60">{label}</span>
-              <p className="text-[18px] font-bold text-ink">{count}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <div className={`rounded-md border px-3 py-2.5 ${configurationComplete ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide">Configuration</p>
-            <p className="mt-1 text-[12.5px]">{configurationComplete ? "Complete" : "Select at least one color."}</p>
-          </div>
-          <div className={`rounded-md border px-3 py-2.5 ${readyToPublish ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide">Publishing readiness</p>
-            <p className="mt-1 text-[12.5px]">{readyToPublish ? "Ready to publish" : "Needs an active variant with inventory."}</p>
-          </div>
-        </div>
-      </div>
-
       {/* Default Low Stock Alert */}
       <div>
         <h3 className="text-[13px] font-semibold text-ink">Default Low Stock Alert</h3>

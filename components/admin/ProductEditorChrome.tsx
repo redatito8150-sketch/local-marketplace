@@ -7,8 +7,8 @@ import type { ProductEditorSectionId, ProductValidationIssue } from "@/lib/admin
 export const PRODUCT_EDITOR_SECTIONS: { id: ProductEditorSectionId; number: string; label: string }[] = [
   { id: "basic", number: "01", label: "Basic Information" },
   { id: "pricing", number: "02", label: "Pricing" },
-  { id: "media", number: "03", label: "Media" },
-  { id: "inventory", number: "04", label: "Inventory & Variants" },
+  { id: "inventory", number: "03", label: "Inventory & Variants" },
+  { id: "media", number: "04", label: "Media" },
   { id: "details", number: "05", label: "Product Details" },
   { id: "visibility", number: "06", label: "Visibility" },
 ];
