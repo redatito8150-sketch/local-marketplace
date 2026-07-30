@@ -81,18 +81,19 @@ export default function ProductInfo({
     onColorImageChange?.(selectedColor ? product.colorImages?.[selectedColor] : undefined);
   }, [selectedColor, product.colorImages, onColorImageChange]);
 
-  // A size is disabled either because it doesn't exist at all for the
-  // selected color (e.g. "L" only exists under Red, not under White — a
-  // different color shouldn't make its sizes look selectable elsewhere),
-  // or because every variant that does match is out of stock, paused, or
-  // discontinued.
-  const isSizeDisabled = (size: string): boolean => {
+  // Two distinct "can't pick this" reasons, styled differently:
+  //  - "not_offered": this size doesn't exist at all under the selected
+  //    color (e.g. "L" only exists under Red, not under White) — a
+  //    different color shouldn't make its sizes look pickable elsewhere.
+  //  - "out_of_stock": the size exists for this color, but every matching
+  //    variant is out of stock, paused, or discontinued.
+  const sizeAvailability = (size: string): "available" | "not_offered" | "out_of_stock" => {
     const existsForColor = variants.some((v) => {
       const vSize = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
       const vColor = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "color")?.label;
       return vSize === size && (!selectedColor || vColor === selectedColor);
     });
-    if (!existsForColor) return true;
+    if (!existsForColor) return "not_offered";
 
     const matching = variants.filter((v) => {
       const vSize = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
@@ -100,8 +101,9 @@ export default function ProductInfo({
       return vSize === size && (!selectedColor || vColor === selectedColor) &&
         Object.entries(selectedCustom).every(([typeId, label]) => v.optionValues.some((option) => option.optionTypeId === typeId && option.label === label));
     });
-    if (matching.length === 0) return false;
-    return !matching.some((v) => isVariantPurchasable({ sellingStatus: v.sellingStatus, quantity: v.quantity, isArchived: v.isArchived, productStatus: product.status }));
+    if (matching.length === 0) return "available";
+    const purchasable = matching.some((v) => isVariantPurchasable({ sellingStatus: v.sellingStatus, quantity: v.quantity, isArchived: v.isArchived, productStatus: product.status }));
+    return purchasable ? "available" : "out_of_stock";
   };
 
   const effectiveThreshold = resolvedVariant
@@ -245,28 +247,43 @@ export default function ProductInfo({
           </div>
           <div className="mt-3 flex flex-wrap gap-2.5">
             {product.sizes.map((size) => {
-              const unavailable = isSizeDisabled(size);
+              const availability = sizeAvailability(size);
+              const unavailable = availability !== "available";
               return (
                 <button
                   key={size}
                   disabled={unavailable}
-                  title={unavailable ? "Currently unavailable" : undefined}
+                  title={
+                    availability === "not_offered"
+                      ? "Not offered in this color"
+                      : availability === "out_of_stock"
+                      ? "Out of stock"
+                      : undefined
+                  }
                   onClick={() => {
                     if (unavailable) return;
                     setSelectedSize(size);
                     setSizeError(false);
                   }}
                   className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
-                    unavailable
+                    availability === "not_offered"
                       ? "cursor-not-allowed border-red-200 bg-red-50 text-red-400"
+                      : availability === "out_of_stock"
+                      ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
                       : selectedSize === size
                       ? "border-ink bg-ink text-cream"
                       : "border-stone-150 text-ink hover:border-ink/40"
                   }`}
                 >
                   {size}
-                  {unavailable && (
-                    <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-300" />
+                  {availability === "not_offered" && (
+                    <>
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-300" />
+                      <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-red-300" />
+                    </>
+                  )}
+                  {availability === "out_of_stock" && (
+                    <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-ink-soft/40" />
                   )}
                 </button>
               );
