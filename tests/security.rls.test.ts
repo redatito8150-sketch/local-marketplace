@@ -148,6 +148,68 @@ test(
   }
 );
 
+// Regression test for audit finding RLS-016 (2026-08-04): product_options,
+// product_option_values, product_variant_values, and product_color_images
+// all had an unconditional `using (true)` public SELECT policy, unlike the
+// sibling `products`/`product_variants`/`product_media` tables — see
+// 20260804000001_scope_product_child_table_rls.sql. This mirrors the
+// "products RLS" test above: it passes trivially while the live catalog has
+// no non-published/paused rows with option/variant/color-image data, and
+// starts actually asserting the protection the moment one exists.
+test(
+  "product child tables (options/option values/variant values/color images) do not leak non-published/paused product data to the anon key",
+  { skip: !hasCredentials || !serviceRoleKey },
+  async () => {
+    const admin = createClient(supabaseUrl!, serviceRoleKey!);
+    const anon = createClient(supabaseUrl!, anonKey!);
+
+    const { data: hiddenProducts, error: hiddenError } = await admin
+      .from("products")
+      .select("id")
+      .or("status.neq.published,paused_by_brand.eq.true");
+    assert.ifError(hiddenError);
+    const hiddenProductIds = new Set((hiddenProducts ?? []).map((p) => p.id as string));
+
+    // product_options / product_color_images key directly off product_id.
+    for (const table of ["product_options", "product_color_images"] as const) {
+      const { data, error } = await anon.from(table).select("product_id");
+      assert.ifError(error);
+      const leaked = (data ?? []).filter((row) => hiddenProductIds.has(row.product_id as string));
+      assert.equal(leaked.length, 0, `anon key must never see ${table} rows for a hidden product`);
+    }
+
+    if (hiddenProductIds.size > 0) {
+      const { data: hiddenOptions, error: optErr } = await admin
+        .from("product_options")
+        .select("id")
+        .in("product_id", [...hiddenProductIds]);
+      assert.ifError(optErr);
+      const hiddenOptionIds = new Set((hiddenOptions ?? []).map((o) => o.id as string));
+
+      if (hiddenOptionIds.size > 0) {
+        const { data, error } = await anon.from("product_option_values").select("product_option_id");
+        assert.ifError(error);
+        const leaked = (data ?? []).filter((row) => hiddenOptionIds.has(row.product_option_id as string));
+        assert.equal(leaked.length, 0, "anon key must never see product_option_values rows for a hidden product");
+      }
+
+      const { data: hiddenVariants, error: varErr } = await admin
+        .from("product_variants")
+        .select("id")
+        .in("product_id", [...hiddenProductIds]);
+      assert.ifError(varErr);
+      const hiddenVariantIds = new Set((hiddenVariants ?? []).map((v) => v.id as string));
+
+      if (hiddenVariantIds.size > 0) {
+        const { data, error } = await anon.from("product_variant_values").select("variant_id");
+        assert.ifError(error);
+        const leaked = (data ?? []).filter((row) => hiddenVariantIds.has(row.variant_id as string));
+        assert.equal(leaked.length, 0, "anon key must never see product_variant_values rows for a hidden product");
+      }
+    }
+  }
+);
+
 // ============================================================================
 // Basic-info-rebuild correction (2026-07-30): brand_id architecture —
 // next_product_sku concurrency/uniqueness, sku_prefix locking, and the
