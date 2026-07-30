@@ -1,7 +1,6 @@
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { primaryShopCategoryForAudience } from "@/lib/audience";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
-import { effectiveVariantPrice } from "@/lib/inventory/pricing";
 import type { Audience, ProductDetail, TaxonomyNode } from "@/types";
 import type { InventoryVariantsValue, OptionTypeOption, OptionValueOption } from "@/components/admin/InventoryVariantsSection";
 import { parseLines } from "./parseTextInputs";
@@ -78,14 +77,19 @@ export function buildPreviewProduct(
     const threshold = effectiveLowStockThreshold(v.lowStockThresholdOverride, defaultLowStockThreshold);
     return v.sellingStatus === "active" && calculateStockStatus(v.quantity, threshold) !== "out_of_stock";
   });
-  const previewPrice = variants.length > 0 ? effectiveVariantPrice(variants[0].variantPrice, productPrice) : productPrice;
-
   return {
     id: id ?? "preview",
     name: form.name.trim() || "Untitled product",
     brandName: form.brandName.trim() || "Brand name",
     brandSlug: undefined,
-    price: previewPrice,
+    // The base Pricing-step price, unconditionally — never a specific
+    // variant's override. ProductInfo (reused as-is by this Preview)
+    // already resolves the *selected* Color/Size's own Variant Price (or
+    // falls back to this base) on its own; overriding it here with
+    // variants[0]'s price previously made every color/size *without* its
+    // own override silently inherit whichever variant happened to be
+    // first in the array, regardless of what was actually selected.
+    price: productPrice,
     compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
     currency: "EGP",
     images: safeImages,
