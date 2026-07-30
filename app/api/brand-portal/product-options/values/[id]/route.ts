@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { deriveSkuToken, normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/reusableDataLifecycle";
 import { validateOptionValueLabel } from "@/lib/admin/optionValidation";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -19,7 +20,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: HISTORICAL_DELETE_MESSAGE, references }, { status: 409 });
     }
     const { error } = await supabaseAdmin.from("option_values").delete().eq("id", id);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ deleted: true });
+    return error ? safeErrorResponse("brand-portal.product-options.values.delete", error) : NextResponse.json({ deleted: true });
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
@@ -31,7 +32,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     Object.assign(patch, { label: name, key: normalizeOptionKey(name), sku_token: deriveSkuToken(name) });
   } else return NextResponse.json({ error: "Invalid management action" }, { status: 400 });
   const { error } = await supabaseAdmin.from("option_values").update(patch).eq("id", id);
-  return error
-    ? NextResponse.json({ error: error.code === "23505" ? "That value already exists for this option" : error.message }, { status: error.code === "23505" ? 409 : 500 })
-    : NextResponse.json({ updated: true });
+  if (error) {
+    if (error.code === "23505") return NextResponse.json({ error: "That value already exists for this option" }, { status: 409 });
+    return safeErrorResponse("brand-portal.product-options.values.update", error);
+  }
+  return NextResponse.json({ updated: true });
 }

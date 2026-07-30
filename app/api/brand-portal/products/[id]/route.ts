@@ -19,6 +19,7 @@ import {
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { loadProductColorImages, loadProductOptionSelections } from "@/lib/admin/loadProductOptionSelections";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { safeErrorResponse } from "@/lib/apiError";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -59,10 +60,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       .eq("id", params.id);
 
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to update: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("brand-portal.products.toggle-pause", error, "Failed to update");
     }
 
     await logAudit({
@@ -133,7 +131,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const { error } = await supabaseAdmin.from("products").update(productPayload).eq("id", params.id);
   if (error) {
-    return NextResponse.json({ error: `Failed to save edit: ${error.message}` }, { status: 500 });
+    return safeErrorResponse("brand-portal.products.save-edit", error, "Failed to save edit");
   }
 
   const optionsResult = await replaceProductOptionSelections({
@@ -227,10 +225,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     .eq("id", params.id);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to remove product: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("brand-portal.products.remove", error, "Failed to remove product");
   }
 
   const auditLogId = await logAudit({

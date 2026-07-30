@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { optionTypeReferences } from "@/lib/admin/reusableDataLifecycle";
 import { validateOptionTypeName } from "@/lib/admin/optionValidation";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -17,7 +18,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const references = await optionTypeReferences(id);
     if (references.selectedCount) return NextResponse.json({ error: "This option type is used by product data and cannot be deleted. You can archive it instead.", references }, { status: 409 });
     const { error } = await supabaseAdmin.from("option_types").delete().eq("id", id);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ deleted: true });
+    return error ? safeErrorResponse("brand-portal.product-options.types.delete", error) : NextResponse.json({ deleted: true });
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
@@ -30,7 +31,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
   else return NextResponse.json({ error: "Invalid management action" }, { status: 400 });
   const { error } = await supabaseAdmin.from("option_types").update(patch).eq("id", id);
-  return error
-    ? NextResponse.json({ error: error.code === "23505" ? "That option type already exists for your brand" : error.message }, { status: error.code === "23505" ? 409 : 500 })
-    : NextResponse.json({ updated: true });
+  if (error) {
+    if (error.code === "23505") return NextResponse.json({ error: "That option type already exists for your brand" }, { status: 409 });
+    return safeErrorResponse("brand-portal.product-options.types.update", error);
+  }
+  return NextResponse.json({ updated: true });
 }

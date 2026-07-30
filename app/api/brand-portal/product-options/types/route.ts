@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionTypeName } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { logError } from "@/lib/errorLog";
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -28,9 +29,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    const message =
-      error.code === "23505" ? `"${name}" already exists for your brand` : `Failed to create option type: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505") {
+      return NextResponse.json({ error: `"${name}" already exists for your brand` }, { status: 409 });
+    }
+    logError("brand-portal.product-options.types.create", error.message);
+    return NextResponse.json({ error: "Failed to create option type" }, { status: 500 });
   }
 
   return NextResponse.json({

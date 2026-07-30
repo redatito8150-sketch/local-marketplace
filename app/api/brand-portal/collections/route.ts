@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { toCollectionRecord } from "@/lib/data/brandCollections";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logAudit } from "@/lib/auditLog";
+import { logError } from "@/lib/errorLog";
 
 function slugify(value: string): string {
   return value
@@ -57,7 +58,6 @@ export async function POST(request: NextRequest) {
   let slug = baseSlug;
   let attempt = 0;
   let created: { id: string } | null = null;
-  let lastError: string | null = null;
 
   // Same "retry with a random-ish suffix on unique_violation" shape as the
   // product id generator — collisions are rare (brand-scoped slug) but this
@@ -81,17 +81,14 @@ export async function POST(request: NextRequest) {
       created = data;
       slug = data.slug;
     } else if (error && error.code !== "23505") {
-      lastError = error.message;
+      logError("brand-portal.collections.create", error.message);
       break;
     }
     attempt += 1;
   }
 
   if (!created) {
-    return NextResponse.json(
-      { error: lastError ?? "Failed to create collection, please try again" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create collection, please try again" }, { status: 500 });
   }
 
   await logAudit({
