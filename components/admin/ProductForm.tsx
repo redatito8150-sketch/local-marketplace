@@ -11,7 +11,7 @@ import {
   type ProductValidationIssue,
   type ProductInput,
 } from "@/lib/admin/productValidation";
-import ImageUploader from "@/components/admin/ImageUploader";
+import MediaGallery from "@/components/admin/MediaGallery";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
 import TaxonomySelector from "@/components/admin/TaxonomySelector";
 import BrandSelect, { type BrandOption } from "@/components/admin/BrandSelect";
@@ -22,7 +22,6 @@ import InventoryVariantsSection, {
   type OptionValueOption,
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
-import ColorSwatch from "@/components/admin/ColorSwatch";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
@@ -150,7 +149,11 @@ function toFormState(
     price: product ? String(product.price) : "",
     compareAtPrice: product?.compareAtPrice != null ? String(product.compareAtPrice) : "",
     image: product?.image ?? "",
-    images: product?.images ?? [],
+    // `product.images` is the flattened, persisted [cover, ...gallery,
+    // ...colorImages] order — strip the cover back out here since the
+    // editor's `images` field represents everything *except* the cover
+    // (MediaGallery renders the cover in its own fixed, non-reorderable slot).
+    images: (product?.images ?? []).filter((url) => url !== product?.image),
     material: product?.material ?? "",
     fit: product?.fit ?? "",
     inventoryVariants: toInventoryVariantsValue(product),
@@ -593,63 +596,24 @@ export default function ProductForm({
         {/* 04 — Media */}
         <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
           <p className="mb-3 text-[12px] text-ink-soft/55">
-            One place for every product image. Cover always comes first in the gallery
-            {mediaColorIds.length >= 2 ? ", each color needs its own image (this product has multiple colors)" : ""}, and up to 3 more general Gallery images round it out.
+            One place for every product image, in one freely reorderable order. Cover always leads the gallery
+            {mediaColorIds.length >= 2 ? "; each color needs its own image (this product has multiple colors)" : ""} — drag Gallery and Color images into whatever order the storefront should show them.
           </p>
-          <div id="product-media" tabIndex={-1} className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-            <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">Cover *</span>
-              <div className="mt-1">
-                <ImageUploader
-                  label=""
-                  folderId={uploadFolderId}
-                  value={form.image ? [form.image] : []}
-                  onChange={(urls) => set("image", urls[0] ?? "")}
-                  maxImages={1}
-                />
-              </div>
-            </div>
-
-            {mediaColorIds.map((colorId) => {
-              const color = optionValues.find((v) => v.id === colorId);
-              const url = form.inventoryVariants.colorImages[colorId];
-              return (
-                <div key={colorId}>
-                  <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
-                    <ColorSwatch swatchType={color?.swatchType} primaryColor={color?.primaryColor} secondaryColor={color?.secondaryColor} size={11} />
-                    {color?.label ?? "—"} *
-                  </span>
-                  <div className="mt-1">
-                    <ImageUploader
-                      label=""
-                      folderId="color-images"
-                      value={url ? [url] : []}
-                      onChange={(urls) =>
-                        set("inventoryVariants", {
-                          ...form.inventoryVariants,
-                          colorImages: { ...form.inventoryVariants.colorImages, [colorId]: urls[0] ?? "" },
-                        })
-                      }
-                      maxImages={1}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            <div className="col-span-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">Gallery (up to 3)</span>
-              <div className="mt-1">
-                <ImageUploader
-                  label=""
-                  folderId={uploadFolderId}
-                  multiple
-                  maxImages={3}
-                  value={form.images}
-                  onChange={(urls) => set("images", urls)}
-                />
-              </div>
-            </div>
+          <div id="product-media" tabIndex={-1}>
+            <MediaGallery
+              folderId={uploadFolderId}
+              coverUrl={form.image}
+              onCoverChange={(url) => set("image", url)}
+              images={form.images}
+              onImagesChange={(urls) => set("images", urls)}
+              colorImages={form.inventoryVariants.colorImages}
+              onColorImagesChange={(next) => set("inventoryVariants", { ...form.inventoryVariants, colorImages: next })}
+              colors={mediaColorIds.length >= 2 ? mediaColorIds.map((id) => {
+                const v = optionValues.find((option) => option.id === id);
+                return { id, label: v?.label ?? "—", swatchType: v?.swatchType, primaryColor: v?.primaryColor, secondaryColor: v?.secondaryColor };
+              }) : []}
+              disabled={!form.brandId}
+            />
           </div>
         </FormSection>
 
