@@ -56,11 +56,12 @@
   bypass so brand-portal editors keep full read access to their own
   Draft products. Admin/service-role reads are unaffected — they already
   use `supabaseAdmin`, which bypasses RLS.
-- **Residual risk:** The migration is authored but **not applied to the
-  live Supabase project** in this pass — applying migrations to
-  production without explicit permission was out of scope for this task.
-  See `09-production-readiness-checklist.md` for the exact apply command
-  and post-apply verification step.
+- **Residual risk:** None remaining — **the migration has since been
+  applied to the live Supabase project by the project owner**, and
+  `node --test tests/security.rls.test.ts` was re-run immediately after,
+  confirming 12/12 passing live (including the new RLS-016 regression
+  test). Status: **closed**. See `09-production-readiness-checklist.md`
+  for the verification log.
 
 ## Findings carried over from the prior audit, re-verified this pass
 

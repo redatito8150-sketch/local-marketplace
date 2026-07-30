@@ -2,6 +2,13 @@
 
 ## IMMEDIATE (required before this branch's fix is actually effective in production)
 
+### ~~Apply migration `20260804000001_scope_product_child_table_rls.sql`~~ — DONE
+
+Applied to the live Supabase project by the project owner the same day.
+Re-verified live via `node --test tests/security.rls.test.ts` (12/12
+passing). No longer an open item — kept below (struck through) for the
+record.
+
 ### Apply migration `20260804000001_scope_product_child_table_rls.sql`
 
 - **Reason:** RLS-016 (High) is fixed in code/migration form but not live

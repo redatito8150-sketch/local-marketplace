@@ -1,5 +1,13 @@
 # Production Readiness Checklist — 2026-08-04
 
+**Update (same day):** the RLS-016 migration
+(`20260804000001_scope_product_child_table_rls.sql`) was applied to the
+live Supabase project by the project owner. Re-ran
+`node --test tests/security.rls.test.ts` immediately after — 12/12
+passing live, including the new RLS-016 regression test. RLS-016 is now
+**closed**, not just fixed-in-code. "Exact commands required AFTER
+merge" step 2 below is complete; step 3 was re-run as confirmation.
+
 ## Results on this branch (`audit/security-and-repository-organization`)
 
 | Check | Command | Result |
@@ -26,19 +34,12 @@ npm run build
 ## Exact commands required AFTER merge
 
 ```bash
-# 2. Apply the RLS-016 fix to the live Supabase project (the single
-#    IMMEDIATE action item — see 08-deferred-risks-and-recommendations.md).
-#    Use whatever mechanism this project normally uses to apply a new
-#    migration file to production (Supabase CLI `supabase db push`, the
-#    Supabase SQL editor, or the project's existing deploy pipeline) —
-#    this audit did not run it against production itself.
-#    File: supabase/migrations/20260804000001_scope_product_child_table_rls.sql
+# 2. DONE (applied by the project owner) — Apply the RLS-016 fix to the
+#    live Supabase project. File:
+#    supabase/migrations/20260804000001_scope_product_child_table_rls.sql
 
-# 3. After the migration is live, re-run the live regression suite to
-#    confirm the new policies behave as intended (it already passes
-#    today because the catalog has no hidden-product data yet — this
-#    step matters once real Draft/Archived products with variants/color
-#    images exist):
+# 3. DONE — re-ran immediately after applying, confirmed 12/12 passing
+#    live, including the new RLS-016 test:
 node --test tests/security.rls.test.ts
 ```
 
