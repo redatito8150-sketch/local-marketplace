@@ -1,47 +1,18 @@
 # Deferred Risks and Recommendations — 2026-08-04
 
-## IMMEDIATE (required before this branch's fix is actually effective in production)
+## IMMEDIATE — none remaining
 
-### ~~Apply migration `20260804000001_scope_product_child_table_rls.sql`~~ — DONE
+Both items originally listed here are now done:
 
-Applied to the live Supabase project by the project owner the same day.
-Re-verified live via `node --test tests/security.rls.test.ts` (12/12
-passing). No longer an open item — kept below (struck through) for the
-record.
-
-### Apply migration `20260804000001_scope_product_child_table_rls.sql`
-
-- **Reason:** RLS-016 (High) is fixed in code/migration form but not live
-  — the vulnerable `using (true)` policies are still active in production
-  until this migration is applied.
-- **Risk addressed:** Pre-launch product data disclosure (option/variant
-  structure, color image URLs) via direct anon-key Supabase API calls.
-- **Complexity:** Small (one migration file, already written and
-  reviewed).
-- **Dependencies:** None — does not touch any other table, function, or
-  application code.
-- **Affects:** Database only.
-- **Exact command:** see `09-production-readiness-checklist.md`.
+- **RLS-016 migration** (`20260804000001_scope_product_child_table_rls.sql`)
+  — applied to the live Supabase project by the project owner, re-verified
+  live via `node --test tests/security.rls.test.ts` (12/12 passing).
+- **SEC-008 (raw error leakage)** — fully closed. All 10 brand-portal
+  routes and all 35 admin routes now use `safeErrorResponse()`/`logError()`
+  instead of returning `error.message` to the client. See
+  `02-vulnerability-remediation-report.md` for both fixes' detail.
 
 ## NEXT (recommended in the next development phase)
-
-### Extend `safeErrorResponse()` to the remaining admin routes (SEC-008 follow-up)
-
-- **Reason:** 35 admin routes still return raw `error.message` to the
-  client. The 10 brand-portal routes with the same pattern were fixed
-  this pass (see `02-vulnerability-remediation-report.md`) — this is the
-  remaining half of the original SEC-008 deferral, re-scoped down from
-  45 files to 35.
-- **Risk addressed:** Internal schema/constraint detail leakage to admin
-  accounts (lower severity than customer-facing, since the audience is
-  already trusted/authenticated, but still avoidable).
-- **Complexity:** Medium (35 files, mechanical — the brand-portal pass
-  this session is a direct template: keep every deliberate `23505`/
-  validation/business-rule message as-is, only replace the raw-error
-  fallback branch).
-- **Dependencies:** `lib/apiError.ts` already exists and is ready to
-  reuse.
-- **Affects:** Web only.
 
 ### Regenerate/retire `schema.sql` as the source of truth (MIG-001)
 

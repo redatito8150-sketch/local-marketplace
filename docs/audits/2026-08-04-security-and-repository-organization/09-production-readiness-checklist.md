@@ -12,9 +12,14 @@ merge" step 2 below is complete; step 3 was re-run as confirmation.
 responses) to all 10 `app/api/brand-portal/**` routes — see
 `02-vulnerability-remediation-report.md`. Full verification re-run after
 this change (`tsc`, `eslint app/api/brand-portal`, `npm test`,
-`npm run build`) — all clean, 253/253 tests passing. The remaining 35
-`app/api/admin/**` routes with the same pattern are still open, scoped
-down and re-documented in `08-deferred-risks-and-recommendations.md`.
+`npm run build`) — all clean, 253/253 tests passing.
+
+**Update (same day, part 3):** extended the same fix to the remaining 35
+`app/api/admin/**` routes. **SEC-008 is now fully closed** — zero routes
+in either `app/api/admin/**` or `app/api/brand-portal/**` return a raw
+database error message to the client. Full verification re-run again
+(`tsc`, `eslint app/api/admin`, `npm test`, `npm run build`) — all clean,
+253/253 tests passing.
 
 ## Results on this branch (`audit/security-and-repository-organization`)
 
