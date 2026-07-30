@@ -76,7 +76,7 @@ merged to `main`). This pass re-verified rather than re-derived them:
 | TX-001 / SEC-006 (transactional multi-table writes) | Still closed | `set_user_access`/`replace_product_with_variants` still reject anon live. |
 | `SECURITY DEFINER` search_path pinning | Consistent | Every one of the 54 `security definer` occurrences across `supabase/migrations/*.sql` + `schema.sql` has a matching `set search_path` — no gap found. |
 | SEC-005 / DEP-001 (Sharp/PostCSS via Next.js) | Still open, unchanged | `npm audit` still reports the same 3 High advisories (Next.js → postcss/sharp transitive). No patched resolution exists in the current Next major (same conclusion as the 2026-07-23 pass). |
-| SEC-008 / ERR-001 (raw error leakage) | Still open on admin/brand-portal routes (as already documented) | Confirmed 35 admin routes + 10 brand-portal routes still return `error.message` directly. This was already flagged as an explicit "remaining risk, intentionally deferred" in SEC-008 — not a new finding, just re-confirmed still true. |
+| SEC-008 / ERR-001 (raw error leakage) | **Brand-portal now fixed this pass; admin still open** | Confirmed 35 admin routes + 10 brand-portal routes still returned `error.message` directly at the start of this pass. All 10 brand-portal routes were fixed (see `02-vulnerability-remediation-report.md`). The 35 admin routes remain open — this was already flagged as an explicit "remaining risk, intentionally deferred" in SEC-008; still deferred, now a smaller remaining scope. |
 | SEC-012/CSP-001 (CSP allows `unsafe-inline`/`unsafe-eval`) | Still open, unchanged | `next.config.js` unchanged since the prior audit. |
 
 ## New areas checked this pass, no issues found

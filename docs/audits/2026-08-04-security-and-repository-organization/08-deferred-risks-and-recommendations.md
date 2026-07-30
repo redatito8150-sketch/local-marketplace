@@ -25,18 +25,20 @@ record.
 
 ## NEXT (recommended in the next development phase)
 
-### Extend `safeErrorResponse()` to admin/brand-portal routes (SEC-008 follow-up)
+### Extend `safeErrorResponse()` to the remaining admin routes (SEC-008 follow-up)
 
-- **Reason:** 35 admin + 10 brand-portal routes still return raw
-  `error.message` to the client. Already documented as an intentional,
-  lower-risk deferral in the prior audit (trusted authenticated
-  audience) — re-flagging as the next logical increment now that the
-  customer-facing routes are done.
+- **Reason:** 35 admin routes still return raw `error.message` to the
+  client. The 10 brand-portal routes with the same pattern were fixed
+  this pass (see `02-vulnerability-remediation-report.md`) — this is the
+  remaining half of the original SEC-008 deferral, re-scoped down from
+  45 files to 35.
 - **Risk addressed:** Internal schema/constraint detail leakage to admin
-  and brand-owner accounts (lower severity than customer-facing, since
-  the audience is already trusted/authenticated, but still avoidable).
-- **Complexity:** Medium (45 files, mechanical but needs care per-route
-  to preserve any error detail admins currently rely on for debugging).
+  accounts (lower severity than customer-facing, since the audience is
+  already trusted/authenticated, but still avoidable).
+- **Complexity:** Medium (35 files, mechanical — the brand-portal pass
+  this session is a direct template: keep every deliberate `23505`/
+  validation/business-rule message as-is, only replace the raw-error
+  fallback branch).
 - **Dependencies:** `lib/apiError.ts` already exists and is ready to
   reuse.
 - **Affects:** Web only.

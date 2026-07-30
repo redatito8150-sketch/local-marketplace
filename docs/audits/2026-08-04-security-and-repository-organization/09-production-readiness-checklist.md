@@ -1,12 +1,20 @@
 # Production Readiness Checklist — 2026-08-04
 
-**Update (same day):** the RLS-016 migration
+**Update (same day, part 1):** the RLS-016 migration
 (`20260804000001_scope_product_child_table_rls.sql`) was applied to the
 live Supabase project by the project owner. Re-ran
 `node --test tests/security.rls.test.ts` immediately after — 12/12
 passing live, including the new RLS-016 regression test. RLS-016 is now
 **closed**, not just fixed-in-code. "Exact commands required AFTER
 merge" step 2 below is complete; step 3 was re-run as confirmation.
+
+**Update (same day, part 2):** extended the SEC-008 fix (safe error
+responses) to all 10 `app/api/brand-portal/**` routes — see
+`02-vulnerability-remediation-report.md`. Full verification re-run after
+this change (`tsc`, `eslint app/api/brand-portal`, `npm test`,
+`npm run build`) — all clean, 253/253 tests passing. The remaining 35
+`app/api/admin/**` routes with the same pattern are still open, scoped
+down and re-documented in `08-deferred-risks-and-recommendations.md`.
 
 ## Results on this branch (`audit/security-and-repository-organization`)
 
