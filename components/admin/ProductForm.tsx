@@ -530,7 +530,7 @@ export default function ProductForm({
         {/* 01 — Basic Information — field order: Product Name, Brand,
             Audience, Main Category / Product Group / Product Type,
             Collection, Product SKU. */}
-        <FormSection sectionId="basic" sectionRef={(node) => { sectionRefs.current.basic = node ?? undefined; }} number="01" title="Basic Information" description="Define ownership, audience, taxonomy, Collection, and the immutable product identity." complete={completedSections.has("basic")} issueCount={currentIssues.filter((issue) => issue.section === "basic").length}>
+        <FormSection sectionId="basic" sectionRef={(node) => { sectionRefs.current.basic = node ?? undefined; }} number="01" title="Basic Information" description="Define ownership, audience, taxonomy, Collection, and the immutable product identity." complete={completedSections.has("basic")} issues={currentIssues.filter((issue) => issue.section === "basic")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <TextField id="product-name" label="Product Name" required value={form.name} onChange={(v) => set("name", v)} />
             <div id="product-brand"><BrandSelect
@@ -586,7 +586,7 @@ export default function ProductForm({
         </FormSection>
 
         {/* 02 — Pricing */}
-        <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the default selling price used whenever a variant does not define its own final price." complete={completedSections.has("pricing")} issueCount={currentIssues.filter((issue) => issue.section === "pricing").length}>
+        <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the default selling price used whenever a variant does not define its own final price." complete={completedSections.has("pricing")} issues={currentIssues.filter((issue) => issue.section === "pricing")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <PriceField
               id="product-price"
@@ -614,7 +614,7 @@ export default function ProductForm({
 
         {/* 03 — Variants (Inventory) — comes before Media because Media's
             Color images depend on the Colors defined here. */}
-        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
+        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issues={currentIssues.filter((issue) => issue.section === "inventory")}>
           <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
             value={form.inventoryVariants}
             onChange={(next) => set("inventoryVariants", next)}
@@ -634,7 +634,7 @@ export default function ProductForm({
         </FormSection>
 
         {/* 04 — Media */}
-        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
+        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issues={currentIssues.filter((issue) => issue.section === "media")}>
           <p className="mb-3 text-[12px] text-ink-soft/55">
             One place for every product image, in one freely reorderable order. Cover always leads the gallery
             {mediaColorIds.length >= 2 ? "; each color needs its own image (this product has multiple colors)" : ""} — drag Gallery and Color images into whatever order the storefront should show them.
@@ -658,7 +658,7 @@ export default function ProductForm({
         </FormSection>
 
         {/* 05 — Product Details */}
-        <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Add descriptive, material, care, fit, and policy information for this product." complete={completedSections.has("details")} issueCount={currentIssues.filter((issue) => issue.section === "details").length}>
+        <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Add descriptive, material, care, fit, and policy information for this product." complete={completedSections.has("details")} issues={currentIssues.filter((issue) => issue.section === "details")}>
           <TextArea
             id="product-description"
             label="Product Description"
@@ -710,7 +710,7 @@ export default function ProductForm({
             brand-portal submission's status is always decided by the
             review flow, never typed in here) */}
         {!isBrandPortal && (
-          <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Use the existing publication and merchandising controls." complete={completedSections.has("visibility")} issueCount={currentIssues.filter((issue) => issue.section === "visibility").length}>
+          <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Use the existing publication and merchandising controls." complete={completedSections.has("visibility")} issues={currentIssues.filter((issue) => issue.section === "visibility")}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <SelectField
                 id="product-status"
@@ -802,7 +802,7 @@ function FormSection({
   title,
   description,
   complete,
-  issueCount,
+  issues,
   children,
 }: {
   sectionId: ProductEditorSectionId;
@@ -811,7 +811,7 @@ function FormSection({
   title: string;
   description: string;
   complete: boolean;
-  issueCount: number;
+  issues: ProductValidationIssue[];
   children: React.ReactNode;
 }) {
   return (
@@ -828,12 +828,48 @@ function FormSection({
           <h2 id={`product-section-${sectionId}-title`} className="text-[15px] font-bold text-ink">{title}</h2>
           <p className="mt-1 text-[11.5px] leading-relaxed text-ink-soft/55">{description}</p>
         </div>
-        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${issueCount ? "bg-red-50 text-red-700" : complete ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-ink-soft/55"}`}>
-          {issueCount ? `${issueCount} issue${issueCount === 1 ? "" : "s"}` : complete ? "Complete" : "Incomplete"}
-        </span>
+        <IssueBadge issues={issues} complete={complete} />
       </div>
       <div className="mt-5">{children}</div>
     </section>
+  );
+}
+
+// The "N issue(s)" badge — a "!" mark next to a count of only the
+// *required* things still missing from this section (optional issues, if
+// any are ever added, don't inflate the number). Hovering/focusing the "!"
+// shows exactly which fields are missing, so the merchant never has to
+// hunt for what's wrong — no separate error list to read, just a tooltip.
+function IssueBadge({ issues, complete }: { issues: ProductValidationIssue[]; complete: boolean }) {
+  const required = issues.filter((issue) => !issue.optional);
+
+  if (required.length === 0) {
+    return (
+      <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${complete ? "bg-emerald-50 text-emerald-700" : "bg-stone-100 text-ink-soft/55"}`}>
+        {complete ? "Complete" : "Incomplete"}
+      </span>
+    );
+  }
+
+  return (
+    <span tabIndex={0} className="group relative inline-flex cursor-help items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-700 outline-none focus-visible:ring-2 focus-visible:ring-red-300">
+      <span aria-hidden="true" className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold leading-none text-white">!</span>
+      {required.length} issue{required.length === 1 ? "" : "s"}
+      <div
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 hidden w-64 rounded-md border border-stone-200 bg-white p-2.5 text-left normal-case text-ink shadow-lg group-hover:block group-focus-visible:block"
+      >
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-ink-soft/50">What&apos;s missing</p>
+        <ul className="space-y-1">
+          {required.map((issue, i) => (
+            <li key={i} className="flex gap-1.5 text-[11.5px] font-normal leading-snug text-ink">
+              <span className="text-red-600">•</span>
+              {issue.message}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </span>
   );
 }
 

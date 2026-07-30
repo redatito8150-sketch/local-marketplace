@@ -140,6 +140,13 @@ test("the 'Complete' badge reflects true publish-readiness, not just the current
   assert.match(source, /completedSections[\s\S]{0,120}publishReadinessIssues/);
 });
 
+test("issue count only counts required issues, and each section shows a hoverable '!' with the missing items", () => {
+  const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  assert.match(source, /const required = issues\.filter\(\(issue\) => !issue\.optional\);/);
+  assert.match(source, /group-hover:block group-focus-visible:block/);
+  assert.match(source, /role="tooltip"/);
+});
+
 test("top and bottom actions share the same submit handlers", () => {
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.ok((source.match(/onSaveDraft=\{\(\) => submit\("draft"\)\}/g) ?? []).length >= 2);

@@ -63,6 +63,11 @@ export interface ProductValidationIssue {
   section: ProductEditorSectionId;
   message: string;
   fieldId: string;
+  // Every current issue is a required-field gap (there are no soft/nice-
+  // to-have warnings yet) — this stays here so the "N issue(s)" badge's
+  // count can be defined as "required issues only" without silently
+  // including a future optional/informational issue if one is ever added.
+  optional?: boolean;
 }
 
 function validateVariants(variants: VariantRowInput[]): string | null {
