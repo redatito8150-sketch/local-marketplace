@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionTypeName } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
+import { logError } from "@/lib/errorLog";
 
 // Creates a brand-private custom option type (e.g. "Length"). Always
 // scoped to the brandId in the body — an admin manages on behalf of a
@@ -36,11 +37,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    const message =
-      error.code === "23505"
-        ? `"${name}" already exists for this brand`
-        : `Failed to create option type: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505") {
+      return NextResponse.json({ error: `"${name}" already exists for this brand` }, { status: 409 });
+    }
+    logError("admin.product-options.types.create", error.message);
+    return NextResponse.json({ error: "Failed to create option type" }, { status: 500 });
   }
 
   return NextResponse.json({

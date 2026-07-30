@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const BULK_ACTIONS = ["publish", "archive", "delete", "feature", "unfeature"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
@@ -50,28 +51,19 @@ export async function POST(request: NextRequest) {
   if (action === "delete") {
     const { error } = await supabaseAdmin.from("products").delete().in("id", ids);
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to delete products: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.products.bulk.delete", error, "Failed to delete products");
     }
   } else if (isFeaturedAction) {
     const featured = action === "feature";
     const { error } = await supabaseAdmin.from("products").update({ featured }).in("id", ids);
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to update products: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
     }
   } else {
     const status = STATUS_BY_ACTION[action];
     const { error } = await supabaseAdmin.from("products").update({ status }).in("id", ids);
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to update products: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.products.bulk.status", error, "Failed to update products");
     }
   }
 

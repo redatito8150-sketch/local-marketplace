@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { PAGE_SECTION_TYPES, validatePageSectionConfig, type PageSectionType } from "@/lib/pageStudio/registry";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const staff = await requireStaffRole("manager");
@@ -14,7 +15,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     .select("page_key, section_type")
     .eq("id", id)
     .maybeSingle();
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return safeErrorResponse("admin.page-studio.sections.read", readError);
   if (!section) return NextResponse.json({ error: "Page section not found" }, { status: 404 });
 
   const body = await request.json().catch(() => null) as { config?: unknown; visible?: unknown } | null;
@@ -35,7 +36,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("admin.page-studio.sections.save", error);
 
   revalidatePath(`/admin/page-studio/${section.page_key}`);
   return NextResponse.json({ ok: true });
@@ -50,7 +51,12 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: error.message.includes("Required") ? 400 : 500 });
+  if (error) {
+    if (error.message.includes("Required")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return safeErrorResponse("admin.page-studio.sections.delete", error);
+  }
   revalidatePath(`/admin/page-studio/${pageKey}`);
   revalidatePath(`/admin/page-studio/${pageKey}/edit`);
   return NextResponse.json({ ok: true });

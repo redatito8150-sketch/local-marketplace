@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { toCollectionRecord } from "@/lib/data/brandCollections";
 import { logAudit } from "@/lib/auditLog";
+import { logError } from "@/lib/errorLog";
 
 function slugify(value: string): string {
   return value
@@ -64,7 +65,6 @@ export async function POST(request: NextRequest) {
   const description = typeof body.description === "string" ? body.description.trim() || null : null;
   const baseSlug = slugify(name) || "collection";
   let created: { id: string; slug: string } | null = null;
-  let lastError: string | null = null;
 
   for (let attempt = 0; attempt < 3 && !created; attempt++) {
     const { data, error } = await supabaseAdmin
@@ -84,16 +84,13 @@ export async function POST(request: NextRequest) {
     if (!error && data) {
       created = data;
     } else if (error && error.code !== "23505") {
-      lastError = error.message;
+      logError("admin.collections.create", error.message);
       break;
     }
   }
 
   if (!created) {
-    return NextResponse.json(
-      { error: lastError ?? "Failed to create collection, please try again" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to create collection, please try again" }, { status: 500 });
   }
 
   await logAudit({

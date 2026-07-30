@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateCouponInput, type CouponInput } from "@/lib/admin/couponValidation";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ code: string }> }) {
   const params = await props.params;
@@ -38,10 +39,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ cod
     .eq("code", code);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to update coupon: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.coupons.update", error, "Failed to update coupon");
   }
 
   await logAudit({
@@ -74,10 +72,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ c
   const { error } = await supabaseAdmin.from("coupons").delete().eq("code", code);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to delete coupon: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.coupons.delete", error, "Failed to delete coupon");
   }
 
   await logAudit({

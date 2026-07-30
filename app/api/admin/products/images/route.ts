@@ -10,6 +10,7 @@ import {
 } from "@/lib/uploads/imageValidation";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readFormData } from "@/lib/uploads/formData";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -134,10 +135,7 @@ export async function POST(request: NextRequest) {
 
   if (uploadError) {
     await notify("storage_error", "Product image upload failed", uploadError.message);
-    return NextResponse.json(
-      { error: `Upload failed: ${uploadError.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.products.images.upload", uploadError, "Upload failed");
   }
 
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
@@ -168,10 +166,7 @@ export async function DELETE(request: NextRequest) {
 
   const { error } = await supabaseAdmin.storage.from(BUCKET).remove([path]);
   if (error) {
-    return NextResponse.json(
-      { error: `Delete failed: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.products.images.delete", error, "Delete failed");
   }
   return NextResponse.json({ ok: true });
 }

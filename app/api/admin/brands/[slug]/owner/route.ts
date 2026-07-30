@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
+import { logError } from "@/lib/errorLog";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function POST(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
@@ -34,11 +36,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
     .eq("slug", params.slug);
 
   if (error) {
-    const message =
-      error.code === "23505" /* unique_violation on the partial index */
-        ? "That account is already linked to another brand"
-        : `Failed to link owner: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505" /* unique_violation on the partial index */) {
+      return NextResponse.json({ error: "That account is already linked to another brand" }, { status: 409 });
+    }
+    logError("admin.brands.owner.link", error.message);
+    return NextResponse.json({ error: "Failed to link owner" }, { status: 500 });
   }
 
   await supabaseAdmin.from("profiles").update({ role: "brand_owner" }).eq("id", profile.id);
@@ -68,10 +70,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ s
     .eq("slug", params.slug);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to unlink owner: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.brands.owner.unlink", error, "Failed to unlink owner");
   }
 
   await logAudit({

@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import type { CategoryHeroContent, CategorySlug } from "@/types";
+import { safeErrorResponse } from "@/lib/apiError";
 
 const SLUGS: CategorySlug[] = ["women", "men", "kids"];
 
@@ -46,10 +47,7 @@ export async function PUT(request: NextRequest) {
     .upsert({ key: "category_heroes", value: next, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.category-heroes", error, "Failed to save");
   }
 
   await logAudit({

@@ -6,6 +6,7 @@ import { notify } from "@/lib/notify";
 import { replaceProductColorImages, replaceProductOptionSelections, syncProductVariants } from "@/lib/admin/variantPersistence";
 import type { ProductVariant } from "@/types";
 import type { ProductOptionSelectionsSnapshot } from "@/lib/admin/loadProductOptionSelections";
+import { safeErrorResponse } from "@/lib/apiError";
 
 interface BeforeProductSnapshot {
   id: string;
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .update({ resolution: "approved", read: true })
       .eq("id", params.id);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("admin.notifications.resolve.approve", error);
     }
     if (notification.related_entity_type === "product" && notification.related_entity_id) {
       await supabaseAdmin
@@ -109,7 +110,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .update({ status: "archived", reviewed_by: admin.id, reviewed_at: nowIso })
       .eq("id", productId);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("admin.notifications.resolve.revert-create", error);
     }
   } else if (auditEntry.action === "update") {
     const before = auditEntry.before_value as BeforeProductSnapshot;
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       })
       .eq("id", productId);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("admin.notifications.resolve.revert-update", error);
     }
 
     // Restore the option selections exactly as they stood before the edit.
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .update({ status: "published", reviewed_by: admin.id, reviewed_at: nowIso })
       .eq("id", productId);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("admin.notifications.resolve.revert-archive", error);
     }
   } else {
     return NextResponse.json({ error: "This change type can't be reverted" }, { status: 400 });
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     .update({ resolution: "reverted", read: true })
     .eq("id", params.id);
   if (resolveError) {
-    return NextResponse.json({ error: resolveError.message }, { status: 500 });
+    return safeErrorResponse("admin.notifications.resolve.finalize", resolveError);
   }
 
   await notify("product_updated", `Change reverted by admin`, "", {

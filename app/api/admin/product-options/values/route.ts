@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionValueLabel, validateColorValueInput } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
+import { logError } from "@/lib/errorLog";
 
 // Creates a brand-private custom value under any option type (a private
 // custom Size like "Petite", a private custom Color, or a value under a
@@ -56,11 +57,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    const message =
-      error.code === "23505"
-        ? `"${label}" already exists for this option`
-        : `Failed to create option value: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505") {
+      return NextResponse.json({ error: `"${label}" already exists for this option` }, { status: 409 });
+    }
+    logError("admin.product-options.values.create", error.message);
+    return NextResponse.json({ error: "Failed to create option value" }, { status: 500 });
   }
 
   return NextResponse.json({

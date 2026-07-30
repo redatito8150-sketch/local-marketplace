@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { ADDABLE_PAGE_SECTION_TYPES, PAGE_SECTION_REGISTRY, type PageSectionType } from "@/lib/pageStudio/registry";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function POST(request: NextRequest, props: { params: Promise<{ pageKey: string }> }) {
   const staff = await requireStaffRole("manager");
@@ -21,7 +22,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ page
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("admin.page-studio.sections.create", error);
   revalidatePath(`/admin/page-studio/${pageKey}`);
   revalidatePath(`/admin/page-studio/${pageKey}/edit`);
   return NextResponse.json({ ok: true, sectionId }, { status: 201 });

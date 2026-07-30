@@ -14,6 +14,7 @@ import {
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 
 function slugify(value: string): string {
   return value
@@ -88,10 +89,7 @@ export async function POST(request: NextRequest) {
     if (!error) {
       inserted = true;
     } else if (error.code !== "23505" /* unique_violation */) {
-      return NextResponse.json(
-        { error: `Failed to create product: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.products.create", error, "Failed to create product");
     }
   }
 
