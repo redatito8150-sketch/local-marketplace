@@ -14,9 +14,19 @@ import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collecti
 import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
 import type { ReactNode } from "react";
-import type { FeaturedBrandAndSponsoredContent, HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, ShopByMoodContent } from "@/types";
+import type { FeaturedBrandAndSponsoredContent, HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ShopByMoodContent } from "@/types";
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
+const PREVIEW_PRODUCTS: Product[] = [
+  { id: "preview-stone-overshirt", category: "men", brand: "Mahaly", name: "Stone Linen Overshirt", price: 1850, currency: "EGP", rating: 5, reviewCount: 18, image: "/images/products/saqr-stone-overshirt/main.webp", sizes: ["S", "M", "L"], colors: [], inStock: true },
+  { id: "preview-cloud-cardigan", category: "women", brand: "Mahaly", name: "Cloud Knit Cardigan", price: 1420, currency: "EGP", rating: 5, reviewCount: 24, image: "/images/products/nabta-cloud-cardigan/main.webp", sizes: ["S", "M", "L"], colors: [], inStock: true },
+  { id: "preview-field-bag", category: "men", brand: "Mahaly", name: "Field Leather Bag", price: 2100, currency: "EGP", rating: 4, reviewCount: 11, image: "/images/products/saqr-field-bag/main.webp", sizes: [], colors: [], inStock: true },
+  { id: "preview-sage-jacket", category: "kids", brand: "Mahaly", name: "Sage Chore Jacket", price: 1180, currency: "EGP", rating: 5, reviewCount: 16, image: "/images/products/nabta-sage-chore-jacket/main.webp", sizes: ["4Y", "6Y", "8Y"], colors: [], inStock: true },
+  { id: "preview-navy-polo", category: "men", brand: "Mahaly", name: "Navy Knit Polo", price: 1320, currency: "EGP", rating: 4, reviewCount: 21, image: "/images/products/saqr-navy-knit-polo/main.webp", sizes: ["M", "L", "XL"], colors: [], inStock: true },
+  { id: "preview-coral-daypack", category: "kids", brand: "Mahaly", name: "Coral Daypack", price: 890, currency: "EGP", rating: 5, reviewCount: 13, image: "/images/products/nabta-coral-daypack/main.webp", sizes: [], colors: [], inStock: true },
+  { id: "preview-leather-loafer", category: "men", brand: "Mahaly", name: "Cairo Leather Loafer", price: 2450, currency: "EGP", rating: 5, reviewCount: 29, image: "/images/products/saqr-leather-loafer/main.webp", sizes: ["41", "42", "43"], colors: [], inStock: true },
+  { id: "preview-sky-tee", category: "kids", brand: "Mahaly", name: "Sky Pocket Tee", price: 620, currency: "EGP", rating: 4, reviewCount: 10, image: "/images/products/nabta-sky-pocket-tee/main.webp", sizes: ["4Y", "6Y", "8Y"], colors: [], inStock: true },
+];
 function section(sections: PageSectionRecord[], key: string) {
   return sections.find((item) => item.sectionKey === key && item.visible);
 }
@@ -26,9 +36,15 @@ function normalizeTiles(config: Record<string, unknown> | undefined): HomeHeroTi
   if (Array.isArray(config.items)) {
     const keys = ["women", "men", "kids", "home"] as const;
     const items = config.items as unknown[];
-    return Object.fromEntries(keys.map((key, index) => [key, items[index] ?? HOME_HERO_TILES[key]])) as HomeHeroTilesContent;
+    return Object.fromEntries(keys.map((key, index) => [
+      key,
+      { ...HOME_HERO_TILES[key], ...(items[index] as object ?? {}), image: HOME_HERO_TILES[key].image },
+    ])) as HomeHeroTilesContent;
   }
-  return { ...HOME_HERO_TILES, ...config } as HomeHeroTilesContent;
+  const merged = { ...HOME_HERO_TILES, ...config } as HomeHeroTilesContent;
+  return Object.fromEntries(
+    (["women", "men", "kids", "home"] as const).map((key) => [key, { ...merged[key], image: HOME_HERO_TILES[key].image }])
+  ) as HomeHeroTilesContent;
 }
 
 async function productRows(config: Record<string, unknown>, allProducts: boolean) {
@@ -53,7 +69,22 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     ctaHref: typeof rawHero.ctaHref === "string" ? rawHero.ctaHref : HOME_HERO.ctaHref,
   };
   const heroTiles = normalizeTiles(tileSection?.config);
-  const renderable = sections.filter((item) => item.visible && !["home_hero", "home_hero_tiles", "home_benefits"].includes(item.sectionKey));
+  const productSectionTypes = ["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"];
+  const renderable = sections.filter((item) =>
+    item.visible &&
+    !["home_hero", "home_hero_tiles", "home_benefits"].includes(item.sectionKey) &&
+    !productSectionTypes.includes(item.sectionType) &&
+    item.sectionType !== "mood_tiles"
+  );
+  // Keep this design-preview branch independent from the live catalog while
+  // it runs locally alongside other worktrees. The real product sections can
+  // be reconnected when the design is approved.
+  const homepageProducts = PREVIEW_PRODUCTS;
+  const newestProducts = homepageProducts.slice(0, 10);
+  const moodSection = section(sections, "shop_by_mood");
+  const moodTiles = Array.isArray(moodSection?.config.items)
+    ? moodSection.config.items as ShopByMoodContent
+    : SHOP_BY_MOOD;
   const prepared = await Promise.all(renderable.map(async (item) => {
     if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
@@ -90,7 +121,11 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
 
   const hero = <Hero content={heroContent} tiles={heroTiles} />;
 
-  return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}{prepared.map((entry) => {
+  return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}
+    <NewArrivalsSection title="New Arrivals" products={newestProducts} viewAllHref="/new-arrivals" />
+    {moodSection ? frame(moodSection, <ShopByMood tiles={moodTiles} />) : <ShopByMood tiles={moodTiles} />}
+    <NewArrivalsSection title="Explore All Products" products={homepageProducts} viewAllHref="/shop/all" />
+    {prepared.map((entry) => {
     const { item } = entry;
     if ("products" in entry && entry.products) {
       const config = item.config as unknown as HomeProductSectionContent & { itemCount?: number; displayStyle?: string };

@@ -31,7 +31,7 @@ const MOBILE_NAV_LINKS = [
   { label: "About", href: "#about" },
 ];
 
-export default function Header() {
+export default function Header({ warmTransparent = false }: { warmTransparent?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [active, setActive] = useState("Home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -78,13 +78,17 @@ export default function Header() {
   return (
     <motion.header
       ref={mobileMenuRef}
-      className={`sticky top-0 z-50 border-b border-stone-150/70 transition-all duration-300 ${
-        scrolled
-          ? "bg-cream/80 backdrop-blur-lg shadow-soft"
-          : "bg-cream/55 backdrop-blur-md"
+      className={`sticky top-0 z-50 border-b border-white/30 transition-all duration-300 ${
+        warmTransparent
+          ? scrolled
+            ? "bg-[#c8ad91]/55 backdrop-blur-xl shadow-soft"
+            : "bg-[#ddc9b2]/42 backdrop-blur-lg"
+          : scrolled
+            ? "bg-neutral-600/30 backdrop-blur-xl shadow-soft"
+            : "bg-neutral-500/20 backdrop-blur-lg"
       }`}
     >
-      <div className="mx-auto flex h-[84px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">
+      <div className="mx-auto flex h-[68px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">
         {/* Logo */}
         <Logo size="lg" />
 
@@ -142,11 +146,19 @@ export default function Header() {
           )}
 
           <Link
+            href="/join-as-a-brand"
+            className="hidden h-9 items-center rounded-full bg-mahalyred px-4 text-[11px] font-bold uppercase tracking-[0.12em] text-white transition hover:bg-mahalyred-dark sm:inline-flex"
+          >
+            Join us
+          </Link>
+
+          <Link
             href={user ? "/account" : `/account?next=${encodeURIComponent(pathname)}`}
-            aria-label="Account"
-            className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-stone-100 sm:p-2"
+            aria-label={user ? "Account" : "Login"}
+            className="relative inline-flex items-center gap-2 rounded-full p-1.5 text-ink transition-colors hover:bg-white/45 sm:px-2.5 sm:py-2"
           >
             <User className="h-5 w-5" strokeWidth={1.6} />
+            <span className="hidden text-[12px] font-semibold lg:inline">{user ? "Account" : "Login"}</span>
             {user && (
               <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-ink ring-2 ring-cream" />
             )}
@@ -195,6 +207,15 @@ export default function Header() {
       {mobileMenuOpen && (
         <nav className="border-t border-stone-150 xl:hidden">
           <ul className="flex flex-col px-8 py-2">
+            <li className="sm:hidden">
+              <Link
+                href="/join-as-a-brand"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block py-3 text-[15px] font-semibold text-mahalyred"
+              >
+                Join us
+              </Link>
+            </li>
             {MOBILE_NAV_LINKS.map((link) => (
               <li key={link.label}>
                 <Link

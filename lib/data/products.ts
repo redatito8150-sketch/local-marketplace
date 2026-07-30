@@ -82,7 +82,7 @@ export function toProductCard(row: ProductRow): Product {
     image: row.image,
     sizes: row.sizes ?? [],
     colors: row.colors ?? [],
-    inStock: row.in_stock,
+    inStock: row.in_stock ?? true,
     productCategory: row.product_category ?? undefined,
     productType: row.product_type ?? undefined,
     collection: row.collection ?? undefined,
@@ -245,8 +245,7 @@ export async function getAllActiveProducts(
     .from("products")
     .select("*")
     .eq("status", "published")
-    .eq("paused_by_brand", false)
-    .eq("in_stock", true);
+    .eq("paused_by_brand", false);
 
   if (featuredOnly) query = query.eq("featured", true);
   if (sorting === "price-asc") query = query.order("price", { ascending: true });
@@ -256,9 +255,10 @@ export async function getAllActiveProducts(
 
   const { data, error } = await query.limit(safeLimit);
   if (error) throw new Error(`getAllActiveProducts failed: ${error.message}`);
-  const cards = ((data as ProductRow[]) ?? []).map(toProductCard);
-  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
-  return cards.map((card) => ({ ...card, variants: variantsByProduct.get(card.id) ?? [] }));
+  // Stock is now derived from product variants in the live schema. The
+  // homepage preview only needs display cards, so avoid the removed legacy
+  // products.in_stock column and let the detail flow resolve live inventory.
+  return ((data as ProductRow[]) ?? []).map(toProductCard);
 }
 
 export async function getActiveProductsByIds(ids: string[], limit = 20): Promise<Product[]> {

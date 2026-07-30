@@ -23,22 +23,22 @@ export const HOME_HERO_TILES: HomeHeroTilesContent = {
   women: {
     label: "Women",
     href: "/shop/women",
-    image: "/images/home/women-category-v2.png",
+    image: "/images/home/category-wide/women.webp",
   },
   men: {
     label: "Men",
     href: "/shop/men",
-    image: "/images/home/men-category-v2.png",
+    image: "/images/home/category-wide/men.webp",
   },
   kids: {
     label: "Kids",
     href: "/shop/kids",
-    image: "/images/home/kids-category-v2.png",
+    image: "/images/home/category-wide/kids.webp",
   },
   home: {
     label: "Home",
     href: "/shop/home",
-    image: "https://images.unsplash.com/photo-1618220179428-22790b461013?w=800&q=80",
+    image: "/images/home/category-wide/home.webp",
   },
 };
 

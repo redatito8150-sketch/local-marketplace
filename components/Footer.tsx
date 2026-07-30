@@ -28,9 +28,24 @@ const FOOTER_HREFS: Record<string, string> = {
   "Privacy Policy": "/privacy",
 };
 
-export default function Footer({ homeGradient = false }: { homeGradient?: boolean }) {
+export default function Footer({
+  homeGradient = false,
+  warmTransparent = false,
+}: {
+  homeGradient?: boolean;
+  warmTransparent?: boolean;
+}) {
   return (
-    <footer id="about" className={`border-t border-stone-150 ${homeGradient ? "border-white/20 bg-cream/52 backdrop-blur-[2px]" : "bg-cream"}`}>
+    <footer
+      id="about"
+      className={`border-t border-stone-150 ${
+        warmTransparent
+          ? "border-white/30 bg-[#d8bea3]/55 backdrop-blur-xl"
+          : homeGradient
+            ? "border-white/30 bg-neutral-500/20 backdrop-blur-lg"
+            : "border-white/30 bg-neutral-500/20 backdrop-blur-lg"
+      }`}
+    >
       <div className="mx-auto max-w-[1920px] px-6 py-5 md:px-10 xl:px-16">
         <div className="grid gap-8 md:grid-cols-[1.4fr_repeat(4,0.75fr)_1.3fr]">
           <div><Logo /><p className="mt-3 max-w-[210px] text-[10px] leading-5 text-ink-soft/65">The marketplace designed<br />for local brands and real stories.</p></div>
