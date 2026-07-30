@@ -53,7 +53,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: collectionCheck.error }, { status: 400 });
   }
 
-  const productPayload = buildProductPersistencePayload(body);
+  const productPayload = buildProductPersistencePayload(body, { previousPublishDate: existing.publish_date });
   delete productPayload.brand_id; // immutable, never part of an update
 
   const { error } = await supabaseAdmin.from("products").update(productPayload).eq("id", params.id);

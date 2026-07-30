@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { CARE_INSTRUCTION_GROUPS } from "@/content/careInstructions";
 
 // Searchable multi-select over the fixed Fashion care-instruction catalog
-// — no free-text entries. Selection order is preserved (chips render in
-// the order picked, not catalog order).
+// — no free-text entries. Groups are collapsed by default; clicking one
+// shows only that group's own options (one open at a time), instead of
+// every group's options all visible and scrolling together. Typing a
+// search query bypasses the accordion entirely and shows matches from
+// every group flattened, each labeled with its group name.
 export default function CareInstructionsPicker({
   value,
   onChange,
@@ -17,17 +20,18 @@ export default function CareInstructionsPicker({
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const toggle = (option: string) => {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
   };
 
-  const filteredGroups = useMemo(() => {
+  const searchResults = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return CARE_INSTRUCTION_GROUPS;
-    return CARE_INSTRUCTION_GROUPS
-      .map((group) => ({ ...group, options: group.options.filter((o) => o.toLowerCase().includes(q)) }))
-      .filter((group) => group.options.length > 0);
+    if (!q) return null;
+    return CARE_INSTRUCTION_GROUPS.flatMap((group) =>
+      group.options.filter((o) => o.toLowerCase().includes(q)).map((option) => ({ option, group: group.group }))
+    );
   }, [query]);
 
   return (
@@ -60,33 +64,75 @@ export default function CareInstructionsPicker({
         />
       </div>
 
-      <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-stone-150 p-2">
-        {filteredGroups.length === 0 && <p className="px-2 py-3 text-[12.5px] text-ink-soft/50">No matches.</p>}
-        {filteredGroups.map((group) => (
-          <div key={group.group} className="mb-2 last:mb-0">
-            <p className="px-1 py-1 text-[10.5px] font-semibold uppercase tracking-wide text-ink-soft/45">{group.group}</p>
-            <div className="flex flex-wrap gap-1.5 px-1">
-              {group.options.map((option) => {
-                const active = value.includes(option);
-                return (
-                  <button
-                    key={option}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => toggle(option)}
-                    aria-pressed={active}
-                    className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                      active ? "border-ink bg-ink text-cream" : "border-stone-200 text-ink-soft/70 hover:border-ink/40"
-                    }`}
-                  >
-                    {option}
-                  </button>
-                );
-              })}
-            </div>
+      {searchResults ? (
+        <div className="mt-2 max-h-64 overflow-y-auto rounded-md border border-stone-150 p-2">
+          {searchResults.length === 0 && <p className="px-2 py-3 text-[12.5px] text-ink-soft/50">No matches.</p>}
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {searchResults.map(({ option, group }) => {
+              const active = value.includes(option);
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => toggle(option)}
+                  title={group}
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    active ? "border-ink bg-ink text-cream" : "border-stone-200 text-ink-soft/70 hover:border-ink/40"
+                  }`}
+                >
+                  {option}
+                </button>
+              );
+            })}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-1.5 rounded-md border border-stone-150 p-1.5">
+          {CARE_INSTRUCTION_GROUPS.map((group) => {
+            const isOpen = openGroup === group.group;
+            const selectedInGroup = group.options.filter((o) => value.includes(o)).length;
+            return (
+              <div key={group.group} className="overflow-hidden rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroup(isOpen ? null : group.group)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-stone-50"
+                >
+                  {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-ink-soft/40" /> : <ChevronRight className="h-3.5 w-3.5 text-ink-soft/40" />}
+                  <span className="text-[12.5px] font-semibold text-ink">{group.group}</span>
+                  {selectedInGroup > 0 && (
+                    <span className="ml-auto rounded-full bg-stone-150 px-2 py-0.5 text-[10.5px] font-medium text-ink-soft/60">{selectedInGroup} selected</span>
+                  )}
+                </button>
+                {isOpen && (
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-2.5 pt-1">
+                    {group.options.map((option) => {
+                      const active = value.includes(option);
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => toggle(option)}
+                          aria-pressed={active}
+                          className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            active ? "border-ink bg-ink text-cream" : "border-stone-200 text-ink-soft/70 hover:border-ink/40"
+                          }`}
+                        >
+                          {option}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

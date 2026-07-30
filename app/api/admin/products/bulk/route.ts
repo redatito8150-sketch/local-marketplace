@@ -5,13 +5,18 @@ import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 
-const BULK_ACTIONS = ["publish", "archive", "delete"] as const;
+const BULK_ACTIONS = ["publish", "archive", "delete", "feature", "unfeature"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
 
-const STATUS_BY_ACTION: Record<Exclude<BulkAction, "delete">, string> = {
+const STATUS_BY_ACTION: Partial<Record<BulkAction, string>> = {
   publish: "published",
   archive: "archived",
 };
+
+// Featured merchandising is admin-list-only (never settable from the
+// product editor or brand portal) — see components/admin/ProductForm.tsx
+// and lib/admin/productPersistence.ts.
+const FEATURED_ACTIONS = ["feature", "unfeature"] as const;
 
 export async function POST(request: NextRequest) {
   const staff = await requireStaffRole("manager");
@@ -36,15 +41,26 @@ export async function POST(request: NextRequest) {
 
   const { data: existingRows } = await supabaseAdmin
     .from("products")
-    .select("id, name, status")
+    .select("id, name, status, featured")
     .in("id", ids);
   const existingById = new Map((existingRows ?? []).map((r) => [r.id, r]));
+
+  const isFeaturedAction = (FEATURED_ACTIONS as readonly string[]).includes(action);
 
   if (action === "delete") {
     const { error } = await supabaseAdmin.from("products").delete().in("id", ids);
     if (error) {
       return NextResponse.json(
         { error: `Failed to delete products: ${error.message}` },
+        { status: 500 }
+      );
+    }
+  } else if (isFeaturedAction) {
+    const featured = action === "feature";
+    const { error } = await supabaseAdmin.from("products").update({ featured }).in("id", ids);
+    if (error) {
+      return NextResponse.json(
+        { error: `Failed to update products: ${error.message}` },
         { status: 500 }
       );
     }
@@ -59,7 +75,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const auditAction = action === "delete" ? "bulk_delete" : action === "publish" ? "bulk_publish" : "bulk_archive";
+  const auditAction =
+    action === "delete" ? "bulk_delete" : action === "publish" ? "bulk_publish" : action === "archive" ? "bulk_archive" : isFeaturedAction ? "update" : "update";
   for (const id of ids) {
     const before = existingById.get(id);
     await logAudit({
@@ -69,14 +86,15 @@ export async function POST(request: NextRequest) {
       entityId: id,
       action: auditAction,
       before,
-      after: action === "delete" ? undefined : { status: STATUS_BY_ACTION[action] },
+      after: action === "delete" ? undefined : isFeaturedAction ? { featured: action === "feature" } : { status: STATUS_BY_ACTION[action] },
     });
   }
 
   // Matches the single-product routes' convention: publish/archive notify,
   // delete does not (the existing single-item DELETE route never notifies
-  // either — only logs the audit entry above).
-  if (action !== "delete") {
+  // either — only logs the audit entry above). Featured toggles are
+  // low-stakes merchandising and don't need a bell notification either.
+  if (action === "publish" || action === "archive") {
     await notify(
       action === "publish" ? "product_published" : "product_archived",
       `Bulk ${action}: ${ids.length} product${ids.length === 1 ? "" : "s"}`,

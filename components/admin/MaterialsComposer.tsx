@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { Search, X } from "lucide-react";
-import { MATERIALS } from "@/content/productTaxonomy";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { MATERIAL_GROUPS } from "@/content/materials";
 import type { ProductMaterialEntry } from "@/types";
 
 // Multi-material composition — replaces the old single Material dropdown.
@@ -10,7 +10,10 @@ import type { ProductMaterialEntry } from "@/types";
 // Material creation/management here); each gets its own percentage input,
 // and the running total must equal exactly 100 before publishing
 // (enforced in lib/admin/productValidation.ts, not here — this component
-// just displays the total and lets Draft stay incomplete).
+// just displays the total and lets Draft stay incomplete). Grouped and
+// collapsed by default, same browsing pattern as Care Instructions —
+// click a group to see just its own options; search bypasses groups
+// entirely and flattens matches.
 export default function MaterialsComposer({
   value,
   onChange,
@@ -21,16 +24,13 @@ export default function MaterialsComposer({
   disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
 
   const selectedNames = new Set(value.map((m) => m.material));
-  const results = query.trim()
-    ? MATERIALS.filter((m) => m.toLowerCase().includes(query.trim().toLowerCase()) && !selectedNames.has(m))
-    : [];
 
   const addMaterial = (material: string) => {
     if (selectedNames.has(material)) return;
     onChange([...value, { material, percentage: 0 }]);
-    setQuery("");
   };
 
   const updatePercentage = (index: number, percentage: number) => {
@@ -40,6 +40,13 @@ export default function MaterialsComposer({
   const removeAt = (index: number) => {
     onChange(value.filter((_, i) => i !== index));
   };
+
+  const searchResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return null;
+    return MATERIAL_GROUPS.flatMap((group) => group.options.filter((m) => m.toLowerCase().includes(q) && !selectedNames.has(m)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, value]);
 
   const total = value.reduce((sum, m) => sum + (Number.isFinite(m.percentage) ? m.percentage : 0), 0);
   const totalRounded = Math.round(total * 100) / 100;
@@ -91,21 +98,62 @@ export default function MaterialsComposer({
           aria-label="Search materials"
           className="w-full rounded-md border border-stone-150 bg-white py-2.5 pl-9 pr-3.5 text-[14px] text-ink outline-none focus:border-ink/30 disabled:cursor-not-allowed disabled:bg-stone-50"
         />
-        {results.length > 0 && (
-          <div className="absolute z-10 mt-1 w-full rounded-md border border-stone-200 bg-white py-1 shadow-lg">
-            {results.map((m) => (
+      </div>
+
+      {searchResults ? (
+        <div className="mt-2 max-h-56 overflow-y-auto rounded-md border border-stone-150 p-2">
+          {searchResults.length === 0 && <p className="px-2 py-3 text-[12.5px] text-ink-soft/50">No matches.</p>}
+          <div className="flex flex-wrap gap-1.5 px-1">
+            {searchResults.map((m) => (
               <button
                 key={m}
                 type="button"
+                disabled={disabled}
                 onClick={() => addMaterial(m)}
-                className="block w-full px-3 py-1.5 text-left text-[13px] text-ink hover:bg-stone-50"
+                className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-ink-soft/70 hover:border-ink/40"
               >
                 {m}
               </button>
             ))}
           </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-1.5 rounded-md border border-stone-150 p-1.5">
+          {MATERIAL_GROUPS.map((group) => {
+            const isOpen = openGroup === group.group;
+            const availableInGroup = group.options.filter((m) => !selectedNames.has(m));
+            return (
+              <div key={group.group} className="overflow-hidden rounded-md">
+                <button
+                  type="button"
+                  onClick={() => setOpenGroup(isOpen ? null : group.group)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-stone-50"
+                >
+                  {isOpen ? <ChevronDown className="h-3.5 w-3.5 text-ink-soft/40" /> : <ChevronRight className="h-3.5 w-3.5 text-ink-soft/40" />}
+                  <span className="text-[12.5px] font-semibold text-ink">{group.group}</span>
+                </button>
+                {isOpen && (
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-2.5 pt-1">
+                    {availableInGroup.length === 0 && <span className="text-[11.5px] text-ink-soft/45">All added</span>}
+                    {availableInGroup.map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => addMaterial(m)}
+                        className="rounded-full border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-ink-soft/70 hover:border-ink/40"
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {value.length > 0 && (
         <p className={`mt-2 text-[12.5px] font-medium ${totalIsValid ? "text-emerald-700" : "text-amber-700"}`}>

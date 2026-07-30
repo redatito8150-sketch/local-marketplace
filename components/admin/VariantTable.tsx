@@ -108,6 +108,7 @@ export default function VariantTable({
   onAddColor,
   onCreateColor,
   onRemoveColor,
+  onQuickRemoveColor,
   onAddSizeToColor,
   onCreateSizeForColor,
   onRemoveVariant,
@@ -128,6 +129,9 @@ export default function VariantTable({
   onAddColor: (id: string) => void;
   onCreateColor: (input: NewColorInput) => Promise<void> | void;
   onRemoveColor: (id: string) => void;
+  // Silent removal for the Add Color popover's toggle-off — a no-op if the
+  // color already has real data (see the call site's comment).
+  onQuickRemoveColor: (id: string) => void;
   onAddSizeToColor: (colorId: string, sizeId: string) => void;
   onCreateSizeForColor: (colorId: string, label: string) => Promise<void>;
   onRemoveVariant: (colorId: string, sizeId: string) => void;
@@ -194,8 +198,17 @@ export default function VariantTable({
                 options={availableColorValues}
                 selectedIds={colorValues.map((v) => v.id)}
                 onToggle={(id) => {
-                  if (colorValues.some((v) => v.id === id)) return;
-                  onAddColor(id);
+                  if (!colorValues.some((v) => v.id === id)) {
+                    onAddColor(id);
+                    return;
+                  }
+                  // Clicking an already-added color again removes it — but
+                  // only while it's still empty (no saved/edited variant).
+                  // Once it has real data (Opening Stock, Variant Price, or
+                  // it's actually saved), there's no removal here at all;
+                  // the color's own "X" in the table is the only way, and
+                  // that one always confirms first.
+                  onQuickRemoveColor(id);
                 }}
                 onCreate={async (input) => onCreateColor(input)}
               />
@@ -274,8 +287,15 @@ export default function VariantTable({
                                   taxonomyNodes={taxonomyNodes}
                                   productTypeId={productTypeId}
                                   onToggle={(id) => {
-                                    if (sizeIdsForColor.includes(id)) return;
-                                    onAddSizeToColor(color.id, id);
+                                    if (!sizeIdsForColor.includes(id)) {
+                                      onAddSizeToColor(color.id, id);
+                                      return;
+                                    }
+                                    // Clicking an already-added size again
+                                    // removes it (onRemoveVariant itself
+                                    // decides silently vs. with a confirm,
+                                    // based on whether it's still empty).
+                                    onRemoveVariant(color.id, id);
                                   }}
                                   onCreate={(label) => onCreateSizeForColor(color.id, label)}
                                 />

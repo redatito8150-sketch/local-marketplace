@@ -284,6 +284,9 @@ export interface ProductTaxonomyFields {
   status?: ProductStatus;
   publishDate?: string;
   defaultLowStockThreshold?: number;
+  // Computed fresh on every read from status + publishDate (see
+  // lib/newArrivals.ts) — never a stored/editable flag.
+  isNew?: boolean;
 }
 
 export interface Product extends ProductTaxonomyFields {

@@ -133,6 +133,29 @@ export default function InventoryVariantsSection({
     });
   };
 
+  // Toggling an already-added color off inside the Add Color popover itself
+  // — a quiet, no-confirm shortcut, but only while the color is still
+  // genuinely empty (no saved variant, no Opening Stock, no Variant Price,
+  // no Low Stock override). The instant any of that exists, this is a
+  // no-op: the color's own "X" in the table (removeColorRow, always
+  // confirms) becomes the only way to remove it.
+  const quickRemoveColorIfEmpty = (id: string) => {
+    if (!colorType) return;
+    const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
+    const hasData = affected.some((v) => Boolean(v.id) || v.quantity > 0 || v.variantPrice != null || v.lowStockThresholdOverride != null);
+    if (hasData) return;
+    const nextValueIds = colorValueIds.filter((v) => v !== id);
+    const nextVariants = value.variants.filter((v) => !v.optionValueIds.includes(id));
+    const nextColorImages = { ...value.colorImages };
+    delete nextColorImages[id];
+    set({
+      valueIdsByOptionType: { ...value.valueIdsByOptionType, [colorType.id]: nextValueIds },
+      optionTypeIds: nextValueIds.length === 0 ? value.optionTypeIds.filter((t) => t !== colorType.id) : value.optionTypeIds,
+      variants: nextVariants,
+      colorImages: nextColorImages,
+    });
+  };
+
   const createColorValue = async (input: NewColorInput) => {
     if (!colorType) return;
     const created = await onCreateOptionValue(colorType.id, input.label, input);
@@ -171,10 +194,11 @@ export default function InventoryVariantsSection({
     const comboKey = buildComboKey([colorId, sizeId].sort());
     const existing = value.variants.find((v) => buildComboKey(v.optionValueIds) === comboKey);
     if (!existing) return;
-    if (existing.id || existing.quantity > 0) {
+    const hasData = Boolean(existing.id) || existing.quantity > 0 || existing.variantPrice != null || existing.lowStockThresholdOverride != null;
+    if (hasData) {
       const message = existing.id
         ? "This variant is saved and may have inventory history. It will be archived, not deleted, when you save. Continue?"
-        : "Remove this variant?";
+        : "Remove this variant? It already has Opening Stock, a Variant Price, or a Low Stock override set.";
       if (!window.confirm(message)) return;
     }
     set({ variants: value.variants.filter((v) => buildComboKey(v.optionValueIds) !== comboKey) });
@@ -230,6 +254,7 @@ export default function InventoryVariantsSection({
           onAddColor={addColorValue}
           onCreateColor={createColorValue}
           onRemoveColor={removeColorRow}
+          onQuickRemoveColor={quickRemoveColorIfEmpty}
           onAddSizeToColor={addSizeToColor}
           onCreateSizeForColor={createSizeForColor}
           onRemoveVariant={removeVariant}

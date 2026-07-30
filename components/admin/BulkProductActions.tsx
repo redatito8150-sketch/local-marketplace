@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { Pencil, Star } from "lucide-react";
 import type { ProductRecord } from "@/types";
 import { formatPrice } from "@/lib/format";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
@@ -12,6 +12,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const toggleOne = (id: string) => {
     setSelected((prev) => {
@@ -46,6 +47,27 @@ export default function BulkProductActions({ products }: { products: ProductReco
       router.refresh();
     } finally {
       setBusy(false);
+    }
+  };
+
+  // Featured is admin-list-only merchandising — a single-product toggle,
+  // not a selection-driven bulk action, but it reuses the same endpoint.
+  const toggleFeatured = async (id: string, nextFeatured: boolean) => {
+    setTogglingId(id);
+    try {
+      const res = await fetch("/api/admin/products/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id], action: nextFeatured ? "feature" : "unfeature" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? "Failed to update Featured");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -144,6 +166,17 @@ export default function BulkProductActions({ products }: { products: ProductReco
               </td>
               <td className="px-5 py-3">
                 <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    disabled={togglingId === product.id}
+                    onClick={() => toggleFeatured(product.id, !product.featured)}
+                    aria-label={product.featured ? `Unfeature ${product.name}` : `Feature ${product.name}`}
+                    aria-pressed={product.featured}
+                    title={product.featured ? "Featured — click to unfeature" : "Not featured — click to feature"}
+                    className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink disabled:opacity-50"
+                  >
+                    <Star className="h-4 w-4" strokeWidth={1.6} fill={product.featured ? "#B71F1A" : "none"} color={product.featured ? "#B71F1A" : "currentColor"} />
+                  </button>
                   <Link
                     href={`/admin/products/${product.id}/edit`}
                     aria-label={`Edit ${product.name}`}

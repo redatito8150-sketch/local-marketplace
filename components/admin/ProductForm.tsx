@@ -22,6 +22,7 @@ import InventoryVariantsSection, {
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
+import DescriptionEditor from "@/components/admin/DescriptionEditor";
 import HighlightsListBuilder from "@/components/admin/HighlightsListBuilder";
 import CareInstructionsPicker from "@/components/admin/CareInstructionsPicker";
 import MaterialsComposer from "@/components/admin/MaterialsComposer";
@@ -101,7 +102,6 @@ interface FormState {
   status: ProductStatus;
   featured: boolean;
   publishDate: string;
-  isNew: boolean;
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -184,7 +184,6 @@ function toFormState(
     status: product?.status ?? "draft",
     featured: product?.featured ?? false,
     publishDate: product?.publishDate ? toDatetimeLocalValue(product.publishDate) : "",
-    isNew: product?.isNew ?? false,
   };
 }
 
@@ -380,8 +379,10 @@ export default function ProductForm({
     careInstructions: form.careInstructions,
     modelHeight: form.modelHeight || undefined,
     modelWearing: form.modelWearing || undefined,
-    isNew: form.isNew,
-    featured: form.featured,
+    // Featured (admin-list-only now) and isNew (computed automatically from
+    // status + Publish Date, see lib/newArrivals.ts) are never sent from
+    // this editor — omitting them keeps productPersistence.ts's conditional
+    // writes from ever touching either column here.
     status: targetStatus,
     publishDate: form.publishDate ? new Date(form.publishDate).toISOString() : undefined,
     defaultLowStockThreshold: form.inventoryVariants.defaultLowStockThreshold,
@@ -659,14 +660,11 @@ export default function ProductForm({
 
         {/* 05 — Product Details */}
         <FormSection sectionId="details" sectionRef={(node) => { sectionRefs.current.details = node ?? undefined; }} number="05" title="Product Details" description="Add descriptive, material, care, fit, and policy information for this product." complete={completedSections.has("details")} issues={currentIssues.filter((issue) => issue.section === "details")}>
-          <TextArea
+          <DescriptionEditor
             id="product-description"
-            label="Product Description"
-            required
             value={form.description}
             onChange={(v) => set("description", v)}
-            rows={6}
-            hint={`${form.description.length} / 2000 characters`}
+            disabled={!form.brandId}
           />
 
           <div className="mt-5">
@@ -719,7 +717,11 @@ export default function ProductForm({
                 value={form.status}
                 onChange={(v) => set("status", v as ProductStatus)}
                 options={[
-                  { value: "draft", label: "Draft" },
+                  // "Draft" is no longer offered as a choice here — use the
+                  // "Save as Draft" action below instead. Still shown if
+                  // that's this product's current status, so an existing
+                  // Draft product doesn't render an unselected dropdown.
+                  ...(form.status === "draft" ? [{ value: "draft", label: "Draft" }] : []),
                   { value: "published", label: "Published" },
                   { value: "archived", label: "Archived" },
                 ]}
@@ -734,24 +736,9 @@ export default function ProductForm({
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-6">
-              <label className="flex items-center gap-2 text-[13.5px] text-ink">
-                <input
-                  type="checkbox"
-                  checked={form.featured}
-                  onChange={(e) => set("featured", e.target.checked)}
-                />
-                Featured Product
-              </label>
-              <label className="flex items-center gap-2 text-[13.5px] text-ink">
-                <input
-                  type="checkbox"
-                  checked={form.isNew}
-                  onChange={(e) => set("isNew", e.target.checked)}
-                />
-                Mark as new (shows in New Arrivals)
-              </label>
-            </div>
+            <p className="mt-4 text-[11px] text-ink-soft/45">
+              A product is automatically marked <strong>New</strong> — badged on its cover image and included in New Arrivals — for the first 20 days after it&apos;s Published, then removed from both automatically. There&apos;s nothing to set by hand. Featured Product is managed by Admin from the products list, not here.
+            </p>
           </FormSection>
         )}
 

@@ -1,6 +1,7 @@
 import type { Audience, ProductColorOption, ProductStatus, SellingStatus } from "@/types";
 import { MAX_VARIANT_OPTIONS_PER_PRODUCT } from "../inventory/variantCombinations.ts";
 
+export const DESCRIPTION_MAX_LENGTH = 800;
 const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
 const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
 
@@ -39,8 +40,10 @@ export interface ProductInput {
   shippingReturns?: string;
   modelHeight?: string;
   modelWearing?: string;
-  isNew: boolean;
-  featured: boolean;
+  // Both computed/admin-owned, never sent by the editor (see
+  // lib/admin/productPersistence.ts's conditional-write handling).
+  isNew?: boolean;
+  featured?: boolean;
   status: ProductStatus;
   publishDate?: string;
   defaultLowStockThreshold: number;
@@ -130,6 +133,9 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   }
   if (!body.image?.trim()) add("media", "Main image is required", "product-media");
   if (!body.description?.trim()) add("details", "Description is required", "product-description");
+  else if (body.description.length > DESCRIPTION_MAX_LENGTH) {
+    add("details", `Description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer`, "product-description");
+  }
   if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
     add("visibility", "Invalid status", "product-status");
   }

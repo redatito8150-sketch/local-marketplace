@@ -73,6 +73,12 @@ export default function ProductCard({
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
 
+        {product.isNew && (
+          <span className={`absolute left-3 top-3 rounded-full bg-ink px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${compact ? "left-2 top-2 px-2 py-0.5" : ""}`}>
+            New
+          </span>
+        )}
+
         <button
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
           onClick={(e) => {

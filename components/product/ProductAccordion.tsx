@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import type { ProductMaterialEntry } from "@/types";
+import { renderRichText } from "@/lib/format/richText";
 
 interface AccordionItem {
   title: string;
@@ -46,10 +47,6 @@ export default function ProductAccordion({
   fit?: string;
   shippingReturns: string;
 }) {
-  // Preserves paragraph breaks as entered (a blank line separates
-  // paragraphs) instead of collapsing them into one run of text.
-  const paragraphs = description.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-
   return (
     <div className="mt-2">
       <Row
@@ -58,9 +55,7 @@ export default function ProductAccordion({
           title: "Description & Highlights",
           content: (
             <div className="space-y-3">
-              {paragraphs.map((paragraph, i) => (
-                <p key={i} className="whitespace-pre-line">{paragraph}</p>
-              ))}
+              {renderRichText(description)}
               {details.length > 0 && (
                 <ul className="list-disc space-y-1.5 pl-4">
                   {details.map((d) => (

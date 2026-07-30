@@ -5,6 +5,7 @@ import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/audience";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { resolveShippingPolicy } from "@/lib/admin/shippingPolicy";
+import { NEW_ARRIVAL_WINDOW_DAYS, isWithinNewArrivalWindow } from "@/lib/newArrivals";
 import {
   Audience,
   CategorySlug,
@@ -158,6 +159,7 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     fit: row.fit ?? undefined,
     compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
     featured: row.featured,
+    isNew: isWithinNewArrivalWindow(row.status, row.publish_date),
   };
 }
 
@@ -204,6 +206,7 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     modelHeight: row.model_height ?? undefined,
     modelWearing: row.model_wearing ?? undefined,
     featured: row.featured,
+    isNew: isWithinNewArrivalWindow(row.status, row.publish_date),
     status: row.status,
     publishDate: row.publish_date ?? undefined,
     defaultLowStockThreshold: row.default_low_stock_threshold,
@@ -250,13 +253,17 @@ export async function getProductCountLabel(
 }
 
 export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
+  // A product is New for exactly NEW_ARRIVAL_WINDOW_DAYS after its actual
+  // publish_date (not a stored is_new flag) — see lib/newArrivals.ts.
+  const windowStart = new Date(Date.now() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("products")
     .select("*")
-    .eq("is_new", true)
     .eq("status", "published")
     .eq("paused_by_brand", false)
-    .order("created_at", { ascending: false })
+    .not("publish_date", "is", null)
+    .gte("publish_date", windowStart)
+    .order("publish_date", { ascending: false })
     .limit(limit);
 
   if (error) {

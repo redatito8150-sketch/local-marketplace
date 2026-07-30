@@ -15,6 +15,9 @@ export default function CompactProductCard({ product }: { product: Product }) {
     <Link href={`/product/${product.id}`} className="group block">
       <div className="relative aspect-[0.86] overflow-hidden rounded-[7px] bg-stone-100">
         <Image src={product.image} alt={product.name} fill sizes="160px" className="object-cover transition-transform duration-500 group-hover:scale-105" />
+        {product.isNew && (
+          <span className="absolute left-2 top-2 rounded-full bg-ink px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream">New</span>
+        )}
         <button
           type="button"
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}

@@ -9,6 +9,11 @@ export function buildProductPersistencePayload(
   overrides?: {
     status?: ProductInput["status"];
     publishDate?: string | null;
+    // The existing row's publish_date, if this is an update — lets a
+    // first-time transition to "published" auto-stamp "now" (Publish Date
+    // is optional; the merchant shouldn't have to fill it in by hand), while
+    // never resetting it on a later re-save of an already-published product.
+    previousPublishDate?: string | null;
     submittedBy?: string | null;
     clearReviewState?: boolean;
   }
@@ -38,20 +43,36 @@ export function buildProductPersistencePayload(
     care_instructions: body.careInstructions,
     model_height: body.modelHeight || null,
     model_wearing: body.modelWearing || null,
-    is_new: body.isNew,
-    featured: body.featured,
     status: overrides?.status ?? body.status,
-    publish_date: overrides?.publishDate ?? body.publishDate ?? null,
     default_low_stock_threshold: body.defaultLowStockThreshold,
   };
 
-  // Legacy single-material text and the old per-product Shipping & Returns
-  // text are never written by the current editor (materials/shippingReturns
-  // above replaced them) — only include them if some other caller actually
+  // Legacy single-material text, the old per-product Shipping & Returns
+  // text, and "New"'s old manual is_new flag are never written by the
+  // current editor — only include them if some other caller actually
   // provides a value, so an ordinary save never silently blanks out
   // pre-existing legacy data on an old product.
   if (body.material !== undefined) payload.material = body.material || null;
   if (body.shippingReturns !== undefined) payload.shipping_returns = body.shippingReturns;
+  if (body.isNew !== undefined) payload.is_new = body.isNew;
+  // Featured is now set only from the admin products list (never from this
+  // editor) — omit entirely unless a caller explicitly overrides it, so
+  // saving unrelated product changes can never silently un-feature it.
+  if (body.featured !== undefined) payload.featured = body.featured;
+
+  // Publish Date: an explicit value (merchant-entered or a server override)
+  // always wins. Otherwise, only stamp "now" the first time the product
+  // actually becomes published (no publish_date recorded yet) — a later
+  // re-save while already published leaves the existing value untouched by
+  // omitting the key entirely.
+  const targetStatus = overrides?.status ?? body.status;
+  if (overrides?.publishDate !== undefined) {
+    payload.publish_date = overrides.publishDate;
+  } else if (body.publishDate) {
+    payload.publish_date = body.publishDate;
+  } else if (targetStatus === "published" && !overrides?.previousPublishDate) {
+    payload.publish_date = new Date().toISOString();
+  }
 
   if (overrides?.submittedBy !== undefined) {
     payload.submitted_by = overrides.submittedBy;
