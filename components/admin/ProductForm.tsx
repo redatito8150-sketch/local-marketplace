@@ -11,7 +11,7 @@ import {
   type ProductValidationIssue,
   type ProductInput,
 } from "@/lib/admin/productValidation";
-import ImageUploader from "@/components/admin/ImageUploader";
+import MediaGallery from "@/components/admin/MediaGallery";
 import ProductLivePreview from "@/components/admin/ProductLivePreview";
 import TaxonomySelector from "@/components/admin/TaxonomySelector";
 import BrandSelect, { type BrandOption } from "@/components/admin/BrandSelect";
@@ -29,7 +29,6 @@ import {
   ProductEditorBottomBar,
   ProductEditorHeader,
   ProductErrorSummary,
-  ProductSectionNavigation,
   type EditorSaveState,
 } from "@/components/admin/ProductEditorChrome";
 
@@ -129,6 +128,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
       variantPrice: v.variantPrice,
       lowStockThresholdOverride: v.lowStockThresholdOverride,
       sellingStatus: v.sellingStatus,
+      updatedAt: v.updatedAt,
     })),
     colorImages: product?.colorImages ?? {},
   };
@@ -149,7 +149,11 @@ function toFormState(
     price: product ? String(product.price) : "",
     compareAtPrice: product?.compareAtPrice != null ? String(product.compareAtPrice) : "",
     image: product?.image ?? "",
-    images: product?.images ?? [],
+    // `product.images` is the flattened, persisted [cover, ...gallery,
+    // ...colorImages] order — strip the cover back out here since the
+    // editor's `images` field represents everything *except* the cover
+    // (MediaGallery renders the cover in its own fixed, non-reorderable slot).
+    images: (product?.images ?? []).filter((url) => url !== product?.image),
     material: product?.material ?? "",
     fit: product?.fit ?? "",
     inventoryVariants: toInventoryVariantsValue(product),
@@ -192,6 +196,8 @@ export default function ProductForm({
 
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
+  const colorType = optionTypes.find((t) => t.key === "color");
+  const sizeType = optionTypes.find((t) => t.key === "size");
 
   // Save now keeps the admin on this page instead of redirecting to the
   // list, so a first-time create needs to remember the id it gets back and
@@ -362,6 +368,7 @@ export default function ProductForm({
     allowedCombinations: form.inventoryVariants.allowedCombinations,
     variants: form.inventoryVariants.variants,
     colorImages: form.inventoryVariants.colorImages,
+    colorOptionTypeId: colorType?.id,
   });
 
   const submit = async (targetStatus: ProductStatus) => {
@@ -427,8 +434,6 @@ export default function ProductForm({
   const handleCancel = () => {
     if (!hasUnsavedChanges || window.confirm("You have unsaved changes. Leave this product editor?")) router.push(cancelHref);
   };
-  const handlePreview = () =>
-    previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   const submitting = submittingStatus !== null;
   const currentIssues = validateProductSections(buildPayload(form.status));
@@ -436,6 +441,13 @@ export default function ProductForm({
     PRODUCT_EDITOR_SECTIONS.filter((section) => !currentIssues.some((issue) => issue.section === section.id)).map((section) => section.id)
   );
   const saveState: EditorSaveState = submitting ? "saving" : saveFailed ? "failed" : hasUnsavedChanges ? "unsaved" : "saved";
+
+  const inventoryHref = currentProductId
+    ? (isBrandPortal
+        ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
+        : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
+    : undefined;
+  const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
     const target = sectionRefs.current[sectionId];
@@ -457,13 +469,15 @@ export default function ProductForm({
         lastSavedAt={lastSavedAt}
         submitting={submitting}
         isBrandPortal={isBrandPortal}
+        activeSection={activeSection}
+        issues={currentIssues}
+        completed={completedSections}
+        onNavigateStep={navigateToSection}
         onSaveDraft={() => submit("draft")}
         onPublish={() => submit("published")}
-        onPreview={handlePreview}
         onBack={handleCancel}
       />
-      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[190px_minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[210px_minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
-        <ProductSectionNavigation activeSection={activeSection} issues={currentIssues} completed={completedSections} onNavigate={navigateToSection} isBrandPortal={isBrandPortal} />
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
         <div className="min-w-0 space-y-6">
           <ProductErrorSummary issues={submittedIssues} onNavigate={navigateToIssue} />
 
@@ -558,32 +572,9 @@ export default function ProductForm({
           <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price. Variant Price remains the final price for that variant.</p>
         </FormSection>
 
-        {/* 03 — Media */}
-        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="03" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
-          <p className="mb-3 text-[12px] text-ink-soft/55">The Main Image remains the listing cover and also participates in the ordered product-detail gallery. Product media is limited to 10 unique images, including Color-mapped images.</p>
-          <div id="product-media" tabIndex={-1} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <ImageUploader
-              label="Main Image *"
-              hint="Required cover; automatically included in Gallery"
-              folderId={uploadFolderId}
-              value={form.image ? [form.image] : []}
-              onChange={(urls) => set("image", urls[0] ?? "")}
-              maxImages={1}
-            />
-            <ImageUploader
-              label="Gallery Images"
-              hint="Ordered after Main Image; up to 9 additional images"
-              folderId={uploadFolderId}
-              multiple
-              maxImages={9}
-              value={form.images}
-              onChange={(urls) => set("images", urls)}
-            />
-          </div>
-        </FormSection>
-
-        {/* 04 — Inventory & Variants */}
-        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="04" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
+        {/* 03 — Variants (Inventory) — comes before Media because Media's
+            Color images depend on the Colors defined here. */}
+        <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Inventory & Variants" description="Choose option values, define the combinations that exist, and manage inventory safely." complete={completedSections.has("inventory")} issueCount={currentIssues.filter((issue) => issue.section === "inventory").length}>
           <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
             value={form.inventoryVariants}
             onChange={(next) => set("inventoryVariants", next)}
@@ -597,13 +588,33 @@ export default function ProductForm({
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
-            inventoryHref={currentProductId ? (
-              isBrandPortal
-                ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
-                : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`
-            ) : undefined}
+            inventoryHref={inventoryHref}
           /></div>
           <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
+        </FormSection>
+
+        {/* 04 — Media */}
+        <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
+          <p className="mb-3 text-[12px] text-ink-soft/55">
+            One place for every product image, in one freely reorderable order. Cover always leads the gallery
+            {mediaColorIds.length >= 2 ? "; each color needs its own image (this product has multiple colors)" : ""} — drag Gallery and Color images into whatever order the storefront should show them.
+          </p>
+          <div id="product-media" tabIndex={-1}>
+            <MediaGallery
+              folderId={uploadFolderId}
+              coverUrl={form.image}
+              onCoverChange={(url) => set("image", url)}
+              images={form.images}
+              onImagesChange={(urls) => set("images", urls)}
+              colorImages={form.inventoryVariants.colorImages}
+              onColorImagesChange={(next) => set("inventoryVariants", { ...form.inventoryVariants, colorImages: next })}
+              colors={mediaColorIds.length >= 2 ? mediaColorIds.map((id) => {
+                const v = optionValues.find((option) => option.id === id);
+                return { id, label: v?.label ?? "—", swatchType: v?.swatchType, primaryColor: v?.primaryColor, secondaryColor: v?.secondaryColor };
+              }) : []}
+              disabled={!form.brandId}
+            />
+          </div>
         </FormSection>
 
         {/* 05 — Product Details */}

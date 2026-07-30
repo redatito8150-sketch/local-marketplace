@@ -1,15 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, Check, Search } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
 
-// Cascading Main Category -> Product Group -> Product Type selects, backed
-// entirely by the DB-driven taxonomy tree (lib/data/taxonomy.ts) — no
-// hierarchy is hardcoded here. Main/Group selection is derived from
-// `value` (the chosen Product Type's id) whenever possible, with local
-// state only for the in-progress steps before a leaf is actually picked
-// (Main/Group chosen but no Product Type yet, so there's no `value` to
-// derive them from).
+// A single searchable, drill-down picker for Main Category -> Product
+// Group -> Product Type, replacing 3 separate <select> fields (which
+// required opening a dropdown 3 times in sequence). Browsing a level
+// (clicking a Main Category or Product Group to see its children) never
+// calls onChange — only actually picking a Product Type (a leaf) does,
+// so navigating around doesn't clear or flicker the current selection.
+// Search matches across all 3 levels at once: typing a Product Type name
+// finds it immediately without manually drilling down first.
 export default function TaxonomySelector({
   nodes,
   value,
@@ -21,124 +24,162 @@ export default function TaxonomySelector({
 }) {
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const selectedType = value ? byId.get(value) : undefined;
-  const derivedGroupId = selectedType?.parentId ?? "";
-  const derivedMainId = derivedGroupId ? byId.get(derivedGroupId)?.parentId ?? "" : "";
+  const selectedGroup = selectedType ? byId.get(selectedType.parentId ?? "") : undefined;
+  const selectedMain = selectedGroup ? byId.get(selectedGroup.parentId ?? "") : undefined;
 
-  const [mainId, setMainId] = useState(derivedMainId);
-  const [groupId, setGroupId] = useState(derivedGroupId);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  // Breadcrumb of drilled-into nodes: [] = showing Main Categories,
+  // [main] = showing that Main's Product Groups, [main, group] = showing
+  // that Group's Product Types.
+  const [path, setPath] = useState<TaxonomyNode[]>([]);
+  const [coords, setCoords] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  // Re-sync the two in-progress selections whenever the external value
-  // changes (switching products in edit mode, or a parent-level "clear") —
-  // adjusted during render rather than in an effect, guarded so it only
-  // fires on an actual change.
-  const [prevValue, setPrevValue] = useState(value);
-  if (prevValue !== value) {
-    setPrevValue(value);
-    setMainId(derivedMainId);
-    setGroupId(derivedGroupId);
-  }
-
-  const mainOptions = useMemo(() => nodes.filter((node) => node.level === 1), [nodes]);
-  const groupOptions = useMemo(
-    () => nodes.filter((node) => node.level === 2 && node.parentId === mainId),
-    [nodes, mainId]
-  );
-  const typeOptions = useMemo(
-    () => nodes.filter((node) => node.level === 3 && node.parentId === groupId),
-    [nodes, groupId]
-  );
-
-  const handleMainChange = (nextMainId: string) => {
-    setMainId(nextMainId);
-    setGroupId("");
-    if (value) onChange("");
+  const openPicker = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCoords({ top: rect.bottom + 6, left: rect.left, width: Math.max(rect.width, 320) });
+    setSearch("");
+    // Jump straight to the level containing the current selection, if any.
+    setPath(selectedMain && selectedGroup ? [selectedMain, selectedGroup] : []);
+    setOpen(true);
   };
 
-  const handleGroupChange = (nextGroupId: string) => {
-    setGroupId(nextGroupId);
-    if (value) onChange("");
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const currentParentId = path.length > 0 ? path[path.length - 1].id : null;
+  const currentLevel = path.length + 1; // 1, 2, or 3
+  const visibleNodes = useMemo(
+    () => nodes.filter((n) => n.level === currentLevel && (n.parentId ?? null) === currentParentId),
+    [nodes, currentLevel, currentParentId]
+  );
+
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return null;
+    return nodes
+      .filter((n) => n.name.toLowerCase().includes(q))
+      .slice(0, 40)
+      .map((n) => {
+        const group = n.level >= 2 ? byId.get(n.parentId ?? "") : undefined;
+        const main = n.level === 3 ? byId.get(group?.parentId ?? "") : n.level === 2 ? byId.get(n.parentId ?? "") : undefined;
+        const crumb = [main?.name, group?.name].filter(Boolean).join(" / ");
+        return { node: n, crumb };
+      });
+  }, [nodes, search, byId]);
+
+  const pick = (node: TaxonomyNode) => {
+    if (node.level < 3) {
+      setPath((p) => [...p.filter((n) => n.level < node.level), node]);
+      setSearch("");
+      return;
+    }
+    onChange(node.id);
+    setOpen(false);
   };
 
-  const mainNode = mainId ? byId.get(mainId) : undefined;
-  const groupNode = groupId ? byId.get(groupId) : undefined;
-  const typeNode = value ? byId.get(value) : undefined;
-  const fullPathSelected = Boolean(mainNode && groupNode && typeNode);
+  const goBack = () => setPath((p) => p.slice(0, -1));
+
+  const fullPathSelected = Boolean(selectedMain && selectedGroup && selectedType);
+  const backLabel = path.length === 1 ? "Back to All" : path.length === 2 ? `Back to ${path[0].name}` : null;
 
   return (
     <div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <TaxonomyField
-          label="Main Category"
-          required
-          value={mainId}
-          onChange={handleMainChange}
-          placeholder="Select main category"
-          options={mainOptions}
-        />
-        <TaxonomyField
-          label="Product Group"
-          required
-          value={groupId}
-          onChange={handleGroupChange}
-          placeholder={mainId ? "Select product group" : "Select a main category first"}
-          options={groupOptions}
-          disabled={!mainId}
-        />
-        <TaxonomyField
-          label="Product Type"
-          required
-          value={value}
-          onChange={onChange}
-          placeholder={groupId ? "Select product type" : "Select a product group first"}
-          options={typeOptions}
-          disabled={!groupId}
-        />
-      </div>
-      {fullPathSelected && (
-        <p className="mt-2 text-[12px] font-medium text-ink-soft/60">
-          {mainNode!.name} / {groupNode!.name} / {typeNode!.name}
-        </p>
+      <span className="text-[12.5px] font-medium text-ink-soft/70">
+        Category<span className="text-red-600"> *</span>
+      </span>
+      <button
+        type="button"
+        onClick={openPicker}
+        className="mt-1.5 flex w-full items-center justify-between rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-left text-[14px] text-ink outline-none focus:border-ink/30"
+      >
+        <span className={fullPathSelected ? "text-ink" : "text-ink-soft/40"}>
+          {fullPathSelected ? `${selectedMain!.name} / ${selectedGroup!.name} / ${selectedType!.name}` : "Select a category"}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 rotate-90 text-ink-soft/40" />
+      </button>
+
+      {open && coords && typeof document !== "undefined" && createPortal(
+        <>
+          <button type="button" aria-label="Close" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-50 max-h-[400px] overflow-hidden rounded-lg border border-stone-200 bg-white shadow-xl"
+            style={{ top: coords.top, left: coords.left, width: coords.width }}
+          >
+            <div className="flex items-center gap-2 border-b border-stone-150 px-3 py-2.5">
+              <Search className="h-4 w-4 shrink-0 text-ink-soft/40" />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search categories"
+                aria-label="Search categories"
+                className="w-full text-[13.5px] text-ink outline-none placeholder:text-ink-soft/40"
+              />
+            </div>
+
+            <div className="max-h-[340px] overflow-y-auto py-1">
+              {searchResults ? (
+                searchResults.length > 0 ? (
+                  searchResults.map(({ node, crumb }) => (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => pick(node)}
+                      className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left hover:bg-stone-50"
+                    >
+                      <span>
+                        <span className={`block text-[13.5px] ${node.id === value ? "font-semibold text-ink" : "text-ink"}`}>{node.name}</span>
+                        {crumb && <span className="block text-[11px] text-ink-soft/50">{crumb}</span>}
+                      </span>
+                      {node.id === value ? <Check className="h-4 w-4 shrink-0 text-ink" /> : node.level < 3 && <ChevronRight className="h-4 w-4 shrink-0 text-ink-soft/30" />}
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3.5 py-4 text-center text-[12.5px] text-ink-soft/50">No categories match &quot;{search}&quot;.</p>
+                )
+              ) : (
+                <>
+                  {backLabel && (
+                    <button type="button" onClick={goBack} className="flex w-full items-center gap-1.5 border-b border-stone-100 px-3.5 py-2 text-left text-[12.5px] font-medium text-ink-soft/60 hover:bg-stone-50">
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                      {backLabel}
+                    </button>
+                  )}
+                  {path.length > 0 && (
+                    <p className="px-3.5 py-2 text-[12.5px] font-semibold text-ink-soft/70">{path[path.length - 1].name}</p>
+                  )}
+                  {visibleNodes.map((node) => (
+                    <button
+                      key={node.id}
+                      type="button"
+                      onClick={() => pick(node)}
+                      aria-current={node.id === value ? "true" : undefined}
+                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left text-[13.5px] hover:bg-stone-50 ${node.id === value ? "bg-stone-50 font-medium text-ink" : "text-ink"}`}
+                    >
+                      {node.name}
+                      {node.id === value ? <Check className="h-4 w-4 shrink-0" /> : node.level < 3 && <ChevronRight className="h-4 w-4 shrink-0 text-ink-soft/30" />}
+                    </button>
+                  ))}
+                  {visibleNodes.length === 0 && (
+                    <p className="px-3.5 py-4 text-center text-[12.5px] text-ink-soft/50">Nothing here yet.</p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </>,
+        document.body
       )}
     </div>
-  );
-}
-
-function TaxonomyField({
-  label,
-  value,
-  onChange,
-  options,
-  placeholder,
-  required,
-  disabled,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: TaxonomyNode[];
-  placeholder: string;
-  required?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">
-        {label}
-        {required && <span className="text-red-600"> *</span>}
-      </span>
-      <select
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 disabled:cursor-not-allowed disabled:bg-stone-50 disabled:text-ink-soft/40"
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }

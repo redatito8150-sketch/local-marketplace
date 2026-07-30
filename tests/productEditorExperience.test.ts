@@ -69,8 +69,87 @@ test("the shared editor shell exposes all six sections and reliable active-secti
   assert.match(chromeSource, /ProductErrorSummary/);
 });
 
+test("a Matrix-created variant is not blocked by a stale/empty allowedCombinations array", () => {
+  // allowedCombinations is a leftover client-state field from the old
+  // "Generate Variants + Allowed Combination Builder" flow. The Matrix +
+  // Drawer never populate it, so it stays whatever it was initialized to
+  // (typically []) even as real variants are created — validation must not
+  // require it to match body.variants.
+  const issues = validateProductSections({
+    ...validProduct,
+    optionTypeIds: ["color-type", "size-type"],
+    valueIdsByOptionType: { "color-type": ["red"], "size-type": ["m"] },
+    allowedCombinations: [],
+    variants: [{ optionValueIds: ["red", "m"], quantity: 5, sellingStatus: "active" }],
+    colorOptionTypeId: "color-type",
+  });
+  assert.deepEqual(issues, []);
+});
+
+test("publishing a single-color product does not require a dedicated Color image", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red"] },
+    colorOptionTypeId: "color-type",
+    colorImages: {},
+    variants: [{ optionValueIds: ["red"], quantity: 5, sellingStatus: "active" }],
+  });
+  assert.ok(!issues.some((issue) => issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
+test("publishing a multi-color product blocks on any color missing its mapped image", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red", "white"] },
+    colorOptionTypeId: "color-type",
+    colorImages: { red: "https://images.unsplash.com/red.jpg" },
+    variants: [
+      { optionValueIds: ["red"], quantity: 5, sellingStatus: "active" },
+      { optionValueIds: ["white"], quantity: 5, sellingStatus: "active" },
+    ],
+  });
+  assert.ok(issues.some((issue) => issue.section === "media" && issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
+test("multi-color image requirement does not block Save as Draft", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "draft",
+    optionTypeIds: ["color-type"],
+    valueIdsByOptionType: { "color-type": ["red", "white"] },
+    colorOptionTypeId: "color-type",
+    colorImages: {},
+    variants: [
+      { optionValueIds: ["red"], quantity: 5, sellingStatus: "active" },
+      { optionValueIds: ["white"], quantity: 5, sellingStatus: "active" },
+    ],
+  });
+  assert.ok(!issues.some((issue) => issue.fieldId === "product-media" && /color/i.test(issue.message)));
+});
+
 test("top and bottom actions share the same submit handlers", () => {
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.ok((source.match(/onSaveDraft=\{\(\) => submit\("draft"\)\}/g) ?? []).length >= 2);
   assert.ok((source.match(/onPublish=\{\(\) => submit\("published"\)\}/g) ?? []).length >= 2);
+});
+
+test("Variants is one unified Color-first table: no Generate Variants, no Cartesian builder, no Drawer, no second review table", () => {
+  const source = readFileSync(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /Generate Variants/);
+  assert.doesNotMatch(source, /AllowedCombinationBuilder/);
+  assert.doesNotMatch(source, /VariantMatrix/);
+  assert.doesNotMatch(source, /VariantTree/);
+  assert.doesNotMatch(source, /VariantDrawer/);
+  assert.match(source, /VariantTable/);
+});
+
+test("the Live Preview is never replaced by a Drawer: it renders unconditionally in the Product Editor", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(formSource, /VariantDrawer/);
+  assert.doesNotMatch(formSource, /activeVariantCell/);
+  assert.match(formSource, /<ProductLivePreview/);
 });

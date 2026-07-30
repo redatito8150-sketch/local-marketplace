@@ -215,8 +215,17 @@ export async function getProductForAdmin(id: string): Promise<ProductRecord | nu
   const variantsByProduct = await getVariantsForProducts([id], supabaseAdmin);
   const variants = variantsByProduct.get(id) ?? [];
   const record = attachVariantDerivedFields(toProductRecord(row, ctx), variants);
-  const { data: colorImages } = await supabaseAdmin.from("product_color_images").select("option_value_id, image_url").eq("product_id", id);
-  record.colorImages = Object.fromEntries((colorImages ?? []).map((item) => [item.option_value_id as string, item.image_url as string]));
+  // Loads the Product Editor's initial Color -> image state from
+  // product_media (the authoritative source — see lib/data/products.ts),
+  // not the legacy product_color_images write-only compatibility table.
+  const { data: colorImages } = await supabaseAdmin
+    .from("product_media")
+    .select("color_option_value_id, storage_reference")
+    .eq("product_id", id)
+    .not("color_option_value_id", "is", null);
+  record.colorImages = Object.fromEntries(
+    (colorImages ?? []).map((item) => [item.color_option_value_id as string, item.storage_reference as string])
+  );
   record.variantReadiness = calculateVariantReadiness(variants, row.status);
   return record;
 }

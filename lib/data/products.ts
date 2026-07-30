@@ -566,24 +566,36 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   }
   detail.unavailableSizes = detail.sizes.filter((size) => !sizeAvailability.get(size));
 
-  const { data: colorImageRows } = await supabase
-    .from("product_color_images")
-    .select("image_url, option_values(label)")
-    .eq("product_id", id);
-  detail.colorImages = Object.fromEntries(
-    ((colorImageRows ?? []) as unknown as { image_url: string; option_values: { label: string } | null }[])
-      .filter((r) => r.option_values)
-      .map((r) => [r.option_values!.label, r.image_url])
-  );
+  // product_media is the single source of truth for both the ordered
+  // gallery and the Color -> image mapping (unifies what used to be two
+  // tables: product_media itself, plus the older product_color_images).
+  // Every write path (admin/brand-portal create+edit, notification revert)
+  // already replaces both in lockstep, so this is safe for any product
+  // saved since product_media was introduced. A product that predates it
+  // and was never resaved since falls back to the flattened `products.images`
+  // column (row.image + row.images) with no color-specific image — it will
+  // pick up per-color images automatically the next time it's saved.
+  // product_color_images is intentionally no longer read here; it remains
+  // a temporary compatibility write-only table (see replaceProductColorImages).
   const { data: orderedMedia } = await supabase
     .from("product_media")
-    .select("storage_reference")
+    .select("storage_reference, color_option_value_id, option_values:color_option_value_id(label)")
     .eq("product_id", id)
     .eq("is_archived", false)
     .order("display_order", { ascending: true });
-  detail.images = orderedMedia?.length
-    ? orderedMedia.map((media) => media.storage_reference as string)
-    : [...new Set([row.image, ...detail.images, ...Object.values(detail.colorImages)].filter(Boolean))];
+  const mediaRows = (orderedMedia ?? []) as unknown as {
+    storage_reference: string;
+    color_option_value_id: string | null;
+    option_values: { label: string } | null;
+  }[];
+  detail.colorImages = Object.fromEntries(
+    mediaRows
+      .filter((r) => r.color_option_value_id && r.option_values)
+      .map((r) => [r.option_values!.label, r.storage_reference])
+  );
+  detail.images = mediaRows.length
+    ? mediaRows.map((media) => media.storage_reference)
+    : [...new Set([row.image, ...detail.images].filter(Boolean))];
 
   // Related products: same Product Type as this one. product_type_id is
   // NOT NULL post-migration, but this query still guards against a falsy

@@ -6,7 +6,11 @@ import { ChevronLeft, ChevronRight, Loader2, Trash2, Upload } from "lucide-react
 
 const BUCKET_PATH_MARKER = "/storage/v1/object/public/product-images/";
 
-function storagePathFromPublicUrl(url: string): string | null {
+// Shared with MediaGallery.tsx, which does its own upload/delete calls to
+// the same API instead of nesting ImageUploader instances — it needs one
+// ordered array spanning Gallery + Color images to support free reordering
+// between them, which composing separate ImageUploader instances can't do.
+export function storagePathFromPublicUrl(url: string): string | null {
   const index = url.indexOf(BUCKET_PATH_MARKER);
   if (index === -1) return null;
   return url.slice(index + BUCKET_PATH_MARKER.length);

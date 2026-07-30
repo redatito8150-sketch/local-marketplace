@@ -200,7 +200,9 @@ export async function replaceProductMedia(params: {
   galleryUrls: string[];
   colorImages: Record<string, string>;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const orderedUrls = [...new Set([params.coverUrl, ...params.galleryUrls, ...Object.values(params.colorImages)].filter(Boolean))].slice(0, 10);
+  // Real limits (1 cover, up to 3 gallery, 1 per color) are enforced by the
+  // editor's ImageUploader instances; this is only a generous safety backstop.
+  const orderedUrls = [...new Set([params.coverUrl, ...params.galleryUrls, ...Object.values(params.colorImages)].filter(Boolean))].slice(0, 50);
   const colorByUrl = new Map(Object.entries(params.colorImages).map(([valueId, url]) => [url, valueId]));
   const { error: deleteError } = await supabaseAdmin.from("product_media").delete().eq("product_id", params.productId);
   if (deleteError) return { ok: false, error: `Failed to reset product media: ${deleteError.message}` };
