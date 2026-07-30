@@ -81,9 +81,19 @@ export default function ProductInfo({
     onColorImageChange?.(selectedColor ? product.colorImages?.[selectedColor] : undefined);
   }, [selectedColor, product.colorImages, onColorImageChange]);
 
-  // A size is disabled once every variant for it (under the selected
-  // color, when one's picked) is out of stock, paused, or discontinued.
+  // A size is disabled either because it doesn't exist at all for the
+  // selected color (e.g. "L" only exists under Red, not under White — a
+  // different color shouldn't make its sizes look selectable elsewhere),
+  // or because every variant that does match is out of stock, paused, or
+  // discontinued.
   const isSizeDisabled = (size: string): boolean => {
+    const existsForColor = variants.some((v) => {
+      const vSize = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
+      const vColor = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "color")?.label;
+      return vSize === size && (!selectedColor || vColor === selectedColor);
+    });
+    if (!existsForColor) return true;
+
     const matching = variants.filter((v) => {
       const vSize = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "size")?.label;
       const vColor = v.optionValues.find((o) => o.optionTypeName.toLowerCase() === "color")?.label;
@@ -248,7 +258,7 @@ export default function ProductInfo({
                   }}
                   className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
                     unavailable
-                      ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
+                      ? "cursor-not-allowed border-red-200 bg-red-50 text-red-400"
                       : selectedSize === size
                       ? "border-ink bg-ink text-cream"
                       : "border-stone-150 text-ink hover:border-ink/40"
@@ -256,7 +266,7 @@ export default function ProductInfo({
                 >
                   {size}
                   {unavailable && (
-                    <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-ink-soft/40" />
+                    <span className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[140%] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-red-300" />
                   )}
                 </button>
               );
