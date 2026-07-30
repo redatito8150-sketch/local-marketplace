@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Box, ChevronDown, ChevronRight, MoreVertical, Plus, X } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
 import type { OptionValueOption, VariantRow } from "./InventoryVariantsSection";
@@ -27,27 +28,58 @@ const ROW_STATE_LABEL: Record<RowState, string> = {
   zero_stock: "Zero stock",
 };
 
+// Rendered through a portal into document.body, positioned by the
+// trigger's own bounding rect (`position: fixed`) instead of being
+// absolutely positioned inside the table. The table wrapper scrolls
+// horizontally (overflow-x-auto), which also clips vertical overflow —
+// an in-flow absolutely-positioned popover gets silently cut off there.
 function Popover({
   trigger,
   children,
   align = "left",
 }: {
-  trigger: (open: () => void) => React.ReactNode;
+  trigger: (open: (e: React.MouseEvent<HTMLElement>) => void) => React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState<{ top: number; left?: number; right?: number } | null>(null);
+
+  const openPopover = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCoords(
+      align === "right"
+        ? { top: rect.bottom + 6, right: Math.max(8, window.innerWidth - rect.right) }
+        : { top: rect.bottom + 6, left: rect.left }
+    );
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
   return (
-    <div className="relative inline-block" ref={ref}>
-      {trigger(() => setOpen(true))}
-      {open && (
+    <div className="inline-block">
+      {trigger(openPopover)}
+      {open && coords && typeof document !== "undefined" && createPortal(
         <>
           <button type="button" aria-label="Close" className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
-          <div className={`absolute z-50 mt-2 w-[320px] rounded-lg border border-stone-200 bg-white p-3.5 shadow-xl ${align === "right" ? "right-0" : "left-0"}`}>
+          <div
+            className="fixed z-50 w-[360px] max-w-[calc(100vw-16px)] rounded-lg border border-stone-200 bg-white p-3.5 shadow-xl"
+            style={{ top: coords.top, left: coords.left, right: coords.right }}
+          >
             {children(() => setOpen(false))}
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
