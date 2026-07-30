@@ -2,8 +2,8 @@
 
 import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
-import VariantMatrix from "./VariantMatrix";
-import VariantTree from "./VariantTree";
+import VariantTable from "./VariantTable";
+import { buildComboKey } from "@/lib/inventory/variantCombinations";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { calculateTotalInventory } from "@/lib/inventory/readiness";
 import type { NewColorInput } from "./ColorOptionPicker";
@@ -58,15 +58,13 @@ export default function InventoryVariantsSection({
   availableOptionTypes,
   availableOptionValues,
   onCreateOptionValue,
-  currency: _currency,
-  productSkuPreview,
-  productPrice: _productPrice,
+  currency,
+  productSkuPreview: _productSkuPreview,
+  productPrice,
   disabled,
   taxonomyNodes,
   productTypeId,
   inventoryHref,
-  productPublished = false,
-  onCellClick,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -81,8 +79,6 @@ export default function InventoryVariantsSection({
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
   inventoryHref?: string;
-  productPublished?: boolean;
-  onCellClick?: (colorId: string, sizeId: string, existing: VariantRow | undefined) => void;
 }) {
   const colorType = availableOptionTypes.find((t) => t.key === "color");
   const sizeType = availableOptionTypes.find((t) => t.key === "size");
@@ -92,9 +88,6 @@ export default function InventoryVariantsSection({
   const colorValueIds = colorType ? value.valueIdsByOptionType[colorType.id] ?? [] : [];
   const sizeValueIds = sizeType ? value.valueIdsByOptionType[sizeType.id] ?? [] : [];
   const colorValues = colorValueIds
-    .map((id) => availableOptionValues.find((v) => v.id === id))
-    .filter((v): v is OptionValueOption => Boolean(v));
-  const sizeValues = sizeValueIds
     .map((id) => availableOptionValues.find((v) => v.id === id))
     .filter((v): v is OptionValueOption => Boolean(v));
 
@@ -116,13 +109,6 @@ export default function InventoryVariantsSection({
     });
   };
 
-  const addSizeValue = (id: string) => {
-    if (!sizeType) return;
-    set({
-      optionTypeIds: ensureOptionTypeActive(sizeType.id),
-      valueIdsByOptionType: { ...value.valueIdsByOptionType, [sizeType.id]: [...sizeValueIds, id] },
-    });
-  };
 
   const removeColorRow = (id: string) => {
     if (!colorType) return;
@@ -148,41 +134,60 @@ export default function InventoryVariantsSection({
     });
   };
 
-  const removeSizeColumn = (id: string) => {
-    if (!sizeType) return;
-    const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
-    if (affected.length > 0) {
-      const hasStockOrHistory = affected.some((v) => Boolean(v.id) || v.quantity > 0);
-      const message = hasStockOrHistory
-        ? `This size has ${affected.length} saved variant(s) with inventory or history. They will be archived, not deleted — their SKUs and stock records are preserved. Continue?`
-        : `This size has ${affected.length} unsaved variant(s). They will be removed. Continue?`;
-      if (!window.confirm(message)) return;
-    }
-    const nextValueIds = sizeValueIds.filter((v) => v !== id);
-    const nextVariants = affected.length === 0
-      ? value.variants
-      : value.variants.filter((v) => !v.optionValueIds.includes(id) || v.id);
-    set({
-      valueIdsByOptionType: { ...value.valueIdsByOptionType, [sizeType.id]: nextValueIds },
-      optionTypeIds: nextValueIds.length === 0 ? value.optionTypeIds.filter((t) => t !== sizeType.id) : value.optionTypeIds,
-      variants: nextVariants,
-    });
-  };
-
   const createColorValue = async (input: NewColorInput) => {
     if (!colorType) return;
     const created = await onCreateOptionValue(colorType.id, input.label, input);
     addColorValue(created.id);
   };
 
-  const createSizeValue = async (label: string) => {
-    if (!sizeType) return;
-    const created = await onCreateOptionValue(sizeType.id, label);
-    addSizeValue(created.id);
-  };
-
   const onChangeColorImage = (colorId: string, url: string) => {
     set({ colorImages: { ...value.colorImages, [colorId]: url } });
+  };
+
+  // Add Size lives inside a Color row now — it creates exactly one Variant
+  // for that (color, size) combination, not a shared column across every
+  // Color. sizeValueIds (the product-wide "known sizes" list, used by the
+  // size picker/suggestions) is shared, but Variant existence is always
+  // per-color.
+  const addSizeToColor = (colorId: string, sizeId: string) => {
+    if (!sizeType) return;
+    const comboKey = buildComboKey([colorId, sizeId].sort());
+    if (value.variants.some((v) => buildComboKey(v.optionValueIds) === comboKey)) return;
+    const newRow: VariantRow = {
+      optionValueIds: [colorId, sizeId],
+      quantity: 0,
+      openingStock: 0,
+      sellingStatus: "active",
+    };
+    set({
+      optionTypeIds: ensureOptionTypeActive(sizeType.id),
+      valueIdsByOptionType: { ...value.valueIdsByOptionType, [sizeType.id]: sizeValueIds.includes(sizeId) ? sizeValueIds : [...sizeValueIds, sizeId] },
+      variants: [...value.variants, newRow],
+    });
+  };
+
+  const createSizeForColor = async (colorId: string, label: string) => {
+    if (!sizeType) return;
+    const created = await onCreateOptionValue(sizeType.id, label);
+    addSizeToColor(colorId, created.id);
+  };
+
+  const removeVariant = (colorId: string, sizeId: string) => {
+    const comboKey = buildComboKey([colorId, sizeId].sort());
+    const existing = value.variants.find((v) => buildComboKey(v.optionValueIds) === comboKey);
+    if (!existing) return;
+    if (existing.id || existing.quantity > 0) {
+      const message = existing.id
+        ? "This variant is saved and may have inventory history. It will be archived, not deleted, when you save. Continue?"
+        : "Remove this variant?";
+      if (!window.confirm(message)) return;
+    }
+    set({ variants: value.variants.filter((v) => buildComboKey(v.optionValueIds) !== comboKey) });
+  };
+
+  const updateVariant = (colorId: string, sizeId: string, patch: Partial<VariantRow>) => {
+    const comboKey = buildComboKey([colorId, sizeId].sort());
+    set({ variants: value.variants.map((v) => (buildComboKey(v.optionValueIds) === comboKey ? { ...v, ...patch } : v)) });
   };
 
   // Legacy: a product created before this rebuild may still carry a 3rd,
@@ -260,43 +265,38 @@ export default function InventoryVariantsSection({
         </div>
       </div>
 
-      {/* Variants (Matrix) */}
+      {/* Variants — one unified Color-first table. Add Color, then Add Size
+          inside each Color row; every Size is a real, immediately editable
+          Variant row (Opening Stock/Low Stock/Variant Price inline). No
+          cartesian-product generator button, no separate review table. */}
       {colorType && sizeType ? (
-        <VariantMatrix
+        <VariantTable
           colorValues={colorValues}
-          sizeValues={sizeValues}
           availableColorValues={availableColorValues}
           availableSizeValues={availableSizeValues}
           variants={value.variants}
           colorImages={value.colorImages}
-          productPublished={productPublished}
+          defaultLowStockThreshold={value.defaultLowStockThreshold}
+          basePrice={productPrice}
+          currency={currency}
           disabled={disabled}
           taxonomyNodes={taxonomyNodes}
           productTypeId={productTypeId}
+          inventoryHref={inventoryHref}
           onAddColor={addColorValue}
           onCreateColor={createColorValue}
           onRemoveColor={removeColorRow}
-          onAddSize={addSizeValue}
-          onCreateSize={createSizeValue}
-          onRemoveSize={removeSizeColumn}
           onChangeColorImage={onChangeColorImage}
-          onCellClick={onCellClick}
+          onAddSizeToColor={addSizeToColor}
+          onCreateSizeForColor={createSizeForColor}
+          onRemoveVariant={removeVariant}
+          onUpdateVariant={updateVariant}
         />
       ) : (
         <p className="text-[12.5px] text-red-600">
           System Color and Size option types were not found. Contact an administrator.
         </p>
       )}
-      <VariantTree
-        colorValues={colorValues}
-        sizeValues={sizeValues}
-        variants={value.variants}
-        colorImages={value.colorImages}
-        defaultLowStockThreshold={value.defaultLowStockThreshold}
-        productPublished={productPublished}
-        productSkuPreview={productSkuPreview}
-        onLocateCell={onCellClick ? (colorId, sizeId) => onCellClick(colorId, sizeId, value.variants.find((v) => v.optionValueIds.includes(colorId) && v.optionValueIds.includes(sizeId))) : undefined}
-      />
 
       {/* Legacy custom option (pre-rebuild data only) */}
       {legacyOptionTypeIds.map((optionTypeId) => {

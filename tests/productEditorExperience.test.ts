@@ -137,20 +137,19 @@ test("top and bottom actions share the same submit handlers", () => {
   assert.ok((source.match(/onPublish=\{\(\) => submit\("published"\)\}/g) ?? []).length >= 2);
 });
 
-test("the Variant Matrix replaced Generate Variants: no Cartesian generation button remains", () => {
+test("Variants is one unified Color-first table: no Generate Variants, no Cartesian builder, no Drawer, no second review table", () => {
   const source = readFileSync(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /Generate Variants/);
   assert.doesNotMatch(source, /AllowedCombinationBuilder/);
-  assert.match(source, /VariantMatrix/);
-  assert.match(source, /VariantTree/);
+  assert.doesNotMatch(source, /VariantMatrix/);
+  assert.doesNotMatch(source, /VariantTree/);
+  assert.doesNotMatch(source, /VariantDrawer/);
+  assert.match(source, /VariantTable/);
 });
 
-test("the Create/Edit Variant Drawer replaces the Live Preview in the same workspace while open", () => {
+test("the Live Preview is never replaced by a Drawer: it renders unconditionally in the Product Editor", () => {
   const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
-  assert.match(formSource, /activeVariantCell/);
-  assert.match(formSource, /VariantDrawer/);
-  // The Preview must stay mounted (only visually hidden) so its own state
-  // survives the Drawer opening and closing, per the agreed Preview/Drawer
-  // swap behavior — a conditional unmount would silently reset it.
-  assert.doesNotMatch(formSource, /activeVariantCell[\s\S]{0,40}\?\s*<VariantDrawer[\s\S]{0,600}:\s*\(?\s*<ProductLivePreview/);
+  assert.doesNotMatch(formSource, /VariantDrawer/);
+  assert.doesNotMatch(formSource, /activeVariantCell/);
+  assert.match(formSource, /<ProductLivePreview/);
 });

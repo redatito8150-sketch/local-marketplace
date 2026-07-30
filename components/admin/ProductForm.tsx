@@ -20,12 +20,9 @@ import InventoryVariantsSection, {
   type InventoryVariantsValue,
   type OptionTypeOption,
   type OptionValueOption,
-  type VariantRow,
 } from "@/components/admin/InventoryVariantsSection";
-import VariantDrawer from "@/components/admin/VariantDrawer";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
-import { buildComboKey } from "@/lib/inventory/variantCombinations";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
   PRODUCT_EDITOR_SECTIONS,
@@ -195,7 +192,6 @@ export default function ProductForm({
 
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
-  const [activeVariantCell, setActiveVariantCell] = useState<{ colorId: string; sizeId: string } | null>(null);
   const colorType = optionTypes.find((t) => t.key === "color");
   const sizeType = optionTypes.find((t) => t.key === "size");
 
@@ -442,56 +438,11 @@ export default function ProductForm({
   );
   const saveState: EditorSaveState = submitting ? "saving" : saveFailed ? "failed" : hasUnsavedChanges ? "unsaved" : "saved";
 
-  const activeColor = activeVariantCell ? optionValues.find((v) => v.id === activeVariantCell.colorId) : undefined;
-  const activeSize = activeVariantCell ? optionValues.find((v) => v.id === activeVariantCell.sizeId) : undefined;
-  const activeColorCount = colorType ? (form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).length : 0;
-  const activeExistingVariant = activeVariantCell
-    ? form.inventoryVariants.variants.find(
-        (v) => buildComboKey(v.optionValueIds) === buildComboKey([activeVariantCell.colorId, activeVariantCell.sizeId].sort())
-      )
-    : undefined;
   const inventoryHref = currentProductId
     ? (isBrandPortal
         ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
-
-  function closeVariantDrawer() {
-    const cell = activeVariantCell;
-    setActiveVariantCell(null);
-    if (cell) {
-      requestAnimationFrame(() => {
-        document.getElementById(`variant-cell-${cell.colorId}-${cell.sizeId}`)?.focus();
-      });
-    }
-  }
-
-  function saveVariantFromDrawer(input: { openingStock: number; variantPrice: number | undefined; lowStockThresholdOverride: number | undefined }) {
-    if (!activeVariantCell || !colorType || !sizeType) return;
-    const optionValueIds = [activeVariantCell.colorId, activeVariantCell.sizeId];
-    const comboKey = buildComboKey(optionValueIds);
-    const existing = form.inventoryVariants.variants.find((v) => buildComboKey(v.optionValueIds) === comboKey);
-    let nextVariants: VariantRow[];
-    if (existing) {
-      nextVariants = form.inventoryVariants.variants.map((v) =>
-        buildComboKey(v.optionValueIds) === comboKey
-          ? { ...v, variantPrice: input.variantPrice, lowStockThresholdOverride: input.lowStockThresholdOverride }
-          : v
-      );
-    } else {
-      const newRow: VariantRow = {
-        optionValueIds,
-        quantity: input.openingStock,
-        openingStock: input.openingStock,
-        variantPrice: input.variantPrice,
-        lowStockThresholdOverride: input.lowStockThresholdOverride,
-        sellingStatus: "active",
-      };
-      nextVariants = [...form.inventoryVariants.variants, newRow];
-    }
-    set("inventoryVariants", { ...form.inventoryVariants, variants: nextVariants });
-    closeVariantDrawer();
-  }
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
     const target = sectionRefs.current[sectionId];
@@ -655,9 +606,7 @@ export default function ProductForm({
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
-            productPublished={form.status === "published"}
             inventoryHref={inventoryHref}
-            onCellClick={(colorId, sizeId) => setActiveVariantCell({ colorId, sizeId })}
           /></div>
           <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
         </FormSection>
@@ -789,32 +738,6 @@ export default function ProductForm({
       </div>
 
       <div ref={previewRef} className="min-w-0 xl:sticky xl:top-[158px] xl:h-[calc(100vh-174px)]">
-        {activeVariantCell && activeColor && activeSize && (
-          <VariantDrawer
-            color={activeColor}
-            size={activeSize}
-            existing={activeExistingVariant}
-            colorImageUrl={form.inventoryVariants.colorImages[activeColor.id]}
-            isMultiColor={activeColorCount >= 2}
-            basePrice={Number(form.price) || 0}
-            currency="EGP"
-            defaultLowStockThreshold={form.inventoryVariants.defaultLowStockThreshold}
-            inventoryHref={inventoryHref}
-            onUploadColorImage={(url) =>
-              set("inventoryVariants", {
-                ...form.inventoryVariants,
-                colorImages: { ...form.inventoryVariants.colorImages, [activeColor.id]: url },
-              })
-            }
-            onSave={saveVariantFromDrawer}
-            onCancel={closeVariantDrawer}
-          />
-        )}
-        {/* Kept mounted (not conditionally unmounted) while the Drawer is open, only
-            visually hidden, so ProductLivePreview's own state — selected Color/Size,
-            gallery position, desktop/mobile viewport — survives the Drawer opening
-            and closing instead of resetting on remount. */}
-        <div className={activeVariantCell ? "hidden" : "contents"}>
         <ProductLivePreview
           form={{
             name: form.name,
@@ -843,7 +766,6 @@ export default function ProductForm({
           hasUnsavedChanges={hasUnsavedChanges}
           justSaved={justSaved}
         />
-        </div>
       </div>
       </div>
     </div>
