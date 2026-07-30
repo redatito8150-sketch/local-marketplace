@@ -110,14 +110,15 @@ export default function InventoryVariantsSection({
 
   const removeColorRow = (id: string) => {
     if (!colorType) return;
+    const color = availableOptionValues.find((v) => v.id === id);
     const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
-    if (affected.length > 0) {
-      const hasStockOrHistory = affected.some((v) => Boolean(v.id) || v.quantity > 0);
-      const message = hasStockOrHistory
-        ? `This color has ${affected.length} saved variant(s) with inventory or history. They will be archived, not deleted — their SKUs and stock records are preserved. Continue?`
-        : `This color has ${affected.length} unsaved variant(s). They will be removed. Continue?`;
-      if (!window.confirm(message)) return;
-    }
+    const hasStockOrHistory = affected.some((v) => Boolean(v.id) || v.quantity > 0);
+    const message = affected.length === 0
+      ? `Remove ${color?.label ?? "this color"} from the product? Its uploaded image and any sizes added later would need to be re-added.`
+      : hasStockOrHistory
+      ? `Remove ${color?.label ?? "this color"}? It has ${affected.length} saved variant(s) with inventory or history — they will be archived, not deleted (SKUs and stock records are preserved). Continue?`
+      : `Remove ${color?.label ?? "this color"}? It has ${affected.length} unsaved variant(s) — they will be removed. Continue?`;
+    if (!window.confirm(message)) return;
     const nextValueIds = colorValueIds.filter((v) => v !== id);
     const nextVariants = affected.length === 0
       ? value.variants
@@ -136,10 +137,6 @@ export default function InventoryVariantsSection({
     if (!colorType) return;
     const created = await onCreateOptionValue(colorType.id, input.label, input);
     addColorValue(created.id);
-  };
-
-  const onChangeColorImage = (colorId: string, url: string) => {
-    set({ colorImages: { ...value.colorImages, [colorId]: url } });
   };
 
   // Add Size lives inside a Color row now — it creates exactly one Variant
@@ -233,7 +230,6 @@ export default function InventoryVariantsSection({
           onAddColor={addColorValue}
           onCreateColor={createColorValue}
           onRemoveColor={removeColorRow}
-          onChangeColorImage={onChangeColorImage}
           onAddSizeToColor={addSizeToColor}
           onCreateSizeForColor={createSizeForColor}
           onRemoveVariant={removeVariant}

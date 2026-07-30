@@ -2,13 +2,12 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Box, ChevronDown, ChevronRight, MoreVertical, Plus, X } from "lucide-react";
+import { Box, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
 import type { OptionValueOption, VariantRow } from "./InventoryVariantsSection";
 import ColorSwatch from "./ColorSwatch";
 import ColorOptionPicker, { type NewColorInput } from "./ColorOptionPicker";
 import SizeValueSelector from "./SizeValueSelector";
-import ImageUploader from "./ImageUploader";
 
 type RowState = "not_created" | "created" | "zero_stock";
 
@@ -101,7 +100,6 @@ export default function VariantTable({
   onAddColor,
   onCreateColor,
   onRemoveColor,
-  onChangeColorImage,
   onAddSizeToColor,
   onCreateSizeForColor,
   onRemoveVariant,
@@ -122,7 +120,6 @@ export default function VariantTable({
   onAddColor: (id: string) => void;
   onCreateColor: (input: NewColorInput) => Promise<void> | void;
   onRemoveColor: (id: string) => void;
-  onChangeColorImage: (colorId: string, url: string) => void;
   onAddSizeToColor: (colorId: string, sizeId: string) => void;
   onCreateSizeForColor: (colorId: string, label: string) => Promise<void>;
   onRemoveVariant: (colorId: string, sizeId: string) => void;
@@ -284,32 +281,25 @@ export default function VariantTable({
                           <div className="ml-auto flex items-center gap-2">
                             {colorImages[color.id] ? (
                               // eslint-disable-next-line @next/next/no-img-element
-                              <img src={colorImages[color.id]} alt="" className="h-7 w-7 rounded object-cover" />
+                              <img src={colorImages[color.id]} alt="" title="Uploaded from the Media step" className="h-7 w-7 rounded object-cover" />
                             ) : (
-                              <span className={`flex h-7 w-7 items-center justify-center rounded border text-[9px] font-semibold ${isMultiColor ? "border-amber-300 bg-amber-50 text-amber-700" : "border-dashed border-stone-200 text-ink-soft/30"}`}>
+                              <span
+                                className={`flex h-7 w-7 items-center justify-center rounded border text-[9px] font-semibold ${isMultiColor ? "border-amber-300 bg-amber-50 text-amber-700" : "border-dashed border-stone-200 text-ink-soft/30"}`}
+                                title={isMultiColor ? "Missing — upload this color's image in the Media step" : "Optional for a single-color product"}
+                              >
                                 {isMultiColor ? "!" : "—"}
                               </span>
                             )}
-                            <Popover
-                              align="right"
-                              trigger={(open) => (
-                                <button type="button" disabled={disabled} onClick={open} aria-label={`${color.label} color actions`} className="rounded p-1 text-ink-soft/40 hover:bg-stone-150 hover:text-ink disabled:cursor-not-allowed">
-                                  <MoreVertical className="h-3.5 w-3.5" />
-                                </button>
-                              )}
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => onRemoveColor(color.id)}
+                              aria-label={`Remove ${color.label} from product`}
+                              title="Remove color from product"
+                              className="rounded p-1 text-ink-soft/40 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed"
                             >
-                              {() => (
-                                <div className="space-y-3">
-                                  <div>
-                                    <p className="mb-1.5 text-[11.5px] font-semibold text-ink">Color Image</p>
-                                    <ImageUploader label="" folderId="color-images" value={colorImages[color.id] ? [colorImages[color.id]] : []} onChange={(urls) => onChangeColorImage(color.id, urls[0] ?? "")} maxImages={1} />
-                                  </div>
-                                  <button type="button" onClick={() => onRemoveColor(color.id)} className="w-full rounded-md border border-red-200 px-3 py-1.5 text-[12px] font-semibold text-red-600 hover:bg-red-50">
-                                    Remove Color from Product
-                                  </button>
-                                </div>
-                              )}
-                            </Popover>
+                              <X className="h-4 w-4" />
+                            </button>
                           </div>
                         </div>
                       </td>

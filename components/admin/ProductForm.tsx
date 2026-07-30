@@ -444,6 +444,7 @@ export default function ProductForm({
         ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
+  const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
     const target = sectionRefs.current[sectionId];
@@ -591,11 +592,13 @@ export default function ProductForm({
 
         {/* 04 — Media */}
         <FormSection sectionId="media" sectionRef={(node) => { sectionRefs.current.media = node ?? undefined; }} number="04" title="Media" description="Manage the cover and the ordered product-detail media collection." complete={completedSections.has("media")} issueCount={currentIssues.filter((issue) => issue.section === "media").length}>
-          <p className="mb-3 text-[12px] text-ink-soft/55">The Main Image remains the listing cover and also participates in the ordered product-detail gallery. Product media is limited to 10 unique images, including Color-mapped images.</p>
+          <p className="mb-3 text-[12px] text-ink-soft/55">
+            One cover image, one image per color{mediaColorIds.length >= 2 ? " (required — this product has multiple colors)" : ""}, and up to 3 additional gallery images. All of it joins one ordered gallery, cover first.
+          </p>
           <div id="product-media" tabIndex={-1} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <ImageUploader
               label="Main Image *"
-              hint="Required cover; automatically included in Gallery"
+              hint="Required cover; always first in the gallery"
               folderId={uploadFolderId}
               value={form.image ? [form.image] : []}
               onChange={(urls) => set("image", urls[0] ?? "")}
@@ -603,38 +606,42 @@ export default function ProductForm({
             />
             <ImageUploader
               label="Gallery Images"
-              hint="Ordered after Main Image; up to 9 additional images"
+              hint="Up to 3 additional images; drag to reorder"
               folderId={uploadFolderId}
               multiple
-              maxImages={9}
+              maxImages={3}
               value={form.images}
               onChange={(urls) => set("images", urls)}
             />
           </div>
-          {colorType && (form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).length > 0 && (
+          {mediaColorIds.length >= 2 && (
             <div className="mt-4">
-              <span className="text-[12.5px] font-medium text-ink-soft/70">Color Images</span>
+              <span className="text-[12.5px] font-medium text-ink-soft/70">Color Images *</span>
               <p className="mt-0.5 text-[11px] text-ink-soft/50">
-                Joins the gallery automatically — managed from the Variants step, not here.
+                One image per color, shared by every size under that color. Required before publishing since this product has multiple colors.
               </p>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {(form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? []).map((colorId) => {
+              <div className="mt-2 flex flex-wrap gap-4">
+                {mediaColorIds.map((colorId) => {
                   const color = optionValues.find((v) => v.id === colorId);
                   const url = form.inventoryVariants.colorImages[colorId];
                   return (
-                    <div key={colorId} className="w-24">
-                      <div className="h-24 w-24 overflow-hidden rounded-lg border border-stone-150 bg-stone-50">
-                        {url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={url} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[10px] text-ink-soft/35">No image</div>
-                        )}
-                      </div>
-                      <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-ink-soft/65">
+                    <div key={colorId} className="w-28">
+                      <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-ink-soft/65">
                         <ColorSwatch swatchType={color?.swatchType} primaryColor={color?.primaryColor} secondaryColor={color?.secondaryColor} size={12} />
                         {color?.label ?? "—"}
                       </span>
+                      <ImageUploader
+                        label=""
+                        folderId="color-images"
+                        value={url ? [url] : []}
+                        onChange={(urls) =>
+                          set("inventoryVariants", {
+                            ...form.inventoryVariants,
+                            colorImages: { ...form.inventoryVariants.colorImages, [colorId]: urls[0] ?? "" },
+                          })
+                        }
+                        maxImages={1}
+                      />
                     </div>
                   );
                 })}

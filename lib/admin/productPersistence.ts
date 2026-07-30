@@ -27,8 +27,10 @@ export function buildProductPersistencePayload(
     image: body.image,
     // One authoritative product-detail order. The cover is always present,
     // followed by merchant-ordered gallery images and then any mapped Color
-    // image not already represented by the same stable URL.
-    images: [...new Set([body.image, ...(body.images ?? []), ...Object.values(body.colorImages ?? {})].filter(Boolean))].slice(0, 10),
+    // image not already represented by the same stable URL. The real limits
+    // (1 cover, up to 3 gallery, 1 per color) are enforced by the editor's
+    // ImageUploader instances; this is only a generous safety backstop.
+    images: [...new Set([body.image, ...(body.images ?? []), ...Object.values(body.colorImages ?? {})].filter(Boolean))].slice(0, 50),
     description: body.description,
     details: body.details,
     care_instructions: body.careInstructions,
