@@ -251,9 +251,13 @@ function draftInputToRow(input: DraftApplicationInput) {
     // instagram_or_website below, so an early draft save doesn't 500 on a
     // not-null violation.
     brand_name: input.brandNameEn ?? "",
-    founder_name: input.founderName,
-    email: input.email,
-    phone: input.phone,
+    // founder_name is NOT NULL at the DB level too, and the "Next" button
+    // doesn't gate on step validity (see ApplyBrandForm) — a quiet draft
+    // save can fire before this is filled in, same reasoning as the other
+    // "" fallbacks in this function.
+    founder_name: input.founderName ?? "",
+    email: input.email ?? "",
+    phone: input.phone ?? "",
     // Legacy NOT NULL column, superseded by sales_channel_links below —
     // instagramUsername/websiteUrl no longer exist as separate inputs on
     // the new form, so this just mirrors the "Website" channel's link.
