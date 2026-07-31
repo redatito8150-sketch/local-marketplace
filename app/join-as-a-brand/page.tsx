@@ -6,39 +6,39 @@ import JoinBenefits from "@/components/join/JoinBenefits";
 import BrandDashboardPreview from "@/components/join/BrandDashboardPreview";
 import SuccessStory from "@/components/join/SuccessStory";
 import JoinFAQ from "@/components/join/JoinFAQ";
+import JoinJourney from "@/components/join/JoinJourney";
 import { JOIN_HERO } from "@/content/join";
-import { getSiteContentWithFallback } from "@/lib/data/siteContent";
-import type { JoinHeroContent } from "@/types";
 
 export const metadata: Metadata = {
-  title: "Join Local | Sell Your Brand on Local",
+  title: "Join Mahaly | Sell Your Brand on Mahaly",
   description:
-    "Apply to sell your brand on Local — Egypt's marketplace for independent local brands. Reach more customers, keep your identity, and manage everything from one dashboard.",
+    "Apply to sell your brand on Mahaly — Egypt's marketplace for independent local brands. Reach more customers, keep your identity, and manage everything from one dashboard.",
 };
 
-export const revalidate = 60; // re-fetch site_content from Supabase at most once a minute
+export const dynamic = "force-static";
 
-export default async function JoinAsABrandPage() {
-  const heroContent = await getSiteContentWithFallback<JoinHeroContent>("join_hero", {
+export default function JoinAsABrandPage() {
+  const heroContent = {
     label: JOIN_HERO.label,
     headingLines: JOIN_HERO.headingLines,
     subheading: JOIN_HERO.subheading,
     ctaLabel: JOIN_HERO.ctaLabel,
-  });
+  };
 
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="join-showcase-background min-h-screen">
       <Header />
       <JoinHero content={heroContent} />
       <JoinBenefits />
+      <JoinJourney />
       <BrandDashboardPreview />
-      <section className="mx-auto max-w-screen2xl px-8 pb-24 lg:px-12">
-        <div className="grid grid-cols-1 gap-16 lg:grid-cols-2 lg:gap-20">
+      <section className="mx-auto max-w-[1500px] px-6 pb-24 md:px-10 xl:px-12">
+        <div className="grid grid-cols-1 gap-12 rounded-[34px] border border-white/45 bg-white/40 p-8 shadow-[0_25px_80px_rgba(45,28,20,.1)] backdrop-blur-xl lg:grid-cols-2 lg:gap-20 lg:p-12">
           <SuccessStory />
           <JoinFAQ />
         </div>
       </section>
-      <Footer />
+      <Footer homeGradient />
     </main>
   );
 }

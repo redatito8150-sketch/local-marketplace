@@ -15,26 +15,22 @@ export const JOIN_HERO = {
   images: {
     left: [
       {
-        src: "https://images.unsplash.com/photo-1596783074918-c84cb06531ca?w=700&q=80",
-        alt: "Local designer working in her studio",
+        src: "/images/join/brand-story/fashion-designer.png",
+        alt: "Egyptian fashion designer refining a new collection",
       },
       {
-        src: "https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?w=700&q=80",
-        alt: "Designer sketching a new collection",
+        src: "/images/join/brand-story/founder-collaboration.png",
+        alt: "Local brand founders planning their online collection",
       },
     ],
     right: [
       {
-        src: "https://images.unsplash.com/photo-1611085583191-a3b181a88401?w=700&q=80",
-        alt: "Locally made accessories and packaging",
+        src: "/images/join/brand-story/brand-photoshoot.png",
+        alt: "Brand owner directing a product photoshoot",
       },
       {
-        src: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?w=700&q=80",
-        alt: "Folded garments ready for shipping",
-      },
-      {
-        src: "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=700&q=80",
-        alt: "Model wearing a local brand's collection",
+        src: "/images/join/brand-story/local-brand-warehouse.png",
+        alt: "Modern local brand warehouse and packing station",
       },
     ],
   },

@@ -50,11 +50,11 @@ export default function BrandDashboardPreview() {
   const { linePath, areaPath, highlightPoint } = buildChartGeometry();
 
   return (
-    <section className="mx-auto max-w-screen2xl px-8 pb-20 lg:px-12">
-      <div className="grid grid-cols-1 gap-10 rounded-xl3 border border-stone-150 p-6 lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-0 lg:p-0">
+    <section className="mx-auto max-w-[1500px] px-6 pb-20 md:px-10 xl:px-12">
+      <div className="grid grid-cols-1 gap-10 overflow-hidden rounded-[34px] border border-white/45 bg-white/55 p-6 shadow-[0_28px_85px_rgba(45,28,20,.12)] backdrop-blur-xl lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-0 lg:p-0">
         {/* Left copy */}
         <div className="flex flex-col justify-center lg:px-12 lg:py-14">
-          <h2 className="font-serif text-3xl font-semibold leading-tight text-ink lg:text-[2.2rem]">
+          <h2 className="text-3xl font-semibold leading-tight tracking-[-0.04em] text-ink lg:text-[2.2rem]">
             Your brand,
             <br />
             all in one place.
@@ -71,7 +71,7 @@ export default function BrandDashboardPreview() {
           <div className="grid min-w-[640px] grid-cols-[160px_minmax(0,1fr)] lg:min-w-0">
             {/* Sidebar */}
             <div className="border-r border-stone-150 p-5">
-              <p className="mb-6 text-lg font-bold tracking-tightest text-ink">Local</p>
+              <p className="mb-6 text-lg font-bold tracking-tightest text-ink">Mahaly</p>
               <ul className="space-y-1">
                 {SIDEBAR_ITEMS.map((item) => (
                   <li key={item.label}>

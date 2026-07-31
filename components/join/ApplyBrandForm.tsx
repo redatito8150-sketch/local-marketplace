@@ -245,7 +245,6 @@ export default function ApplyBrandForm({
   // The furthest step the applicant has actually reached — the stepper only
   // allows jumping back to a step at or before this one, never forward into
   // an unreached step.
-  const [maxReachedStep, setMaxReachedStep] = useState(0);
   const [documents, setDocuments] = useState<BrandApplicationDocumentRecord[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -336,29 +335,28 @@ export default function ApplyBrandForm({
     return false;
   }
 
-  async function persistDraft(): Promise<boolean> {
+  async function persistDraft({ quiet = false }: { quiet?: boolean } = {}): Promise<boolean> {
     setSaving(true);
-    setError("");
+    if (!quiet) setError("");
     try {
       const res = await saveDraft(toDraftInput(form));
       setApplication(res.application);
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save your progress.");
+      if (!quiet) {
+        setError(e instanceof Error ? e.message : "Failed to save your progress.");
+      }
       return false;
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleNext() {
-    const current = STEPS[stepIndex].id;
-    if (!validateStep(current)) return;
-    const ok = await persistDraft();
-    if (!ok) return;
+  function handleNext() {
     const next = Math.min(stepIndex + 1, STEPS.length - 1);
+    setFieldErrors({});
     setStepIndex(next);
-    setMaxReachedStep((m) => Math.max(m, next));
+    void persistDraft({ quiet: true });
   }
 
   function handleBack() {
@@ -369,13 +367,12 @@ export default function ApplyBrandForm({
   // ahead into an unreached step is a no-op. Draft data lives in `form`
   // regardless of stepIndex, so switching steps never loses anything.
   function goToStep(index: number) {
-    if (index > maxReachedStep) return;
     setFieldErrors({});
     setStepIndex(index);
+    void persistDraft({ quiet: true });
   }
 
   async function handleSubmit() {
-    if (!validateStep("review")) return;
     const draft = toDraftInput(form);
     const result = submitApplicationSchema.safeParse(draft);
     if (!result.success) {
@@ -469,9 +466,12 @@ export default function ApplyBrandForm({
   }
 
   const activeStep = STEPS[stepIndex];
+  const stepValidity = STEPS.map((step) =>
+    stepSchemas[step.id].safeParse(toDraftInput(form)).success
+  );
 
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto max-w-4xl">
       {application?.status === "changes_requested" && application.changesRequestedMessage && (
         <div className="mb-8 flex gap-3 rounded-md border border-stone-200 bg-stone-50 p-4">
           <MessageSquare className="h-5 w-5 shrink-0 text-ink-soft/60" strokeWidth={1.8} />
@@ -484,7 +484,12 @@ export default function ApplyBrandForm({
         </div>
       )}
 
-      <Stepper steps={STEPS} currentIndex={stepIndex} maxReachedIndex={maxReachedStep} onSelect={goToStep} />
+      <Stepper
+        steps={STEPS}
+        currentIndex={stepIndex}
+        stepValidity={stepValidity}
+        onSelect={goToStep}
+      />
 
       <StepHeader title={activeStep.label} description={activeStep.description} progress={activeStep.progress} />
 
@@ -1027,54 +1032,53 @@ export default function ApplyBrandForm({
 }
 
 // Clickable progress stepper — ●────────○────────○────────○────────○.
-// Completed and current steps are real <button>s (keyboard/tab-operable by
-// default); a step past maxReachedIndex renders disabled so the applicant
-// can never skip ahead, only back to something already reached.
+// Every step is a keyboard-accessible button. Its icon reports whether that
+// section currently passes validation; final submission remains the gate.
 function Stepper({
   steps,
   currentIndex,
-  maxReachedIndex,
+  stepValidity,
   onSelect,
 }: {
   steps: readonly { id: string; label: string }[];
   currentIndex: number;
-  maxReachedIndex: number;
+  stepValidity: boolean[];
   onSelect: (index: number) => void;
 }) {
   return (
-    <ol className="mb-8 flex items-start" aria-label="Application steps">
+    <ol className="mb-10 flex items-start rounded-2xl bg-[#f7f5f2] px-3 py-5 sm:px-6" aria-label="Application steps">
       {steps.map((s, i) => {
-        const completed = i < currentIndex;
+        const valid = stepValidity[i];
         const current = i === currentIndex;
-        const reached = i <= maxReachedIndex;
         return (
           <li key={s.id} className="flex flex-1 flex-col items-center last:flex-none">
             <div className="flex w-full items-center">
               <button
                 type="button"
                 onClick={() => onSelect(i)}
-                disabled={!reached}
                 aria-current={current ? "step" : undefined}
-                aria-label={`Step ${i + 1}: ${s.label}${
-                  completed ? ", completed" : current ? ", current step" : ", not yet reached"
-                }`}
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 ${
-                  completed
-                    ? "bg-ink text-cream"
-                    : current
-                      ? "border-2 border-ink text-ink"
-                      : "border border-stone-150 text-ink-soft/40"
-                } ${reached ? "cursor-pointer" : "cursor-not-allowed"}`}
+                aria-label={`Step ${i + 1}: ${s.label}, ${
+                  valid ? "complete" : "incomplete"
+                }${current ? ", current step" : ""}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 ${
+                  valid
+                    ? "bg-mahalyred text-white shadow-sm"
+                    : "border border-red-300 bg-white text-red-500"
+                } ${current ? "ring-2 ring-mahalyred/25 ring-offset-2" : ""} cursor-pointer`}
               >
-                {completed ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : i + 1}
+                {valid ? (
+                  <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                ) : (
+                  <X className="h-3.5 w-3.5" strokeWidth={2.2} />
+                )}
               </button>
               {i < steps.length - 1 && (
-                <div className={`h-px flex-1 ${i < currentIndex ? "bg-ink" : "bg-stone-150"}`} />
+                <div className={`h-px flex-1 ${valid ? "bg-mahalyred/55" : "bg-stone-150"}`} />
               )}
             </div>
             <span
               className={`mt-2 max-w-[6.5rem] text-center text-[11px] font-medium leading-tight sm:text-[11.5px] ${
-                i <= currentIndex ? "text-ink" : "text-ink-soft/40"
+                current ? "text-ink" : valid ? "text-ink-soft/70" : "text-red-500/70"
               }`}
             >
               {s.label}
@@ -1098,12 +1102,12 @@ function StepHeader({
   return (
     <div className="mb-7">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-serif text-xl font-semibold text-ink">{title}</h2>
+        <h2 className="text-xl font-semibold tracking-[-0.025em] text-ink">{title}</h2>
         <span className="shrink-0 text-[12px] font-medium text-ink-soft/50">{progress}% Complete</span>
       </div>
       <p className="mt-1.5 text-[13.5px] leading-relaxed text-ink-soft/70">{description}</p>
-      <div className="mt-4 h-1 w-full overflow-hidden rounded-full bg-stone-100">
-        <div className="h-full rounded-full bg-ink transition-all" style={{ width: `${progress}%` }} />
+      <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+        <div className="h-full rounded-full bg-mahalyred transition-all" style={{ width: `${progress}%` }} />
       </div>
     </div>
   );

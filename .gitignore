@@ -12,3 +12,4 @@ supabase/.temp/
 # showing up as untracked — this is local editor state, never repo content).
 .idea/
 *.iml
+.env*
