@@ -8,6 +8,8 @@ import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { formatSize } from "@/lib/format";
+import { useShippingPreview } from "@/lib/hooks/useShippingPreview";
+import { groupItemsByFulfillment, shipmentShippingFee } from "@/lib/cart/fulfillmentGroups";
 import type { AddressLabel, AddressRecord } from "@/types";
 
 type Step = "shipping" | "payment" | "confirmation";
@@ -56,7 +58,17 @@ export default function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
   const { user } = useAuth();
   const [step, setStep] = useState<Step>("shipping");
-  const [orderNumber, setOrderNumber] = useState("");
+  const [orderNumbers, setOrderNumbers] = useState<string[]>([]);
+  const { partnerFlagsBySlug, shippingSettings } = useShippingPreview(
+    items.map((i) => i.brandSlug).filter(Boolean)
+  );
+  const shipmentGroups = groupItemsByFulfillment(items, partnerFlagsBySlug);
+  const totalShippingEgp = shipmentGroups.reduce(
+    (sum, g) =>
+      sum +
+      shipmentShippingFee(g, shippingSettings.flatDeliveryFeeEgp, shippingSettings.freeShippingThresholdEgp),
+    0
+  );
   const [shipping, setShipping] = useState<ShippingForm>(EMPTY_SHIPPING);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState("");
@@ -204,7 +216,7 @@ export default function CheckoutPage() {
         return;
       }
 
-      setOrderNumber(data.orderNumber);
+      setOrderNumbers(data.orderNumbers ?? []);
       clearCart();
       setStep("confirmation");
     } catch {
@@ -477,11 +489,26 @@ export default function CheckoutPage() {
                 <h1 className="mt-6 text-2xl font-bold tracking-tightest text-ink">
                   Order confirmed
                 </h1>
-                <p className="mt-2 text-[14px] text-ink-soft/70">
-                  Thank you — your order{" "}
-                  <span className="font-semibold text-ink">#{orderNumber}</span> has
-                  been placed. A confirmation email is on its way.
-                </p>
+                {orderNumbers.length > 1 ? (
+                  <p className="mt-2 text-[14px] text-ink-soft/70">
+                    Thank you — your order shipped as{" "}
+                    <span className="font-semibold text-ink">{orderNumbers.length} separate shipments</span>{" "}
+                    (
+                    {orderNumbers.map((n, i) => (
+                      <span key={n}>
+                        <span className="font-semibold text-ink">#{n}</span>
+                        {i < orderNumbers.length - 1 ? ", " : ""}
+                      </span>
+                    ))}
+                    ), one per brand/warehouse. Confirmation emails are on their way.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[14px] text-ink-soft/70">
+                    Thank you — your order{" "}
+                    <span className="font-semibold text-ink">#{orderNumbers[0]}</span> has
+                    been placed. A confirmation email is on its way.
+                  </p>
+                )}
                 <Link
                   href="/"
                   className="mt-7 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
@@ -499,20 +526,33 @@ export default function CheckoutPage() {
                 <Truck className="h-4 w-4 text-ink-soft/60" strokeWidth={1.6} />
                 Order Summary
               </h2>
-              <div className="mt-5 space-y-3 divide-y divide-stone-150">
-                {items.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between pt-3 first:pt-0">
-                    <div>
-                      <p className="text-[13px] font-medium text-ink">{item.name}</p>
-                      <p className="text-[12px] text-ink-soft/50">
-                        Qty {item.quantity} · {formatSize(item.size)}
-                      </p>
-                    </div>
-                    <p className="text-[13px] font-semibold text-ink">
-                      {item.currency === "EGP"
-                        ? `${(item.price * item.quantity).toLocaleString("en-US")} EGP`
-                        : `$${(item.price * item.quantity).toFixed(2)}`}
+              <div className="mt-5 space-y-5">
+                {shipmentGroups.map((group) => (
+                  <div key={group.key}>
+                    <p className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-soft/50">
+                      {group.isPool
+                        ? group.brandNames.length > 1
+                          ? `${group.brandNames.join(", ")} · Mahaly shipment`
+                          : `${group.brandNames[0] ?? "Mahaly"} · Mahaly shipment`
+                        : `${group.brandNames[0] ?? "Brand"} · separate shipment`}
                     </p>
+                    <div className="mt-2 space-y-3 divide-y divide-stone-150">
+                      {group.items.map((item) => (
+                        <div key={item.id} className="flex items-center justify-between pt-3 first:pt-0">
+                          <div>
+                            <p className="text-[13px] font-medium text-ink">{item.name}</p>
+                            <p className="text-[12px] text-ink-soft/50">
+                              Qty {item.quantity} · {formatSize(item.size)}
+                            </p>
+                          </div>
+                          <p className="text-[13px] font-semibold text-ink">
+                            {item.currency === "EGP"
+                              ? `${(item.price * item.quantity).toLocaleString("en-US")} EGP`
+                              : `$${(item.price * item.quantity).toFixed(2)}`}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -581,16 +621,40 @@ export default function CheckoutPage() {
                         </span>
                       </div>
                     )}
-                    <div className="flex items-center justify-between text-ink">
-                      <span className="font-semibold">Total (EGP)</span>
-                      <span className="font-semibold">
-                        {(subtotal.egp - (appliedCoupon?.discountEgp ?? 0)).toLocaleString("en-US")}{" "}
-                        EGP
-                      </span>
-                    </div>
                   </>
                 )}
+                <div className="flex items-center justify-between">
+                  <span>
+                    Delivery{" "}
+                    {shipmentGroups.length > 1 && (
+                      <span className="text-[11.5px] text-ink-soft/50">
+                        ({shipmentGroups.length} shipments)
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-medium text-ink">
+                    {totalShippingEgp > 0 ? `${totalShippingEgp.toLocaleString("en-US")} EGP` : "Free"}
+                  </span>
+                </div>
+                {subtotal.egp > 0 && (
+                  <div className="flex items-center justify-between text-ink">
+                    <span className="font-semibold">Total (EGP)</span>
+                    <span className="font-semibold">
+                      {(
+                        subtotal.egp -
+                        (appliedCoupon?.discountEgp ?? 0) +
+                        totalShippingEgp
+                      ).toLocaleString("en-US")}{" "}
+                      EGP
+                    </span>
+                  </div>
+                )}
               </div>
+              {shipmentGroups.length > 1 && (
+                <p className="mt-4 text-center text-[12px] text-ink-soft/50">
+                  This order will be split into {shipmentGroups.length} shipments — one per brand/warehouse — each with its own delivery fee and tracking.
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -86,6 +86,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
   }
 
+  // cancel_order() already records its own 'cancelled' entry; every other
+  // transition is recorded here so the customer-facing tracking timeline
+  // (order_status_history) stays complete regardless of which surface
+  // (admin/brand-portal/RPC) made the change.
+  if (status !== "cancelled") {
+    await supabaseAdmin.from("order_status_history").insert({
+      order_id: params.id,
+      status,
+      created_by: admin.id,
+    });
+  }
+
   await logAudit({
     actorId: admin.id,
     actorLabel: admin.email ?? admin.id,

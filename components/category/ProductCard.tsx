@@ -88,6 +88,7 @@ export default function ProductCard({
               productId: product.id,
               name: product.name,
               brand: product.brand,
+              brandSlug: product.brandSlug,
               price: product.price,
               currency: product.currency,
               image: product.image,
@@ -158,12 +159,15 @@ export default function ProductCard({
               variantId: defaultVariant?.id,
               name: product.name,
               brand: product.brand,
+              brandSlug: product.brandSlug ?? "",
               price: defaultVariant?.variantPrice ?? product.price,
               currency: product.currency,
               image: product.image,
               size: quickAddSize,
               color: quickAddColor,
               quantity: 1,
+              availableSizes: product.sizes,
+              availableColors: product.colors.map((c) => c.name),
             });
           }}
           disabled={!product.inStock}

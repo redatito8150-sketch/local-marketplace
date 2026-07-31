@@ -2,14 +2,27 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, X, ShoppingBag, ArrowRight } from "lucide-react";
+import { Minus, Plus, X, ShoppingBag, ArrowRight, Truck, Store } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { useCart } from "@/context/CartContext";
 import { formatPrice, formatSize } from "@/lib/format";
+import { useShippingPreview } from "@/lib/hooks/useShippingPreview";
+import { groupItemsByFulfillment, shipmentShippingFee } from "@/lib/cart/fulfillmentGroups";
+import type { CartLineItem } from "@/types";
+
 export default function CartPage() {
-  const { items, removeItem, updateQuantity, subtotal } = useCart();
+  const { items, removeItem, updateQuantity, updateVariant, subtotal } = useCart();
   const isEmpty = items.length === 0;
+  const { partnerFlagsBySlug, shippingSettings } = useShippingPreview(
+    items.map((i) => i.brandSlug).filter(Boolean)
+  );
+  const groups = groupItemsByFulfillment(items, partnerFlagsBySlug);
+  const totalShippingEgp = groups.reduce(
+    (sum, g) =>
+      sum + shipmentShippingFee(g, shippingSettings.flatDeliveryFeeEgp, shippingSettings.freeShippingThresholdEgp),
+    0
+  );
 
   return (
     <main className="min-h-screen bg-cream">
@@ -37,68 +50,44 @@ export default function CartPage() {
           </div>
         ) : (
           <div className="mt-10 grid grid-cols-1 gap-12 lg:grid-cols-[1fr_360px]">
-            {/* Line items */}
-            <div className="divide-y divide-stone-150">
-              {items.map((item) => (
-                <div key={item.id} className="flex gap-5 py-6">
-                  <div className="relative h-28 w-24 flex-none overflow-hidden rounded-[14px] bg-beige-50">
-                    <Image
-                      src={item.image}
-                      alt={item.name}
-                      fill
-                      sizes="96px"
-                      className="object-cover"
-                    />
+            {/* Line items, grouped by shipment */}
+            <div className="space-y-8">
+              {groups.map((group) => (
+                <div key={group.key} className="rounded-xl3 border border-stone-150">
+                  <div className="flex items-center justify-between gap-3 border-b border-stone-150 bg-stone-50 px-5 py-3.5">
+                    <div className="flex items-center gap-2">
+                      {group.isPool ? (
+                        <Truck className="h-4 w-4 text-ink-soft/60" strokeWidth={1.7} />
+                      ) : (
+                        <Store className="h-4 w-4 text-ink-soft/60" strokeWidth={1.7} />
+                      )}
+                      <div>
+                        <p className="text-[13.5px] font-semibold text-ink">
+                          {group.isPool
+                            ? group.brandNames.length > 1
+                              ? `${group.brandNames.join(", ")} — Mahaly Partners`
+                              : `${group.brandNames[0] ?? "Mahaly"} — Mahaly Partner`
+                            : group.brandNames[0] ?? "Brand"}
+                        </p>
+                        <p className="text-[11.5px] text-ink-soft/55">
+                          {group.isPool
+                            ? "Fulfilled from Mahaly's warehouse — ships as one shipment."
+                            : "Packed by the brand — ships as its own shipment. Delivered by Mahaly."}
+                        </p>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="flex flex-1 flex-col justify-between">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
-                          {item.brand}
-                        </p>
-                        <p className="mt-1 text-[15px] font-medium text-ink">
-                          {item.name}
-                        </p>
-                        <p className="mt-1 text-[12.5px] text-ink-soft/60">
-                          Size: {formatSize(item.size)}
-                          {item.color ? ` · Color: ${item.color}` : ""}
-                        </p>
-                      </div>
-                      <button
-                        aria-label={`Remove ${item.name}`}
-                        onClick={() => removeItem(item.id)}
-                        className="rounded-full p-1.5 text-ink-soft/50 transition-colors hover:bg-stone-100 hover:text-ink"
-                      >
-                        <X className="h-4 w-4" strokeWidth={1.8} />
-                      </button>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between">
-                      <div className="flex items-center rounded-md border border-stone-150">
-                        <button
-                          aria-label="Decrease quantity"
-                          onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                          className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-stone-50"
-                        >
-                          <Minus className="h-3.5 w-3.5" strokeWidth={2} />
-                        </button>
-                        <span className="w-8 text-center text-[13px] font-medium text-ink">
-                          {item.quantity}
-                        </span>
-                        <button
-                          aria-label="Increase quantity"
-                          onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-stone-50"
-                        >
-                          <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-                        </button>
-                      </div>
-
-                      <p className="text-[14px] font-semibold text-ink">
-                        {formatPrice(item.price * item.quantity, item.currency)}
-                      </p>
-                    </div>
+                  <div className="divide-y divide-stone-150 px-5">
+                    {group.items.map((item) => (
+                      <CartLine
+                        key={item.id}
+                        item={item}
+                        onRemove={() => removeItem(item.id)}
+                        onQuantity={(q) => updateQuantity(item.id, q)}
+                        onVariant={(next) => updateVariant(item.id, next)}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
@@ -126,8 +115,19 @@ export default function CartPage() {
                   </div>
                 )}
                 <div className="flex items-center justify-between">
-                  <span>Shipping</span>
-                  <span className="font-medium text-ink">Calculated at checkout</span>
+                  <span>
+                    Delivery{" "}
+                    {groups.length > 1 && (
+                      <span className="text-[11.5px] text-ink-soft/50">
+                        ({groups.length} shipments)
+                      </span>
+                    )}
+                  </span>
+                  <span className="font-medium text-ink">
+                    {totalShippingEgp > 0
+                      ? `${totalShippingEgp.toLocaleString("en-US")} EGP`
+                      : "Free"}
+                  </span>
                 </div>
               </div>
 
@@ -139,8 +139,13 @@ export default function CartPage() {
                 <ArrowRight className="h-4 w-4" strokeWidth={2} />
               </Link>
 
-              {subtotal.usd > 0 && subtotal.egp > 0 && (
+              {groups.length > 1 && (
                 <p className="mt-4 text-center text-[12px] text-ink-soft/50">
+                  Items from different brands ship — and are billed for delivery — separately, one order per shipment.
+                </p>
+              )}
+              {subtotal.usd > 0 && subtotal.egp > 0 && (
+                <p className="mt-2 text-center text-[12px] text-ink-soft/50">
                   Multiple currencies are settled separately at checkout.
                 </p>
               )}
@@ -151,5 +156,102 @@ export default function CartPage() {
 
       <Footer />
     </main>
+  );
+}
+
+function CartLine({
+  item,
+  onRemove,
+  onQuantity,
+  onVariant,
+}: {
+  item: CartLineItem;
+  onRemove: () => void;
+  onQuantity: (quantity: number) => void;
+  onVariant: (next: { size?: string; color?: string }) => void;
+}) {
+  return (
+    <div className="flex gap-5 py-6">
+      <div className="relative h-28 w-24 flex-none overflow-hidden rounded-[14px] bg-beige-50">
+        <Image src={item.image} alt={item.name} fill sizes="96px" className="object-cover" />
+      </div>
+
+      <div className="flex flex-1 flex-col justify-between">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-[15px] font-medium text-ink">{item.name}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              {item.availableSizes && item.availableSizes.length > 1 ? (
+                <label className="flex items-center gap-1.5 text-[12.5px] text-ink-soft/60">
+                  Size
+                  <select
+                    value={item.size}
+                    onChange={(e) => onVariant({ size: e.target.value })}
+                    className="rounded-md border border-stone-150 bg-white px-2 py-1 text-[12.5px] text-ink outline-none focus:border-ink/30"
+                  >
+                    {item.availableSizes.map((size) => (
+                      <option key={size} value={size}>
+                        {formatSize(size)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <span className="text-[12.5px] text-ink-soft/60">Size: {formatSize(item.size)}</span>
+              )}
+              {item.availableColors && item.availableColors.length > 1 ? (
+                <label className="flex items-center gap-1.5 text-[12.5px] text-ink-soft/60">
+                  Color
+                  <select
+                    value={item.color ?? ""}
+                    onChange={(e) => onVariant({ color: e.target.value })}
+                    className="rounded-md border border-stone-150 bg-white px-2 py-1 text-[12.5px] text-ink outline-none focus:border-ink/30"
+                  >
+                    {item.availableColors.map((color) => (
+                      <option key={color} value={color}>
+                        {color}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                item.color && <span className="text-[12.5px] text-ink-soft/60">· {item.color}</span>
+              )}
+            </div>
+          </div>
+          <button
+            aria-label={`Remove ${item.name}`}
+            onClick={onRemove}
+            className="rounded-full p-1.5 text-ink-soft/50 transition-colors hover:bg-stone-100 hover:text-ink"
+          >
+            <X className="h-4 w-4" strokeWidth={1.8} />
+          </button>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between">
+          <div className="flex items-center rounded-md border border-stone-150">
+            <button
+              aria-label="Decrease quantity"
+              onClick={() => onQuantity(item.quantity - 1)}
+              className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-stone-50"
+            >
+              <Minus className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+            <span className="w-8 text-center text-[13px] font-medium text-ink">{item.quantity}</span>
+            <button
+              aria-label="Increase quantity"
+              onClick={() => onQuantity(item.quantity + 1)}
+              className="flex h-9 w-9 items-center justify-center text-ink transition-colors hover:bg-stone-50"
+            >
+              <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+            </button>
+          </div>
+
+          <p className="text-[14px] font-semibold text-ink">
+            {formatPrice(item.price * item.quantity, item.currency)}
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

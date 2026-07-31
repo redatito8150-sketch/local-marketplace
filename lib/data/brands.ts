@@ -193,6 +193,33 @@ export async function getBrandSummariesBySlug(slugs: string[]): Promise<BrandSum
     .map((r) => ({ slug: r.slug, name: r.name as string, logoImage: r.logo_image }));
 }
 
+export interface BrandFulfillmentFlag {
+  slug: string;
+  name: string;
+  isMahalyPartner: boolean;
+}
+
+// Used by the cart/checkout client pages to group items by shipment and
+// preview the resulting delivery-fee split before placing an order — the
+// authoritative split itself is still computed server-side in place_order,
+// this is display-only.
+export async function getBrandFulfillmentFlags(slugs: string[]): Promise<BrandFulfillmentFlag[]> {
+  if (slugs.length === 0) return [];
+  const { data, error } = await supabase
+    .from("brands")
+    .select("slug, name, is_mahaly_partner")
+    .in("slug", slugs);
+
+  if (error) {
+    throw new Error(`getBrandFulfillmentFlags failed: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    isMahalyPartner: Boolean(r.is_mahaly_partner),
+  }));
+}
+
 export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
   const { data, error } = await supabase
     .from("brands")

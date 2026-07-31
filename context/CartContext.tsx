@@ -17,6 +17,12 @@ interface CartContextValue {
   addItem: (item: Omit<CartLineItem, "id">) => void;
   removeItem: (lineId: string) => void;
   updateQuantity: (lineId: string, quantity: number) => void;
+  // Changes a line's size/color in place — this recomputes its lineId (the
+  // id encodes size+color), merging into an existing line of the new
+  // size/color if one's already in the cart, same collapsing behavior as
+  // addItem. Stock/availability of the new size isn't checked here — that
+  // still only happens at checkout, same as quantity today.
+  updateVariant: (lineId: string, next: { size?: string; color?: string }) => void;
   clearCart: () => void;
   itemCount: number;
   subtotal: { usd: number; egp: number };
@@ -73,6 +79,36 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const updateVariant = useCallback(
+    (lineId: string, next: { size?: string; color?: string }) => {
+      setItems((prev) => {
+        const current = prev.find((i) => i.id === lineId);
+        if (!current) return prev;
+        const size = next.size ?? current.size;
+        const color = next.color !== undefined ? next.color : current.color;
+        const newLineId = `${current.productId}-${size}-${color ?? "default"}`;
+        if (newLineId === lineId) {
+          return prev.map((i) => (i.id === lineId ? { ...i, size, color } : i));
+        }
+        const collision = prev.find((i) => i.id === newLineId);
+        if (collision) {
+          // Merge into the existing line of the target size/color, dropping
+          // this one — same collapsing behavior as addItem hitting a
+          // duplicate lineId.
+          return prev
+            .filter((i) => i.id !== lineId)
+            .map((i) =>
+              i.id === newLineId ? { ...i, quantity: i.quantity + current.quantity } : i
+            );
+        }
+        return prev.map((i) =>
+          i.id === lineId ? { ...i, id: newLineId, size, color } : i
+        );
+      });
+    },
+    []
+  );
+
   const clearCart = useCallback(() => setItems([]), []);
 
   const itemCount = useMemo(
@@ -99,6 +135,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         addItem,
         removeItem,
         updateQuantity,
+        updateVariant,
         clearCart,
         itemCount,
         subtotal,

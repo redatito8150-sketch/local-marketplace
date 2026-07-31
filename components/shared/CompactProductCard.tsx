@@ -33,6 +33,7 @@ export default function CompactProductCard({ product }: { product: Product }) {
               productId: product.id,
               name: product.name,
               brand: product.brand,
+              brandSlug: product.brandSlug,
               price: product.price,
               currency: product.currency,
               image: product.image,

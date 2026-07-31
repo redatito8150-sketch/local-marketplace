@@ -56,6 +56,9 @@ function validateShippingSettings(value: unknown): string | null {
   if (typeof v.returnPolicyDays !== "number" || v.returnPolicyDays < 0) {
     return "Return policy days must be a positive number";
   }
+  if (typeof v.flatDeliveryFeeEgp !== "number" || v.flatDeliveryFeeEgp < 0) {
+    return "Flat delivery fee must be a positive number";
+  }
   return null;
 }
 

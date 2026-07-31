@@ -59,12 +59,15 @@ export default function CollectionHero({ products, config }: { products: Product
         variantId: variant?.id,
         name: product.name,
         brand: product.brand,
+        brandSlug: product.brandSlug ?? "",
         price: resolveActivePrice(product, variant),
         currency: product.currency,
         image: product.image,
         size: variant?.optionValues.find((o) => o.optionTypeName === "Size")?.label ?? product.sizes[0] ?? "",
         color: variant?.optionValues.find((o) => o.optionTypeName === "Color")?.label,
         quantity: 1,
+        availableSizes: product.sizes,
+        availableColors: product.colors.map((c) => c.name),
       });
     });
     const addedCount = featuredItems.length - unavailable.length;

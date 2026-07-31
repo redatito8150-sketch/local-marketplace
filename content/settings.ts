@@ -7,6 +7,7 @@ import type { ContactInfoContent, ShippingSettingsContent } from "@/types";
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettingsContent = {
   freeShippingThresholdEgp: 1500,
   returnPolicyDays: 30,
+  flatDeliveryFeeEgp: 50,
 };
 
 export const DEFAULT_CONTACT_INFO: ContactInfoContent = {

@@ -7,6 +7,7 @@ import type { OrderStatus } from "@/types";
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: "Processing",
   paid: "Processing",
+  preparing: "Preparing",
   shipped: "Shipped",
   fulfilled: "Delivered",
   cancelled: "Cancelled",
@@ -15,6 +16,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 export const ORDER_STATUS_BADGE_CLASSES: Record<OrderStatus, string> = {
   pending: "bg-amber-50 text-amber-700",
   paid: "bg-amber-50 text-amber-700",
+  preparing: "bg-amber-50 text-amber-700",
   shipped: "bg-blue-50 text-blue-700",
   fulfilled: "bg-green-50 text-green-700",
   cancelled: "bg-red-50 text-red-700",
@@ -31,8 +33,8 @@ export const ORDER_STATUS_TABS: { id: OrderStatusTab; label: string }[] = [
 ];
 
 const TAB_TO_STATUSES: Record<OrderStatusTab, OrderStatus[]> = {
-  all: ["pending", "paid", "shipped", "fulfilled", "cancelled"],
-  processing: ["pending", "paid"],
+  all: ["pending", "paid", "preparing", "shipped", "fulfilled", "cancelled"],
+  processing: ["pending", "paid", "preparing"],
   shipped: ["shipped"],
   delivered: ["fulfilled"],
   cancelled: ["cancelled"],

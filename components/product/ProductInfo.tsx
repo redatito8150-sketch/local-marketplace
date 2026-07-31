@@ -140,6 +140,7 @@ export default function ProductInfo({
       variantId: resolvedVariant?.id,
       name: product.name,
       brand: product.brandName,
+      brandSlug: product.brandSlug ?? "",
       price: displayPrice,
       currency: product.currency,
       image: product.images[0],
@@ -149,6 +150,8 @@ export default function ProductInfo({
       size: selectedSize ?? "",
       color: selectedColor,
       quantity,
+      availableSizes: product.sizes,
+      availableColors: colorLabels,
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2200);
@@ -368,6 +371,7 @@ export default function ProductInfo({
               productId: product.id,
               name: product.name,
               brand: product.brandName,
+              brandSlug: product.brandSlug,
               price: product.price,
               currency: product.currency,
               image: product.images[0],

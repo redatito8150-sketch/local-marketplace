@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
     category: body.category,
     sku_prefix: body.skuPrefix.trim().toUpperCase(),
     is_active: body.isActive ?? true,
+    is_mahaly_partner: body.isMahalyPartner ?? false,
     founded_year: body.foundedYear ?? null,
     city: body.city,
     hero_image: body.heroImage,
