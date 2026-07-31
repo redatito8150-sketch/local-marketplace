@@ -3,6 +3,7 @@ import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { logError } from "@/lib/errorLog";
 
 const ACCESS_LEVELS = [
   "customer",
@@ -69,15 +70,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   });
 
   if (error) {
-    return NextResponse.json(
-      {
-        error:
-          error.code === "23505"
-            ? "That brand is already linked to another account"
-            : "Failed to update user access",
-      },
-      { status: error.code === "23505" ? 409 : 500 }
-    );
+    if (error.code === "23505") {
+      return NextResponse.json({ error: "That brand is already linked to another account" }, { status: 409 });
+    }
+    logError("admin.users.set-access", error.message);
+    return NextResponse.json({ error: "Failed to update user access" }, { status: 500 });
   }
 
   await logAudit({

@@ -1,6 +1,7 @@
 import { getAllProfilesForAdmin, getAllBrandsForAdmin, getAllBrandStaffForAdmin } from "@/lib/data/admin";
 import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import TestEmailButton from "@/components/admin/TestEmailButton";
+import TestDiscordButton from "@/components/admin/TestDiscordButton";
 import UserAccessControl from "@/components/admin/UserAccessControl";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
@@ -30,7 +31,7 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
 
   return (
     <div>
-      <DashboardPageHeader eyebrow="People & access" title={`Users (${profiles.length})`} description="Search accounts, review brand links, and manage role-based access without changing authentication behavior." actions={canManageRoles ? <TestEmailButton /> : undefined} />
+      <DashboardPageHeader eyebrow="People & access" title={`Users (${profiles.length})`} description="Search accounts, review brand links, and manage role-based access without changing authentication behavior." actions={canManageRoles ? <div className="flex flex-wrap items-center gap-2"><TestEmailButton /><TestDiscordButton /></div> : undefined} />
       <DashboardFilters action="/admin/users" clearHref="/admin/users" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Name, email or brand" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
         <DashboardFilterField label="Role"><select name="role" defaultValue={params.role ?? ""} className={dashboardFilterControl}><option value="">All roles</option>{Object.entries(ACCESS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
