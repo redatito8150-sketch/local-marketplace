@@ -1,9 +1,10 @@
-export const ORDER_STATUSES = ["pending", "paid", "shipped", "fulfilled", "cancelled"] as const;
+export const ORDER_STATUSES = ["pending", "paid", "preparing", "shipped", "fulfilled", "cancelled"] as const;
 export type OrderStatusValue = (typeof ORDER_STATUSES)[number];
 
 export const ORDER_STATUS_LABELS: Record<OrderStatusValue, string> = {
   pending: "Pending",
   paid: "Paid",
+  preparing: "Preparing",
   shipped: "Shipped",
   fulfilled: "Delivered",
   cancelled: "Cancelled",
@@ -17,6 +18,8 @@ export function orderStatusBadgeClass(status: string): string {
       return "bg-red-50 text-red-700";
     case "shipped":
       return "bg-blue-50 text-blue-700";
+    case "preparing":
+      return "bg-amber-50 text-amber-700";
     case "paid":
       return "bg-beige-100 text-ink";
     default:

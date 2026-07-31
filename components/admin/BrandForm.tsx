@@ -38,6 +38,7 @@ export interface FormState {
   category: string;
   skuPrefix: string;
   isActive: boolean;
+  isMahalyPartner: boolean;
   foundedYear: string;
   city: string;
   heroImage: string;
@@ -67,6 +68,7 @@ function toFormState(brand?: BrandRecord): FormState {
     category: brand?.category ?? "",
     skuPrefix: brand?.skuPrefix ?? "",
     isActive: brand?.isActive ?? true,
+    isMahalyPartner: brand?.isMahalyPartner ?? false,
     foundedYear: brand?.foundedYear ? String(brand.foundedYear) : "",
     city: brand?.city ?? "Cairo",
     heroImage: brand?.heroImage ?? "",
@@ -184,7 +186,7 @@ export default function BrandForm({
       // and the brand-portal's own PATCH route never writes sku_prefix
       // anyway, so resending the existing value here is a no-op for it.
       skuPrefix: form.skuPrefix.trim().toUpperCase(),
-      ...(isBrandPortal ? {} : { isActive: form.isActive }),
+      ...(isBrandPortal ? {} : { isActive: form.isActive, isMahalyPartner: form.isMahalyPartner }),
       foundedYear: form.foundedYear ? Number(form.foundedYear) : undefined,
       city: form.city.trim(),
       heroImage: form.heroImage.trim(),
@@ -296,6 +298,24 @@ export default function BrandForm({
             type="checkbox"
             checked={form.isActive}
             onChange={(e) => set("isActive", e.target.checked)}
+            className="h-5 w-9 flex-none accent-ink"
+          />
+        </label>
+      )}
+
+      {!isBrandPortal && (
+        <label className="flex items-center justify-between rounded-md border border-stone-150 px-3.5 py-2.5">
+          <span>
+            <span className="block text-[13.5px] font-medium text-ink">Mahaly Partner</span>
+            <span className="block text-[11.5px] text-ink-soft/50">
+              Stock lives in Mahaly&apos;s own warehouse — this brand&apos;s orders pool with other
+              partner brands into one shared shipment/delivery fee, instead of shipping separately.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            checked={form.isMahalyPartner}
+            onChange={(e) => set("isMahalyPartner", e.target.checked)}
             className="h-5 w-9 flex-none accent-ink"
           />
         </label>

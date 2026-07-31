@@ -12,6 +12,9 @@ import { readOrderIdempotency, storeOrderIdempotency } from "@/lib/orders/idempo
 import { getOrdersForUser } from "@/lib/data/orders";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isVariantPurchasable, calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
+import type { ShippingSettingsContent } from "@/types";
 
 export async function GET(request: NextRequest) {
   const user = await getRequestUser(request);
@@ -36,9 +39,13 @@ interface RpcOrderItem {
 
 export async function POST(request: NextRequest) {
   const idempotencyKey = request.headers.get("idempotency-key");
-  const previousOrderNumber = readOrderIdempotency(idempotencyKey);
-  if (previousOrderNumber) {
-    return NextResponse.json({ orderNumber: previousOrderNumber, replayed: true });
+  const previousResult = readOrderIdempotency(idempotencyKey);
+  if (previousResult) {
+    return NextResponse.json({
+      orderNumbers: previousResult.orderNumbers,
+      orderGroupId: previousResult.orderGroupId,
+      replayed: true,
+    });
   }
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_ORDER_BODY_BYTES) {
@@ -174,10 +181,21 @@ export async function POST(request: NextRequest) {
     verifiedAddressId = ownedAddress?.id ?? null;
   }
 
-  // One RPC call does the whole checkout atomically: unique order number,
-  // order row, per-variant stock check + decrement, and order_items — all
-  // in a single transaction, so two concurrent purchases of the last unit
-  // can't both succeed and a multi-item order can't half-complete.
+  // Flat delivery fee + free-shipping threshold are admin-configurable
+  // (site_content "shipping_settings") rather than hardcoded — resolved
+  // server-side so the client can never influence the fee it's charged.
+  const shippingSettings = await getSiteContentWithFallback<ShippingSettingsContent>(
+    "shipping_settings",
+    DEFAULT_SHIPPING_SETTINGS
+  );
+
+  // One RPC call does the whole checkout atomically: it fans out into one
+  // order per fulfillment bucket (a single pooled order for every
+  // Mahaly-partner brand's items, plus one order per distinct independent
+  // brand), each with its own unique order number, stock check/decrement,
+  // and order_items — all in a single transaction, so two concurrent
+  // purchases of the last unit can't both succeed and a multi-item order
+  // can't half-complete.
   const { data: result, error: placeOrderError } = await supabaseAdmin.rpc("place_order", {
     p_shipping_name: `${shipping.firstName} ${shipping.lastName}`.trim(),
     p_shipping_email: shipping.email,
@@ -189,6 +207,8 @@ export async function POST(request: NextRequest) {
     p_items: rpcItems,
     p_coupon_code: couponCode?.trim() || null,
     p_address_id: verifiedAddressId,
+    p_flat_shipping_fee_egp: shippingSettings.flatDeliveryFeeEgp,
+    p_free_shipping_threshold_egp: shippingSettings.freeShippingThresholdEgp,
   });
 
   if (placeOrderError) {
@@ -213,20 +233,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const createdOrders: { order_id: string; order_number: string }[] = result?.orders ?? [];
+
   await notify(
     "order_created",
-    `New order ${result?.order_number}`,
-    `${items.length} item${items.length === 1 ? "" : "s"}`,
+    `New order group (${createdOrders.length} shipment${createdOrders.length === 1 ? "" : "s"})`,
+    `${items.length} item${items.length === 1 ? "" : "s"} — ${createdOrders.map((o) => o.order_number).join(", ")}`,
     {
-      entityId: result?.order_number,
+      entityId: createdOrders[0]?.order_number,
       entityIdLabel: "Order ID",
       actorLabel: `${shipping.firstName} ${shipping.lastName} (${shipping.email})`,
       detailLabel: "Items",
     }
   );
 
-  if (result?.order_id) {
-    const order = await getOrderForAdmin(result.order_id);
+  // One confirmation email per shipment — each is tracked/fulfilled
+  // independently from here on, so each gets its own order number/email
+  // rather than trying to cram a multi-shipment breakdown into one template.
+  for (const created of createdOrders) {
+    const order = await getOrderForAdmin(created.order_id);
     if (order) {
       await sendEmail({ to: shipping.email, ...orderConfirmationEmail(order) });
     }
@@ -260,6 +285,9 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (result?.order_number) storeOrderIdempotency(idempotencyKey, result.order_number);
-  return NextResponse.json({ orderNumber: result?.order_number });
+  const orderNumbers = createdOrders.map((o) => o.order_number);
+  if (orderNumbers.length > 0 && result?.order_group_id) {
+    storeOrderIdempotency(idempotencyKey, { orderNumbers, orderGroupId: result.order_group_id });
+  }
+  return NextResponse.json({ orderNumbers, orderGroupId: result?.order_group_id });
 }

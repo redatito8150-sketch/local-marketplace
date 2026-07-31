@@ -10,6 +10,7 @@ export default function ShippingSettingsForm({ initial }: { initial: ShippingSet
     String(initial.freeShippingThresholdEgp)
   );
   const [returnPolicyDays, setReturnPolicyDays] = useState(String(initial.returnPolicyDays));
+  const [flatDeliveryFeeEgp, setFlatDeliveryFeeEgp] = useState(String(initial.flatDeliveryFeeEgp));
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState("");
@@ -24,6 +25,7 @@ export default function ShippingSettingsForm({ initial }: { initial: ShippingSet
     const value: ShippingSettingsContent = {
       freeShippingThresholdEgp: Number(freeShippingThresholdEgp),
       returnPolicyDays: Number(returnPolicyDays),
+      flatDeliveryFeeEgp: Number(flatDeliveryFeeEgp),
     };
 
     try {
@@ -62,6 +64,21 @@ export default function ShippingSettingsForm({ initial }: { initial: ShippingSet
       <h2 className="text-[14px] font-semibold text-ink">Shipping &amp; Returns</h2>
 
       <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="mb-1.5 block text-[12.5px] font-medium text-ink-soft/70">
+            Flat delivery fee (EGP) <span className="text-red-600">*</span>
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={flatDeliveryFeeEgp}
+            onChange={(e) => setFlatDeliveryFeeEgp(e.target.value)}
+            className="w-full rounded-md border border-stone-150 bg-white px-3 py-2 text-[13.5px] text-ink outline-none focus:border-ink/30"
+          />
+          <p className="mt-1 text-[11.5px] text-ink-soft/60">
+            Charged once per shipment — a checkout split across multiple brands can incur this more than once.
+          </p>
+        </div>
         <div>
           <label className="mb-1.5 block text-[12.5px] font-medium text-ink-soft/70">
             Free shipping over (EGP) <span className="text-red-600">*</span>

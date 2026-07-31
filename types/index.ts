@@ -111,6 +111,11 @@ export interface TaxonomyNode {
 export interface ShippingSettingsContent {
   freeShippingThresholdEgp: number;
   returnPolicyDays: number;
+  // Flat delivery fee charged per shipment/order — waived once that
+  // shipment's own EGP subtotal reaches freeShippingThresholdEgp. A
+  // multi-shipment checkout (see brands.is_mahaly_partner splitting) is
+  // charged this fee once per resulting shipment, not once per cart.
+  flatDeliveryFeeEgp: number;
 }
 
 export interface ContactInfoContent {
@@ -293,6 +298,7 @@ export interface Product extends ProductTaxonomyFields {
   id: string;
   category: CategorySlug;
   brand: string;
+  brandSlug?: string;
   name: string;
   price: number;
   currency: "USD" | "EGP";
@@ -321,18 +327,30 @@ export interface CartLineItem {
   variantId?: string; // present once a product resolves to a real variant
   name: string;
   brand: string;
+  // Relational key back to the brand, needed to group the cart by brand and
+  // to preview the partner/independent shipment split before checkout. Falls
+  // back to "" for any pre-this-feature cart line still in a shopper's
+  // localStorage (rehydrated once they touch the cart again, since add/remove
+  // always rewrites the whole array).
+  brandSlug: string;
   price: number;
   currency: "USD" | "EGP";
   image: string;
   size: string;
   color?: string;
   quantity: number;
+  // Snapshotted from the product at add-time so the cart can offer a size/
+  // color switcher without an extra fetch — never re-validated until
+  // checkout, which always re-resolves the real variant server-side anyway.
+  availableSizes?: string[];
+  availableColors?: string[];
 }
 
 export interface WishlistItem {
   productId: string;
   name: string;
   brand: string;
+  brandSlug?: string;
   price: number;
   currency: "USD" | "EGP";
   image: string;
@@ -467,6 +485,10 @@ export interface BrandRecord {
   tagline: string;
   category: string;
   isActive: boolean;
+  // Mahaly-partner brands keep stock in Mahaly's own warehouse — their
+  // orders pool with every other partner brand's into one shared shipment/
+  // delivery fee at checkout, instead of each becoming its own shipment.
+  isMahalyPartner: boolean;
   // Admin-managed, required before this brand can create a product through
   // the server-generated SKU path (next_product_sku RPC). Read-only for
   // brand owners, and locked (DB trigger) once the brand has any product.
@@ -518,7 +540,9 @@ export interface CollectionRecord {
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
 
-export type OrderStatus = "pending" | "paid" | "shipped" | "fulfilled" | "cancelled";
+export type OrderStatus = "pending" | "paid" | "preparing" | "shipped" | "fulfilled" | "cancelled";
+
+export type OrderFulfillmentType = "mahaly_pool" | "brand_direct";
 
 export interface OrderItemRecord {
   id: string;
@@ -532,6 +556,13 @@ export interface OrderItemRecord {
   color?: string;
   quantity: number;
   image: string;
+}
+
+export interface OrderStatusHistoryEntry {
+  id: string;
+  status: OrderStatus;
+  note?: string;
+  createdAt: string;
 }
 
 export interface OrderRecord {
@@ -552,6 +583,15 @@ export interface OrderRecord {
   discountAmountEgp: number;
   createdAt: string;
   items: OrderItemRecord[];
+  // Multi-brand/partner-fulfillment splitting — see
+  // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql.
+  // orderGroupId ties every shipment created from one checkout together;
+  // fulfillmentType/brandSlug/shippingFeeEgp describe this shipment alone.
+  orderGroupId: string;
+  fulfillmentType: OrderFulfillmentType;
+  brandSlug?: string;
+  shippingFeeEgp: number;
+  statusHistory?: OrderStatusHistoryEntry[];
 }
 
 // ── Admin (raw `coupons` row shape) ─────────────────────────────────────────

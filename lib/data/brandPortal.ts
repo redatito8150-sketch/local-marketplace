@@ -35,6 +35,12 @@ export interface BrandOrder {
   shippingGovernorate: string;
   createdAt: string;
   items: BrandOrderItem[];
+  // 'brand_direct' orders are this brand's own shipment (this brand can
+  // advance its status); 'mahaly_pool' orders pool this brand's items with
+  // other partner brands' — Mahaly's own warehouse fulfills those, so the
+  // brand-portal view stays read-only for them (see BrandOrdersTable).
+  fulfillmentType: "mahaly_pool" | "brand_direct";
+  shippingFeeEgp: number;
 }
 
 interface OrderItemRow {
@@ -54,6 +60,8 @@ interface OrderItemRow {
     shipping_city: string;
     shipping_governorate: string;
     created_at: string;
+    fulfillment_type: "mahaly_pool" | "brand_direct";
+    shipping_fee_egp: number;
   } | null;
 }
 
@@ -68,7 +76,7 @@ export async function getOrdersForBrand(
   const { data, error } = await supabase
     .from("order_items")
     .select(
-      "id, name, size, color, price, currency, quantity, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at)"
+      "id, name, size, color, price, currency, quantity, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp)"
     )
     .eq("brand_slug", brandSlug);
 
@@ -87,6 +95,8 @@ export async function getOrdersForBrand(
       shippingCity: row.orders.shipping_city,
       shippingGovernorate: row.orders.shipping_governorate,
       createdAt: row.orders.created_at,
+      fulfillmentType: row.orders.fulfillment_type,
+      shippingFeeEgp: Number(row.orders.shipping_fee_egp),
       items: [],
     };
     existing.items.push({

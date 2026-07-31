@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getOrderForAdmin, getAuditLogsForEntity } from "@/lib/data/admin";
+import { getOrderForAdmin, getAuditLogsForEntity, getSiblingOrders } from "@/lib/data/admin";
 import { formatPrice, formatSize } from "@/lib/format";
-import { ORDER_STATUSES, ORDER_STATUS_LABELS } from "@/lib/admin/statuses";
+import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
+import type { OrderStatus } from "@/types";
 
 export default async function AdminOrderDetailPage(
   props: {
@@ -16,6 +18,7 @@ export default async function AdminOrderDetailPage(
     getAuditLogsForEntity("order", params.id),
   ]);
   if (!order) notFound();
+  const siblingOrders = await getSiblingOrders(order.orderGroupId, order.id);
 
   return (
     <div>
@@ -67,6 +70,42 @@ export default async function AdminOrderDetailPage(
         </div>
 
         <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
+          <h2 className="text-[15px] font-semibold text-ink">Shipment</h2>
+          <div className="mt-3 space-y-1.5 text-[13px] text-ink-soft/75">
+            <p>
+              <span className="font-medium text-ink">
+                {order.fulfillmentType === "mahaly_pool" ? "Mahaly pool" : "Brand direct"}
+              </span>
+              {order.brandSlug && ` — ${order.brandSlug}`}
+            </p>
+            <p>Delivery fee: {formatPrice(order.shippingFeeEgp, "EGP")}</p>
+          </div>
+          {siblingOrders.length > 0 && (
+            <div className="mt-4 border-t border-stone-150 pt-3">
+              <p className="text-[11.5px] font-medium text-ink-soft/60">
+                Other shipments from this same checkout
+              </p>
+              <div className="mt-2 space-y-1.5">
+                {siblingOrders.map((sib) => (
+                  <Link
+                    key={sib.id}
+                    href={`/admin/orders/${sib.id}`}
+                    className="flex items-center justify-between rounded-md bg-stone-50 px-2.5 py-1.5 text-[12px] hover:bg-stone-100"
+                  >
+                    <span className="font-medium text-ink">#{sib.orderNumber}</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${orderStatusBadgeClass(sib.status)}`}
+                    >
+                      {ORDER_STATUS_LABELS[sib.status as OrderStatus] ?? sib.status}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
           <h2 className="text-[15px] font-semibold text-ink">Shipping</h2>
           <div className="mt-4 space-y-1.5 text-[13px] text-ink-soft/75">
             <p className="font-medium text-ink">{order.shippingName}</p>
@@ -95,7 +134,27 @@ export default async function AdminOrderDetailPage(
         </div>
 
         <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">History</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Tracking timeline</h2>
+          <p className="mt-1 text-[12px] text-ink-soft/50">
+            The same shipment history the customer sees on their own order page.
+          </p>
+          <div className="mt-3 space-y-3">
+            {(order.statusHistory ?? []).map((entry) => (
+              <div key={entry.id} className="text-[12.5px]">
+                <p className="font-medium capitalize text-ink">{ORDER_STATUS_LABELS[entry.status]}</p>
+                <p className="text-[11.5px] text-ink-soft/50">
+                  {new Date(entry.createdAt).toLocaleString("en-US")}
+                </p>
+              </div>
+            ))}
+            {(!order.statusHistory || order.statusHistory.length === 0) && (
+              <p className="text-[12.5px] text-ink-soft/50">No tracking events yet.</p>
+            )}
+          </div>
+        </div>
+
+        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
+          <h2 className="text-[15px] font-semibold text-ink">Admin action log</h2>
           <div className="mt-3 space-y-3">
             {auditLogs.map((log) => (
               <div key={log.id} className="text-[12.5px]">

@@ -15,6 +15,10 @@ interface OrderRow {
   subtotal_egp: number;
   discount_amount_egp: number;
   created_at: string;
+  order_group_id: string;
+  fulfillment_type: OrderRecord["fulfillmentType"];
+  brand_slug: string | null;
+  shipping_fee_egp: number;
   order_items: {
     id: string;
     product_id: string | null;
@@ -26,6 +30,12 @@ interface OrderRow {
     color: string | null;
     quantity: number;
     image: string;
+  }[];
+  order_status_history: {
+    id: string;
+    status: OrderRecord["status"];
+    note: string | null;
+    created_at: string;
   }[];
 }
 
@@ -44,6 +54,10 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     subtotalEgp: Number(row.subtotal_egp),
     discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
+    orderGroupId: row.order_group_id,
+    fulfillmentType: row.fulfillment_type,
+    brandSlug: row.brand_slug ?? undefined,
+    shippingFeeEgp: Number(row.shipping_fee_egp),
     items: row.order_items.map((item) => ({
       id: item.id,
       productId: item.product_id,
@@ -56,8 +70,19 @@ function toOrderRecord(row: OrderRow): OrderRecord {
       quantity: item.quantity,
       image: item.image,
     })),
+    statusHistory: (row.order_status_history ?? [])
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((h) => ({
+        id: h.id,
+        status: h.status,
+        note: h.note ?? undefined,
+        createdAt: h.created_at,
+      })),
   };
 }
+
+const ORDER_SELECT = "*, order_items(*), order_status_history(id, status, note, created_at)";
 
 // Uses supabaseAdmin (not the cookie-bound server client) so this can be
 // called from any server context with just a resolved userId — same
@@ -66,7 +91,7 @@ function toOrderRecord(row: OrderRow): OrderRecord {
 export async function getOrdersForUser(userId: string): Promise<OrderRecord[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("*, order_items(*)")
+    .select(ORDER_SELECT)
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 

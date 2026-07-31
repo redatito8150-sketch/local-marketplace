@@ -5,11 +5,11 @@ import { readOrderIdempotency, storeOrderIdempotency } from "../lib/orders/idemp
 test("replays a successful order for a valid checkout key", () => {
   const key = "f4ecfb38-ec48-4db4-9eb2-acde71c52a55";
   assert.equal(readOrderIdempotency(key), null);
-  storeOrderIdempotency(key, "MH-1001");
-  assert.equal(readOrderIdempotency(key), "MH-1001");
+  storeOrderIdempotency(key, { orderNumbers: ["MH-1001"], orderGroupId: "group-1" });
+  assert.deepEqual(readOrderIdempotency(key), { orderNumbers: ["MH-1001"], orderGroupId: "group-1" });
 });
 
 test("ignores malformed idempotency keys", () => {
-  storeOrderIdempotency("shared-key", "MH-1002");
+  storeOrderIdempotency("shared-key", { orderNumbers: ["MH-1002"], orderGroupId: "group-2" });
   assert.equal(readOrderIdempotency("shared-key"), null);
 });

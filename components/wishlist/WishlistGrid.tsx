@@ -73,6 +73,7 @@ export default function WishlistGrid() {
                   productId: item.productId,
                   name: item.name,
                   brand: item.brand,
+                  brandSlug: item.brandSlug ?? "",
                   price: item.price,
                   currency: item.currency,
                   image: item.image,

@@ -137,6 +137,7 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     id: row.id,
     category: primaryShopCategoryForAudience(row.audience),
     brand: row.brand_name,
+    brandSlug: row.brand_slug ?? undefined,
     name: row.name,
     price: Number(row.price),
     currency: row.currency,

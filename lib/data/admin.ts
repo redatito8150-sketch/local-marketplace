@@ -239,6 +239,7 @@ interface BrandRow {
   tagline: string;
   category: string;
   is_active: boolean;
+  is_mahaly_partner: boolean;
   founded_year: number | null;
   city: string;
   hero_image: string;
@@ -270,6 +271,7 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean
     tagline: row.tagline,
     category: row.category,
     isActive: row.is_active,
+    isMahalyPartner: row.is_mahaly_partner,
     skuPrefix: row.sku_prefix,
     hasProducts,
     foundedYear: row.founded_year ?? undefined,
@@ -428,7 +430,12 @@ interface OrderRow {
   coupon_code: string | null;
   discount_amount_egp: number;
   created_at: string;
+  order_group_id: string;
+  fulfillment_type: OrderRecord["fulfillmentType"];
+  brand_slug: string | null;
+  shipping_fee_egp: number;
   order_items: OrderItemRow[];
+  order_status_history?: { id: string; status: OrderStatus; note: string | null; created_at: string }[];
 }
 
 function toOrderRecord(row: OrderRow): OrderRecord {
@@ -437,6 +444,10 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     orderNumber: row.order_number,
     status: row.status,
     userId: row.user_id ?? undefined,
+    orderGroupId: row.order_group_id,
+    fulfillmentType: row.fulfillment_type,
+    brandSlug: row.brand_slug ?? undefined,
+    shippingFeeEgp: Number(row.shipping_fee_egp),
     shippingName: row.shipping_name,
     shippingEmail: row.shipping_email,
     shippingPhone: row.shipping_phone,
@@ -462,8 +473,14 @@ function toOrderRecord(row: OrderRow): OrderRecord {
       quantity: item.quantity,
       image: item.image,
     })),
+    statusHistory: (row.order_status_history ?? [])
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((h) => ({ id: h.id, status: h.status, note: h.note ?? undefined, createdAt: h.created_at })),
   };
 }
+
+const ADMIN_ORDER_SELECT = "*, order_items(*), order_status_history(id, status, note, created_at)";
 
 // Orders have no public/admin RLS read policy, so admin reads go through
 // the service-role client directly — these functions are only ever called
@@ -471,7 +488,7 @@ function toOrderRecord(row: OrderRow): OrderRecord {
 export async function getAllOrdersForAdmin(): Promise<OrderRecord[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("*, order_items(*)")
+    .select(ADMIN_ORDER_SELECT)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -483,7 +500,7 @@ export async function getAllOrdersForAdmin(): Promise<OrderRecord[]> {
 export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> {
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("*, order_items(*)")
+    .select(ADMIN_ORDER_SELECT)
     .eq("id", id)
     .maybeSingle();
 
@@ -492,6 +509,36 @@ export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> 
   }
   if (!data) return null;
   return toOrderRecord(data as OrderRow);
+}
+
+export interface SiblingOrderSummary {
+  id: string;
+  orderNumber: string;
+  status: string;
+  fulfillmentType: "mahaly_pool" | "brand_direct";
+  brandSlug: string | null;
+}
+
+// Other shipments created from the same checkout (see order_group_id) — the
+// admin order detail page links to these so a multi-brand purchase's
+// shipments are easy to navigate between.
+export async function getSiblingOrders(orderGroupId: string, excludeOrderId: string): Promise<SiblingOrderSummary[]> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("id, order_number, status, fulfillment_type, brand_slug")
+    .eq("order_group_id", orderGroupId)
+    .neq("id", excludeOrderId);
+
+  if (error) {
+    throw new Error(`getSiblingOrders(${orderGroupId}) failed: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    orderNumber: r.order_number,
+    status: r.status,
+    fulfillmentType: r.fulfillment_type,
+    brandSlug: r.brand_slug,
+  }));
 }
 
 // Row-mapping lives in lib/join/applicationService.ts (shared with the

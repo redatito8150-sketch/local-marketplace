@@ -6,6 +6,7 @@ import { formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
+import BrandOrderStatusControl from "@/components/brand-portal/BrandOrderStatusControl";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import type { OrderStatus } from "@/types";
@@ -17,7 +18,8 @@ export default async function BrandPortalOrdersPage(props: { searchParams: Promi
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
   if (!owner.brandSlug) { const brands = await getAllBrandsForAdmin(); return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />; }
-  const allOrders = await getOrdersForBrand(owner.brandSlug, owner.isImpersonating);
+  const brandSlug = owner.brandSlug;
+  const allOrders = await getOrdersForBrand(brandSlug, owner.isImpersonating);
   const query = params.q?.trim().toLowerCase();
   const orderTotal = (order: (typeof allOrders)[number]) => order.items.reduce((sum, item) => item.currency === "EGP" ? sum + item.price * item.quantity : sum, 0);
   const orders = allOrders.filter((order) => {
@@ -44,7 +46,7 @@ export default async function BrandPortalOrdersPage(props: { searchParams: Promi
       </DashboardFilters>
       <DashboardPanel className="mt-6">
         {orders.length ? <div className="divide-y divide-[#eee7de]">{orders.map((order) => (
-          <article key={order.id} className="px-5 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-[13px] font-bold text-[#302b27]">#{order.orderNumber}</p><p className="mt-1 text-[11px] text-[#8a7d73]">{order.shippingName} · {order.shippingCity}, {order.shippingGovernorate} · {new Date(order.createdAt).toLocaleDateString("en-US")}</p></div><div className="flex items-center gap-3"><p className="text-[13px] font-bold text-[#302b27]">{formatPrice(orderTotal(order), "EGP")}</p><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${orderStatusBadgeClass(order.status as OrderStatus)}`}>{ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}</span></div></div><div className="mt-4 grid gap-2 border-t border-[#eee7de] pt-3 sm:grid-cols-2 xl:grid-cols-3">{order.items.map((item) => <div key={item.id} className="rounded-xl bg-[#fbf8f4] px-3 py-2.5"><p className="text-[11.5px] font-semibold text-[#51473f]">{item.name}</p><p className="mt-1 text-[10.5px] text-[#8a7d73]">Qty {item.quantity} · {formatSize(item.size)}{item.color ? ` · ${item.color}` : ""} · {formatPrice(item.price * item.quantity, item.currency)}</p></div>)}</div></article>
+          <article key={order.id} className="px-5 py-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-[13px] font-bold text-[#302b27]">#{order.orderNumber}</p><p className="mt-1 text-[11px] text-[#8a7d73]">{order.shippingName} · {order.shippingCity}, {order.shippingGovernorate} · {new Date(order.createdAt).toLocaleDateString("en-US")}</p><p className="mt-1 text-[10.5px] font-medium text-[#8a7d73]">{order.fulfillmentType === "mahaly_pool" ? "Fulfilled by Mahaly (pooled with other partner brands)" : "Your shipment — pack & hand off to Mahaly for delivery"}</p></div><div className="flex flex-col items-end gap-2"><div className="flex items-center gap-3"><p className="text-[13px] font-bold text-[#302b27]">{formatPrice(orderTotal(order), "EGP")}</p><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${orderStatusBadgeClass(order.status as OrderStatus)}`}>{ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}</span></div>{order.fulfillmentType === "brand_direct" && <BrandOrderStatusControl orderId={order.id} status={order.status} brandSlug={brandSlug} />}</div></div><div className="mt-4 grid gap-2 border-t border-[#eee7de] pt-3 sm:grid-cols-2 xl:grid-cols-3">{order.items.map((item) => <div key={item.id} className="rounded-xl bg-[#fbf8f4] px-3 py-2.5"><p className="text-[11.5px] font-semibold text-[#51473f]">{item.name}</p><p className="mt-1 text-[10.5px] text-[#8a7d73]">Qty {item.quantity} · {formatSize(item.size)}{item.color ? ` · ${item.color}` : ""} · {formatPrice(item.price * item.quantity, item.currency)}</p></div>)}</div></article>
         ))}</div> : <DashboardEmptyState title="No matching orders" description={activeCount ? "Clear or adjust the filters to see more orders." : "Orders containing your products will appear here."} />}
       </DashboardPanel>
     </div>
