@@ -639,6 +639,13 @@ export type ReturnsPolicy =
   | "no_returns"
   | "depends_on_product";
 
+// Whether the applicant will handle their own packaging/fulfillment, or
+// wants Mahaly to handle packaging, shipping, and storage on their behalf
+// while they focus on their brand page and product listings — the single
+// most important operational question on the application, replacing the
+// old manufacturing/fulfillment-model fields.
+export type FulfillmentResponsibility = "brand_handles" | "mahaly_handles";
+
 // The 27 Egyptian governorates — canonical list backing both the brand-
 // application City field and Step 4's "Selected governorates" shipping
 // coverage. lib/join/constants.ts's EGYPT_GOVERNORATES runtime array is
@@ -818,7 +825,9 @@ export interface BrandApplicationRecord {
   shippingCoverageOption?: ShippingCoverageOption;
   shippingGovernorates: EgyptGovernorate[];
   returnsPolicy?: ReturnsPolicy;
+  returnsPolicyDetails?: string;
   inventoryModel: string[];
+  fulfillmentResponsibility?: FulfillmentResponsibility;
 
   consentAccurate: boolean;
   consentTerms: boolean;

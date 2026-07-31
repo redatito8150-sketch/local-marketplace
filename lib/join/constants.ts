@@ -5,6 +5,7 @@ import type {
   BusinessSizeRange,
   EgyptGovernorate,
   FulfillmentModel,
+  FulfillmentResponsibility,
   LegalStatus,
   ManufacturingModel,
   PreparationTimeRange,
@@ -29,10 +30,12 @@ export const APPLICANT_ROLES: { value: ApplicantRole; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+// "*_only" statuses (commercial_registration_only / tax_card_only) were
+// removed from this presented list on purpose — the type/DB value still
+// exist so pre-existing applications that already picked one keep
+// displaying correctly, but new applicants can no longer select them.
 export const LEGAL_STATUS_OPTIONS: { value: LegalStatus; label: string }[] = [
   { value: "both_docs", label: "We have both a commercial registration and tax card" },
-  { value: "commercial_registration_only", label: "We have a commercial registration only" },
-  { value: "tax_card_only", label: "We have a tax card only" },
   { value: "documents_pending", label: "Documents are currently being issued" },
   { value: "unregistered_individual", label: "We operate as an individual business without registration" },
   { value: "other", label: "Other" },
@@ -162,6 +165,30 @@ export const SHIPPING_COVERAGE_OPTIONS: { value: ShippingCoverageOption; label: 
   { value: "all_egypt", label: "All Egypt" },
   { value: "selected_governorates", label: "Selected governorates" },
   { value: "international", label: "International" },
+];
+
+// The single most important operational question on the application —
+// whether the brand handles its own packaging/fulfillment, or wants Mahaly
+// to take on packaging, shipping, and storage while the brand just manages
+// its page and product listings. Rendered as a prominent, highlighted
+// choice in the Products & operations step, not a plain dropdown.
+export const FULFILLMENT_RESPONSIBILITY_OPTIONS: {
+  value: FulfillmentResponsibility;
+  title: string;
+  description: string;
+}[] = [
+  {
+    value: "brand_handles",
+    title: "I'll handle packaging & fulfillment myself",
+    description:
+      "You pack, store, and ship every order yourself. Mahaly only lists your products and sends you the orders.",
+  },
+  {
+    value: "mahaly_handles",
+    title: "I'd like to partner with Mahaly for fulfillment",
+    description:
+      "Mahaly handles packaging, storage, and shipping for you — you just manage your brand page and product listings.",
+  },
 ];
 
 export const RETURNS_POLICY_OPTIONS: { value: ReturnsPolicy; label: string }[] = [

@@ -6,6 +6,7 @@ import { APPLICATION_STATUS_LABELS, applicationStatusBadgeClass } from "@/lib/ad
 import {
   BUSINESS_SIZE_OPTIONS,
   FULFILLMENT_MODEL_OPTIONS,
+  FULFILLMENT_RESPONSIBILITY_OPTIONS,
   INVENTORY_MODEL_OPTIONS,
   INVENTORY_MODEL_VALUES,
   LEGAL_STATUS_OPTIONS,
@@ -209,6 +210,14 @@ export default async function AdminApplicationDetailPage(
 
           <Section title="Products & operations">
             <Field
+              label="Fulfillment"
+              value={
+                FULFILLMENT_RESPONSIBILITY_OPTIONS.find(
+                  (o) => o.value === application.fulfillmentResponsibility
+                )?.title ?? "—"
+              }
+            />
+            <Field
               label="Price range"
               value={
                 application.priceMin !== undefined || application.priceMax !== undefined
@@ -256,6 +265,9 @@ export default async function AdminApplicationDetailPage(
                 boolLabel(application.returnExchangeAvailable)
               }
             />
+            {application.returnsPolicyDetails && (
+              <Field label="Returns / exchanges details" value={application.returnsPolicyDetails} />
+            )}
             <Field
               label="Inventory model"
               value={
