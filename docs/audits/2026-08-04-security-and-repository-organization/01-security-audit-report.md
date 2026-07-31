@@ -75,12 +75,29 @@ merged to `main`). This pass re-verified rather than re-derived them:
 | SEC-003 / RLS-001 (`products` table RLS) | Still closed | Same test file, live anon-vs-service-role comparison returns 0 leaked rows. |
 | TX-001 / SEC-006 (transactional multi-table writes) | Still closed | `set_user_access`/`replace_product_with_variants` still reject anon live. |
 | `SECURITY DEFINER` search_path pinning | Consistent | Every one of the 54 `security definer` occurrences across `supabase/migrations/*.sql` + `schema.sql` has a matching `set search_path` — no gap found. |
-| SEC-005 / DEP-001 (Sharp/PostCSS via Next.js) | Still open, unchanged | `npm audit` still reports the same 3 High advisories (Next.js → postcss/sharp transitive). No patched resolution exists in the current Next major (same conclusion as the 2026-07-23 pass). |
+| SEC-005 / DEP-001 (Sharp/PostCSS via Next.js) | Still open, re-confirmed with a live fix attempt this pass | `npm audit` still reports the same 3 High advisories (Next.js → postcss@8.4.31/sharp@0.34.5, bundled inside `next`'s own `node_modules/next/node_modules/*`). This pass actually ran `npm audit fix` and `npm audit fix --force` (not just a dry-run) to verify: the only resolution npm can find is downgrading `next` to `9.3.3` — a 7-major-version breaking downgrade, unusable for this Next 16 App Router codebase. `next@16.2.12` is npm's current `latest` dist-tag; 16.3.x exists only as `preview`/`canary`, not a stable release. No safe fix exists. (A harmless, unrelated lockfile drift was fixed in the same pass — see the `chore: sync package-lock.json` commit.) |
 | SEC-008 / ERR-001 (raw error leakage) | **Fully closed this pass** | Confirmed 35 admin routes + 10 brand-portal routes (45 total, 67 call sites) returned `error.message` directly at the start of this pass. All 45 files were fixed (see `02-vulnerability-remediation-report.md`). Zero remaining routes in `app/api/admin/**` or `app/api/brand-portal/**` leak a raw database error to the client. |
 | SEC-012/CSP-001 (CSP allows `unsafe-inline`/`unsafe-eval`) | Still open, unchanged | `next.config.js` unchanged since the prior audit. |
 
 ## New areas checked this pass, no issues found
 
+- **IDOR spot-check on brand-portal `[id]` routes**: `collections/[id]`,
+  `product-options/types/[id]`, `product-options/values/[id]`, and
+  `products/[id]` all fetch the target row first and compare its
+  `brand_id`/`brand_slug` against the caller's own before mutating.
+  `reviews/[id]/reply/route.ts` is a step further — it uses
+  `createSupabaseServerClient()` (the RLS-respecting authenticated
+  client, not `supabaseAdmin`), so tenant isolation there is enforced at
+  the database level regardless of app code: the `review_replies` RLS
+  policy's `WITH CHECK` clause (`20260726000003_reviews_system.sql`)
+  requires `exists(select 1 from reviews r join products p on
+  p.id=r.product_id where r.id=review_id and p.brand_slug=brand_slug)`,
+  so Brand A genuinely cannot write a reply row attributed to Brand A
+  against Brand B's product review — the database rejects it even if the
+  route's own logic were buggy. This is a defense-in-depth pattern worth
+  reusing elsewhere, not just a passing check. (Spot-check only — see
+  `08-deferred-risks-and-recommendations.md` for the still-open
+  full-route-set IDOR pass.)
 - **Admin-only enforcement of the new Featured toggle** (added earlier in
   this session's separate Product Editor work, audited here as part of
   this security pass): `app/api/admin/products/bulk/route.ts`'s new

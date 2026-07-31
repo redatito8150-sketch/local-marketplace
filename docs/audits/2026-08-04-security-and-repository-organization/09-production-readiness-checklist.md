@@ -30,7 +30,7 @@ database error message to the client. Full verification re-run again
 | Full test suite | `npm test` | 253/253 passing |
 | Production build | `npm run build` | Succeeded, all routes generated |
 | Mobile TypeScript (read-only) | `cd apps/mobile && npx tsc --noEmit -p tsconfig.json` | 3 pre-existing errors, unrelated to this branch — see `06-protected-mobile-work-report.md` |
-| Dependency audit | `npm audit --omit=dev` | 3 High advisories (Next.js → postcss/sharp), unchanged/already-documented (SEC-005/DEP-001), no safe fix available in the current Next major |
+| Dependency audit | `npm audit --omit=dev`, `npm audit fix`, `npm audit fix --force` | 3 High advisories (Next.js → postcss/sharp) confirmed still open, no safe fix (only resolution found is a breaking downgrade to `next@9.3.3`). `npm audit fix` (non-force) synced a harmless lockfile drift (`next` recorded as 16.2.10, actually installed/used at 16.2.12) — kept, verified with a full re-run of tsc/test/build. |
 | Live RLS/RPC regression | `node --test tests/security.rls.test.ts` | 12/12 passing, live against the configured Supabase project |
 
 ## Exact commands required BEFORE merge

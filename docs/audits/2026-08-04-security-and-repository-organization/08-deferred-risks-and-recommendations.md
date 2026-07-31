@@ -36,11 +36,38 @@ Both items originally listed here are now done:
   include a field it shouldn't for the caller's role?) or *IDOR*
   correctness (can a valid brand-owner ID be swapped for another brand's
   entity ID within an otherwise-authorized route?) line-by-line across
-  all 87 routes.
+  all 87 routes. A spot-check of the 5 brand-portal `[id]` dynamic routes
+  this pass (`collections`, `product-options/types`, `product-options/values`,
+  `products`, `reviews/[id]/reply`) found every one either checks
+  ownership in application code before mutating, or — for
+  `reviews/[id]/reply`, which uses the RLS-respecting authenticated
+  client rather than the service-role client — is additionally enforced
+  by a database `WITH CHECK` constraint requiring the review's product to
+  belong to the caller's own brand (`review_replies` RLS policy in
+  `20260726000003_reviews_system.sql`, confirmed by reading the policy
+  text). No issue found in this subset — but the other ~80 routes were
+  not individually re-verified this pass.
 - **Risk addressed:** Cross-tenant data leakage that a top-level "is this
   an admin/brand-owner" check wouldn't catch on its own.
 - **Complexity:** Large.
 - **Dependencies:** None.
+- **Affects:** Web.
+
+### Monitor for a patched Next.js release (SEC-005/DEP-001 follow-up)
+
+- **Reason:** Re-confirmed this pass (see `01-security-audit-report.md`)
+  that `next@16.2.12` — npm's current stable `latest` — still bundles a
+  vulnerable `postcss@8.4.31`/`sharp@0.34.5`, and the only resolution
+  `npm audit fix --force` can find is a breaking downgrade to `next@9.3.3`.
+  There is nothing to fix today; this is a "watch and upgrade when
+  possible" item, not a deferred fix.
+- **Risk addressed:** 3 High-severity advisories (PostCSS XSS/path
+  traversal, Sharp/libvips CVEs) remain present until Next.js ships a
+  16.x (or later stable) release with patched dependencies.
+- **Complexity:** Small to check periodically (`npm audit`); Medium to
+  actually upgrade once available (needs the same test/build validation
+  this pass ran).
+- **Dependencies:** Upstream Next.js release.
 - **Affects:** Web.
 
 ### Add a mobile TypeScript check to CI
