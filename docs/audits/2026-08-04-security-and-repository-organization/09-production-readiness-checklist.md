@@ -21,6 +21,15 @@ database error message to the client. Full verification re-run again
 (`tsc`, `eslint app/api/admin`, `npm test`, `npm run build`) — all clean,
 253/253 tests passing.
 
+**Update (same day, part 4):** re-verified the dependency advisory
+(`npm audit fix`/`--force`, still no safe fix), then ran a full
+route-by-route IDOR pass across all 87 `app/api/**` routes — no IDOR
+issue found, but the correct-pattern re-grep turned up 5 more raw-error
+leaks the original SEC-008 grep missed (case-sensitivity gap). Fixed all
+5. **SEC-008 and the full IDOR pass are now both genuinely complete.**
+Full verification re-run one more time (`tsc`, `eslint app/api`,
+`npm test`, `npm run build`) — all clean, 253/253 tests passing.
+
 ## Results on this branch (`audit/security-and-repository-organization`)
 
 | Check | Command | Result |

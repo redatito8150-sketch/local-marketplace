@@ -7,10 +7,20 @@ Both items originally listed here are now done:
 - **RLS-016 migration** (`20260804000001_scope_product_child_table_rls.sql`)
   — applied to the live Supabase project by the project owner, re-verified
   live via `node --test tests/security.rls.test.ts` (12/12 passing).
-- **SEC-008 (raw error leakage)** — fully closed. All 10 brand-portal
-  routes and all 35 admin routes now use `safeErrorResponse()`/`logError()`
-  instead of returning `error.message` to the client. See
-  `02-vulnerability-remediation-report.md` for both fixes' detail.
+- **SEC-008 (raw error leakage)** — fully closed, twice-verified. All 10
+  brand-portal routes and all 35 admin routes that had a raw-error
+  response now use `safeErrorResponse()`/`logError()` instead of
+  returning `error.message` to the client (of the 43 total admin route
+  files, the other 8 never had the issue); a follow-up full-route IDOR
+  pass then found and fixed 5 more instances the original discovery
+  grep's case-sensitivity missed (`brands/[slug]/follow`,
+  `join/application/documents`, `admin`+`brand-portal` `product-options`
+  list routes). See `02-vulnerability-remediation-report.md` for every
+  fix's detail.
+- **Full route-by-route IDOR/output-filtering pass** — complete. All 87
+  routes individually read; no IDOR issue found anywhere (see
+  `04-api-authorization-matrix.md`'s "Full IDOR/output-filtering pass"
+  section for the full method and result).
 
 ## NEXT (recommended in the next development phase)
 
@@ -28,30 +38,15 @@ Both items originally listed here are now done:
   workflow.
 - **Affects:** Database, infrastructure/operations.
 
-### Full route-by-route IDOR/output-filtering pass
+### ~~Full route-by-route IDOR/output-filtering pass~~ — DONE
 
-- **Reason:** This audit's API authorization matrix confirmed every
-  admin/brand-portal route has its expected top-level auth check, but did
-  not re-verify every route's *output filtering* (does a response ever
-  include a field it shouldn't for the caller's role?) or *IDOR*
-  correctness (can a valid brand-owner ID be swapped for another brand's
-  entity ID within an otherwise-authorized route?) line-by-line across
-  all 87 routes. A spot-check of the 5 brand-portal `[id]` dynamic routes
-  this pass (`collections`, `product-options/types`, `product-options/values`,
-  `products`, `reviews/[id]/reply`) found every one either checks
-  ownership in application code before mutating, or — for
-  `reviews/[id]/reply`, which uses the RLS-respecting authenticated
-  client rather than the service-role client — is additionally enforced
-  by a database `WITH CHECK` constraint requiring the review's product to
-  belong to the caller's own brand (`review_replies` RLS policy in
-  `20260726000003_reviews_system.sql`, confirmed by reading the policy
-  text). No issue found in this subset — but the other ~80 routes were
-  not individually re-verified this pass.
-- **Risk addressed:** Cross-tenant data leakage that a top-level "is this
-  an admin/brand-owner" check wouldn't catch on its own.
-- **Complexity:** Large.
-- **Dependencies:** None.
-- **Affects:** Web.
+All 87 routes were individually read for IDOR/ownership correctness in a
+follow-up pass. No IDOR issue found. See
+`04-api-authorization-matrix.md`'s "Full IDOR/output-filtering pass"
+section for the method, the two isolation patterns found (app-code
+ownership checks, and one database-RLS-enforced case in
+`brand-portal/reviews/[id]/reply`), and the 5 raw-error leaks the same
+pass turned up and fixed (folded into SEC-008 above).
 
 ### Monitor for a patched Next.js release (SEC-005/DEP-001 follow-up)
 
