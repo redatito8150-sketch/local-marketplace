@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -15,10 +16,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     .eq("id", params.id);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to mark notification read: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.notifications.mark-read", error, "Failed to mark notification read");
   }
 
   return NextResponse.json({ ok: true });

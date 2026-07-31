@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { optionTypeReferences } from "@/lib/admin/reusableDataLifecycle";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!await requireAdminUser()) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -14,7 +15,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const references = await optionTypeReferences(id);
     if (references.selectedCount) return NextResponse.json({ error: "This option type is referenced and can only be archived.", references }, { status: 409 });
     const { error } = await supabaseAdmin.from("option_types").delete().eq("id", id);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ deleted: true });
+    return error ? safeErrorResponse("admin.product-options.types.delete", error) : NextResponse.json({ deleted: true });
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
@@ -22,5 +23,5 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   else if (body.action === "rename" && body.name?.trim()) Object.assign(patch, { name: body.name.trim(), key: normalizeOptionKey(body.name) });
   else return NextResponse.json({ error: "Invalid management action" }, { status: 400 });
   const { error } = await supabaseAdmin.from("option_types").update(patch).eq("id", id);
-  return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ updated: true });
+  return error ? safeErrorResponse("admin.product-options.types.update", error) : NextResponse.json({ updated: true });
 }

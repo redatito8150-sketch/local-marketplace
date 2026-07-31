@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/auditLog";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { applicationBrandCreatedEmail } from "@/lib/email/templates/brandApplication";
+import { logError } from "@/lib/errorLog";
 
 type BrandInputWithSource = BrandInput & { sourceApplicationId?: string };
 
@@ -44,9 +45,10 @@ export async function POST(request: NextRequest) {
     });
 
     if (rpcError) {
-      const friendly = CONVERSION_ERROR_MESSAGES[rpcError.message] ?? `Failed to create brand: ${rpcError.message}`;
+      const friendly = CONVERSION_ERROR_MESSAGES[rpcError.message];
+      if (!friendly) logError("admin.brands.convert", rpcError.message);
       const status = rpcError.message === "ALREADY_CONVERTED" ? 409 : 400;
-      return NextResponse.json({ error: friendly }, { status });
+      return NextResponse.json({ error: friendly ?? "Failed to create brand" }, { status });
     }
 
     await logAudit({
@@ -103,11 +105,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    const message =
-      error.code === "23505" /* unique_violation */
-        ? `A brand with slug "${body.slug}" already exists`
-        : `Failed to create brand: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505" /* unique_violation */) {
+      return NextResponse.json({ error: `A brand with slug "${body.slug}" already exists` }, { status: 409 });
+    }
+    logError("admin.brands.create", error.message);
+    return NextResponse.json({ error: "Failed to create brand" }, { status: 500 });
   }
 
   await logAudit({

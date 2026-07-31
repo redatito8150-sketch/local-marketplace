@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 import type {
   ContactInfoContent,
   FeaturedBrandAndSponsoredContent,
@@ -128,10 +129,7 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ key: 
     .upsert({ key, value: body.value, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.save", error, "Failed to save");
   }
 
   await logAudit({
@@ -166,10 +164,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ k
 
   const { error } = await supabaseAdmin.from("site_content").delete().eq("key", key);
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to reset: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.reset", error, "Failed to reset");
   }
 
   await logAudit({

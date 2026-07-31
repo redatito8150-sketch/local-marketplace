@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { PAGE_SECTION_REGISTRY, type PageSectionType } from "@/lib/pageStudio/registry";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function POST(_request: Request, props: { params: Promise<{ id: string }> }) {
   const staff = await requireStaffRole("manager");
@@ -13,7 +14,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     .select("page_key, section_type, draft_deleted")
     .eq("id", id)
     .maybeSingle();
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return safeErrorResponse("admin.page-studio.sections.duplicate.read", readError);
   if (!section || section.draft_deleted) return NextResponse.json({ error: "Page section not found" }, { status: 404 });
   const sectionType = section.section_type as PageSectionType;
   if (!PAGE_SECTION_REGISTRY[sectionType]?.canDuplicate) {
@@ -24,7 +25,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("admin.page-studio.sections.duplicate", error);
   revalidatePath(`/admin/page-studio/${section.page_key}`);
   revalidatePath(`/admin/page-studio/${section.page_key}/edit`);
   return NextResponse.json({ ok: true, sectionId }, { status: 201 });

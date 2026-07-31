@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionValueLabel, validateColorValueInput } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { logError } from "@/lib/errorLog";
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -51,9 +52,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) {
-    const message =
-      error.code === "23505" ? `"${label}" already exists for this option` : `Failed to create option value: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505") {
+      return NextResponse.json({ error: `"${label}" already exists for this option` }, { status: 409 });
+    }
+    logError("brand-portal.product-options.values.create", error.message);
+    return NextResponse.json({ error: "Failed to create option value" }, { status: 500 });
   }
 
   return NextResponse.json({

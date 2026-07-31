@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import type { ProductTaxonomyContent } from "@/types";
+import { safeErrorResponse } from "@/lib/apiError";
 
 function validate(value: Partial<ProductTaxonomyContent>): string | null {
   if (!Array.isArray(value.categories) || value.categories.length === 0) {
@@ -43,10 +44,7 @@ export async function PUT(request: NextRequest) {
     .upsert({ key: "product_taxonomy", value: body.value, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.product-taxonomy.save", error, "Failed to save");
   }
 
   await logAudit({
@@ -76,10 +74,7 @@ export async function DELETE() {
 
   const { error } = await supabaseAdmin.from("site_content").delete().eq("key", "product_taxonomy");
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to reset: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.product-taxonomy.reset", error, "Failed to reset");
   }
 
   await logAudit({

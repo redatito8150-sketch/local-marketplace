@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { deriveSkuToken, normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/reusableDataLifecycle";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!await requireAdminUser()) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -14,7 +15,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const references = await optionValueReferences(id);
     if (references.selectedCount || references.variantCount || references.historical) return NextResponse.json({ error: HISTORICAL_DELETE_MESSAGE, references }, { status: 409 });
     const { error } = await supabaseAdmin.from("option_values").delete().eq("id", id);
-    return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ deleted: true });
+    return error ? safeErrorResponse("admin.product-options.values.delete", error) : NextResponse.json({ deleted: true });
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
@@ -22,5 +23,5 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   else if (body.action === "rename" && body.name?.trim()) Object.assign(patch, { label: body.name.trim(), key: normalizeOptionKey(body.name), sku_token: deriveSkuToken(body.name) });
   else return NextResponse.json({ error: "Invalid management action" }, { status: 400 });
   const { error } = await supabaseAdmin.from("option_values").update(patch).eq("id", id);
-  return error ? NextResponse.json({ error: error.message }, { status: 500 }) : NextResponse.json({ updated: true });
+  return error ? safeErrorResponse("admin.product-options.values.update", error) : NextResponse.json({ updated: true });
 }

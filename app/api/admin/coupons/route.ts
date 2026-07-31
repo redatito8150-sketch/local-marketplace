@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateCouponInput, type CouponInput } from "@/lib/admin/couponValidation";
 import { logAudit } from "@/lib/auditLog";
+import { logError } from "@/lib/errorLog";
 
 export async function POST(request: NextRequest) {
   const staff = await requireStaffRole("manager");
@@ -27,11 +28,11 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    const message =
-      error.code === "23505" /* unique_violation */
-        ? `A coupon with code "${code}" already exists`
-        : `Failed to create coupon: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: error.code === "23505" ? 409 : 500 });
+    if (error.code === "23505" /* unique_violation */) {
+      return NextResponse.json({ error: `A coupon with code "${code}" already exists` }, { status: 409 });
+    }
+    logError("admin.coupons.create", error.message);
+    return NextResponse.json({ error: "Failed to create coupon" }, { status: 500 });
   }
 
   await logAudit({

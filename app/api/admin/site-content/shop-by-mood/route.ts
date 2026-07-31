@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import type { MoodTileContent } from "@/types";
 
@@ -56,10 +57,7 @@ export async function PUT(request: NextRequest) {
     .upsert({ key: "shop_by_mood", value: tiles, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.shop-by-mood", error, "Failed to save");
   }
 
   await logAudit({

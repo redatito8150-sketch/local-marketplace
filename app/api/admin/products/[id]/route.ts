@@ -14,6 +14,7 @@ import {
   replaceProductMedia,
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -58,7 +59,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const { error } = await supabaseAdmin.from("products").update(productPayload).eq("id", params.id);
   if (error) {
-    return NextResponse.json({ error: `Failed to update product: ${error.message}` }, { status: 500 });
+    return safeErrorResponse("admin.products.update", error, "Failed to update product");
   }
 
   const optionsResult = await replaceProductOptionSelections({
@@ -137,10 +138,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
   const { error } = await supabaseAdmin.from("products").delete().eq("id", params.id);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to delete product: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.products.delete", error, "Failed to delete product");
   }
 
   await logAudit({

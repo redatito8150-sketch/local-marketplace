@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
@@ -58,12 +59,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 
   if (error) {
     // The DB trigger's own message is already clear and user-facing —
-    // pass it through as-is instead of wrapping it in "Failed to update
-    // brand: ...".
-    const message = error.message.includes("SKU prefix cannot be changed")
-      ? error.message
-      : `Failed to update brand: ${error.message}`;
-    return NextResponse.json({ error: message }, { status: 400 });
+    // pass it through as-is instead of wrapping it in a generic message.
+    if (error.message.includes("SKU prefix cannot be changed")) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return safeErrorResponse("admin.brands.update", error, "Failed to update brand", 400);
   }
 
   await logAudit({
@@ -95,10 +95,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ s
   const { error } = await supabaseAdmin.from("brands").delete().eq("slug", params.slug);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to delete brand: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.brands.delete", error, "Failed to delete brand");
   }
 
   await logAudit({

@@ -5,6 +5,7 @@ import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Unlike products, brand page content applies instantly — the confirmed
 // design decision is that the admin just gets notified to spot-check it
@@ -68,10 +69,7 @@ export async function PATCH(request: NextRequest) {
     .eq("slug", owner.brandSlug);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to update brand page: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("brand-portal.brand-content.update", error, "Failed to update brand page");
   }
 
   await logAudit({

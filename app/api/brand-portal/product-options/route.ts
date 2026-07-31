@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { logError } from "@/lib/errorLog";
 
 export async function GET(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -22,10 +23,8 @@ export async function GET(request: NextRequest) {
   ]);
 
   if (typesError || valuesError) {
-    return NextResponse.json(
-      { error: `Failed to load options: ${typesError?.message ?? valuesError?.message}` },
-      { status: 500 }
-    );
+    logError("brand-portal.product-options.list", typesError?.message ?? valuesError?.message ?? "unknown error");
+    return NextResponse.json({ error: "Failed to load options" }, { status: 500 });
   }
 
   return NextResponse.json({

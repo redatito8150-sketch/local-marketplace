@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
+import { safeErrorResponse } from "@/lib/apiError";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -29,6 +30,6 @@ export async function POST(request: NextRequest) {
     p_source: "admin",
     p_operation_key: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   } as never);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return safeErrorResponse("admin.inventory.adjustments", error, "Failed to apply the adjustment", 400);
   return NextResponse.json({ adjustments: data });
 }

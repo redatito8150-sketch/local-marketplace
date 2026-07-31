@@ -6,6 +6,7 @@ import { reviewInputSchema, toReviewInsert } from "@/lib/reviews/validation";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
 import { getRequestUser } from "@/lib/supabase/requestUser";
+import { logError } from "@/lib/errorLog";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
@@ -67,7 +68,7 @@ export async function POST(request: NextRequest) {
   const {data:review,error}=await supabaseAdmin.from("reviews").insert(toReviewInsert(user.id, parsed.data)).select("id").single();
   if(error){
     if(error.code==="23505")return NextResponse.json({error:"This purchase has already been reviewed."},{status:409});
-    console.error("Review creation failed", { code: error.code, message: error.message });
+    logError("reviews.create", error.message);
     return NextResponse.json({error:"Your review could not be published. Please try again."},{status:500});
   }
   const uploaded:string[]=[];

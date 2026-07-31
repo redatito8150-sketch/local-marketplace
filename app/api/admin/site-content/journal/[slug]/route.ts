@@ -3,6 +3,7 @@ import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { ARTICLES, type JournalArticle } from "@/content/journal";
+import { safeErrorResponse } from "@/lib/apiError";
 
 function validate(body: Partial<JournalArticle>): string | null {
   if (!body.title?.trim()) return "Title is required";
@@ -56,10 +57,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     .upsert({ key: "journal_articles", value: next, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.journal.save", error, "Failed to save");
   }
 
   await logAudit({
@@ -100,10 +98,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ s
     .upsert({ key: "journal_articles", value: next, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to delete: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.journal.delete", error, "Failed to delete");
   }
 
   await logAudit({

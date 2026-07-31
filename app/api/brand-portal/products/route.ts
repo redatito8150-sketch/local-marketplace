@@ -16,6 +16,7 @@ import {
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { safeErrorResponse } from "@/lib/apiError";
 
 function slugify(value: string): string {
   return value
@@ -103,10 +104,7 @@ export async function POST(request: NextRequest) {
     if (!error) {
       inserted = true;
     } else if (error.code !== "23505" /* unique_violation */) {
-      return NextResponse.json(
-        { error: `Failed to submit product: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("brand-portal.products.create", error, "Failed to submit product");
     }
   }
 

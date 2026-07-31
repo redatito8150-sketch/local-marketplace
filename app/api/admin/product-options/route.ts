@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { logError } from "@/lib/errorLog";
 
 // Every system option type/value (brand_id null) plus the given brand's
 // own private ones — never another brand's. Used to populate the Variant
@@ -30,10 +31,8 @@ export async function GET(request: NextRequest) {
   ]);
 
   if (typesError || valuesError) {
-    return NextResponse.json(
-      { error: `Failed to load options: ${typesError?.message ?? valuesError?.message}` },
-      { status: 500 }
-    );
+    logError("admin.product-options.list", typesError?.message ?? valuesError?.message ?? "unknown error");
+    return NextResponse.json({ error: "Failed to load options" }, { status: 500 });
   }
 
   return NextResponse.json({

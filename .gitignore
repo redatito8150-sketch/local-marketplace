@@ -7,3 +7,8 @@ out
 
 supabase/.temp/
 .vercel
+
+# JetBrains IDE workspace state (e.g. apps/mobile/.idea/workspace.xml was
+# showing up as untracked — this is local editor state, never repo content).
+.idea/
+*.iml

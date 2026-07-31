@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
+import { safeErrorResponse } from "@/lib/apiError";
 import type { HeroTileContent, HomeHeroTilesContent } from "@/types";
 
 const SLUGS: (keyof HomeHeroTilesContent)[] = ["women", "men", "kids", "home"];
@@ -40,10 +41,7 @@ export async function PUT(request: NextRequest) {
     .upsert({ key: "home_hero_tiles", value: next, updated_at: new Date().toISOString() });
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to save: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.site-content.home-hero-tiles", error, "Failed to save");
   }
 
   await logAudit({

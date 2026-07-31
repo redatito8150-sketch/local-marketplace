@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Marks every unread notification as read.
 export async function PATCH() {
@@ -15,10 +16,7 @@ export async function PATCH() {
     .eq("read", false);
 
   if (error) {
-    return NextResponse.json(
-      { error: `Failed to mark notifications read: ${error.message}` },
-      { status: 500 }
-    );
+    return safeErrorResponse("admin.notifications.mark-all-read", error, "Failed to mark notifications read");
   }
 
   return NextResponse.json({ ok: true });

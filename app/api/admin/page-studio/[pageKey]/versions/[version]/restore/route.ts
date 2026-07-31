@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function POST(
   _request: Request,
@@ -21,7 +22,7 @@ export async function POST(
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return safeErrorResponse("admin.page-studio.versions.restore", error, "Failed to restore version", 400);
   revalidatePath(`/admin/page-studio/${pageKey}`);
   return NextResponse.json({ ok: true });
 }

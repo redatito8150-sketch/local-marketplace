@@ -8,6 +8,8 @@ import { sendEmail } from "@/lib/email/sendEmail";
 import { orderCancelledEmail } from "@/lib/email/templates/orderCancelled";
 import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
 import { getOrderForAdmin } from "@/lib/data/admin";
+import { safeErrorResponse } from "@/lib/apiError";
+import { logError } from "@/lib/errorLog";
 
 const CANCEL_ERROR_MESSAGES: Record<string, string> = {
   ALREADY_CANCELLED: "This order is already cancelled",
@@ -33,10 +35,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       .eq("id", params.id);
 
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to save note: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.orders.save-note", error, "Failed to save note");
     }
 
     await logAudit({
@@ -72,8 +71,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
     if (rpcError) {
       const code = rpcError.message.split(":")[0]?.trim();
-      const message = CANCEL_ERROR_MESSAGES[code] ?? `Failed to cancel order: ${rpcError.message}`;
-      return NextResponse.json({ error: message }, { status: 400 });
+      const message = CANCEL_ERROR_MESSAGES[code];
+      if (!message) logError("admin.orders.cancel", rpcError.message);
+      return NextResponse.json({ error: message ?? "Failed to cancel order" }, { status: 400 });
     }
   } else {
     const { error } = await supabaseAdmin
@@ -82,10 +82,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       .eq("id", params.id);
 
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to update order: ${error.message}` },
-        { status: 500 }
-      );
+      return safeErrorResponse("admin.orders.status", error, "Failed to update order");
     }
   }
 

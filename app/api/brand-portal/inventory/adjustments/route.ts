@@ -3,6 +3,7 @@ import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
+import { safeErrorResponse } from "@/lib/apiError";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -36,6 +37,6 @@ export async function POST(request: NextRequest) {
     p_source: "brand_portal",
     p_operation_key: operationKey,
   } as never);
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) return safeErrorResponse("brand-portal.inventory.adjustments", error, "Failed to apply the adjustment", 400);
   return NextResponse.json({ adjustments: data });
 }

@@ -4,6 +4,7 @@ import { getDraftPageSections } from "@/lib/data/pageStudio";
 import { validatePageSectionConfig } from "@/lib/pageStudio/registry";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 export async function POST(_request: Request, props: { params: Promise<{ pageKey: string }> }) {
   const staff = await requireStaffRole("manager");
@@ -27,7 +28,7 @@ export async function POST(_request: Request, props: { params: Promise<{ pageKey
     p_actor_id: staff.user.id,
     p_actor_label: staff.user.email ?? staff.user.id,
   });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return safeErrorResponse("admin.page-studio.publish", error, "Failed to publish");
   revalidatePath("/");
   revalidatePath(`/admin/page-studio/${pageKey}`);
   return NextResponse.json({ ok: true, version });
