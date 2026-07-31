@@ -17,6 +17,7 @@ import {
 import ApplicationTransitionPanel from "@/components/admin/ApplicationTransitionPanel";
 import ApplicationAdminNotes from "@/components/admin/ApplicationAdminNotes";
 import ApplicationDocumentsList from "@/components/admin/ApplicationDocumentsList";
+import ApproveAndCreateBrandButton from "@/components/admin/ApproveAndCreateBrandButton";
 
 export default async function AdminApplicationDetailPage(
   props: {
@@ -56,12 +57,15 @@ export default async function AdminApplicationDetailPage(
           </span>
           {(application.status === "approved" || application.status === "approved_pending_creation") &&
             !application.approvedBrandId && (
-              <Link
-                href={`/admin/brands/new?applicationId=${application.id}`}
-                className="rounded-md bg-mahalyred px-3.5 py-2 text-[12.5px] font-bold text-white hover:bg-mahalyred/90"
-              >
-                Create brand
-              </Link>
+              <div className="flex flex-col items-end gap-1.5">
+                <ApproveAndCreateBrandButton applicationId={application.id} />
+                <Link
+                  href={`/admin/brands/new?applicationId=${application.id}`}
+                  className="text-[11.5px] font-semibold text-ink-soft/50 hover:text-ink-soft/80 hover:underline"
+                >
+                  Or create manually
+                </Link>
+              </div>
             )}
           {application.approvedBrandId && (
             <Link
