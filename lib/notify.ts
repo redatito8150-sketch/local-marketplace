@@ -11,6 +11,7 @@ export type NotificationType =
   | "product_archived"
   | "brand_updated"
   | "brand_application_submitted"
+  | "coupon_created"
   | "low_stock"
   | "image_upload_failed"
   | "storage_error";
@@ -22,6 +23,7 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   product_created: DISCORD_COLORS.green,
   product_published: DISCORD_COLORS.green,
   brand_application_submitted: DISCORD_COLORS.green,
+  coupon_created: DISCORD_COLORS.green,
   product_updated: DISCORD_COLORS.orange,
   brand_updated: DISCORD_COLORS.orange,
   low_stock: DISCORD_COLORS.orange,

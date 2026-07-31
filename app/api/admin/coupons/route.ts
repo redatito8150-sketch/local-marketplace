@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateCouponInput, type CouponInput } from "@/lib/admin/couponValidation";
 import { logAudit } from "@/lib/auditLog";
 import { logError } from "@/lib/errorLog";
+import { notify } from "@/lib/notify";
 
 export async function POST(request: NextRequest) {
   const staff = await requireStaffRole("manager");
@@ -43,6 +44,17 @@ export async function POST(request: NextRequest) {
     action: "create",
     after: body,
   });
+
+  await notify(
+    "coupon_created",
+    `New coupon: ${code}`,
+    body.discountType === "percentage" ? `${body.discountValue}% off` : `${body.discountValue} off`,
+    {
+      entityId: code,
+      entityIdLabel: "Coupon Code",
+      actorLabel: staff.user.email ?? staff.user.id,
+    }
+  );
 
   return NextResponse.json({ code });
 }
