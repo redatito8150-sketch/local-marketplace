@@ -864,6 +864,33 @@ export interface ProfileRecord {
   createdAt: string;
 }
 
+// ── Admin (custom roles/permissions — Discord-style access control) ────────
+
+export interface PermissionRecord {
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+}
+
+export interface RoleRecord {
+  id: string;
+  name: string;
+  description: string;
+  color: string | null;
+  isProtected: boolean;
+  permissionKeys: string[];
+  memberCount: number;
+  createdAt: string;
+}
+
+export interface RoleMemberRecord {
+  userId: string;
+  fullName: string | null;
+  email: string | null;
+  assignedAt: string;
+}
+
 // ── Admin (raw `notifications` row shape) ───────────────────────────────────
 
 export type NotificationResolution = "pending" | "approved" | "reverted" | "n/a";

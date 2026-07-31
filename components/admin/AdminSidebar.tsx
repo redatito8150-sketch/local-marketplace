@@ -16,6 +16,7 @@ import {
   Package,
   MessageSquareWarning,
   Settings,
+  ShieldCheck,
   ShoppingBag,
   Store,
   Tag,
@@ -82,6 +83,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
     label: "People & Content",
     items: [
       { label: "Users & Access", href: "/admin/users", icon: Users },
+      { label: "Roles & Permissions", href: "/admin/roles", icon: ShieldCheck, minRole: "admin" },
       { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, minRole: "manager" },
       { label: "Notifications", href: "/admin/notifications", icon: Bell, badge: "notifications" },
     ],
