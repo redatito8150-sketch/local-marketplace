@@ -1,6 +1,14 @@
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { LEGACY_TIER_RANK, canActorManage } from "@/lib/roleHierarchy";
+
+// Re-exported for backward compatibility — every call site in this
+// project imports these from "@/lib/supabase/permissions"; the actual
+// definitions live in lib/roleHierarchy.ts (dependency-free, so they can
+// be unit-tested without Supabase credentials — see
+// tests/roleHierarchy.test.ts).
+export { LEGACY_TIER_RANK, canActorManage };
 
 // Keys must match supabase/migrations/20260806000002_custom_roles_permissions.sql's
 // seeded `permissions` rows exactly — this is the compile-time mirror of
@@ -66,4 +74,24 @@ export async function requirePermission(
   if (!permissions.has(key)) return null;
 
   return { user, permissions };
+}
+
+// A user's highest rank across every role they hold, floored by their
+// legacy profiles.role tier. 0 means "holds no role and no legacy
+// staff-tier rank" (a plain customer/brand_owner/brand_assistant).
+export async function getUserMaxRank(userId: string): Promise<number> {
+  const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", userId).maybeSingle();
+  const { data: userRoleRows } = await supabaseAdmin
+    .from("user_roles")
+    .select("roles(rank)")
+    .eq("user_id", userId);
+
+  const roleRanks = (userRoleRows ?? []).map((row) => {
+    const roles = row.roles as unknown as { rank: number } | { rank: number }[] | null;
+    if (Array.isArray(roles)) return roles[0]?.rank ?? 0;
+    return roles?.rank ?? 0;
+  });
+  const maxRoleRank = roleRanks.length > 0 ? Math.max(...roleRanks) : 0;
+  const legacyFloor = LEGACY_TIER_RANK[profile?.role ?? ""] ?? 0;
+  return Math.max(maxRoleRank, legacyFloor);
 }

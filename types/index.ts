@@ -879,6 +879,7 @@ export interface RoleRecord {
   description: string;
   color: string | null;
   isProtected: boolean;
+  rank: number;
   permissionKeys: string[];
   memberCount: number;
   createdAt: string;

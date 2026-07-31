@@ -29,9 +29,11 @@ function RoleColorDot({ color }: { color: string | null }) {
 export default function RolesManager({
   initialRoles,
   allPermissions,
+  actorMaxRank,
 }: {
   initialRoles: RoleRecord[];
   allPermissions: PermissionRecord[];
+  actorMaxRank: number;
 }) {
   const [roles, setRoles] = useState(initialRoles);
   const [selectedId, setSelectedId] = useState<string | null>(initialRoles[0]?.id ?? null);
@@ -39,6 +41,7 @@ export default function RolesManager({
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(DEFAULT_COLOR);
+  const [newRank, setNewRank] = useState(Math.max(1, actorMaxRank - 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [members, setMembers] = useState<RoleMemberRecord[] | null>(null);
@@ -46,6 +49,7 @@ export default function RolesManager({
   const [addEmail, setAddEmail] = useState("");
 
   const selected = useMemo(() => roles.find((r) => r.id === selectedId) ?? null, [roles, selectedId]);
+  const outranked = selected ? selected.rank >= actorMaxRank : false;
 
   const permissionsByCategory = useMemo(() => {
     const map = new Map<string, PermissionRecord[]>();
@@ -90,7 +94,7 @@ export default function RolesManager({
       const res = await fetch("/api/admin/roles", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), color: newColor }),
+        body: JSON.stringify({ name: newName.trim(), color: newColor, rank: newRank }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -214,6 +218,17 @@ export default function RolesManager({
               maxLength={50}
               className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] outline-none focus:border-slate-400"
             />
+            <label className="block text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+              Rank (must be below your own — {actorMaxRank})
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, actorMaxRank - 1)}
+              value={newRank}
+              onChange={(e) => setNewRank(Number(e.target.value))}
+              className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12.5px] outline-none focus:border-slate-400"
+            />
             <div className="flex items-center gap-2">
               <input
                 type="color"
@@ -221,7 +236,12 @@ export default function RolesManager({
                 onChange={(e) => setNewColor(e.target.value)}
                 className="h-8 w-8 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
               />
-              <button type="button" disabled={busy || !newName.trim()} onClick={createRole} className={`${dashboardButtonPrimary} h-8 flex-1 text-[12px]`}>
+              <button
+                type="button"
+                disabled={busy || !newName.trim() || newRank < 1 || newRank >= actorMaxRank}
+                onClick={createRole}
+                className={`${dashboardButtonPrimary} h-8 flex-1 text-[12px]`}
+              >
                 Create
               </button>
             </div>
@@ -240,6 +260,9 @@ export default function RolesManager({
                 <RoleColorDot color={role.color} />
                 <span className="min-w-0 flex-1 truncate">{role.name}</span>
                 {role.isProtected && <Lock className={`h-3 w-3 shrink-0 ${selected?.id === role.id ? "text-white/60" : "text-slate-400"}`} />}
+                <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${selected?.id === role.id ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"}`} title="Rank">
+                  #{role.rank}
+                </span>
                 <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${selected?.id === role.id ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"}`}>
                   {role.memberCount}
                 </span>
@@ -263,7 +286,7 @@ export default function RolesManager({
                 <p className="mt-0.5 text-[12px] text-slate-500">{selected.description || "No description"}</p>
               </div>
             </div>
-            {!selected.isProtected && (
+            {!selected.isProtected && !outranked && (
               <button
                 type="button"
                 onClick={() => deleteRole(selected)}
@@ -277,6 +300,11 @@ export default function RolesManager({
           {selected.isProtected && (
             <p className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-5 py-2.5 text-[11.5px] font-medium text-amber-800">
               <Shield className="h-3.5 w-3.5 shrink-0" /> Built-in role — permissions are locked so the system always behaves as expected. You can still rename it or manage members.
+            </p>
+          )}
+          {!selected.isProtected && outranked && (
+            <p className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-5 py-2.5 text-[11.5px] font-medium text-amber-800">
+              <Shield className="h-3.5 w-3.5 shrink-0" /> This role&apos;s rank (#{selected.rank}) is at or above your own — you can view it, but can&apos;t edit its permissions, delete it, or manage its members.
             </p>
           )}
 
@@ -314,7 +342,7 @@ export default function RolesManager({
                         </div>
                         <Toggle
                           on={selected.permissionKeys.includes(perm.key)}
-                          disabled={selected.isProtected || busy}
+                          disabled={selected.isProtected || outranked || busy}
                           onClick={() => togglePermission(selected, perm.key)}
                         />
                       </div>
@@ -333,7 +361,7 @@ export default function RolesManager({
                   placeholder="Account email to add"
                   className="flex-1 rounded-lg border border-slate-200 px-2.5 py-2 text-[12.5px] outline-none focus:border-slate-400"
                 />
-                <button type="button" disabled={busy || !addEmail.trim()} onClick={assignMember} className={`${dashboardButtonSecondary} h-9 gap-1.5 text-[12px]`}>
+                <button type="button" disabled={busy || outranked || !addEmail.trim()} onClick={assignMember} className={`${dashboardButtonSecondary} h-9 gap-1.5 text-[12px]`}>
                   <UserPlus className="h-3.5 w-3.5" /> Add
                 </button>
               </div>
@@ -349,9 +377,10 @@ export default function RolesManager({
                       </div>
                       <button
                         type="button"
+                        disabled={outranked}
                         onClick={() => removeMember(member.userId)}
                         aria-label={`Remove ${member.email ?? "member"}`}
-                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11.5px] font-semibold text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11.5px] font-semibold text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <UserMinus className="h-3.5 w-3.5" /> Remove
                       </button>

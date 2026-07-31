@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePermission, type PermissionKey } from "@/lib/supabase/permissions";
+import { requirePermission, getUserMaxRank, canActorManage, type PermissionKey } from "@/lib/supabase/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
@@ -38,12 +38,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const { data: existing } = await supabaseAdmin
     .from("roles")
-    .select("id, name, description, color, is_protected")
+    .select("id, name, description, color, is_protected, rank")
     .eq("id", params.id)
     .maybeSingle();
   if (!existing) {
     return NextResponse.json({ error: "Role not found" }, { status: 404 });
   }
+
+  const actorMaxRank = await getUserMaxRank(auth.user.id);
 
   const body = await request.json().catch(() => null);
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -55,6 +57,19 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
   if (typeof body?.description === "string") patch.description = body.description.trim();
   if (typeof body?.color === "string") patch.color = body.color.trim() || null;
+
+  // Rank changes are treated the same as permission changes: never on a
+  // protected role, and both the role's current rank and the requested
+  // new rank must sit strictly below the actor's own highest rank.
+  if (Number.isInteger(body?.rank) && body.rank !== existing.rank) {
+    if (existing.is_protected) {
+      return NextResponse.json({ error: "Built-in roles' rank can't be changed." }, { status: 403 });
+    }
+    if (!canActorManage(actorMaxRank, existing.rank) || !canActorManage(actorMaxRank, body.rank as number)) {
+      return NextResponse.json({ error: "You can't set a rank at or above your own rank" }, { status: 403 });
+    }
+    patch.rank = body.rank;
+  }
 
   if (Object.keys(patch).length > 1) {
     const { error } = await supabaseAdmin.from("roles").update(patch).eq("id", params.id);
@@ -76,6 +91,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         { error: "Built-in roles' permissions can't be changed — create a new role instead." },
         { status: 403 }
       );
+    }
+    if (!canActorManage(actorMaxRank, existing.rank)) {
+      return NextResponse.json({ error: "You can't manage a role at or above your own rank" }, { status: 403 });
     }
     const requestedKeys = (body.permissionKeys as unknown[]).filter(
       (key): key is PermissionKey => typeof key === "string" && VALID_PERMISSION_KEYS.includes(key as PermissionKey)
@@ -121,7 +139,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
 
   const { data: existing } = await supabaseAdmin
     .from("roles")
-    .select("id, name, is_protected")
+    .select("id, name, is_protected, rank")
     .eq("id", params.id)
     .maybeSingle();
   if (!existing) {
@@ -130,10 +148,24 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
   if (existing.is_protected) {
     return NextResponse.json({ error: "Built-in roles (Admin/Manager/Staff) can't be deleted." }, { status: 403 });
   }
+  const actorMaxRank = await getUserMaxRank(auth.user.id);
+  if (!canActorManage(actorMaxRank, existing.rank)) {
+    return NextResponse.json({ error: "You can't delete a role at or above your own rank" }, { status: 403 });
+  }
+
+  // Collect who holds this role before the cascade delete wipes their
+  // user_roles rows, so each of them can have their derived
+  // profiles.is_admin/role tier recomputed afterward — otherwise a
+  // deleted role's members would keep whatever tier they last had.
+  const { data: affectedMembers } = await supabaseAdmin.from("user_roles").select("user_id").eq("role_id", params.id);
 
   const { error } = await supabaseAdmin.from("roles").delete().eq("id", params.id);
   if (error) {
     return safeErrorResponse("admin.roles.delete", error, "Failed to delete role");
+  }
+
+  for (const member of affectedMembers ?? []) {
+    await supabaseAdmin.rpc("recompute_profile_tier", { p_user_id: member.user_id });
   }
 
   await logAudit({

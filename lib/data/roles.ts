@@ -18,7 +18,7 @@ export async function getAllPermissions(): Promise<PermissionRecord[]> {
 export async function getAllRoles(): Promise<RoleRecord[]> {
   const [{ data: roles, error: rolesError }, { data: rolePerms, error: rpError }, { data: memberships, error: memError }] =
     await Promise.all([
-      supabaseAdmin.from("roles").select("id, name, description, color, is_protected, created_at").order("created_at", { ascending: true }),
+      supabaseAdmin.from("roles").select("id, name, description, color, is_protected, rank, created_at").order("rank", { ascending: false }),
       supabaseAdmin.from("role_permissions").select("role_id, permission_key"),
       supabaseAdmin.from("user_roles").select("role_id"),
     ]);
@@ -43,10 +43,21 @@ export async function getAllRoles(): Promise<RoleRecord[]> {
     description: role.description ?? "",
     color: role.color,
     isProtected: role.is_protected,
+    rank: role.rank,
     permissionKeys: permsByRole.get(role.id) ?? [],
     memberCount: countByRole.get(role.id) ?? 0,
     createdAt: role.created_at,
   }));
+}
+
+// Every (userId, roleId) pair on the platform, unfiltered — used by the
+// merged /admin/users "People" tab to figure out, per row, which role(s)
+// an account currently holds and its resulting rank, without an N+1
+// query per row.
+export async function getAllUserRoleAssignments(): Promise<{ userId: string; roleId: string }[]> {
+  const { data, error } = await supabaseAdmin.from("user_roles").select("user_id, role_id");
+  if (error) throw new Error(`getAllUserRoleAssignments failed: ${error.message}`);
+  return (data ?? []).map((row) => ({ userId: row.user_id, roleId: row.role_id }));
 }
 
 export async function getRoleMembers(roleId: string): Promise<RoleMemberRecord[]> {

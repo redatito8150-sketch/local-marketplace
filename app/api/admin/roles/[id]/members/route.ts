@@ -47,31 +47,27 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "No account found with that email — they need to sign up first" }, { status: 404 });
   }
 
-  // Holding any role at all requires being an admin-rank account — this
-  // route only assigns the role; it doesn't also flip is_admin/role, since
-  // that's the separate, already-audited set_user_access flow
-  // (app/api/admin/users/[id]/route.ts). Assigning a role to a non-admin
-  // account would be a silent no-op for them (requirePermission() checks
-  // is_admin first), so refuse it up front instead.
-  const { data: targetProfile } = await supabaseAdmin.from("profiles").select("is_admin").eq("id", profile.id).maybeSingle();
-  if (!targetProfile?.is_admin) {
-    return NextResponse.json(
-      { error: "This account isn't an admin-rank account yet — grant admin access from Users first." },
-      { status: 400 }
-    );
-  }
-
-  const { error } = await supabaseAdmin
-    .from("user_roles")
-    .insert({ user_id: profile.id, role_id: params.id, assigned_by: auth.user.id })
-    .select("user_id")
-    .single();
+  // The RPC (20260806000003) re-validates permission + rank hierarchy +
+  // self-protection server-side and flips is_admin/role for the target
+  // atomically — assigning a role now grants admin access, it doesn't
+  // require it beforehand.
+  const { error } = await supabaseAdmin.rpc("assign_user_role", {
+    p_actor_id: auth.user.id,
+    p_target_user_id: profile.id,
+    p_role_id: params.id,
+  });
 
   if (error) {
     if (error.code === "23505") {
       return NextResponse.json({ error: "This account already has that role" }, { status: 409 });
     }
-    return safeErrorResponse("admin.roles.members.add", error, "Failed to assign role");
+    // P0001 = the RPC's own `raise exception` — always one of its
+    // deliberately hand-written, safe user-facing strings (never a raw
+    // schema/constraint leak), so it's fine to pass straight through.
+    if (error.code === "P0001") {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    return safeErrorResponse("admin.roles.members.mutate", error, "Failed to update role assignment");
   }
 
   await logAudit({
@@ -108,8 +104,15 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
   const { data: targetProfile } = await supabaseAdmin.from("profiles").select("email").eq("id", userId).maybeSingle();
 
-  const { error } = await supabaseAdmin.from("user_roles").delete().eq("role_id", params.id).eq("user_id", userId);
+  const { error } = await supabaseAdmin.rpc("unassign_user_role", {
+    p_actor_id: auth.user.id,
+    p_target_user_id: userId,
+    p_role_id: params.id,
+  });
   if (error) {
+    if (error.code === "P0001") {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     return safeErrorResponse("admin.roles.members.remove", error, "Failed to remove role");
   }
 
