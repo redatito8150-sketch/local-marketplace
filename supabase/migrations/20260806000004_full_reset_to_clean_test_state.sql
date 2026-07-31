@@ -20,9 +20,13 @@
 --     Manager/Staff/any custom role definitions) — only *membership*
 --     (user_roles) is cleared, not the role definitions.
 --   - coupons, site_content, page_studio sections/versions, taxonomy
---     nodes, size profiles, addresses, notifications, audit_logs — none
---     of these are catalog/transactional test data, and audit_logs in
---     particular is documented as an intentionally permanent record.
+--     nodes, addresses, notifications, audit_logs — none of these are
+--     catalog/transactional test data, and audit_logs in particular is
+--     documented as an intentionally permanent record. size_profiles
+--     (the global "Standard Apparel" etc. definitions) are also kept —
+--     only size_profile_values (its junction to the now-deleted
+--     option_values) is cleared, since it would otherwise reference
+--     nothing.
 --     Note: notifications/audit_logs may still show entries referencing
 --     now-deleted products/orders/brands (they store free-text type/
 --     entity_id, not real foreign keys, so nothing breaks — just
@@ -86,9 +90,15 @@ delete from brand_application_information_requests;
 delete from brand_applications;
 
 -- 9. Brand-scoped tables (cascade from brands; explicit for certainty).
+--    size_profile_values is a global taxonomy junction table (size
+--    profiles themselves are NOT brand-scoped and are left alone), but
+--    it holds a restrict FK to option_values — since every option_value
+--    is about to be deleted regardless of brand, every row here becomes
+--    orphaned anyway, so the whole junction table is cleared first.
 delete from brand_sku_counters;
 delete from brand_staff;
 delete from collections;
+delete from size_profile_values;
 delete from option_types;
 delete from option_values;
 
@@ -122,6 +132,8 @@ commit;
 --   select count(*) from inventory_movements;           -- expect 0
 --   select count(*) from brand_applications;             -- expect 0
 --   select count(*) from brands;                          -- expect 0
+--   select count(*) from size_profile_values;               -- expect 0
+--   select count(*) from size_profiles;                       -- unchanged (global taxonomy, kept)
 --   select email, role, is_admin from profiles
 --     where role <> 'customer' or is_admin = true;         -- expect only redatito8150@gmail.com
 --   select count(*) from user_roles;                        -- expect 1 (the primary account's Admin row)
