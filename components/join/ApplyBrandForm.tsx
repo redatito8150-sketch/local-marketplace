@@ -2,24 +2,20 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Loader2, MessageSquare, Upload, X } from "lucide-react";
-import type { BrandApplicationDocumentRecord, BrandApplicationRecord, EgyptGovernorate } from "@/types";
+import type { BrandApplicationRecord, BrandApplicationDocumentRecord, EgyptGovernorate, FulfillmentResponsibility } from "@/types";
 import {
   APPLICANT_ROLES,
   BUSINESS_SIZE_OPTIONS,
   EGYPT_GOVERNORATES,
-  FULFILLMENT_MODEL_OPTIONS,
-  INVENTORY_MODEL_OPTIONS,
-  INVENTORY_MODEL_VALUES,
+  FULFILLMENT_RESPONSIBILITY_OPTIONS,
   LEGAL_STATUS_OPTIONS,
   LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
   LEGAL_STATUSES_WITH_TAX_CARD,
-  MANUFACTURING_MODEL_OPTIONS,
   PREPARATION_TIME_OPTIONS,
   PRODUCT_CATEGORY_OPTIONS,
   RETURNS_POLICY_OPTIONS,
   SALES_CHANNEL_LINK_CONFIG,
   SALES_CHANNEL_OPTIONS,
-  SHIPPING_COVERAGE_OPTIONS,
   WEBSITE_CHANNEL,
 } from "@/lib/join/constants";
 import {
@@ -40,39 +36,44 @@ import {
 } from "@/lib/join/clientApi";
 import ApplicationStatusView from "@/components/join/ApplicationStatusView";
 
+// Products & operations comes before Legal & documents on purpose — the
+// applicant's brand/operations details are usually top of mind, while
+// registration paperwork is often the thing they need to go look up.
 const STEPS = [
   {
     id: "applicant",
     label: "About you",
     description: "Tell us who we should contact about this application.",
-    progress: 20,
   },
   {
     id: "brand",
     label: "Your brand",
     description: "Share the essential details about your brand and how it currently sells.",
-    progress: 40,
-  },
-  {
-    id: "legal",
-    label: "Legal & documents",
-    description: "Tell us about your business registration and provide supporting documents if available.",
-    progress: 60,
   },
   {
     id: "operations",
     label: "Products & operations",
     description: "Help us understand how your products are priced, prepared, and delivered.",
-    progress: 80,
+  },
+  {
+    id: "legal",
+    label: "Legal & documents",
+    description: "Tell us about your business registration and provide supporting documents if available.",
   },
   {
     id: "review",
     label: "Review & submit",
     description: "Review your information carefully before submitting your application.",
-    progress: 100,
   },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
+
+// Looked up by id rather than a hardcoded number so "Edit" links (and any
+// other index reference) keep pointing at the right step regardless of
+// STEPS' order.
+const STEP_INDEX: Record<StepId, number> = Object.fromEntries(
+  STEPS.map((step, index) => [step.id, index])
+) as Record<StepId, number>;
 
 interface FormState {
   founderName: string;
@@ -82,7 +83,8 @@ interface FormState {
   applicantRoleOther: string;
   brandNameAr: string;
   brandNameEn: string;
-  productCategory: string;
+  productCategories: string[];
+  productCategoryOther: string;
   brandStory: string;
   foundingYear: string;
   country: string;
@@ -97,15 +99,43 @@ interface FormState {
   legalBusinessName: string;
   priceMin: string;
   priceMax: string;
-  manufacturingModel: string;
-  fulfillmentModel: string;
+  fulfillmentResponsibility: FulfillmentResponsibility | "";
   avgPreparationTimeRange: string;
-  shippingCoverageOption: string;
-  shippingGovernorates: EgyptGovernorate[];
   returnsPolicy: string;
-  inventoryModel: string[];
+  returnsPolicyDetails: string;
   consentAccurate: boolean;
   consentTerms: boolean;
+}
+
+// Reconstructs the multi-select "which categories" + typed-in "Other" pair
+// from the flat productCategory/additionalCategories the DB stores — any
+// stored value that isn't one of the fixed options is treated as a custom
+// "Other" category the applicant typed in.
+function categoriesFromApp(app: BrandApplicationRecord): { categories: string[]; other: string } {
+  const stored = [app.productCategory, ...app.additionalCategories].filter(Boolean);
+  const categories: string[] = [];
+  let other = "";
+  for (const value of stored) {
+    if ((PRODUCT_CATEGORY_OPTIONS as readonly string[]).includes(value)) {
+      if (!categories.includes(value)) categories.push(value);
+    } else {
+      if (!categories.includes("Other")) categories.push("Other");
+      other = value;
+    }
+  }
+  return { categories, other };
+}
+
+// Inverse of categoriesFromApp — resolves the selected category pills (plus
+// the typed-in "Other" text, if any) into the flat, deduplicated list of
+// strings the DB actually stores.
+function resolveCategories(form: FormState): string[] {
+  const resolved: string[] = [];
+  for (const category of form.productCategories) {
+    const value = category === "Other" ? form.productCategoryOther.trim() || "Other" : category;
+    if (!resolved.includes(value)) resolved.push(value);
+  }
+  return resolved;
 }
 
 function emptyForm(): FormState {
@@ -117,7 +147,8 @@ function emptyForm(): FormState {
     applicantRoleOther: "",
     brandNameAr: "",
     brandNameEn: "",
-    productCategory: "",
+    productCategories: [],
+    productCategoryOther: "",
     brandStory: "",
     foundingYear: "",
     // Fixed — Mahaly is Egypt-only for now, see the locked Country field below.
@@ -133,13 +164,10 @@ function emptyForm(): FormState {
     legalBusinessName: "",
     priceMin: "",
     priceMax: "",
-    manufacturingModel: "",
-    fulfillmentModel: "",
+    fulfillmentResponsibility: "",
     avgPreparationTimeRange: "",
-    shippingCoverageOption: "",
-    shippingGovernorates: [],
     returnsPolicy: "",
-    inventoryModel: [],
+    returnsPolicyDetails: "",
     consentAccurate: false,
     consentTerms: false,
   };
@@ -155,6 +183,7 @@ function fromApplication(app: BrandApplicationRecord): FormState {
       : app.websiteUrl
         ? { [WEBSITE_CHANNEL]: app.websiteUrl }
         : {};
+  const { categories, other } = categoriesFromApp(app);
   return {
     founderName: app.founderName ?? "",
     email: app.email ?? "",
@@ -163,7 +192,8 @@ function fromApplication(app: BrandApplicationRecord): FormState {
     applicantRoleOther: app.applicantRoleOther ?? "",
     brandNameAr: app.brandNameAr ?? "",
     brandNameEn: app.brandNameEn ?? "",
-    productCategory: app.productCategory ?? "",
+    productCategories: categories,
+    productCategoryOther: other,
     brandStory: app.brandStory ?? "",
     foundingYear: app.foundingYear ? String(app.foundingYear) : "",
     // Always fixed to Egypt going forward regardless of what a legacy row stored.
@@ -179,19 +209,17 @@ function fromApplication(app: BrandApplicationRecord): FormState {
     legalBusinessName: app.legalBusinessName ?? "",
     priceMin: app.priceMin !== undefined ? String(app.priceMin) : "",
     priceMax: app.priceMax !== undefined ? String(app.priceMax) : "",
-    manufacturingModel: app.manufacturingModel ?? "",
-    fulfillmentModel: app.fulfillmentModel ?? "",
+    fulfillmentResponsibility: app.fulfillmentResponsibility ?? "",
     avgPreparationTimeRange: app.avgPreparationTimeRange ?? "",
-    shippingCoverageOption: app.shippingCoverageOption ?? "",
-    shippingGovernorates: app.shippingGovernorates ?? [],
     returnsPolicy: app.returnsPolicy ?? "",
-    inventoryModel: app.inventoryModel ?? [],
+    returnsPolicyDetails: app.returnsPolicyDetails ?? "",
     consentAccurate: app.consentAccurate ?? false,
     consentTerms: app.consentTerms ?? false,
   };
 }
 
 function toDraftInput(form: FormState): DraftApplicationInput {
+  const resolvedCategories = resolveCategories(form);
   return {
     founderName: form.founderName || undefined,
     email: form.email || undefined,
@@ -200,7 +228,8 @@ function toDraftInput(form: FormState): DraftApplicationInput {
     applicantRoleOther: form.applicantRoleOther || undefined,
     brandNameAr: form.brandNameAr || undefined,
     brandNameEn: form.brandNameEn || undefined,
-    productCategory: (form.productCategory || undefined) as DraftApplicationInput["productCategory"],
+    productCategory: resolvedCategories[0] || undefined,
+    additionalCategories: resolvedCategories.length > 1 ? resolvedCategories.slice(1) : undefined,
     brandStory: form.brandStory || undefined,
     foundingYear: form.foundingYear ? Number(form.foundingYear) : undefined,
     country: form.country || undefined,
@@ -215,13 +244,11 @@ function toDraftInput(form: FormState): DraftApplicationInput {
     legalBusinessName: form.legalBusinessName || undefined,
     priceMin: form.priceMin ? Number(form.priceMin) : undefined,
     priceMax: form.priceMax ? Number(form.priceMax) : undefined,
-    manufacturingModel: (form.manufacturingModel || undefined) as DraftApplicationInput["manufacturingModel"],
-    fulfillmentModel: (form.fulfillmentModel || undefined) as DraftApplicationInput["fulfillmentModel"],
+    fulfillmentResponsibility:
+      (form.fulfillmentResponsibility || undefined) as DraftApplicationInput["fulfillmentResponsibility"],
     avgPreparationTimeRange: (form.avgPreparationTimeRange || undefined) as DraftApplicationInput["avgPreparationTimeRange"],
-    shippingCoverageOption: (form.shippingCoverageOption || undefined) as DraftApplicationInput["shippingCoverageOption"],
-    shippingGovernorates: form.shippingGovernorates,
     returnsPolicy: (form.returnsPolicy || undefined) as DraftApplicationInput["returnsPolicy"],
-    inventoryModel: form.inventoryModel as DraftApplicationInput["inventoryModel"],
+    returnsPolicyDetails: form.returnsPolicyDetails || undefined,
     consentAccurate: form.consentAccurate || undefined,
     consentTerms: form.consentTerms || undefined,
   };
@@ -265,7 +292,7 @@ export default function ApplyBrandForm({
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
-  const toggleListItem = (key: "salesChannelsList" | "inventoryModel", value: string) => {
+  const toggleListItem = (key: "salesChannelsList" | "productCategories", value: string) => {
     setForm((f) => {
       const list = f[key];
       return {
@@ -273,15 +300,6 @@ export default function ApplyBrandForm({
         [key]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
       };
     });
-  };
-
-  const toggleGovernorate = (governorate: EgyptGovernorate) => {
-    setForm((f) => ({
-      ...f,
-      shippingGovernorates: f.shippingGovernorates.includes(governorate)
-        ? f.shippingGovernorates.filter((g) => g !== governorate)
-        : [...f.shippingGovernorates, governorate],
-    }));
   };
 
   // Selecting a sales channel also opens its link field; deselecting drops
@@ -469,6 +487,12 @@ export default function ApplyBrandForm({
   const stepValidity = STEPS.map((step) =>
     stepSchemas[step.id].safeParse(toDraftInput(form)).success
   );
+  // Driven entirely by which steps' required fields actually validate, not
+  // by which step the applicant has scrolled/clicked to — so jumping ahead
+  // to Review & submit before filling anything in no longer reports 100%.
+  const overallProgress = Math.round(
+    (stepValidity.filter(Boolean).length / STEPS.length) * 100
+  );
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -491,9 +515,9 @@ export default function ApplyBrandForm({
         onSelect={goToStep}
       />
 
-      <StepHeader title={activeStep.label} description={activeStep.description} progress={activeStep.progress} />
+      <StepHeader title={activeStep.label} description={activeStep.description} progress={overallProgress} />
 
-      {stepIndex === 0 && (
+      {activeStep.id === "applicant" && (
         <div className="max-w-lg space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <Field
@@ -542,7 +566,7 @@ export default function ApplyBrandForm({
         </div>
       )}
 
-      {stepIndex === 1 && (
+      {activeStep.id === "brand" && (
         <div className="max-w-2xl space-y-8">
           <div className="space-y-5">
             <SectionLabel>A. Basic information</SectionLabel>
@@ -563,14 +587,28 @@ export default function ApplyBrandForm({
               />
             </div>
 
-            <SelectField
-              label="Category"
-              value={form.productCategory}
-              onChange={(v) => set("productCategory", v)}
-              options={PRODUCT_CATEGORY_OPTIONS.map((c) => ({ value: c, label: c }))}
-              error={fieldErrors.productCategory}
-              required
-            />
+            <div>
+              <span className="text-[12.5px] font-medium text-ink-soft/70">Category</span>
+              <div className="mt-1.5">
+                <ChannelCards
+                  options={PRODUCT_CATEGORY_OPTIONS}
+                  selected={form.productCategories}
+                  onToggle={(value) => toggleListItem("productCategories", value)}
+                  error={fieldErrors.productCategory}
+                />
+              </div>
+              {form.productCategories.includes("Other") && (
+                <div className="mt-2.5">
+                  <Field
+                    label="Please specify your category"
+                    value={form.productCategoryOther}
+                    onChange={(v) => set("productCategoryOther", v)}
+                    error={fieldErrors.productCategoryOther}
+                    required
+                  />
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-3 gap-4">
               <LockedField
@@ -589,8 +627,9 @@ export default function ApplyBrandForm({
               />
               <Field
                 label="Founded"
+                inputMode="numeric"
                 value={form.foundingYear}
-                onChange={(v) => set("foundingYear", v)}
+                onChange={(v) => set("foundingYear", v.replace(/\D/g, "").slice(0, 4))}
                 error={fieldErrors.foundingYear}
                 required
               />
@@ -671,7 +710,129 @@ export default function ApplyBrandForm({
         </div>
       )}
 
-      {stepIndex === 2 && (
+      {activeStep.id === "operations" && (
+        <div className="max-w-lg space-y-6">
+          <div className={`rounded-xl border p-4 ${
+            fieldErrors.fulfillmentResponsibility ? "border-red-300" : "border-mahalyred/25 bg-mahalyred/[0.03]"
+          }`}>
+            <span className="inline-block rounded-full bg-mahalyred px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+              Most important question
+            </span>
+            <p className="mt-2.5 text-[14.5px] font-semibold text-ink">
+              Will you handle packaging & fulfillment yourself, or do you want to partner with Mahaly?
+            </p>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft/60">
+              If you partner with Mahaly, we take care of packaging, storage, and shipping — you only manage your brand page and product listings.
+            </p>
+            <div className="mt-3.5 space-y-2.5">
+              {FULFILLMENT_RESPONSIBILITY_OPTIONS.map((option) => {
+                const active = form.fulfillmentResponsibility === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set("fulfillmentResponsibility", option.value)}
+                    aria-pressed={active}
+                    className={`flex w-full items-start gap-3 rounded-lg border px-4 py-3 text-left transition-colors ${
+                      active ? "border-ink bg-ink text-cream" : "border-stone-200 bg-white hover:border-ink/40"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                        active ? "border-cream" : "border-stone-300"
+                      }`}
+                    >
+                      {active && <span className="h-2 w-2 rounded-full bg-cream" />}
+                    </span>
+                    <span>
+                      <span className="block text-[13.5px] font-semibold">{option.title}</span>
+                      <span className={`mt-0.5 block text-[12.5px] leading-relaxed ${active ? "text-cream/75" : "text-ink-soft/60"}`}>
+                        {option.description}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {fieldErrors.fulfillmentResponsibility && (
+              <span className="mt-2.5 block text-[12px] text-red-600">{fieldErrors.fulfillmentResponsibility}</span>
+            )}
+          </div>
+
+          <div>
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Price range (EGP)</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-4">
+              <label className="block">
+                <span className="text-[11.5px] text-ink-soft/50">Minimum price</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-[13px] font-medium text-ink-soft/50">EGP</span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="decimal"
+                    value={form.priceMin}
+                    onChange={(e) => set("priceMin", e.target.value)}
+                    className={`w-full rounded-md border bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 ${
+                      fieldErrors.priceMin ? "border-red-300" : "border-stone-150"
+                    }`}
+                  />
+                </div>
+                {fieldErrors.priceMin && (
+                  <span className="mt-1 block text-[12px] text-red-600">{fieldErrors.priceMin}</span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-[11.5px] text-ink-soft/50">Maximum price</span>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className="text-[13px] font-medium text-ink-soft/50">EGP</span>
+                  <input
+                    type="number"
+                    min={0}
+                    inputMode="decimal"
+                    value={form.priceMax}
+                    onChange={(e) => set("priceMax", e.target.value)}
+                    className={`w-full rounded-md border bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 ${
+                      fieldErrors.priceMax ? "border-red-300" : "border-stone-150"
+                    }`}
+                  />
+                </div>
+                {fieldErrors.priceMax && (
+                  <span className="mt-1 block text-[12px] text-red-600">{fieldErrors.priceMax}</span>
+                )}
+              </label>
+            </div>
+          </div>
+
+          <SelectField
+            label="Average preparation time"
+            value={form.avgPreparationTimeRange}
+            onChange={(v) => set("avgPreparationTimeRange", v)}
+            options={PREPARATION_TIME_OPTIONS}
+            error={fieldErrors.avgPreparationTimeRange}
+          />
+
+          <div className="space-y-2.5">
+            <SelectField
+              label="Returns and exchanges"
+              value={form.returnsPolicy}
+              onChange={(v) => set("returnsPolicy", v)}
+              options={RETURNS_POLICY_OPTIONS}
+              error={fieldErrors.returnsPolicy}
+            />
+            <TextAreaField
+              label="Returns & exchanges details"
+              placeholder="Describe your exact returns/exchanges terms — return window, condition requirements, who covers return shipping, any non-returnable items…"
+              value={form.returnsPolicyDetails}
+              onChange={(v) => set("returnsPolicyDetails", v)}
+              error={fieldErrors.returnsPolicyDetails}
+              rows={4}
+              maxLength={500}
+            />
+          </div>
+        </div>
+      )}
+
+      {activeStep.id === "legal" && (
         <div className="max-w-lg space-y-5">
           <SelectField
             label="Business registration status"
@@ -747,111 +908,9 @@ export default function ApplyBrandForm({
         </div>
       )}
 
-      {stepIndex === 3 && (
-        <div className="max-w-lg space-y-5">
-          <div>
-            <span className="text-[12.5px] font-medium text-ink-soft/70">Price range (EGP)</span>
-            <div className="mt-1.5 grid grid-cols-2 gap-4">
-              <label className="block">
-                <span className="text-[11.5px] text-ink-soft/50">Minimum price</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-ink-soft/50">EGP</span>
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="decimal"
-                    value={form.priceMin}
-                    onChange={(e) => set("priceMin", e.target.value)}
-                    className={`w-full rounded-md border bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 ${
-                      fieldErrors.priceMin ? "border-red-300" : "border-stone-150"
-                    }`}
-                  />
-                </div>
-                {fieldErrors.priceMin && (
-                  <span className="mt-1 block text-[12px] text-red-600">{fieldErrors.priceMin}</span>
-                )}
-              </label>
-              <label className="block">
-                <span className="text-[11.5px] text-ink-soft/50">Maximum price</span>
-                <div className="mt-1 flex items-center gap-2">
-                  <span className="text-[13px] font-medium text-ink-soft/50">EGP</span>
-                  <input
-                    type="number"
-                    min={0}
-                    inputMode="decimal"
-                    value={form.priceMax}
-                    onChange={(e) => set("priceMax", e.target.value)}
-                    className={`w-full rounded-md border bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 ${
-                      fieldErrors.priceMax ? "border-red-300" : "border-stone-150"
-                    }`}
-                  />
-                </div>
-                {fieldErrors.priceMax && (
-                  <span className="mt-1 block text-[12px] text-red-600">{fieldErrors.priceMax}</span>
-                )}
-              </label>
-            </div>
-          </div>
-
-          <SelectField
-            label="Manufacturing model"
-            value={form.manufacturingModel}
-            onChange={(v) => set("manufacturingModel", v)}
-            options={MANUFACTURING_MODEL_OPTIONS}
-            error={fieldErrors.manufacturingModel}
-          />
-          <SelectField
-            label="Fulfillment model"
-            value={form.fulfillmentModel}
-            onChange={(v) => set("fulfillmentModel", v)}
-            options={FULFILLMENT_MODEL_OPTIONS}
-            error={fieldErrors.fulfillmentModel}
-          />
-          <SelectField
-            label="Average preparation time"
-            value={form.avgPreparationTimeRange}
-            onChange={(v) => set("avgPreparationTimeRange", v)}
-            options={PREPARATION_TIME_OPTIONS}
-            error={fieldErrors.avgPreparationTimeRange}
-          />
-          <SelectField
-            label="Shipping coverage"
-            value={form.shippingCoverageOption}
-            onChange={(v) => set("shippingCoverageOption", v)}
-            options={SHIPPING_COVERAGE_OPTIONS}
-            error={fieldErrors.shippingCoverageOption}
-          />
-          {form.shippingCoverageOption === "selected_governorates" && (
-            <SearchableMultiSelect
-              label="Selected governorates"
-              options={EGYPT_GOVERNORATES}
-              selected={form.shippingGovernorates}
-              onToggle={toggleGovernorate}
-              error={fieldErrors.shippingGovernorates}
-            />
-          )}
-          <SelectField
-            label="Returns and exchanges"
-            value={form.returnsPolicy}
-            onChange={(v) => set("returnsPolicy", v)}
-            options={RETURNS_POLICY_OPTIONS}
-            error={fieldErrors.returnsPolicy}
-          />
-          <CheckboxGroup
-            label="Inventory model"
-            options={INVENTORY_MODEL_OPTIONS}
-            selected={INVENTORY_MODEL_OPTIONS.filter((label) =>
-              form.inventoryModel.includes(INVENTORY_MODEL_VALUES[label])
-            )}
-            onToggle={(label) => toggleListItem("inventoryModel", INVENTORY_MODEL_VALUES[label])}
-            error={fieldErrors.inventoryModel}
-          />
-        </div>
-      )}
-
-      {stepIndex === 4 && (
+      {activeStep.id === "review" && (
         <div className="max-w-2xl space-y-5">
-          <ReviewSection title="About you" onEdit={() => goToStep(0)}>
+          <ReviewSection title="About you" onEdit={() => goToStep(STEP_INDEX.applicant)}>
             <ReviewRow label="Full name" value={form.founderName} />
             <ReviewRow label="Business email" value={form.email} />
             <ReviewRow label="Phone number" value={form.phone} />
@@ -865,10 +924,13 @@ export default function ApplyBrandForm({
             />
           </ReviewSection>
 
-          <ReviewSection title="Your brand" onEdit={() => goToStep(1)}>
+          <ReviewSection title="Your brand" onEdit={() => goToStep(STEP_INDEX.brand)}>
             <ReviewRow label="Brand name (English)" value={form.brandNameEn} />
             <ReviewRow label="Brand name (Arabic)" value={form.brandNameAr} />
-            <ReviewRow label="Category" value={form.productCategory} />
+            <ReviewRow
+              label="Category"
+              value={resolveCategories(form).join(", ")}
+            />
             <ReviewRow label="Country" value={form.country} />
             <ReviewRow label="City" value={form.city} />
             <ReviewRow label="Founded" value={form.foundingYear} />
@@ -893,7 +955,36 @@ export default function ApplyBrandForm({
             />
           </ReviewSection>
 
-          <ReviewSection title="Legal & documents" onEdit={() => goToStep(2)}>
+          <ReviewSection title="Products & operations" onEdit={() => goToStep(STEP_INDEX.operations)}>
+            <ReviewRow
+              label="Fulfillment"
+              value={
+                FULFILLMENT_RESPONSIBILITY_OPTIONS.find((o) => o.value === form.fulfillmentResponsibility)
+                  ?.title ?? ""
+              }
+            />
+            <ReviewRow
+              label="Price range"
+              value={
+                form.priceMin || form.priceMax
+                  ? `EGP ${form.priceMin || "0"} – ${form.priceMax || "—"}`
+                  : ""
+              }
+            />
+            <ReviewRow
+              label="Average preparation time"
+              value={labelFor(PREPARATION_TIME_OPTIONS, form.avgPreparationTimeRange)}
+            />
+            <ReviewRow
+              label="Returns and exchanges"
+              value={labelFor(RETURNS_POLICY_OPTIONS, form.returnsPolicy)}
+            />
+            {Boolean(form.returnsPolicyDetails) && (
+              <ReviewRow label="Returns & exchanges details" value={form.returnsPolicyDetails} />
+            )}
+          </ReviewSection>
+
+          <ReviewSection title="Legal & documents" onEdit={() => goToStep(STEP_INDEX.legal)}>
             <ReviewRow
               label="Business registration status"
               value={labelFor(LEGAL_STATUS_OPTIONS, form.legalStatus)}
@@ -911,46 +1002,6 @@ export default function ApplyBrandForm({
             <ReviewRow
               label="Documents"
               value={documents.length ? `${documents.length} uploaded` : "None uploaded"}
-            />
-          </ReviewSection>
-
-          <ReviewSection title="Products & operations" onEdit={() => goToStep(3)}>
-            <ReviewRow
-              label="Price range"
-              value={
-                form.priceMin || form.priceMax
-                  ? `EGP ${form.priceMin || "0"} – ${form.priceMax || "—"}`
-                  : ""
-              }
-            />
-            <ReviewRow
-              label="Manufacturing model"
-              value={labelFor(MANUFACTURING_MODEL_OPTIONS, form.manufacturingModel)}
-            />
-            <ReviewRow
-              label="Fulfillment model"
-              value={labelFor(FULFILLMENT_MODEL_OPTIONS, form.fulfillmentModel)}
-            />
-            <ReviewRow
-              label="Average preparation time"
-              value={labelFor(PREPARATION_TIME_OPTIONS, form.avgPreparationTimeRange)}
-            />
-            <ReviewRow
-              label="Shipping coverage"
-              value={labelFor(SHIPPING_COVERAGE_OPTIONS, form.shippingCoverageOption)}
-            />
-            {form.shippingCoverageOption === "selected_governorates" && (
-              <ReviewRow label="Selected governorates" value={form.shippingGovernorates.join(", ")} />
-            )}
-            <ReviewRow
-              label="Returns and exchanges"
-              value={labelFor(RETURNS_POLICY_OPTIONS, form.returnsPolicy)}
-            />
-            <ReviewRow
-              label="Inventory model"
-              value={INVENTORY_MODEL_OPTIONS.filter((label) =>
-                form.inventoryModel.includes(INVENTORY_MODEL_VALUES[label])
-              ).join(", ")}
             />
           </ReviewSection>
 
@@ -1161,6 +1212,7 @@ function labelFor(options: { value: string; label: string }[], value: string): s
 function Field({
   label,
   type = "text",
+  inputMode,
   placeholder,
   value,
   onChange,
@@ -1169,6 +1221,7 @@ function Field({
 }: {
   label: string;
   type?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
@@ -1180,6 +1233,7 @@ function Field({
       <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
       <input
         type={type}
+        inputMode={inputMode}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -1509,103 +1563,3 @@ function SelectField({
   );
 }
 
-function CheckboxGroup<T extends string>({
-  label,
-  options,
-  selected,
-  onToggle,
-  error,
-}: {
-  label: string;
-  options: readonly T[];
-  selected: T[];
-  onToggle: (value: T) => void;
-  error?: string;
-}) {
-  return (
-    <div>
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
-      <div className="mt-2 flex flex-wrap gap-2">
-        {options.map((option) => {
-          const active = selected.includes(option);
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onToggle(option)}
-              className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
-                active
-                  ? "border-ink bg-ink text-cream"
-                  : "border-stone-200 text-ink-soft/70 hover:border-ink/40"
-              }`}
-            >
-              {option}
-            </button>
-          );
-        })}
-      </div>
-      {error && <span className="mt-1.5 block text-[12px] text-red-600">{error}</span>}
-    </div>
-  );
-}
-
-// Searchable multi-select — same "type to filter" idea as SearchableSelect,
-// but for picking any number of values (Step 4's "Selected governorates").
-// Native <button>s mean keyboard operability (Tab + Enter/Space) needs no
-// extra key handling.
-function SearchableMultiSelect<T extends string>({
-  label,
-  options,
-  selected,
-  onToggle,
-  error,
-}: {
-  label: string;
-  options: readonly T[];
-  selected: T[];
-  onToggle: (value: T) => void;
-  error?: string;
-}) {
-  const [query, setQuery] = useState("");
-  const filtered = query
-    ? options.filter((o) => o.toLowerCase().includes(query.toLowerCase()))
-    : options;
-
-  return (
-    <div>
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search governorates…"
-        aria-label={`Search ${label}`}
-        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-      />
-      <div className="mt-2 flex flex-wrap gap-2">
-        {filtered.map((option) => {
-          const active = selected.includes(option);
-          return (
-            <button
-              key={option}
-              type="button"
-              onClick={() => onToggle(option)}
-              aria-pressed={active}
-              className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
-                active
-                  ? "border-ink bg-ink text-cream"
-                  : "border-stone-200 text-ink-soft/70 hover:border-ink/40"
-              }`}
-            >
-              {option}
-            </button>
-          );
-        })}
-        {filtered.length === 0 && (
-          <span className="text-[12.5px] text-ink-soft/50">No matches</span>
-        )}
-      </div>
-      {error && <span className="mt-1.5 block text-[12px] text-red-600">{error}</span>}
-    </div>
-  );
-}

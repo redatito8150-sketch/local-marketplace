@@ -70,7 +70,9 @@ interface BrandApplicationRow {
   shipping_coverage_option: string | null;
   shipping_governorates: string[];
   returns_policy: string | null;
+  returns_policy_details: string | null;
   inventory_model: string[];
+  fulfillment_responsibility: string | null;
   consent_accurate: boolean;
   consent_terms: boolean;
   reviewed_at: string | null;
@@ -154,7 +156,10 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
       (row.shipping_coverage_option as BrandApplicationRecord["shippingCoverageOption"]) ?? undefined,
     shippingGovernorates: (row.shipping_governorates ?? []).filter(isEgyptGovernorate),
     returnsPolicy: (row.returns_policy as BrandApplicationRecord["returnsPolicy"]) ?? undefined,
+    returnsPolicyDetails: row.returns_policy_details ?? undefined,
     inventoryModel: row.inventory_model ?? [],
+    fulfillmentResponsibility:
+      (row.fulfillment_responsibility as BrandApplicationRecord["fulfillmentResponsibility"]) ?? undefined,
     consentAccurate: row.consent_accurate,
     consentTerms: row.consent_terms,
     reviewedAt: row.reviewed_at ?? undefined,
@@ -254,6 +259,7 @@ function draftInputToRow(input: DraftApplicationInput) {
     // the new form, so this just mirrors the "Website" channel's link.
     instagram_or_website: websiteLink || "",
     product_category: input.productCategory ?? "",
+    additional_categories: input.additionalCategories ?? [],
     brand_story: input.brandStory ?? "",
     applicant_role: input.applicantRole,
     applicant_role_other: input.applicantRoleOther,
@@ -282,7 +288,9 @@ function draftInputToRow(input: DraftApplicationInput) {
     shipping_coverage_option: input.shippingCoverageOption,
     shipping_governorates: input.shippingGovernorates,
     returns_policy: input.returnsPolicy,
+    returns_policy_details: input.returnsPolicyDetails,
     inventory_model: input.inventoryModel,
+    fulfillment_responsibility: input.fulfillmentResponsibility,
     consent_accurate: input.consentAccurate ?? false,
     consent_terms: input.consentTerms ?? false,
   };

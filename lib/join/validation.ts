@@ -10,7 +10,6 @@ import {
   INVENTORY_MODEL_VALUES,
   LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
   LEGAL_STATUSES_WITH_TAX_CARD,
-  PRODUCT_CATEGORY_OPTIONS,
   SALES_CHANNEL_LINK_CONFIG,
 } from "./constants.ts";
 
@@ -76,9 +75,13 @@ const salesChannelLinksSchema = z
 export const brandInfoSchema = z.object({
   brandNameAr: requiredString("Brand name (Arabic)", 120),
   brandNameEn: requiredString("Brand name (English)", 120),
-  productCategory: z.enum(PRODUCT_CATEGORY_OPTIONS, {
-    errorMap: () => ({ message: "Category is required" }),
-  }),
+  // The applicant picks one or more categories client-side (including a
+  // typed-in "Other" category); by the time it reaches this schema it's
+  // already been resolved into a required primary category (free text, so
+  // a custom "Other" value validates the same as a preset one) plus an
+  // optional list of additional categories.
+  productCategory: requiredString("Category", 60),
+  additionalCategories: z.array(trimmedString(60)).max(10).optional().default([]),
   brandStory: optionalString(500),
   foundingYear: z
     .number({ required_error: "Founding year is required" })
@@ -141,6 +144,13 @@ export const legalInfoSchema = legalInfoRefinements(legalInfoObjectSchema);
 export const operationsInfoObjectSchema = z.object({
   priceMin: z.number().min(0, "Minimum price cannot be negative").optional(),
   priceMax: z.number().min(0, "Maximum price cannot be negative").optional(),
+  // The single most important operational question — required, unlike the
+  // legacy fields below which stay optional/unused going forward.
+  fulfillmentResponsibility: z.enum(["brand_handles", "mahaly_handles"], {
+    errorMap: () => ({ message: "Please choose who will handle packaging and fulfillment" }),
+  }),
+  // Legacy fields — no longer collected by the form (removed from the UI),
+  // kept optional here only so old drafts/submissions still parse.
   manufacturingModel: z.enum(["own_production", "external_manufacturer", "mixed"]).optional(),
   fulfillmentModel: z.enum(["ready_to_ship", "made_to_order", "both"]).optional(),
   avgPreparationTimeRange: z
@@ -151,6 +161,7 @@ export const operationsInfoObjectSchema = z.object({
   returnsPolicy: z
     .enum(["returns_and_exchanges", "exchanges_only", "no_returns", "depends_on_product"])
     .optional(),
+  returnsPolicyDetails: optionalString(500),
   inventoryModel: z.array(z.enum(INVENTORY_MODEL_VALUE_LIST)).max(4).default([]),
 });
 
