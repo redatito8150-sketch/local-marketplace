@@ -156,6 +156,31 @@ test(
 // "products RLS" test above: it passes trivially while the live catalog has
 // no non-published/paused rows with option/variant/color-image data, and
 // starts actually asserting the protection the moment one exists.
+// Regression test for the per-customer notification system
+// (20260805000001_user_notifications.sql). Skips gracefully (not fails)
+// if the migration hasn't been applied to this project yet, same
+// convention as the convert_application_to_brand skip above.
+test(
+  "user_notifications RLS: the anon key can never read any row, regardless of who it belongs to",
+  { skip: !hasCredentials },
+  async (t) => {
+    const anon = createClient(supabaseUrl!, anonKey!);
+    const { data, error } = await anon.from("user_notifications").select("id");
+
+    if (error && /could not find the table|does not exist/i.test(error.message)) {
+      t.skip("user_notifications does not exist yet (migration not applied)");
+      return;
+    }
+
+    assert.ifError(error);
+    assert.equal(
+      data?.length ?? 0,
+      0,
+      "anon key must never see any user_notifications row — every row belongs to exactly one user"
+    );
+  }
+);
+
 test(
   "product child tables (options/option values/variant values/color images) do not leak non-published/paused product data to the anon key",
   { skip: !hasCredentials || !serviceRoleKey },

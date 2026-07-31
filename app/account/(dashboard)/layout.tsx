@@ -9,6 +9,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { accountThemeFromPreferences } from "@/lib/account/themes";
 import { resolveAvatarUrl } from "@/lib/account/avatar";
+import { getNotificationsForUser, getUnreadNotificationCountForUser } from "@/lib/data/userNotifications";
 import type { NotificationPreferences } from "@/types";
 
 export default async function AccountDashboardLayout({
@@ -37,6 +38,10 @@ export default async function AccountDashboardLayout({
     profile?.notification_preferences as NotificationPreferences | null,
   );
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url, profile?.provider_avatar_url);
+  const [notifications, unreadNotificationCount] = await Promise.all([
+    getNotificationsForUser(user.id, 5),
+    getUnreadNotificationCountForUser(user.id),
+  ]);
 
   // Same precedence as Header.tsx's dashboardHref — an admin always
   // outranks a brand link, and neither shows for a plain customer account.
@@ -61,6 +66,8 @@ export default async function AccountDashboardLayout({
               email={profile?.email ?? user.email ?? ""}
               role={profile?.role ?? "customer"}
               avatarUrl={avatarUrl}
+              notifications={notifications}
+              unreadNotificationCount={unreadNotificationCount}
             />
             {dashboardHref && (
               <AccountDashboardLink href={dashboardHref} label={dashboardLabel} />

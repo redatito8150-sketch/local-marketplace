@@ -102,3 +102,35 @@ export async function notify(
     color: NOTIFICATION_TYPE_COLORS[type],
   });
 }
+
+export interface NotifyUserOptions {
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+}
+
+// Customer-facing sibling of notify() — writes to user_notifications
+// (RLS-scoped to the recipient, see supabase/migrations/20260805000001_user_notifications.sql)
+// instead of the admin-only `notifications` table. Never a replacement
+// for an existing email — call this alongside sendEmail(), not instead
+// of it, so the same event reaches both channels. Same never-throw
+// contract as notify()/logAudit(): a failure to record is logged, never
+// thrown, since it's supplementary to the write path it's attached to.
+export async function notifyUser(
+  userId: string,
+  type: string,
+  title: string,
+  body: string = "",
+  options?: NotifyUserOptions
+): Promise<void> {
+  const { error } = await supabaseAdmin.from("user_notifications").insert({
+    user_id: userId,
+    type,
+    title,
+    body,
+    related_entity_type: options?.relatedEntityType ?? null,
+    related_entity_id: options?.relatedEntityId ?? null,
+  });
+  if (error) {
+    logError(`notifyUser(${type}) failed`, error.message);
+  }
+}

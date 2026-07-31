@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { notifyUser } from "@/lib/notify";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import {
   recordStatusHistory,
@@ -33,6 +34,28 @@ function applicantEmailFor(
       return applicationApprovedEmail(application);
     case "rejected":
       return applicationRejectedEmail(application, reason);
+    default:
+      return null;
+  }
+}
+
+// In-site notification counterpart to applicantEmailFor() above — a
+// separate, shorter text for the bell/inbox, not the email content
+// itself. Fires for the same statuses the email already covers.
+function applicantNotificationFor(
+  status: ApplicationStatus,
+  reason: string
+): { title: string; body: string } | null {
+  switch (status) {
+    case "under_review":
+      return { title: "Your brand application is under review", body: "" };
+    case "changes_requested":
+      return { title: "We need more information on your brand application", body: reason };
+    case "approved":
+    case "approved_pending_creation":
+      return { title: "Your brand application was approved", body: "" };
+    case "rejected":
+      return { title: "Your brand application was not approved", body: reason };
     default:
       return null;
   }
@@ -203,6 +226,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     const email = applicantEmailFor(nextStatus as ApplicationStatus, application, reason);
     if (email) {
       await sendEmail({ to: application.email, ...email });
+    }
+    if (application.applicantUserId) {
+      const inSite = applicantNotificationFor(nextStatus as ApplicationStatus, reason);
+      if (inSite) {
+        await notifyUser(
+          application.applicantUserId,
+          `brand_application_${nextStatus}`,
+          inSite.title,
+          inSite.body,
+          { relatedEntityType: "application", relatedEntityId: params.id }
+        );
+      }
     }
   }
 

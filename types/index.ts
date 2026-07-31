@@ -884,6 +884,19 @@ export interface NotificationRecord {
   resolution: NotificationResolution;
 }
 
+// ── Customer (raw `user_notifications` row shape) ───────────────────────────
+
+export interface UserNotificationRecord {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+  relatedEntityType?: string;
+  relatedEntityId?: string;
+}
+
 // ── Admin (low-stock dashboard row — a variant joined to its product) ──────
 
 export interface LowStockVariantRecord {

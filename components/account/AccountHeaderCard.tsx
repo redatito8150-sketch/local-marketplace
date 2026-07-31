@@ -1,5 +1,7 @@
 import Link from "next/link";
 import AccountAvatar from "@/components/account/AccountAvatar";
+import AccountNotificationBell from "@/components/account/AccountNotificationBell";
+import type { UserNotificationRecord } from "@/types";
 
 const ROLE_LABELS: Record<string, string> = {
   customer: "Customer",
@@ -15,15 +17,22 @@ export default function AccountHeaderCard({
   email,
   role,
   avatarUrl,
+  notifications,
+  unreadNotificationCount,
 }: {
   fullName: string;
   email: string;
   role: string;
   avatarUrl?: string | null;
+  notifications: UserNotificationRecord[];
+  unreadNotificationCount: number;
 }) {
   const displayName = fullName || email || "Your account";
   return (
-    <div className="rounded-[24px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)]">
+    <div className="relative rounded-[24px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)]">
+      <div className="absolute right-4 top-4">
+        <AccountNotificationBell notifications={notifications} unreadCount={unreadNotificationCount} />
+      </div>
       <div className="flex items-center gap-4 lg:flex-col lg:text-center">
         <AccountAvatar name={displayName} imageUrl={avatarUrl} />
         <div className="min-w-0">

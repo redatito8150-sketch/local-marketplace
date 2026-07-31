@@ -3,7 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { ORDER_STATUSES } from "@/lib/admin/statuses";
 import { logAudit } from "@/lib/auditLog";
-import { notify } from "@/lib/notify";
+import { notify, notifyUser } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { orderCancelledEmail } from "@/lib/email/templates/orderCancelled";
 import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const { data: existing } = await supabaseAdmin
     .from("orders")
-    .select("status")
+    .select("status, user_id")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -108,6 +108,25 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await sendEmail({ to: order.shippingEmail, ...orderCancelledEmail(order) });
     } else if (status === "shipped") {
       await sendEmail({ to: order.shippingEmail, ...orderShippedEmail(order) });
+    }
+  }
+
+  // In-site notification for the customer's own account — only meaningful
+  // for the statuses that actually change what they should expect next;
+  // "pending"/"paid" are internal-facing housekeeping, not worth a ping.
+  // Guest orders (no account) have no user_id to notify.
+  if (existing?.user_id && order) {
+    const CUSTOMER_NOTIFICATION_TEXT: Partial<Record<typeof status, { title: string; body: string }>> = {
+      cancelled: { title: `Order #${order.orderNumber} was cancelled`, body: "" },
+      shipped: { title: `Order #${order.orderNumber} is on its way`, body: "" },
+      fulfilled: { title: `Order #${order.orderNumber} was delivered`, body: "" },
+    };
+    const text = CUSTOMER_NOTIFICATION_TEXT[status];
+    if (text) {
+      await notifyUser(existing.user_id, `order_${status}`, text.title, text.body, {
+        relatedEntityType: "order",
+        relatedEntityId: params.id,
+      });
     }
   }
 
