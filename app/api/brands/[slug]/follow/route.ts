@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/supabase/requestUser";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { safeErrorResponse } from "@/lib/apiError";
 
 // Toggles the caller's own follow row for this brand — no request body
 // needed, the current state is read straight from the table rather than
@@ -22,7 +23,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
   if (existing) {
     const { error } = await supabaseAdmin.from("brand_follows").delete().eq("id", existing.id);
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return safeErrorResponse("brands.follow.remove", error);
     }
     return NextResponse.json({ following: false });
   }
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
     .insert({ user_id: user.id, brand_slug: params.slug });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return safeErrorResponse("brands.follow.add", error);
   }
   return NextResponse.json({ following: true });
 }

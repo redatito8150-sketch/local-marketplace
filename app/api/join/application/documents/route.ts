@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 
   if (uploadError) {
     await notify("storage_error", "Application document upload failed", uploadError.message);
-    return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+    return safeErrorResponse("join.application.documents.upload", uploadError, "Upload failed");
   }
 
   const { data, error } = await supabaseAdmin
