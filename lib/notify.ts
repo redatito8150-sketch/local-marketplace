@@ -12,6 +12,11 @@ export type NotificationType =
   | "brand_updated"
   | "brand_application_submitted"
   | "coupon_created"
+  | "role_created"
+  | "role_updated"
+  | "role_deleted"
+  | "role_assigned"
+  | "role_unassigned"
   | "low_stock"
   | "image_upload_failed"
   | "storage_error";
@@ -24,13 +29,18 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   product_published: DISCORD_COLORS.green,
   brand_application_submitted: DISCORD_COLORS.green,
   coupon_created: DISCORD_COLORS.green,
+  role_created: DISCORD_COLORS.green,
+  role_assigned: DISCORD_COLORS.green,
   product_updated: DISCORD_COLORS.orange,
   brand_updated: DISCORD_COLORS.orange,
+  role_updated: DISCORD_COLORS.orange,
   low_stock: DISCORD_COLORS.orange,
   image_upload_failed: DISCORD_COLORS.orange,
   storage_error: DISCORD_COLORS.orange,
   order_cancelled: DISCORD_COLORS.red,
   product_archived: DISCORD_COLORS.red,
+  role_deleted: DISCORD_COLORS.red,
+  role_unassigned: DISCORD_COLORS.red,
 };
 
 export interface NotifyOptions {

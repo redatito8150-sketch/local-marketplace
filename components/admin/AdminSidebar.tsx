@@ -81,7 +81,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
   {
     label: "People & Content",
     items: [
-      { label: "Users & Access", href: "/admin/users", icon: Users },
+      { label: "Customers & Permissions", href: "/admin/users", icon: Users },
       { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, minRole: "manager" },
       { label: "Notifications", href: "/admin/notifications", icon: Bell, badge: "notifications" },
     ],
