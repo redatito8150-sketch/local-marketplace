@@ -181,6 +181,30 @@ test(
   }
 );
 
+// Discord-style RBAC tables (20260806000002_custom_roles_permissions.sql) —
+// admin-only, zero RLS policies by design (same convention as the
+// admin-only `notifications` table), so the anon key must never see a row
+// from any of the 4. Skips gracefully if the migration hasn't landed yet.
+test(
+  "custom-roles RBAC tables (permissions/roles/role_permissions/user_roles) are fully blocked from the anon key",
+  { skip: !hasCredentials },
+  async (t) => {
+    const anon = createClient(supabaseUrl!, anonKey!);
+
+    for (const table of ["permissions", "roles", "role_permissions", "user_roles"] as const) {
+      const { data, error } = await anon.from(table).select("*").limit(1);
+
+      if (error && /could not find the table|does not exist/i.test(error.message)) {
+        t.skip(`${table} does not exist yet (migration not applied)`);
+        continue;
+      }
+
+      assert.ifError(error);
+      assert.equal(data?.length ?? 0, 0, `anon key must never see any ${table} row — admin-only, no public policy`);
+    }
+  }
+);
+
 test(
   "product child tables (options/option values/variant values/color images) do not leak non-published/paused product data to the anon key",
   { skip: !hasCredentials || !serviceRoleKey },
