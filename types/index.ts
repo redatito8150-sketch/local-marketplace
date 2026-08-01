@@ -71,11 +71,6 @@ export interface MoodTileContent {
 
 export type ShopByMoodContent = MoodTileContent[];
 
-export interface FeaturedBrandAndSponsoredContent {
-  featuredBrandSlug: string;
-  sponsoredBrandSlugs: string[];
-}
-
 export interface JoinHeroContent {
   label: string;
   headingLines: string[];
@@ -495,6 +490,13 @@ export interface BrandRecord {
   // orders pool with every other partner brand's into one shared shipment/
   // delivery fee at checkout, instead of each becoming its own shipment.
   isMahalyPartner: boolean;
+  // Sponsorship — admin-only. `sponsoredPlacements` can hold more than one
+  // placement at once; `sponsoredOrder` breaks ties when several brands
+  // share the same placement (lower shows first / earlier in a carousel).
+  // See lib/admin/brandValidation.ts's SPONSOR_PLACEMENTS for the fixed set.
+  isSponsored: boolean;
+  sponsoredPlacements: string[];
+  sponsoredOrder?: number;
   // Admin-managed, required before this brand can create a product through
   // the server-generated SKU path (next_product_sku RPC). Read-only for
   // brand owners, and locked (DB trigger) once the brand has any product.

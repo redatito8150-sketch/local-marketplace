@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import TagInput from "@/components/shared/TagInput";
+import { SPONSOR_PLACEMENTS, type BrandSponsorPlacement } from "@/lib/admin/brandValidation";
 import type {
   BrandCategoryTab,
   BrandInfoBadge,
@@ -11,6 +12,12 @@ import type {
   BrandShopTheLookTile,
   BrandValue,
 } from "@/types";
+
+const PLACEMENT_LABELS: Record<BrandSponsorPlacement, string> = {
+  homepage_banner: "End of homepage",
+  mega_menu_banner: "“Brands” mega menu banner",
+  featured_brands_first: "First in Featured Brands",
+};
 
 interface BrandFormProps {
   mode: "create" | "edit";
@@ -41,6 +48,9 @@ export interface FormState {
   skuPrefix: string;
   isActive: boolean;
   isMahalyPartner: boolean;
+  isSponsored: boolean;
+  sponsoredPlacements: BrandSponsorPlacement[];
+  sponsoredOrder: string;
   foundedYear: string;
   city: string;
   heroImage: string;
@@ -72,6 +82,9 @@ function toFormState(brand?: BrandRecord): FormState {
     skuPrefix: brand?.skuPrefix ?? "",
     isActive: brand?.isActive ?? true,
     isMahalyPartner: brand?.isMahalyPartner ?? false,
+    isSponsored: brand?.isSponsored ?? false,
+    sponsoredPlacements: (brand?.sponsoredPlacements ?? []) as BrandSponsorPlacement[],
+    sponsoredOrder: brand?.sponsoredOrder != null ? String(brand.sponsoredOrder) : "",
     foundedYear: brand?.foundedYear ? String(brand.foundedYear) : "",
     city: brand?.city ?? "Cairo",
     heroImage: brand?.heroImage ?? "",
@@ -153,6 +166,14 @@ export default function BrandForm({
   const removeValue = (index: number) =>
     setForm((f) => ({ ...f, values: f.values.filter((_, i) => i !== index) }));
 
+  const togglePlacement = (placement: BrandSponsorPlacement) =>
+    setForm((f) => ({
+      ...f,
+      sponsoredPlacements: f.sponsoredPlacements.includes(placement)
+        ? f.sponsoredPlacements.filter((p) => p !== placement)
+        : [...f.sponsoredPlacements, placement],
+    }));
+
   const toggleSimilarBrand = (slug: string) =>
     setForm((f) => ({
       ...f,
@@ -190,7 +211,15 @@ export default function BrandForm({
       // and the brand-portal's own PATCH route never writes sku_prefix
       // anyway, so resending the existing value here is a no-op for it.
       skuPrefix: form.skuPrefix.trim().toUpperCase(),
-      ...(isBrandPortal ? {} : { isActive: form.isActive, isMahalyPartner: form.isMahalyPartner }),
+      ...(isBrandPortal
+        ? {}
+        : {
+            isActive: form.isActive,
+            isMahalyPartner: form.isMahalyPartner,
+            isSponsored: form.isSponsored,
+            sponsoredPlacements: form.isSponsored ? form.sponsoredPlacements : [],
+            sponsoredOrder: form.sponsoredOrder.trim() ? Number(form.sponsoredOrder) : undefined,
+          }),
       foundedYear: form.foundedYear ? Number(form.foundedYear) : undefined,
       city: form.city.trim(),
       heroImage: form.heroImage.trim(),
@@ -336,6 +365,54 @@ export default function BrandForm({
             className="h-5 w-9 flex-none accent-ink"
           />
         </label>
+      )}
+
+      {!isBrandPortal && (
+        <div className="rounded-md border border-stone-150 px-3.5 py-2.5">
+          <label className="flex items-center justify-between">
+            <span>
+              <span className="block text-[13.5px] font-medium text-ink">Sponsored</span>
+              <span className="block text-[11.5px] text-ink-soft/50">
+                Gives this brand a paid/featured placement — pick where below.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={form.isSponsored}
+              onChange={(e) => set("isSponsored", e.target.checked)}
+              className="h-5 w-9 flex-none accent-ink"
+            />
+          </label>
+
+          {form.isSponsored && (
+            <div className="mt-3 space-y-3 border-t border-stone-150 pt-3">
+              <div>
+                <span className="text-[12.5px] font-medium text-slate-600">
+                  Where should it appear? (choose any number)
+                </span>
+                <div className="mt-1.5 space-y-1.5">
+                  {SPONSOR_PLACEMENTS.map((placement) => (
+                    <label key={placement} className="flex items-center gap-2 text-[13px] text-ink">
+                      <input
+                        type="checkbox"
+                        checked={form.sponsoredPlacements.includes(placement)}
+                        onChange={() => togglePlacement(placement)}
+                        className="h-4 w-4 accent-ink"
+                      />
+                      {PLACEMENT_LABELS[placement]}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <TextField
+                label="Display order (only matters if another brand shares the same placement — lower shows first)"
+                type="number"
+                value={form.sponsoredOrder}
+                onChange={(v) => set("sponsoredOrder", v)}
+              />
+            </div>
+          )}
+        </div>
       )}
 
       <TextField

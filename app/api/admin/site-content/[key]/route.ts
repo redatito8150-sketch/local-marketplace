@@ -5,7 +5,6 @@ import { logAudit } from "@/lib/auditLog";
 import { safeErrorResponse } from "@/lib/apiError";
 import type {
   ContactInfoContent,
-  FeaturedBrandAndSponsoredContent,
   HomeHeroContent,
   HomeProductSectionContent,
   JoinHeroContent,
@@ -14,14 +13,15 @@ import type {
 
 // Single-value keys handled generically here. category-heroes, journal, and
 // product-taxonomy (list-shaped, needing per-item patch/add/remove
-// semantics) get their own dedicated routes instead.
+// semantics) get their own dedicated routes instead. Featured-brand/sponsor
+// placement is no longer a site_content key — it's per-brand (BrandForm's
+// Sponsorship section), see lib/data/brands.ts's getSponsoredBrandsForPlacement.
 const ALLOWED_KEYS = [
   "home_hero",
   "join_hero",
   "shipping_settings",
   "contact_info",
   "home_new_arrivals",
-  "featured_brand_and_sponsored",
 ] as const;
 const PRODUCT_SECTION_SOURCES: HomeProductSectionContent["source"][] = [
   "new",
@@ -84,22 +84,10 @@ function validateHomeProductSection(value: unknown): string | null {
   return null;
 }
 
-function validateFeaturedBrandAndSponsored(value: unknown): string | null {
-  if (!value || typeof value !== "object") return "Missing content";
-  const v = value as Partial<FeaturedBrandAndSponsoredContent>;
-  if (!v.featuredBrandSlug?.trim()) return "A featured brand is required";
-  if (!Array.isArray(v.sponsoredBrandSlugs)) return "Sponsored brands must be a list";
-  if (v.sponsoredBrandSlugs.some((s) => typeof s !== "string" || !s.trim())) {
-    return "Every sponsored brand needs a valid slug";
-  }
-  return null;
-}
-
 function validate(key: AllowedKey, value: unknown): string | null {
   if (key === "home_hero" || key === "join_hero") return validateHero(key, value);
   if (key === "shipping_settings") return validateShippingSettings(value);
   if (key === "home_new_arrivals") return validateHomeProductSection(value);
-  if (key === "featured_brand_and_sponsored") return validateFeaturedBrandAndSponsored(value);
   return validateContactInfo(value);
 }
 

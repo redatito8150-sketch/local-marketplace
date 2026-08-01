@@ -243,6 +243,9 @@ interface BrandRow {
   additional_categories: string[] | null;
   is_active: boolean;
   is_mahaly_partner: boolean;
+  is_sponsored: boolean;
+  sponsored_placements: string[] | null;
+  sponsored_order: number | null;
   founded_year: number | null;
   city: string;
   hero_image: string;
@@ -276,6 +279,9 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean
     additionalCategories: row.additional_categories ?? [],
     isActive: row.is_active,
     isMahalyPartner: row.is_mahaly_partner,
+    isSponsored: row.is_sponsored,
+    sponsoredPlacements: row.sponsored_placements ?? [],
+    sponsoredOrder: row.sponsored_order ?? undefined,
     skuPrefix: row.sku_prefix,
     hasProducts,
     foundedYear: row.founded_year ?? undefined,

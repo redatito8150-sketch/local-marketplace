@@ -1,5 +1,14 @@
 import type { BrandInfoBadge, BrandCategoryTab, BrandValue, BrandShopTheLookTile } from "@/types";
 
+// Mirrors the DB check constraint in
+// supabase/migrations/20260807000005_brand_sponsorship.sql.
+export const SPONSOR_PLACEMENTS = [
+  "homepage_banner",
+  "mega_menu_banner",
+  "featured_brands_first",
+] as const;
+export type BrandSponsorPlacement = (typeof SPONSOR_PLACEMENTS)[number];
+
 export interface BrandInput {
   slug: string;
   name: string;
@@ -19,6 +28,13 @@ export interface BrandInput {
   // other partner brand in the same cart — see
   // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql.
   isMahalyPartner?: boolean;
+  // Sponsorship — admin-only (hidden in brand-portal scope, same as
+  // isActive/isMahalyPartner above). `sponsoredPlacements` supports more
+  // than one placement at once; `sponsoredOrder` breaks ties when several
+  // brands share a placement (lower = shown first / earlier in a carousel).
+  isSponsored?: boolean;
+  sponsoredPlacements?: BrandSponsorPlacement[];
+  sponsoredOrder?: number | null;
   foundedYear?: number;
   city: string;
   heroImage: string;
@@ -66,6 +82,11 @@ export function validateBrandInput(body: BrandInput): string | null {
     (!Number.isInteger(body.returnWindowDays) || body.returnWindowDays <= 0)
   ) {
     return "Return window must be a whole number of days greater than 0";
+  }
+  if (
+    body.sponsoredPlacements?.some((p) => !SPONSOR_PLACEMENTS.includes(p))
+  ) {
+    return "Invalid sponsorship placement";
   }
   return null;
 }
