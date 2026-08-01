@@ -17,7 +17,7 @@ export async function GET(
   const params = await props.params;
   const user = await getRequestUser(_request);
   if (!user) {
-    return NextResponse.json({ signedIn: false, isFollowing: false, isOwnBrand: false, canEdit: false });
+    return NextResponse.json({ signedIn: false, isFollowing: false, isOwnBrand: false, canEdit: false, isAdmin: false });
   }
 
   const [isFollowing, ownerContext, admin] = await Promise.all([
@@ -33,5 +33,5 @@ export async function GET(
   // since that's resolved without an override here.
   const canEdit = Boolean(admin) || (isOwnBrand && ownerContext?.accessLevel === "owner");
 
-  return NextResponse.json({ signedIn: true, isFollowing, isOwnBrand, canEdit });
+  return NextResponse.json({ signedIn: true, isFollowing, isOwnBrand, canEdit, isAdmin: Boolean(admin) });
 }

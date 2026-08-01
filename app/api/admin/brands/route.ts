@@ -81,6 +81,7 @@ export async function POST(request: NextRequest) {
     name: body.name,
     tagline: body.tagline,
     category: body.category,
+    additional_categories: body.additionalCategories ?? [],
     sku_prefix: body.skuPrefix.trim().toUpperCase(),
     is_active: body.isActive ?? true,
     is_mahaly_partner: body.isMahalyPartner ?? false,

@@ -240,6 +240,7 @@ interface BrandRow {
   name: string;
   tagline: string;
   category: string;
+  additional_categories: string[] | null;
   is_active: boolean;
   is_mahaly_partner: boolean;
   founded_year: number | null;
@@ -272,6 +273,7 @@ function toBrandRecord(row: BrandRow, ownerEmail?: string, hasProducts?: boolean
     name: row.name,
     tagline: row.tagline,
     category: row.category,
+    additionalCategories: row.additional_categories ?? [],
     isActive: row.is_active,
     isMahalyPartner: row.is_mahaly_partner,
     skuPrefix: row.sku_prefix,

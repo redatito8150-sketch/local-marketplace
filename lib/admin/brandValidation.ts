@@ -5,6 +5,9 @@ export interface BrandInput {
   name: string;
   tagline: string;
   category: string;
+  // Extra categories beyond the primary one above — rendered as the "+N"
+  // badge next to the category on the public brand page.
+  additionalCategories?: string[];
   // Admin-only (BrandForm hides this field entirely in brand-portal scope)
   // — required on every brand, DB-enforced NOT NULL + format CHECK, and
   // locked (DB trigger) once the brand has any product. See

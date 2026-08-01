@@ -31,10 +31,10 @@ function isTextField(field: string): field is TextField {
 
 async function requireEditor(brandSlug: string) {
   const admin = await requireAdminUser();
-  if (admin) return { userId: admin.id, actorLabel: admin.email ?? admin.id };
+  if (admin) return { userId: admin.id, actorLabel: admin.email ?? admin.id, isAdmin: true };
   const owner = await requireBrandOwner();
   if (owner && owner.brandSlug === brandSlug && owner.accessLevel === "owner") {
-    return { userId: owner.user.id, actorLabel: owner.user.email ?? owner.user.id };
+    return { userId: owner.user.id, actorLabel: owner.user.email ?? owner.user.id, isAdmin: false };
   }
   return null;
 }
@@ -52,6 +52,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 
   const body = await request.json().catch(() => null);
   const field = body?.field;
+
+  // The brand's name is admin-only — an owner can freely edit tagline,
+  // city, founded year, about copy, etc., but never rename the brand
+  // itself. Enforced here regardless of the client-side pencil affordance
+  // being hidden for owners, since this route is the real boundary.
+  if (field === "name" && !editor.isAdmin) {
+    return NextResponse.json({ error: "Only an admin can rename a brand" }, { status: 403 });
+  }
 
   if (field === "foundedYear") {
     const raw = body?.value;

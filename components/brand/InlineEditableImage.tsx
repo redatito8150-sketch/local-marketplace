@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, Trash2 } from "lucide-react";
 import { useBrandEdit } from "./BrandEditContext";
 
 interface InlineEditableImageProps {
@@ -41,8 +41,27 @@ export default function InlineEditableImage({
   const { canEdit, brandSlug } = useBrandEdit();
   const [current, setCurrent] = useState(src);
   const [uploading, setUploading] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRemove = async () => {
+    setRemoving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/brands/${brandSlug}/image?field=${field}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Remove failed");
+        return;
+      }
+      setCurrent(undefined);
+    } catch {
+      setError("Remove failed. Please try again.");
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   const handleFile = async (file: File) => {
     setUploading(true);
@@ -75,11 +94,11 @@ export default function InlineEditableImage({
         emptyPlaceholder
       )}
       {canEdit && (
-        <div className={`absolute ${overlaySizeClassName} flex items-center justify-center bg-black/0 transition-colors hover:bg-black/35 group`}>
+        <div className={`absolute ${overlaySizeClassName} flex items-center justify-center gap-3 bg-black/0 transition-colors hover:bg-black/35 group`}>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || removing}
             aria-label={`Change ${field} image`}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-soft transition-opacity group-hover:opacity-100 disabled:opacity-100"
           >
@@ -89,6 +108,21 @@ export default function InlineEditableImage({
               <Camera className="h-4 w-4 text-ink" strokeWidth={1.8} />
             )}
           </button>
+          {current && (
+            <button
+              type="button"
+              onClick={handleRemove}
+              disabled={uploading || removing}
+              aria-label={`Remove ${field} image`}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-soft transition-opacity group-hover:opacity-100 disabled:opacity-100"
+            >
+              {removing ? (
+                <Loader2 className="h-4 w-4 animate-spin text-red-600" strokeWidth={2} />
+              ) : (
+                <Trash2 className="h-4 w-4 text-red-600" strokeWidth={1.8} />
+              )}
+            </button>
+          )}
           <input
             ref={fileInputRef}
             type="file"

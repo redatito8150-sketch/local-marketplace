@@ -52,6 +52,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                       value={brand.name}
                       as="h1"
                       className="font-serif text-3xl font-semibold tracking-tight sm:text-4xl"
+                      requireAdmin
                     />
                     <BadgeCheck className="h-5 w-5 text-[#e9c477]" aria-label="Verified brand" />
                   </div>

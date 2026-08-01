@@ -122,3 +122,47 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
 
   return NextResponse.json({ url: publicUrlData.publicUrl });
 }
+
+// Clears a brand image field back to empty (the "remove this photo"
+// affordance) — never deletes the underlying Storage object, only unsets
+// the DB column, same trade-off /admin already makes elsewhere: keeps
+// this route simple and avoids a stale-URL race if something else still
+// references the file mid-request.
+export async function DELETE(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+  const params = await props.params;
+  const editor = await requireEditor(params.slug);
+  if (!editor) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const field = searchParams.get("field");
+  if (typeof field !== "string" || !ALLOWED_FIELDS.includes(field as BrandImageField)) {
+    return NextResponse.json({ error: "Invalid image field" }, { status: 400 });
+  }
+
+  const column = FIELD_TO_COLUMN[field as BrandImageField];
+  const { data: existing } = await supabaseAdmin
+    .from("brands")
+    .select(column)
+    .eq("slug", params.slug)
+    .maybeSingle();
+
+  const { error } = await supabaseAdmin.from("brands").update({ [column]: "" }).eq("slug", params.slug);
+  if (error) {
+    return safeErrorResponse("brands.image.remove", error, "Failed to remove image");
+  }
+
+  await logAudit({
+    actorId: editor.userId,
+    actorLabel: editor.actorLabel,
+    entityType: "brand",
+    entityId: params.slug,
+    action: "update",
+    before: existing,
+    after: { [column]: "" },
+    brandSlug: params.slug,
+  });
+
+  return NextResponse.json({ ok: true });
+}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
+import TagInput from "@/components/shared/TagInput";
 import type {
   BrandCategoryTab,
   BrandInfoBadge,
@@ -36,6 +37,7 @@ export interface FormState {
   name: string;
   tagline: string;
   category: string;
+  additionalCategories: string[];
   skuPrefix: string;
   isActive: boolean;
   isMahalyPartner: boolean;
@@ -66,6 +68,7 @@ function toFormState(brand?: BrandRecord): FormState {
     name: brand?.name ?? "",
     tagline: brand?.tagline ?? "",
     category: brand?.category ?? "",
+    additionalCategories: brand?.additionalCategories ?? [],
     skuPrefix: brand?.skuPrefix ?? "",
     isActive: brand?.isActive ?? true,
     isMahalyPartner: brand?.isMahalyPartner ?? false,
@@ -181,6 +184,7 @@ export default function BrandForm({
       name: form.name.trim(),
       tagline: form.tagline.trim(),
       category: form.category.trim(),
+      additionalCategories: form.additionalCategories,
       // Always included (even in brand-portal scope, where the field isn't
       // shown/editable) — validateBrandInput now requires it unconditionally,
       // and the brand-portal's own PATCH route never writes sku_prefix
@@ -269,6 +273,19 @@ export default function BrandForm({
           onChange={(v) => set("foundedYear", v)}
         />
         <TextField label="City" value={form.city} onChange={(v) => set("city", v)} required />
+      </div>
+
+      <div>
+        <span className="text-[12.5px] font-medium text-slate-600">
+          Additional categories (optional — shown as a &quot;+N&quot; badge next to Category)
+        </span>
+        <div className="mt-1.5">
+          <TagInput
+            value={form.additionalCategories}
+            onChange={(next) => setForm((f) => ({ ...f, additionalCategories: next }))}
+            placeholder="Type a category and press Enter"
+          />
+        </div>
       </div>
 
       {!isBrandPortal && (

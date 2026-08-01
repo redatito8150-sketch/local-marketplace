@@ -489,6 +489,7 @@ export interface BrandRecord {
   name: string;
   tagline: string;
   category: string;
+  additionalCategories: string[];
   isActive: boolean;
   // Mahaly-partner brands keep stock in Mahaly's own warehouse — their
   // orders pool with every other partner brand's into one shared shipment/

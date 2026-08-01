@@ -14,6 +14,11 @@ interface InlineEditableTextProps {
   // single-line <input> (Enter to save, Escape to cancel).
   multiline?: boolean;
   placeholder?: string;
+  // Some fields (the brand name) are admin-only — an owner can edit
+  // everything else about their own page, but never rename the brand
+  // itself. When set, this checks BrandEditContext's isAdmin instead of
+  // the normal owner-or-admin canEdit.
+  requireAdmin?: boolean;
   // Plain string, not a callback — a Server Component parent (this is
   // rendered from BrandProfileHeader/about page, neither "use client")
   // can't pass a function prop across to a Client Component at runtime
@@ -39,8 +44,10 @@ export default function InlineEditableText({
   multiline = false,
   placeholder = "Add",
   prefix = "",
+  requireAdmin = false,
 }: InlineEditableTextProps) {
-  const { canEdit, brandSlug } = useBrandEdit();
+  const { canEdit: canEditBrand, isAdmin, brandSlug } = useBrandEdit();
+  const canEdit = requireAdmin ? isAdmin : canEditBrand;
   const [current, setCurrent] = useState(value);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(value ?? ""));
@@ -124,7 +131,7 @@ export default function InlineEditableText({
             onClick={cancel}
             disabled={saving}
             aria-label="Cancel"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-black/10 text-ink"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600/90 text-white hover:bg-red-600"
           >
             <X className="h-3.5 w-3.5" strokeWidth={2.5} />
           </button>
