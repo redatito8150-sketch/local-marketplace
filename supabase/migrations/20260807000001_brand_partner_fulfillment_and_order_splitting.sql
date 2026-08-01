@@ -98,7 +98,18 @@ create policy "Brand owners can read status history for their orders"
 -- brand), computes a per-bucket shipping fee, and splits any coupon discount
 -- proportionally by each bucket's EGP subtotal share (remainder absorbed by
 -- the last bucket so the parts always sum to the whole-cart discount).
+--
+-- IMPORTANT: `create or replace function` only replaces a function whose
+-- parameter list matches EXACTLY (types and count) — since this version
+-- adds two new trailing parameters, Postgres would otherwise treat it as a
+-- brand-new overload and silently leave the old 10-parameter place_order()
+-- in place alongside it. Two overloads sharing the same first 10 parameter
+-- names makes any caller that omits the two new ones ambiguous
+-- ("Could not choose the best candidate function"). Drop the old
+-- signature explicitly first so this really replaces it.
 -- ============================================================================
+drop function if exists public.place_order(text, text, text, text, text, text, uuid, jsonb, text, uuid);
+
 create or replace function public.place_order(
   p_shipping_name text,
   p_shipping_email text,
