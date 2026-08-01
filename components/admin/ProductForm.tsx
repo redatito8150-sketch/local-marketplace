@@ -28,7 +28,7 @@ import CareInstructionsPicker from "@/components/admin/CareInstructionsPicker";
 import MaterialsComposer from "@/components/admin/MaterialsComposer";
 import FitSelect from "@/components/admin/FitSelect";
 import { resolveShippingPolicy, type BrandPolicyFields } from "@/lib/admin/shippingPolicy";
-import { discountPercentage } from "@/lib/brandProfile";
+import { getEffectivePrice, isDiscountActive } from "@/lib/pricing";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
   PRODUCT_EDITOR_SECTIONS,
@@ -37,6 +37,17 @@ import {
   ProductErrorSummary,
   type EditorSaveState,
 } from "@/components/admin/ProductEditorChrome";
+
+// Quick-fill buttons for the "Discount ends" field — covers the common
+// relative durations while the datetime-local input right above them still
+// takes an exact date/time directly, so both duration styles are one control.
+const DISCOUNT_DURATION_PRESETS: { id: string; label: string; hours?: number }[] = [
+  { id: "24h", label: "24 hours", hours: 24 },
+  { id: "3d", label: "3 days", hours: 72 },
+  { id: "1w", label: "1 week", hours: 24 * 7 },
+  { id: "1m", label: "1 month", hours: 24 * 30 },
+  { id: "none", label: "No end date" },
+];
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
   { value: "men", label: "Men" },
@@ -85,7 +96,8 @@ interface FormState {
   collectionId: string;
   sku: string;
   price: string;
-  compareAtPrice: string;
+  discountPercent: string;
+  discountEndsAt: string; // datetime-local value, "" = no end date (runs forever)
   image: string;
   images: string[];
   // Legacy single-material field — no longer editable; kept only so an
@@ -159,7 +171,8 @@ function toFormState(
     collectionId: product?.collectionId ?? "",
     sku: product?.sku ?? "",
     price: product ? String(product.price) : "",
-    compareAtPrice: product?.compareAtPrice != null ? String(product.compareAtPrice) : "",
+    discountPercent: product?.discountPercent != null ? String(product.discountPercent) : "",
+    discountEndsAt: product?.discountEndsAt ? toDatetimeLocalValue(product.discountEndsAt) : "",
     image: product?.image ?? "",
     // `product.images` is the flattened, persisted [cover, ...gallery,
     // ...colorImages] order — strip the cover back out here since the
@@ -365,7 +378,8 @@ export default function ProductForm({
     productTypeId: form.productTypeId,
     collectionId: form.collectionId || undefined,
     price: Number(form.price),
-    compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
+    discountPercent: form.discountPercent ? Number(form.discountPercent) : undefined,
+    discountEndsAt: form.discountEndsAt ? new Date(form.discountEndsAt).toISOString() : undefined,
     currency: "EGP",
     image: form.image.trim(),
     images: form.images,
@@ -588,7 +602,7 @@ export default function ProductForm({
         </FormSection>
 
         {/* 02 — Pricing */}
-        <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the default selling price used whenever a variant does not define its own final price." complete={completedSections.has("pricing")} issues={currentIssues.filter((issue) => issue.section === "pricing")}>
+        <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the permanent base price. A discount is a % plus an optional end time — it reverts to the base price automatically the instant it ends, no action needed." complete={completedSections.has("pricing")} issues={currentIssues.filter((issue) => issue.section === "pricing")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <PriceField
               id="product-price"
@@ -597,40 +611,63 @@ export default function ProductForm({
               value={form.price}
               onChange={(v) => set("price", v)}
             />
-            <PriceField
-              id="product-compare-price"
-              label="Compare At Price"
-              value={form.compareAtPrice}
-              onChange={(v) => set("compareAtPrice", v)}
-            />
             <PercentField
               id="product-discount-percent"
               label="Discount %"
-              value={
-                Number(form.price) > 0 && Number(form.compareAtPrice) > Number(form.price)
-                  ? String(discountPercentage(Number(form.price), Number(form.compareAtPrice)))
-                  : ""
-              }
-              onChange={(pct) => {
-                const price = Number(form.price);
-                if (pct === "") {
-                  set("compareAtPrice", "");
-                  return;
-                }
-                const percent = Number(pct);
-                if (!price || !Number.isFinite(percent) || percent <= 0 || percent >= 100) return;
-                set("compareAtPrice", (price / (1 - percent / 100)).toFixed(2));
-              }}
+              value={form.discountPercent}
+              onChange={(v) => set("discountPercent", v)}
             />
-          </div>
-          <div className="mt-4 flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50 px-4 py-3">
             <div>
-              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-soft/45">Price preview</p>
-              <p className="mt-1 text-[18px] font-bold text-ink">{Number(form.price) > 0 ? `${Number(form.price).toLocaleString()} EGP` : "— EGP"}</p>
+              <label htmlFor="product-discount-ends-at" className="text-[12.5px] font-medium text-ink-soft/70">
+                Discount ends
+              </label>
+              <input
+                id="product-discount-ends-at"
+                type="datetime-local"
+                value={form.discountEndsAt}
+                onChange={(e) => set("discountEndsAt", e.target.value)}
+                className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
+              />
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {DISCOUNT_DURATION_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      set(
+                        "discountEndsAt",
+                        preset.hours ? toDatetimeLocalValue(new Date(Date.now() + preset.hours * 3_600_000).toISOString()) : ""
+                      )
+                    }
+                    className="rounded-full border border-stone-150 px-2.5 py-1 text-[11px] font-medium text-ink-soft/70 transition hover:border-ink/30 hover:text-ink"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            {Number(form.compareAtPrice) > Number(form.price) && <p className="text-[13px] text-ink-soft/45 line-through">{Number(form.compareAtPrice).toLocaleString()} EGP</p>}
           </div>
-          <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price — set either the Compare At Price or the Discount % and the other fills in automatically. Variant Price remains the final price for that variant.</p>
+          {(() => {
+            const price = Number(form.price);
+            const discountPercent = form.discountPercent ? Number(form.discountPercent) : undefined;
+            const discountEndsAt = form.discountEndsAt ? new Date(form.discountEndsAt).toISOString() : undefined;
+            const active = price > 0 && isDiscountActive(discountPercent, discountEndsAt);
+            const effectivePrice = active ? getEffectivePrice(price, discountPercent, discountEndsAt) : price;
+            const savings = active ? price - effectivePrice : 0;
+            return (
+              <div className="mt-4 flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50 px-4 py-3">
+                <div className="flex items-baseline gap-2.5">
+                  <div>
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide text-ink-soft/45">Price preview</p>
+                    <p className="mt-1 text-[18px] font-bold text-ink">{price > 0 ? `${effectivePrice.toLocaleString()} EGP` : "— EGP"}</p>
+                  </div>
+                  {active && <p className="text-[13px] text-ink-soft/45 line-through">{price.toLocaleString()} EGP</p>}
+                </div>
+                {active && <p className="text-[12.5px] font-semibold text-emerald-700">Save {savings.toLocaleString()} EGP</p>}
+              </div>
+            );
+          })()}
+          <p className="mt-2 text-[11.5px] text-ink-soft/50">Leave Discount % empty for no discount. Leave "Discount ends" empty for a discount that runs indefinitely. Variant Price remains the final price for that variant (the discount % still applies on top of it).</p>
         </FormSection>
 
         {/* 03 — Variants (Inventory) — comes before Media because Media's
@@ -774,7 +811,8 @@ export default function ProductForm({
             productTypeId: form.productTypeId,
             collectionName: "",
             price: form.price,
-            compareAtPrice: form.compareAtPrice,
+            discountPercent: form.discountPercent,
+            discountEndsAt: form.discountEndsAt,
             image: form.image,
             images: form.images,
             inventoryVariants: form.inventoryVariants,
@@ -919,9 +957,8 @@ function TextField({
   );
 }
 
-// Derived from price + compareAtPrice (see the `value` computation at the
-// call site) rather than holding its own state — typing here writes back
-// to compareAtPrice, so the two fields never drift out of sync.
+// Just a labeled 0-99 percent input — the "Discount %" call site writes
+// straight to form.discountPercent, no derived value to keep in sync here.
 function PercentField({
   id,
   label,

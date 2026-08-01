@@ -62,7 +62,8 @@ export interface ProductRow {
   materials: { material: string; percentage: number }[] | null;
   fit: string | null;
   price: number;
-  compare_at_price: number | null;
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   currency: "USD" | "EGP";
   image: string;
   images: string[];
@@ -158,7 +159,8 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     collectionName: row.collection_id ? ctx.collectionNamesById.get(row.collection_id) : undefined,
     material: row.material ?? undefined,
     fit: row.fit ?? undefined,
-    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
+    discountPercent: row.discount_percent ?? undefined,
+    discountEndsAt: row.discount_ends_at ?? undefined,
     featured: row.featured,
     isNew: isWithinNewArrivalWindow(row.status, row.publish_date),
   };
@@ -174,7 +176,8 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     brandName: row.brand_name,
     brandSlug: row.brand_slug ?? undefined,
     price: Number(row.price),
-    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
+    discountPercent: row.discount_percent ?? undefined,
+    discountEndsAt: row.discount_ends_at ?? undefined,
     currency: row.currency,
     images: row.images?.length ? row.images : [row.image],
     description: row.description,
@@ -379,25 +382,6 @@ async function resolveProductIdsByVariantOptionLabel(optionKey: "size" | "color"
   return [...new Set(rows.map((r) => r.product_variants.product_id))];
 }
 
-// Resolves which product ids have at least one non-archived variant that
-// is (or isn't) purchasable, for the Availability facet.
-// PostgREST can't compare two columns of the same row (compare_at_price vs
-// price) in a single filter expression, so — same pattern as
-// resolveProductIdsByAvailability below — this resolves the matching id
-// list in JS first. Keeps the "On Sale" filter's definition of a real
-// discount identical to isActiveOffer()/the "Offer X%" card badge, instead
-// of the looser "compare_at_price is set at all" check this replaced.
-async function resolveDiscountedProductIds(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, price, compare_at_price")
-    .not("compare_at_price", "is", null);
-  if (error) throw new Error(`resolveDiscountedProductIds failed: ${error.message}`);
-  return (data ?? [])
-    .filter((row) => Number(row.compare_at_price) > Number(row.price))
-    .map((row) => row.id as string);
-}
-
 async function resolveProductIdsByAvailability(inStock: boolean): Promise<string[]> {
   const { data, error } = await supabase
     .from("product_variants")
@@ -419,7 +403,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
   const needsCollectionLookup = Boolean(filters.collection?.length);
-  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds, discountedProductIds] = await Promise.all([
+  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds] = await Promise.all([
     needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
     needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
     filters.size?.length ? resolveProductIdsByVariantOptionLabel("size", filters.size) : Promise.resolve<string[] | null>(null),
@@ -427,7 +411,6 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     filters.availability?.length === 1
       ? resolveProductIdsByAvailability(filters.availability[0] === "in-stock")
       : Promise.resolve<string[] | null>(null),
-    filters.discounted?.length ? resolveDiscountedProductIds() : Promise.resolve<string[] | null>(null),
   ]);
 
   let query = supabase
@@ -458,8 +441,20 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   if (availabilityProductIds) query = query.in("id", availabilityProductIds.length ? availabilityProductIds : ["__none__"]);
   if (filters.rating?.length) query = query.gte("rating", filters.rating.includes("3-plus") ? 3 : 4);
   if (filters.featured?.length) query = query.eq("featured", true);
-  if (discountedProductIds) query = query.in("id", discountedProductIds.length ? discountedProductIds : ["__none__"]);
+  // Unlike the old compare_at_price check, this is a same-row-to-`now()`
+  // comparison (not a same-row column-to-column one), so it can be a plain
+  // query filter — no separate id-resolving lookup needed.
+  if (filters.discounted?.length) {
+    query = query
+      .gt("discount_percent", 0)
+      .or(`discount_ends_at.is.null,discount_ends_at.gt.${new Date().toISOString()}`);
+  }
 
+  // NOTE: price-range filtering and price-asc/desc sorting below still
+  // operate on the base `price` column, not the discounted effective
+  // price — a product discounted from 100 to 90 is still bucketed/sorted
+  // at 100. Fixing that needs a generated column or view; left as a known,
+  // deliberate gap rather than silently wrong.
   const sort = options.sort ?? "newest";
   if (sort === "price-asc") query = query.order("price", { ascending: true });
   else if (sort === "price-desc") query = query.order("price", { ascending: false });
@@ -497,17 +492,19 @@ export interface MarketplaceCatalogFacetRow {
   fit?: string;
   sizes: string[];
   colors: ProductColorOption[];
-  compareAtPrice?: number;
+  discountPercent?: number;
+  discountEndsAt?: string;
   price: number;
 }
 
 export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogFacetRow[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("id, brand_name, audience, product_type_id, collection_id, material, fit, compare_at_price, price")
+    .select("id, brand_name, audience, product_type_id, collection_id, material, fit, discount_percent, discount_ends_at, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .limit(2000);
+
   if (error) throw new Error(`getMarketplaceCatalogFacets failed: ${error.message}`);
   const rows = (data ?? []) as {
     id: string;
@@ -517,7 +514,8 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
     collection_id: string | null;
     material: string | null;
     fit: string | null;
-    compare_at_price: number | null;
+    discount_percent: number | null;
+    discount_ends_at: string | null;
     price: number;
   }[];
 
@@ -552,7 +550,8 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
       fit: row.fit ?? undefined,
       sizes,
       colors: [...colorMap.values()],
-      compareAtPrice: row.compare_at_price == null ? undefined : Number(row.compare_at_price),
+      discountPercent: row.discount_percent ?? undefined,
+      discountEndsAt: row.discount_ends_at ?? undefined,
       price: Number(row.price),
     };
   });

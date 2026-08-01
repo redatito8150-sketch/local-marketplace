@@ -29,7 +29,8 @@ export function buildProductPersistencePayload(
     // empty), replacing the legacy single `material` text column below.
     materials: body.materials ?? [],
     price: body.price,
-    compare_at_price: body.compareAtPrice ?? null,
+    discount_percent: body.discountPercent ?? null,
+    discount_ends_at: body.discountEndsAt ?? null,
     currency: body.currency,
     image: body.image,
     // One authoritative product-detail order. The cover is always present,

@@ -43,7 +43,8 @@ interface ProductRow {
   materials: { material: string; percentage: number }[] | null;
   fit: string | null;
   price: number;
-  compare_at_price: number | null;
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   currency: "USD" | "EGP";
   image: string;
   images: string[];
@@ -111,7 +112,8 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     materials: row.materials ?? [],
     fit: row.fit ?? undefined,
     price: Number(row.price),
-    compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : undefined,
+    discountPercent: row.discount_percent ?? undefined,
+    discountEndsAt: row.discount_ends_at ?? undefined,
     currency: row.currency,
     image: row.image,
     images: row.images ?? [],

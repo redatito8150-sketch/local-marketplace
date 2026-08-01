@@ -23,7 +23,8 @@ export interface ProductInput {
   audience: Audience;
   collectionId?: string;
   price: number;
-  compareAtPrice?: number;
+  discountPercent?: number;
+  discountEndsAt?: string;
   currency: "USD" | "EGP";
   image: string;
   images?: string[];
@@ -126,10 +127,13 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   }
   if (!Number.isFinite(body.price) || body.price <= 0) add("pricing", "Price must be a positive number", "product-price");
   if (
-    body.compareAtPrice != null &&
-    (!Number.isFinite(body.compareAtPrice) || body.compareAtPrice <= body.price)
+    body.discountPercent != null &&
+    (!Number.isFinite(body.discountPercent) || body.discountPercent <= 0 || body.discountPercent >= 100)
   ) {
-    add("pricing", "Compare At Price must be greater than the price", "product-compare-price");
+    add("pricing", "Discount % must be between 1 and 99", "product-discount-percent");
+  }
+  if (body.discountEndsAt != null && Number.isNaN(new Date(body.discountEndsAt).getTime())) {
+    add("pricing", "Discount end date is invalid", "product-discount-ends-at");
   }
   if (!body.image?.trim()) add("media", "Main image is required", "product-media");
   if (!body.description?.trim()) add("details", "Description is required", "product-description");

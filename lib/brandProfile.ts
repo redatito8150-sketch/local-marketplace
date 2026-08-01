@@ -1,4 +1,5 @@
 import type { BrandShopTheLookTile, Product } from "@/types";
+import { isDiscountActive } from "./pricing.ts";
 
 export const BRAND_PROFILE_ROUTES = ["products", "collections", "about", "reviews"] as const;
 export type BrandProfileRoute = (typeof BRAND_PROFILE_ROUTES)[number];
@@ -6,15 +7,6 @@ export type BrandProfileRoute = (typeof BRAND_PROFILE_ROUTES)[number];
 export function resolveBrandProfileRoute(pathname: string): BrandProfileRoute {
   const segment = pathname.split("?")[0].split("/").filter(Boolean).at(-1);
   return BRAND_PROFILE_ROUTES.includes(segment as BrandProfileRoute) ? segment as BrandProfileRoute : "products";
-}
-
-export function isActiveOffer(product: Pick<Product, "price" | "compareAtPrice" | "inStock">): boolean {
-  return product.inStock && Number.isFinite(product.price) && product.compareAtPrice != null && Number.isFinite(product.compareAtPrice) && product.compareAtPrice > product.price;
-}
-
-export function discountPercentage(currentPrice: number, originalPrice: number): number {
-  if (!Number.isFinite(currentPrice) || !Number.isFinite(originalPrice) || originalPrice <= 0 || currentPrice >= originalPrice) return 0;
-  return Math.round((1 - currentPrice / originalPrice) * 100);
 }
 
 export function filterProductsForBrand<T extends { brand: string }>(products: T[], brandName: string): T[] {
@@ -30,4 +22,24 @@ export function aggregateBrandRatings(products: Array<Pick<Product, "rating" | "
   if (reviewCount === 0) return { average: 0, reviewCount: 0 };
   const weightedTotal = products.reduce((sum, product) => sum + product.rating * Math.max(0, product.reviewCount), 0);
   return { average: weightedTotal / reviewCount, reviewCount };
+}
+
+export function isActiveOffer(
+  product: Pick<Product, "discountPercent" | "discountEndsAt" | "inStock">,
+  now: Date = new Date()
+) {
+  return product.inStock && isDiscountActive(product.discountPercent, product.discountEndsAt, now);
+}
+
+export function discountPercentage(price: number, compareAtPrice: number) {
+  if (
+    !Number.isFinite(price) ||
+    !Number.isFinite(compareAtPrice) ||
+    price < 0 ||
+    compareAtPrice <= price
+  ) {
+    return 0;
+  }
+
+  return Math.min(99, Math.round((1 - price / compareAtPrice) * 100));
 }

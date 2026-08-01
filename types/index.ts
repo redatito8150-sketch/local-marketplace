@@ -282,7 +282,12 @@ export interface ProductTaxonomyFields {
   material?: string;
   materials?: ProductMaterialEntry[];
   fit?: string;
-  compareAtPrice?: number;
+  // A discount is a percentage plus an optional end time — undefined
+  // discountEndsAt means it runs forever until discountPercent is cleared.
+  // The actual charged/displayed price is always derived from these via
+  // lib/pricing.ts's getEffectivePrice(), never stored separately.
+  discountPercent?: number;
+  discountEndsAt?: string;
   modelHeight?: string;
   modelWearing?: string;
   featured?: boolean;

@@ -1,5 +1,6 @@
 import type { FilterGroup, Product } from "@/types";
 import type { MarketplaceCatalogFacetRow } from "@/lib/data/products";
+import { isDiscountActive } from "./pricing.ts";
 
 // Fallback price bounds when no products are available to derive a real
 // range from (e.g. an empty catalog) — the project's own configured floor
@@ -104,7 +105,7 @@ export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGr
     AVAILABILITY_GROUP,
     RATING_GROUP,
     FEATURED_GROUP,
-    ...(products.some((product) => product.compareAtPrice != null) ? [DISCOUNTED_GROUP] : []),
+    ...(products.some((product) => isDiscountActive(product.discountPercent, product.discountEndsAt)) ? [DISCOUNTED_GROUP] : []),
   ];
   // Price has no discrete option list (it's a range control) so it's kept
   // whenever there's at least one priced product, unlike every other group
@@ -135,7 +136,7 @@ export function buildDynamicFilterGroups(products: Product[]): FilterGroup[] {
     AVAILABILITY_GROUP,
     RATING_GROUP,
     FEATURED_GROUP,
-    ...(products.some((product) => product.compareAtPrice != null) ? [DISCOUNTED_GROUP] : []),
+    ...(products.some((product) => isDiscountActive(product.discountPercent, product.discountEndsAt)) ? [DISCOUNTED_GROUP] : []),
   ];
   return groups.filter((group) => group.id === "price" ? products.length > 0 : group.options.length > 0);
 }

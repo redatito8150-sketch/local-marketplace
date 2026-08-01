@@ -1,4 +1,5 @@
 import type { Product, ProductVariant } from "@/types";
+import { getEffectivePrice } from "./pricing.ts";
 
 export type Currency = "USD" | "EGP";
 
@@ -41,16 +42,15 @@ export function formatCompactNumber(value: number): string {
 /**
  * The one price-resolution rule used everywhere a product's active price is
  * charged or totaled (cart add, Complete Featured Look total): Variant
- * Price is the final price when set, otherwise the product's own price —
- * which is already the active/effective price (post-discount where
- * relevant); `compareAtPrice` is only ever the struck-through "was" price,
- * never used in a total.
+ * Price is the final price when set, otherwise the product's own base
+ * price — with any active time-bound discount (lib/pricing.ts) applied on
+ * top of whichever of those two is in effect.
  */
 export function resolveActivePrice(
-  product: Pick<Product, "price">,
+  product: Pick<Product, "price" | "discountPercent" | "discountEndsAt">,
   variant?: Pick<ProductVariant, "variantPrice">
 ): number {
-  return variant?.variantPrice ?? product.price;
+  return getEffectivePrice(variant?.variantPrice ?? product.price, product.discountPercent, product.discountEndsAt);
 }
 
 /**
@@ -58,7 +58,7 @@ export function resolveActivePrice(
  * Accumulates in integer cents so repeated float addition can't drift a
  * displayed total by fractions of a piaster.
  */
-export function calculateCollectionTotal<T extends Pick<Product, "price">>(
+export function calculateCollectionTotal<T extends Pick<Product, "price" | "discountPercent" | "discountEndsAt">>(
   products: T[],
   resolveVariant?: (product: T) => Pick<ProductVariant, "variantPrice"> | undefined
 ): number {

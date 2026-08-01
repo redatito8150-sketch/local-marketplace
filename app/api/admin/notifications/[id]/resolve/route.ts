@@ -18,7 +18,8 @@ interface BeforeProductSnapshot {
   material: string | null;
   fit: string | null;
   price: number;
-  compare_at_price: number | null;
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   currency: "USD" | "EGP";
   image: string;
   images: string[];
@@ -129,7 +130,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         material: productFields.material,
         fit: productFields.fit,
         price: productFields.price,
-        compare_at_price: productFields.compare_at_price,
+        discount_percent: productFields.discount_percent,
+        discount_ends_at: productFields.discount_ends_at,
         currency: productFields.currency,
         image: productFields.image,
         images: productFields.images,

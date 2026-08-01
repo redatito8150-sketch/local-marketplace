@@ -92,7 +92,8 @@ from (
     ('product_variants','combo_key'), ('product_variants','is_archived'),
     ('product_variants','low_stock_threshold_override'),
     ('products','audience'), ('products','brand_id'), ('products','collection_id'),
-    ('products','default_low_stock_threshold'), ('products','materials'), ('products','product_type_id'),
+    ('products','default_low_stock_threshold'), ('products','discount_ends_at'),
+    ('products','discount_percent'), ('products','materials'), ('products','product_type_id'),
     ('profiles','avatar_url'), ('profiles','onboarding_completed_at'), ('profiles','phone'),
     ('profiles','phone_verified_at'), ('profiles','provider_avatar_url'),
     ('roles','rank')

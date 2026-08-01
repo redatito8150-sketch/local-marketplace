@@ -6,14 +6,16 @@ import { Heart } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { useWishlist } from "@/context/WishlistContext";
 import StarRating from "@/components/shared/StarRating";
-import { discountPercentage, isActiveOffer } from "@/lib/brandProfile";
+import { isActiveOffer } from "@/lib/brandProfile";
+import { getEffectivePrice } from "@/lib/pricing";
 import type { Product } from "@/types";
 
 export default function CompactProductCard({ product }: { product: Product }) {
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
   const onOffer = isActiveOffer(product);
-  const offerPercent = onOffer ? discountPercentage(product.price, product.compareAtPrice!) : 0;
+  const offerPercent = onOffer ? Math.round(product.discountPercent ?? 0) : 0;
+  const displayPrice = getEffectivePrice(product.price, product.discountPercent, product.discountEndsAt);
 
   return (
     <Link
@@ -42,7 +44,7 @@ export default function CompactProductCard({ product }: { product: Product }) {
               name: product.name,
               brand: product.brand,
               brandSlug: product.brandSlug,
-              price: product.price,
+              price: displayPrice,
               currency: product.currency,
               image: product.image,
             });
@@ -63,7 +65,7 @@ export default function CompactProductCard({ product }: { product: Product }) {
           </div>
         </div>
         <p className="mt-3 inline-flex rounded-full border border-white/25 bg-black/35 px-3 py-1.5 text-[12px] font-bold shadow-lg backdrop-blur-md">
-          {formatPrice(product.price, product.currency)}
+          {formatPrice(displayPrice, product.currency)}
         </p>
       </div>
     </Link>

@@ -8,7 +8,8 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
-import { discountPercentage, isActiveOffer } from "@/lib/brandProfile";
+import { isActiveOffer } from "@/lib/brandProfile";
+import { getEffectivePrice } from "@/lib/pricing";
 import StarRating from "@/components/shared/StarRating";
 
 export default function ProductCard({
@@ -50,7 +51,8 @@ export default function ProductCard({
   const quickAddColor = defaultVariant?.optionValues.find((o) => o.optionTypeName === "Color")?.label;
 
   const onOffer = isActiveOffer(product);
-  const offerPercent = onOffer ? discountPercentage(product.price, product.compareAtPrice!) : 0;
+  const offerPercent = onOffer ? Math.round(product.discountPercent ?? 0) : 0;
+  const displayPrice = getEffectivePrice(product.price, product.discountPercent, product.discountEndsAt);
 
   return (
     <Link
@@ -100,7 +102,7 @@ export default function ProductCard({
               name: product.name,
               brand: product.brand,
               brandSlug: product.brandSlug,
-              price: product.price,
+              price: displayPrice,
               currency: product.currency,
               image: product.image,
             });
@@ -150,7 +152,7 @@ export default function ProductCard({
           {product.name}
         </h3>
         <p className={`${compact ? "mt-1 text-[11px]" : elevated ? "mt-1 text-[14px]" : "mt-1.5 text-[14px]"} font-semibold text-ink`}>
-          {formatPrice(product.price, product.currency)}
+          {formatPrice(displayPrice, product.currency)}
         </p>
 
         <div className={`${compact || hideRating ? "hidden" : "flex"} mt-1.5 items-center gap-1.5`}>
@@ -171,7 +173,11 @@ export default function ProductCard({
               name: product.name,
               brand: product.brand,
               brandSlug: product.brandSlug ?? "",
-              price: defaultVariant?.variantPrice ?? product.price,
+              price: getEffectivePrice(
+                defaultVariant?.variantPrice ?? product.price,
+                product.discountPercent,
+                product.discountEndsAt
+              ),
               currency: product.currency,
               image: product.image,
               size: quickAddSize,

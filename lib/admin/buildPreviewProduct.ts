@@ -31,7 +31,8 @@ export interface ProductPreviewFormValues {
   productTypeId: string;
   collectionName: string;
   price: string;
-  compareAtPrice: string;
+  discountPercent: string;
+  discountEndsAt: string;
   image: string;
   images: string[];
   inventoryVariants: InventoryVariantsValue;
@@ -93,7 +94,8 @@ export function buildPreviewProduct(
     // own override silently inherit whichever variant happened to be
     // first in the array, regardless of what was actually selected.
     price: productPrice,
-    compareAtPrice: form.compareAtPrice ? Number(form.compareAtPrice) : undefined,
+    discountPercent: form.discountPercent ? Number(form.discountPercent) : undefined,
+    discountEndsAt: form.discountEndsAt ? new Date(form.discountEndsAt).toISOString() : undefined,
     currency: "EGP",
     images: safeImages,
     description: form.description.trim(),

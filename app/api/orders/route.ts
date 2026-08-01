@@ -13,6 +13,7 @@ import { getOrdersForUser } from "@/lib/data/orders";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isVariantPurchasable, calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getEffectivePrice } from "@/lib/pricing";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
 import type { ShippingSettingsContent } from "@/types";
 
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
   const [{ data: products, error: productsError }, variantsByProduct] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, price, currency, image, status, paused_by_brand, default_low_stock_threshold")
+      .select("id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, image, status, paused_by_brand, default_low_stock_threshold")
       .in("id", productIds),
     getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
       logError("Order variant lookup failed", error.message);
@@ -143,7 +144,10 @@ export async function POST(request: NextRequest) {
         name: product.name,
         brand: product.brand_name,
         brand_slug: product.brand_slug ?? "",
-        price: variant.variantPrice ?? Number(product.price),
+        // The real, live price at the moment of payment — if a discount
+        // expired between add-to-cart and checkout, this correctly charges
+        // the full base price, not whatever the cart displayed earlier.
+        price: getEffectivePrice(variant.variantPrice ?? Number(product.price), product.discount_percent, product.discount_ends_at),
         currency: product.currency,
         size: item.size,
         color: item.color ?? "",

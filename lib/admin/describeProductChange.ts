@@ -7,7 +7,7 @@ interface ExistingProductRow {
   name: string;
   price: number;
   currency: "USD" | "EGP";
-  compare_at_price: number | null;
+  discount_percent: number | null;
   description: string;
   image: string;
 }
@@ -35,9 +35,9 @@ export function describeProductUpdate(existing: ExistingProductRow, proposed: Pr
     formatPrice(proposed.price, proposed.currency)
   );
   push(
-    "Compare At Price",
-    existing.compare_at_price ? formatPrice(existing.compare_at_price, existing.currency) : "—",
-    proposed.compareAtPrice ? formatPrice(proposed.compareAtPrice, proposed.currency) : "—"
+    "Discount",
+    existing.discount_percent ? `${existing.discount_percent}%` : "—",
+    proposed.discountPercent ? `${proposed.discountPercent}%` : "—"
   );
   if (existing.description !== proposed.description) lines.push("Description updated");
   if (existing.image !== proposed.image) lines.push("Main image updated");

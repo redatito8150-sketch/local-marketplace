@@ -9,7 +9,7 @@ const validProduct: ProductInput = {
   productTypeId: "type-1",
   audience: "unisex",
   price: 500,
-  compareAtPrice: 600,
+  discountPercent: 20,
   currency: "EGP",
   image: "https://images.unsplash.com/photo.jpg",
   images: [],
@@ -33,12 +33,13 @@ test("structured product validation groups issues by editor section and field an
     ...validProduct,
     name: "",
     price: -1,
-    compareAtPrice: 0,
+    discountPercent: 150,
     image: "",
     description: "",
   });
   assert.ok(issues.some((issue) => issue.section === "basic" && issue.fieldId === "product-name"));
   assert.ok(issues.some((issue) => issue.section === "pricing" && issue.fieldId === "product-price"));
+  assert.ok(issues.some((issue) => issue.section === "pricing" && issue.fieldId === "product-discount-percent"));
   assert.ok(issues.some((issue) => issue.section === "media" && issue.fieldId === "product-media"));
   assert.ok(issues.some((issue) => issue.section === "details" && issue.fieldId === "product-description"));
 });

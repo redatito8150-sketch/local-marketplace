@@ -7,6 +7,7 @@ import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
+import { discountSavings, getEffectivePrice, isDiscountActive } from "@/lib/pricing";
 import { effectiveVariantPrice } from "@/lib/inventory/pricing";
 import { calculateStockStatus, effectiveLowStockThreshold, isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import StarRating from "@/components/shared/StarRating";
@@ -75,7 +76,36 @@ export default function ProductInfo({
     });
   }, [hasVariants, variants, selectedColor, selectedSize, selectedCustom, customOptionGroups]);
 
-  const displayPrice = effectiveVariantPrice(resolvedVariant?.variantPrice, product.price);
+  const baseDisplayPrice = effectiveVariantPrice(resolvedVariant?.variantPrice, product.price);
+
+  // Ticks every second so an active discount's countdown actually counts
+  // down, and so the price/badge flip back to the base price the instant
+  // it expires — without this the component would only re-evaluate
+  // isDiscountActive/getEffectivePrice (both default to `new Date()` at
+  // call time) on the next unrelated re-render or page refresh.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!product.discountEndsAt) return;
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [product.discountEndsAt]);
+
+  const onOffer = isDiscountActive(product.discountPercent, product.discountEndsAt, now);
+  const displayPrice = getEffectivePrice(baseDisplayPrice, product.discountPercent, product.discountEndsAt, now);
+  const savings = onOffer ? discountSavings(baseDisplayPrice, product.discountPercent, product.discountEndsAt, now) : 0;
+  const countdownLabel = (() => {
+    if (!onOffer || !product.discountEndsAt) return null;
+    const msLeft = new Date(product.discountEndsAt).getTime() - now.getTime();
+    if (msLeft <= 0) return null;
+    const totalSeconds = Math.floor(msLeft / 1000);
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (days > 0) return `${days}d ${hours}h ${minutes}m left`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s left`;
+    return `${minutes}m ${seconds}s left`;
+  })();
 
   useEffect(() => {
     onColorImageChange?.(selectedColor ? product.colorImages?.[selectedColor] : undefined);
@@ -186,16 +216,34 @@ export default function ProductInfo({
         </a>
       </div>
 
-      <div className="mt-5 flex items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <p className="text-2xl font-semibold text-ink">
           {formatPrice(displayPrice, product.currency)}
         </p>
-        {typeof product.compareAtPrice === "number" && product.compareAtPrice > displayPrice && (
+        {onOffer && baseDisplayPrice > displayPrice && (
           <p className="text-[15px] text-ink-soft/40 line-through">
-            {formatPrice(product.compareAtPrice, product.currency)}
+            {formatPrice(baseDisplayPrice, product.currency)}
           </p>
         )}
+        {onOffer && product.discountPercent != null && (
+          <span className="group/savings relative inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[12px] font-bold text-red-600">
+            -{Math.round(product.discountPercent)}%
+            <span
+              tabIndex={0}
+              aria-label={`You save ${formatPrice(savings, product.currency)}`}
+              className="flex h-3.5 w-3.5 cursor-default items-center justify-center rounded-full bg-red-100 text-[9px] font-bold"
+            >
+              !
+            </span>
+            <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-max -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-3 py-1.5 text-[11px] font-medium text-cream opacity-0 shadow-xl transition-opacity group-hover/savings:opacity-100 group-focus-within/savings:opacity-100">
+              You save {formatPrice(savings, product.currency)}
+            </span>
+          </span>
+        )}
       </div>
+      {countdownLabel && (
+        <p className="mt-2 text-[12.5px] font-semibold text-red-600">Offer ends in {countdownLabel}</p>
+      )}
 
       {/* Color selector */}
       {product.colors.length > 0 && (
@@ -372,7 +420,7 @@ export default function ProductInfo({
               name: product.name,
               brand: product.brandName,
               brandSlug: product.brandSlug,
-              price: product.price,
+              price: displayPrice,
               currency: product.currency,
               image: product.images[0],
             });
