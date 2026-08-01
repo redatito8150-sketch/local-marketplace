@@ -246,6 +246,9 @@ export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
 export interface MenuFeaturedBrand extends FeaturedBrandSummary {
   isNew: boolean;
   isMahalyPartner: boolean;
+  // Pinned via the "featured_brands_first" sponsorship placement — drives
+  // the gold highlight around this brand's own avatar in the menu.
+  isSponsored: boolean;
 }
 
 const FEATURED_BRANDS_MENU_LIMIT = 6;
@@ -314,12 +317,14 @@ export async function getFeaturedBrandsForMenu(limit = FEATURED_BRANDS_MENU_LIMI
   }
 
   const newSlugs = new Set(newBrands.map((r) => r.slug));
+  const sponsoredSlugs = new Set(sponsored.map((r) => r.slug));
   return [...sponsored, ...newBrands, ...fill].slice(0, limit).map((r) => ({
     slug: r.slug,
     name: r.name,
     thumbnail: r.hero_image,
     isNew: newSlugs.has(r.slug),
     isMahalyPartner: r.is_mahaly_partner,
+    isSponsored: sponsoredSlugs.has(r.slug),
   }));
 }
 

@@ -1,4 +1,4 @@
-import { BadgeCheck, Layers3, MapPin, Package, Users } from "lucide-react";
+import { Layers3, MapPin, Package, Users } from "lucide-react";
 import type { BrandPageContent } from "@/types";
 import { formatCompactNumber } from "@/lib/format";
 import BrandHeroActions from "./BrandHeroActions";
@@ -55,7 +55,6 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                       className="font-serif text-3xl font-semibold tracking-tight sm:text-4xl"
                       requireAdmin
                     />
-                    <BadgeCheck className="h-5 w-5 text-[#e9c477]" aria-label="Verified brand" />
                     {brand.isMahalyPartner && <PartnerBadge className="h-5 w-5" />}
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/80">

@@ -151,6 +151,18 @@ body {
   50% { transform: translate3d(-12px, 16px, 0) rotate(8deg); }
 }
 
+/* A slow glint on the Mahaly Partner badge (components/shared/PartnerBadge.tsx) */
+@keyframes partner-shine {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(127, 29, 29, 0)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 3px rgba(127, 29, 29, 0.65)); transform: scale(1.08); }
+}
+.partner-shine {
+  animation: partner-shine 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .partner-shine { animation: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-stars { background-image: none; }
 }

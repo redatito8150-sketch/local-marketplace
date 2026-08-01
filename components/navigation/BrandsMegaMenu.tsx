@@ -87,10 +87,6 @@ export default function BrandsMegaMenu() {
 
   const featuredBrands = data?.featuredBrands ?? [];
   const megaMenuBanner = data?.megaMenuBanner ?? [];
-  // A gold highlight around "Brands" itself signals there's sponsored
-  // content waiting in the dropdown — same real data that drives the
-  // promo card below, not a separate "is anything sponsored" flag.
-  const hasSponsor = megaMenuBanner.length > 0;
 
   return (
     <div
@@ -104,11 +100,7 @@ export default function BrandsMegaMenu() {
         aria-haspopup="true"
         aria-expanded={open}
         onFocus={openMenu}
-        className={`group relative flex items-center gap-1 rounded-full text-[15px] font-medium transition-colors ${
-          hasSponsor
-            ? "-mx-2.5 -my-1 bg-gradient-to-r from-[#f4d78a] via-[#e9c477] to-[#f4d78a] px-2.5 py-1 text-ink shadow-sm"
-            : "text-ink-soft hover:text-ink"
-        }`}
+        className="group relative flex items-center gap-1 text-[15px] font-medium text-ink-soft transition-colors hover:text-ink"
       >
         Brands
         <ChevronDown
@@ -117,13 +109,11 @@ export default function BrandsMegaMenu() {
           }`}
           strokeWidth={2}
         />
-        {!hasSponsor && (
-          <span
-            className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
-              open ? "w-full" : "w-0 group-hover:w-full"
-            }`}
-          />
-        )}
+        <span
+          className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
+            open ? "w-full" : "w-0 group-hover:w-full"
+          }`}
+        />
       </Link>
 
       <AnimatePresence>
@@ -156,7 +146,13 @@ export default function BrandsMegaMenu() {
                           onClick={() => setOpen(false)}
                           className="group/item flex items-center gap-3"
                         >
-                          <span className="relative h-9 w-9 flex-none overflow-hidden rounded-lg bg-stone-100">
+                          <span
+                            className={`relative h-9 w-9 flex-none overflow-hidden rounded-lg bg-stone-100 ${
+                              brand.isSponsored
+                                ? "ring-2 ring-[#e9c477] ring-offset-2 ring-offset-white"
+                                : ""
+                            }`}
+                          >
                             <Image
                               src={brand.thumbnail}
                               alt={brand.name}
