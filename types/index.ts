@@ -1049,6 +1049,7 @@ export interface BrandPageContent {
   followerCount: number;
   storeRating: number;
   shopTheLook: BrandShopTheLookTile[];
+  isMahalyPartner: boolean;
 }
 
 export interface BrandShopTheLookTile {

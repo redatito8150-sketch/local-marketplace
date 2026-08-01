@@ -83,7 +83,11 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     item.visible &&
     !["home_hero", "home_hero_tiles", "home_benefits"].includes(item.sectionKey) &&
     !productSectionTypes.includes(item.sectionType) &&
-    item.sectionType !== "mood_tiles"
+    item.sectionType !== "mood_tiles" &&
+    // Sponsorship no longer needs a Page Studio row to appear — it's
+    // rendered unconditionally below (see sponsoredHomeBanner), driven
+    // entirely by which brand(s) the admin marked Sponsored.
+    item.sectionType !== "featured_brand"
   );
   // Keep this design-preview branch independent from the live catalog while
   // it runs locally alongside other worktrees. The real product sections can
@@ -94,13 +98,10 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   const moodTiles = Array.isArray(moodSection?.config.items)
     ? moodSection.config.items as ShopByMoodContent
     : SHOP_BY_MOOD;
+  const sponsoredHomeBanner = await getSponsoredBrandsForPlacement("homepage_banner");
   const prepared = await Promise.all(renderable.map(async (item) => {
     if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
-    }
-    if (item.sectionType === "featured_brand") {
-      const sponsoredBrands = await getSponsoredBrandsForPlacement("homepage_banner");
-      return { item, sponsoredBrands };
     }
     if (item.sectionType === "brand_carousel" || item.sectionType === "sponsored_brands") {
       const slugs = Array.isArray(item.config.brandSlugs) ? item.config.brandSlugs.filter((slug): slug is string => typeof slug === "string") : [];
@@ -132,6 +133,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}
     <NewArrivalsSection title="New Arrivals" products={newestProducts} viewAllHref="/new-arrivals" />
     {moodSection ? frame(moodSection, <ShopByMood tiles={moodTiles} />) : <ShopByMood tiles={moodTiles} />}
+    <Sponsored sponsoredBrands={sponsoredHomeBanner} />
     <NewArrivalsSection title="Explore All Products" products={homepageProducts} viewAllHref="/shop/all" />
     {prepared.map((entry) => {
     const { item } = entry;
@@ -146,7 +148,6 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
       const tiles = Array.isArray(value) ? value as ShopByMoodContent : SHOP_BY_MOOD;
       return frame(item, <ShopByMood key={item.id} tiles={tiles} />);
     }
-    if (item.sectionType === "featured_brand" && "sponsoredBrands" in entry) return frame(item, <Sponsored key={item.id} sponsoredBrands={entry.sponsoredBrands ?? []} />);
     if ("brands" in entry) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} brands={entry.brands} />);
     if (["promotional_banner", "editorial_image", "text_block", "newsletter"].includes(item.sectionType)) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} />);
     return null;

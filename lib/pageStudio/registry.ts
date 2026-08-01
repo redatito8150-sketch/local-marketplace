@@ -18,10 +18,14 @@ export const PAGE_SECTION_TYPES = [
 
 export type PageSectionType = (typeof PAGE_SECTION_TYPES)[number];
 
+// "featured_brand" is deliberately absent — sponsorship is now driven
+// entirely by per-brand admin settings (BrandForm's Sponsorship section)
+// and always renders on the homepage, no Page Studio row needed. The type
+// stays in PAGE_SECTION_REGISTRY/PAGE_SECTION_TYPES so any pre-existing
+// row of this type doesn't crash a label lookup — it just renders nothing.
 export const ADDABLE_PAGE_SECTION_TYPES: PageSectionType[] = [
   "product_carousel",
   "product_grid",
-  "featured_brand",
   "brand_carousel",
   "promotional_banner",
   "editorial_image",

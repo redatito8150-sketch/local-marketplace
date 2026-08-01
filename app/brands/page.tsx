@@ -4,6 +4,7 @@ import { ArrowUpRight } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { getFeaturedBrands } from "@/lib/data/brands";
+import PartnerBadge from "@/components/shared/PartnerBadge";
 
 export const revalidate = 60;
 
@@ -51,8 +52,9 @@ export default async function BrandsDirectoryPage() {
               <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
 
               <div className="relative flex items-center justify-between p-6">
-                <span className="text-lg font-semibold text-white">
+                <span className="flex items-center gap-1.5 text-lg font-semibold text-white">
                   {brand.name}
+                  {brand.isMahalyPartner && <PartnerBadge className="h-4 w-4" />}
                 </span>
                 <ArrowUpRight
                   className="h-4 w-4 text-white transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"

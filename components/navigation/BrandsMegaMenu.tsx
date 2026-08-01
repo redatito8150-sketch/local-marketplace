@@ -8,6 +8,7 @@ import { ArrowRight, ChevronDown } from "lucide-react";
 import { BRANDS_PROMO, VIEW_ALL_BRANDS_HREF } from "@/content/navigation";
 import type { MenuFeaturedBrand, SponsoredBrandSlide } from "@/lib/data/brands";
 import BrandCarousel from "@/components/shared/BrandCarousel";
+import PartnerBadge from "@/components/shared/PartnerBadge";
 
 const CLOSE_DELAY = 150;
 
@@ -86,6 +87,10 @@ export default function BrandsMegaMenu() {
 
   const featuredBrands = data?.featuredBrands ?? [];
   const megaMenuBanner = data?.megaMenuBanner ?? [];
+  // A gold highlight around "Brands" itself signals there's sponsored
+  // content waiting in the dropdown — same real data that drives the
+  // promo card below, not a separate "is anything sponsored" flag.
+  const hasSponsor = megaMenuBanner.length > 0;
 
   return (
     <div
@@ -99,7 +104,11 @@ export default function BrandsMegaMenu() {
         aria-haspopup="true"
         aria-expanded={open}
         onFocus={openMenu}
-        className="group relative flex items-center gap-1 text-[15px] font-medium text-ink-soft transition-colors hover:text-ink"
+        className={`group relative flex items-center gap-1 rounded-full text-[15px] font-medium transition-colors ${
+          hasSponsor
+            ? "-mx-2.5 -my-1 bg-gradient-to-r from-[#f4d78a] via-[#e9c477] to-[#f4d78a] px-2.5 py-1 text-ink shadow-sm"
+            : "text-ink-soft hover:text-ink"
+        }`}
       >
         Brands
         <ChevronDown
@@ -108,11 +117,13 @@ export default function BrandsMegaMenu() {
           }`}
           strokeWidth={2}
         />
-        <span
-          className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
-            open ? "w-full" : "w-0 group-hover:w-full"
-          }`}
-        />
+        {!hasSponsor && (
+          <span
+            className={`absolute -bottom-1 left-0 h-px bg-ink transition-all duration-300 ${
+              open ? "w-full" : "w-0 group-hover:w-full"
+            }`}
+          />
+        )}
       </Link>
 
       <AnimatePresence>
@@ -156,6 +167,7 @@ export default function BrandsMegaMenu() {
                           </span>
                           <span className="flex items-center gap-1.5 text-[13px] font-medium text-ink-soft transition-colors group-hover/item:text-ink">
                             {brand.name}
+                            {brand.isMahalyPartner && <PartnerBadge className="h-3.5 w-3.5" />}
                             {brand.isNew && (
                               <span className="rounded-full bg-ink px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream">
                                 New
@@ -203,7 +215,10 @@ export default function BrandsMegaMenu() {
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/20 to-transparent" />
                             <div className="relative flex h-full flex-col justify-end p-6">
-                              <h3 className="text-2xl font-bold leading-tight text-white">{brand.name}</h3>
+                              <h3 className="flex items-center gap-2 text-2xl font-bold leading-tight text-white">
+                                {brand.name}
+                                {brand.isMahalyPartner && <PartnerBadge className="h-5 w-5" />}
+                              </h3>
                               <p className="mt-2 line-clamp-2 text-[13px] text-white/80">
                                 {brand.aboutDescription || brand.tagline}
                               </p>

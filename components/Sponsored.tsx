@@ -1,8 +1,11 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import type { SponsoredBrandSlide } from "@/lib/data/brands";
 import BrandCarousel from "@/components/shared/BrandCarousel";
+import PartnerBadge from "@/components/shared/PartnerBadge";
 
 // Renders whichever brand(s) the admin marked "Sponsored" for the
 // homepage_banner placement (BrandForm's Sponsorship section) — a
@@ -21,7 +24,10 @@ export default function Sponsored({ sponsoredBrands }: { sponsoredBrands: Sponso
               <div className="absolute inset-0 bg-gradient-to-r from-[#f6eee5] via-[#f6eee5]/90 to-transparent" />
               <div className="relative z-10 max-w-[370px] px-8 py-5">
                 <p className="text-[11px] font-medium">Sponsored brand</p>
-                <h2 className="mt-1 font-serif text-[35px] font-semibold leading-none">{brand.name}</h2>
+                <h2 className="mt-1 flex items-center gap-2 font-serif text-[35px] font-semibold leading-none">
+                  {brand.name}
+                  {brand.isMahalyPartner && <PartnerBadge className="h-6 w-6" />}
+                </h2>
                 <p className="mt-3 text-[11px] leading-[1.55] text-ink-soft/75">{brand.aboutDescription || brand.tagline}</p>
                 <Link href={`/brands/${brand.slug}`} className="mt-3 inline-flex items-center gap-5 text-[11px] font-semibold text-mahalyred">
                   Discover the collection <ArrowRight className="h-3.5 w-3.5" />

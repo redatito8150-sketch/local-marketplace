@@ -6,6 +6,7 @@ import BrandShareButton from "./BrandShareButton";
 import BrandProfileNav from "./BrandProfileNav";
 import InlineEditableImage from "./InlineEditableImage";
 import InlineEditableText from "./InlineEditableText";
+import PartnerBadge from "@/components/shared/PartnerBadge";
 
 function initials(name: string) {
   return name.split(/\s+/).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
@@ -55,6 +56,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                       requireAdmin
                     />
                     <BadgeCheck className="h-5 w-5 text-[#e9c477]" aria-label="Verified brand" />
+                    {brand.isMahalyPartner && <PartnerBadge className="h-5 w-5" />}
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/80">
                     <span className="inline-flex items-center gap-1.5">

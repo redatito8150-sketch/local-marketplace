@@ -36,6 +36,7 @@ interface BrandRow {
   values: BrandValue[];
   similar_brand_slugs: string[];
   shop_the_look: BrandShopTheLookTile[];
+  is_mahaly_partner: boolean;
 }
 
 // No per-brand rating aggregate column exists — weight each product's own
@@ -152,6 +153,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     followerCount,
     storeRating: computeStoreRating(productRowsTyped),
     shopTheLook: brand.shop_the_look ?? [],
+    isMahalyPartner: Boolean(brand.is_mahaly_partner),
   };
 }
 
@@ -167,6 +169,7 @@ export interface FeaturedBrandSummary {
   name: string;
   slug: string;
   thumbnail: string;
+  isMahalyPartner: boolean;
 }
 
 export interface BrandSummary {
@@ -226,7 +229,7 @@ export async function getBrandFulfillmentFlags(slugs: string[]): Promise<BrandFu
 export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
   const { data, error } = await supabase
     .from("brands")
-    .select("slug, name, hero_image")
+    .select("slug, name, hero_image, is_mahaly_partner")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -236,11 +239,13 @@ export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
     slug: r.slug as string,
     name: r.name as string,
     thumbnail: r.hero_image as string,
+    isMahalyPartner: Boolean(r.is_mahaly_partner),
   }));
 }
 
 export interface MenuFeaturedBrand extends FeaturedBrandSummary {
   isNew: boolean;
+  isMahalyPartner: boolean;
 }
 
 const FEATURED_BRANDS_MENU_LIMIT = 6;
@@ -314,6 +319,7 @@ export async function getFeaturedBrandsForMenu(limit = FEATURED_BRANDS_MENU_LIMI
     name: r.name,
     thumbnail: r.hero_image,
     isNew: newSlugs.has(r.slug),
+    isMahalyPartner: r.is_mahaly_partner,
   }));
 }
 
@@ -325,6 +331,7 @@ export interface SponsoredBrandSlide {
   tagline: string;
   aboutDescription: string;
   heroImage: string;
+  isMahalyPartner: boolean;
 }
 
 // Real content for the two carousel spots (homepage end-of-page section,
@@ -334,7 +341,7 @@ export interface SponsoredBrandSlide {
 export async function getSponsoredBrandsForPlacement(placement: BrandSponsorPlacement): Promise<SponsoredBrandSlide[]> {
   const { data, error } = await supabase
     .from("brands")
-    .select("slug, name, tagline, hero_image, about_description, sponsored_order")
+    .select("slug, name, tagline, hero_image, about_description, sponsored_order, is_mahaly_partner")
     .eq("is_active", true)
     .eq("is_sponsored", true)
     .contains("sponsored_placements", [placement])
@@ -349,5 +356,6 @@ export async function getSponsoredBrandsForPlacement(placement: BrandSponsorPlac
     tagline: r.tagline as string,
     aboutDescription: r.about_description as string,
     heroImage: r.hero_image as string,
+    isMahalyPartner: Boolean(r.is_mahaly_partner),
   }));
 }
