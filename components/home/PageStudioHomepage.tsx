@@ -11,7 +11,7 @@ import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import { getActiveProductsByIds, getAllActiveProducts, getNewArrivals } from "@/lib/data/products";
 import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
-import { getBrandSummariesBySlug, getSponsoredBrandsForPlacement } from "@/lib/data/brands";
+import { getBrandSummariesBySlug } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
 import type { ReactNode } from "react";
 import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ShopByMoodContent } from "@/types";
@@ -98,7 +98,6 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   const moodTiles = Array.isArray(moodSection?.config.items)
     ? moodSection.config.items as ShopByMoodContent
     : SHOP_BY_MOOD;
-  const sponsoredHomeBanner = await getSponsoredBrandsForPlacement("homepage_banner");
   const prepared = await Promise.all(renderable.map(async (item) => {
     if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
@@ -133,7 +132,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   return <main className="home-nile-background min-h-screen"><Header />{heroSection ? frame(heroSection, hero) : hero}
     <NewArrivalsSection title="New Arrivals" products={newestProducts} viewAllHref="/new-arrivals" />
     {moodSection ? frame(moodSection, <ShopByMood tiles={moodTiles} />) : <ShopByMood tiles={moodTiles} />}
-    <Sponsored sponsoredBrands={sponsoredHomeBanner} />
+    <Sponsored />
     <NewArrivalsSection title="Explore All Products" products={homepageProducts} viewAllHref="/shop/all" />
     {prepared.map((entry) => {
     const { item } = entry;

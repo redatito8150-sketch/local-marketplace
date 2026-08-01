@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
@@ -11,7 +12,30 @@ import PartnerBadge from "@/components/shared/PartnerBadge";
 // homepage_banner placement (BrandForm's Sponsorship section) — a
 // crossfading carousel when more than one, a single static tile when
 // exactly one, and nothing at all when none are configured.
-export default function Sponsored({ sponsoredBrands }: { sponsoredBrands: SponsoredBrandSlide[] }) {
+//
+// Fetches its own data client-side (same /api/brands/menu-data route
+// BrandsMegaMenu already uses) rather than taking it as a server-computed
+// prop: the homepage (app/page.tsx) is `dynamic = "force-static"`, so
+// anything resolved there is frozen at build time and would never reflect
+// a newly-toggled Sponsored brand until the next deploy.
+export default function Sponsored() {
+  const [sponsoredBrands, setSponsoredBrands] = useState<SponsoredBrandSlide[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/brands/menu-data")
+      .then((res) => res.json())
+      .then((json: { homepageBanner?: SponsoredBrandSlide[] }) => {
+        if (!cancelled) setSponsoredBrands(json.homepageBanner ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setSponsoredBrands([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   if (sponsoredBrands.length === 0) return null;
 
   return (
