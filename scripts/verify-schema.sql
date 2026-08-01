@@ -77,7 +77,7 @@ from (
     ('brand_applications','tax_registration_number'), ('brand_applications','updated_at'),
     ('brand_applications','website_url'),
     ('brand_staff','brand_id'),
-    ('brands','id'), ('brands','is_active'), ('brands','is_mahaly_partner'), ('brands','logo_image'),
+    ('brands','additional_categories'), ('brands','id'), ('brands','is_active'), ('brands','is_mahaly_partner'), ('brands','logo_image'),
     ('brands','onboarding_defaults'), ('brands','return_policy'), ('brands','return_window_days'),
     ('brands','setup_status'), ('brands','shipping_policy'), ('brands','shop_the_look'),
     ('brands','sku_prefix'), ('brands','source_application_id'), ('brands','story_image_2'),

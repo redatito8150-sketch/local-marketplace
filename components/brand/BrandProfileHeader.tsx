@@ -56,7 +56,19 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                     <BadgeCheck className="h-5 w-5 text-[#e9c477]" aria-label="Verified brand" />
                   </div>
                   <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-white/80">
-                    <span>{brand.category}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      {brand.category}
+                      {brand.additionalCategories.length > 0 && (
+                        <span className="group/categories relative">
+                          <span className="cursor-default rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">
+                            +{brand.additionalCategories.length}
+                          </span>
+                          <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-[#211d1a] px-3 py-2 text-[11px] leading-5 text-white opacity-0 shadow-xl transition-opacity group-hover/categories:opacity-100">
+                            {brand.additionalCategories.join(", ")}
+                          </span>
+                        </span>
+                      )}
+                    </span>
                     <span className="inline-flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" />
                       <InlineEditableText field="city" value={brand.city} as="span" className="text-[12px] text-white/80" />

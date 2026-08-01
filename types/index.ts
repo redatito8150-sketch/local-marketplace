@@ -1018,6 +1018,7 @@ export interface BrandPageContent {
   name: string;
   tagline: string;
   category: string;
+  additionalCategories: string[];
   foundedYear?: number;
   city: string;
   heroImage: string;

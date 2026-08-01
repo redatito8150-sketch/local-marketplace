@@ -18,6 +18,7 @@ interface BrandRow {
   name: string;
   tagline: string;
   category: string;
+  additional_categories: string[] | null;
   founded_year: number | null;
   city: string;
   hero_image: string;
@@ -130,6 +131,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     name: brand.name,
     tagline: brand.tagline,
     category: brand.category,
+    additionalCategories: brand.additional_categories ?? [],
     foundedYear: brand.founded_year ?? undefined,
     city: brand.city,
     heroImage: brand.hero_image,

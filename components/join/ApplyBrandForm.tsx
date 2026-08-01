@@ -35,6 +35,7 @@ import {
   withdrawApplicationRequest,
 } from "@/lib/join/clientApi";
 import ApplicationStatusView from "@/components/join/ApplicationStatusView";
+import TagInput from "@/components/shared/TagInput";
 
 // Products & operations comes before Legal & documents on purpose — the
 // applicant's brand/operations details are usually top of mind, while
@@ -84,7 +85,7 @@ interface FormState {
   brandNameAr: string;
   brandNameEn: string;
   productCategories: string[];
-  productCategoryOther: string;
+  productCategoryCustomTags: string[];
   brandStory: string;
   foundingYear: string;
   country: string;
@@ -107,33 +108,32 @@ interface FormState {
   consentTerms: boolean;
 }
 
-// Reconstructs the multi-select "which categories" + typed-in "Other" pair
-// from the flat productCategory/additionalCategories the DB stores — any
-// stored value that isn't one of the fixed options is treated as a custom
-// "Other" category the applicant typed in.
-function categoriesFromApp(app: BrandApplicationRecord): { categories: string[]; other: string } {
+// Reconstructs the preset pill selection + free-typed custom tags from the
+// flat productCategory/additionalCategories the DB stores — any stored
+// value that isn't one of the fixed preset options is treated as a custom
+// tag the applicant typed in themselves.
+function categoriesFromApp(app: BrandApplicationRecord): { categories: string[]; customTags: string[] } {
   const stored = [app.productCategory, ...app.additionalCategories].filter(Boolean);
   const categories: string[] = [];
-  let other = "";
+  const customTags: string[] = [];
   for (const value of stored) {
     if ((PRODUCT_CATEGORY_OPTIONS as readonly string[]).includes(value)) {
       if (!categories.includes(value)) categories.push(value);
-    } else {
-      if (!categories.includes("Other")) categories.push("Other");
-      other = value;
+    } else if (!customTags.includes(value)) {
+      customTags.push(value);
     }
   }
-  return { categories, other };
+  return { categories, customTags };
 }
 
-// Inverse of categoriesFromApp — resolves the selected category pills (plus
-// the typed-in "Other" text, if any) into the flat, deduplicated list of
-// strings the DB actually stores.
+// Inverse of categoriesFromApp — resolves the selected preset pills plus
+// the custom typed tags into the flat, deduplicated list of strings the DB
+// actually stores. Preset pills come first so the first preset picked stays
+// the primary category; custom tags always land in additionalCategories.
 function resolveCategories(form: FormState): string[] {
   const resolved: string[] = [];
-  for (const category of form.productCategories) {
-    const value = category === "Other" ? form.productCategoryOther.trim() || "Other" : category;
-    if (!resolved.includes(value)) resolved.push(value);
+  for (const category of [...form.productCategories, ...form.productCategoryCustomTags]) {
+    if (!resolved.includes(category)) resolved.push(category);
   }
   return resolved;
 }
@@ -148,7 +148,7 @@ function emptyForm(): FormState {
     brandNameAr: "",
     brandNameEn: "",
     productCategories: [],
-    productCategoryOther: "",
+    productCategoryCustomTags: [],
     brandStory: "",
     foundingYear: "",
     // Fixed — Mahaly is Egypt-only for now, see the locked Country field below.
@@ -183,7 +183,7 @@ function fromApplication(app: BrandApplicationRecord): FormState {
       : app.websiteUrl
         ? { [WEBSITE_CHANNEL]: app.websiteUrl }
         : {};
-  const { categories, other } = categoriesFromApp(app);
+  const { categories, customTags } = categoriesFromApp(app);
   return {
     founderName: app.founderName ?? "",
     email: app.email ?? "",
@@ -193,7 +193,7 @@ function fromApplication(app: BrandApplicationRecord): FormState {
     brandNameAr: app.brandNameAr ?? "",
     brandNameEn: app.brandNameEn ?? "",
     productCategories: categories,
-    productCategoryOther: other,
+    productCategoryCustomTags: customTags,
     brandStory: app.brandStory ?? "",
     foundingYear: app.foundingYear ? String(app.foundingYear) : "",
     // Always fixed to Egypt going forward regardless of what a legacy row stored.
@@ -597,17 +597,18 @@ export default function ApplyBrandForm({
                   error={fieldErrors.productCategory}
                 />
               </div>
-              {form.productCategories.includes("Other") && (
-                <div className="mt-2.5">
-                  <Field
-                    label="Please specify your category"
-                    value={form.productCategoryOther}
-                    onChange={(v) => set("productCategoryOther", v)}
-                    error={fieldErrors.productCategoryOther}
-                    required
+              <div className="mt-2.5">
+                <span className="text-[12.5px] font-medium text-ink-soft/70">
+                  Add more categories not listed above (optional)
+                </span>
+                <div className="mt-1.5">
+                  <TagInput
+                    value={form.productCategoryCustomTags}
+                    onChange={(next) => setForm((f) => ({ ...f, productCategoryCustomTags: next }))}
+                    placeholder="Type a category and press Enter"
                   />
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="grid grid-cols-3 gap-4">

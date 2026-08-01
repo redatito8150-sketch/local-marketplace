@@ -78,6 +78,10 @@ export const SALES_CHANNEL_LINK_CONFIG: Record<string, { label: string; strictUr
   "Other marketplaces": { label: "Marketplace details", strictUrl: false },
 };
 
+// "Other" used to be a preset pill gated behind a single free-text field —
+// replaced by the always-available category TagInput below the pills
+// (ApplyBrandForm.tsx), which supports any number of custom categories
+// instead of just one.
 export const PRODUCT_CATEGORY_OPTIONS = [
   "Women's Fashion",
   "Men's Fashion",
@@ -85,7 +89,6 @@ export const PRODUCT_CATEGORY_OPTIONS = [
   "Accessories",
   "Home & Living",
   "Beauty",
-  "Other",
 ] as const;
 
 // All 27 Egyptian governorates — the fixed, canonical list for both the
