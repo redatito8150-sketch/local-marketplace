@@ -33,6 +33,7 @@ const validSubmission = {
   legalStatus: "unregistered_individual",
   priceMin: 100,
   priceMax: 500,
+  fulfillmentResponsibility: "brand_handles",
   manufacturingModel: "own_production",
   fulfillmentModel: "ready_to_ship",
   avgPreparationTimeRange: "1_2_days",
@@ -101,9 +102,15 @@ test("submitApplicationSchema rejects a city outside the 27 Egyptian governorate
   assert.equal(result.success, false);
 });
 
-test("submitApplicationSchema rejects a category outside the fixed list", () => {
-  const result = submitApplicationSchema.safeParse({ ...validSubmission, productCategory: "Electronics" });
-  assert.equal(result.success, false);
+test("submitApplicationSchema accepts a free-text category but rejects an empty one", () => {
+  // productCategory has no fixed enum — the applicant can type any custom
+  // category via the TagInput, so "Electronics" (not one of the preset
+  // pills) is valid; only an empty value is rejected.
+  const custom = submitApplicationSchema.safeParse({ ...validSubmission, productCategory: "Electronics" });
+  assert.equal(custom.success, true);
+
+  const empty = submitApplicationSchema.safeParse({ ...validSubmission, productCategory: "" });
+  assert.equal(empty.success, false);
 });
 
 test("submitApplicationSchema requires approx. product count and monthly orders ranges", () => {

@@ -67,6 +67,19 @@ test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, as
     assert.match(error!.message, /permission denied/i);
   });
 
+  // Added after this exact RPC was found live with zero access restriction
+  // (see 20260807000004) — it takes p_user_id as a plain parameter instead
+  // of deriving it from the caller's session, so an open grant would let
+  // any signed-in user cancel a *different* customer's orders.
+  await t.test("cancel_order_group", async () => {
+    const { error } = await anon.rpc("cancel_order_group", {
+      p_order_group_id: FAKE_UUID,
+      p_user_id: FAKE_UUID,
+    });
+    assert.ok(error, "expected an error calling cancel_order_group with the anon key");
+    assert.match(error!.message, /permission denied/i);
+  });
+
   await t.test("set_default_address", async () => {
     const { error } = await anon.rpc("set_default_address", {
       p_user_id: FAKE_UUID,
