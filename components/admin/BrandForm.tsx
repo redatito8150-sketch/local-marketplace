@@ -279,7 +279,14 @@ export default function BrandForm({
       )}
 
       <div className="grid grid-cols-2 gap-4">
-        <TextField label="Name" value={form.name} onChange={(v) => set("name", v)} required />
+        <TextField
+          label="Name"
+          value={form.name}
+          onChange={(v) => set("name", v)}
+          required
+          disabled={isBrandPortal}
+          hint={isBrandPortal ? "Only an admin can rename a brand." : undefined}
+        />
         <TextField
           label="Tagline"
           value={form.tagline}

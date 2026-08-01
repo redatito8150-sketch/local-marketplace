@@ -28,6 +28,9 @@ export async function PATCH(request: NextRequest) {
   // Slug is the brand's fixed identity — never trust the client, even
   // though the brand-portal form doesn't render the field at all.
   body.slug = owner.brandSlug;
+  // Name is admin-only (same rule enforced on the public brand page's own
+  // inline-edit route) — the brand-portal form disables the field, but
+  // never trust that alone; the update below simply never writes name.
 
   const validationError = validateBrandInput(body);
   if (validationError) {
@@ -43,7 +46,6 @@ export async function PATCH(request: NextRequest) {
   const { error } = await supabaseAdmin
     .from("brands")
     .update({
-      name: body.name,
       tagline: body.tagline,
       category: body.category,
       founded_year: body.foundedYear ?? null,
