@@ -6,11 +6,14 @@ import { Heart } from "lucide-react";
 import { formatPrice } from "@/lib/format";
 import { useWishlist } from "@/context/WishlistContext";
 import StarRating from "@/components/shared/StarRating";
+import { discountPercentage, isActiveOffer } from "@/lib/brandProfile";
 import type { Product } from "@/types";
 
 export default function CompactProductCard({ product }: { product: Product }) {
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
+  const onOffer = isActiveOffer(product);
+  const offerPercent = onOffer ? discountPercentage(product.price, product.compareAtPrice!) : 0;
 
   return (
     <Link
@@ -20,9 +23,14 @@ export default function CompactProductCard({ product }: { product: Product }) {
       <div className="absolute inset-0">
         <Image src={product.image} alt={product.name} fill sizes="(max-width: 640px) 72vw, 280px" className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.07] group-focus-visible:scale-[1.07]" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-black/5 opacity-55 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100" />
-        {product.isNew && (
-          <span className="absolute left-3 top-3 z-10 rounded-full bg-mahalyred px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream">New</span>
-        )}
+        <div className="absolute left-3 top-3 z-10 flex flex-col items-start gap-1">
+          {product.isNew && (
+            <span className="rounded-full bg-mahalyred px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream">New</span>
+          )}
+          {onOffer && (
+            <span className="rounded-full bg-ink px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream">Offer {offerPercent}%</span>
+          )}
+        </div>
         <button
           type="button"
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}

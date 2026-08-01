@@ -8,6 +8,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
+import { discountPercentage, isActiveOffer } from "@/lib/brandProfile";
 import StarRating from "@/components/shared/StarRating";
 
 export default function ProductCard({
@@ -48,6 +49,9 @@ export default function ProductCard({
     "";
   const quickAddColor = defaultVariant?.optionValues.find((o) => o.optionTypeName === "Color")?.label;
 
+  const onOffer = isActiveOffer(product);
+  const offerPercent = onOffer ? discountPercentage(product.price, product.compareAtPrice!) : 0;
+
   return (
     <Link
       href={`/product/${product.id}`}
@@ -73,11 +77,18 @@ export default function ProductCard({
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
 
-        {product.isNew && (
-          <span className={`absolute left-3 top-3 rounded-full bg-ink px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${compact ? "left-2 top-2 px-2 py-0.5" : ""}`}>
-            New
-          </span>
-        )}
+        <div className={`absolute left-3 top-3 flex flex-col items-start gap-1 ${compact ? "left-2 top-2" : ""}`}>
+          {product.isNew && (
+            <span className={`rounded-full bg-ink px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${compact ? "px-2 py-0.5" : ""}`}>
+              New
+            </span>
+          )}
+          {onOffer && (
+            <span className={`rounded-full bg-mahalyred px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${compact ? "px-2 py-0.5" : ""}`}>
+              Offer {offerPercent}%
+            </span>
+          )}
+        </div>
 
         <button
           aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}

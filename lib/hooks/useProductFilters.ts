@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Product, SortOption } from "@/types";
 import { derivePriceBounds, encodePriceRangeValue, parsePriceRangeValue } from "@/lib/filters";
+import { isActiveOffer } from "@/lib/brandProfile";
 
 // Extracted from CategoryShoppingArea (Round 4) so /shop/[category] and the
 // brand page's own shopping area share one filtering/sorting
@@ -175,7 +176,7 @@ export function useProductFilters(products: Product[], initialSelected?: Record<
         return false;
       }
 
-      if (selectedDiscountedIds.length > 0 && product.compareAtPrice == null) {
+      if (selectedDiscountedIds.length > 0 && !isActiveOffer(product)) {
         return false;
       }
 

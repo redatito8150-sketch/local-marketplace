@@ -381,6 +381,23 @@ async function resolveProductIdsByVariantOptionLabel(optionKey: "size" | "color"
 
 // Resolves which product ids have at least one non-archived variant that
 // is (or isn't) purchasable, for the Availability facet.
+// PostgREST can't compare two columns of the same row (compare_at_price vs
+// price) in a single filter expression, so — same pattern as
+// resolveProductIdsByAvailability below — this resolves the matching id
+// list in JS first. Keeps the "On Sale" filter's definition of a real
+// discount identical to isActiveOffer()/the "Offer X%" card badge, instead
+// of the looser "compare_at_price is set at all" check this replaced.
+async function resolveDiscountedProductIds(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, price, compare_at_price")
+    .not("compare_at_price", "is", null);
+  if (error) throw new Error(`resolveDiscountedProductIds failed: ${error.message}`);
+  return (data ?? [])
+    .filter((row) => Number(row.compare_at_price) > Number(row.price))
+    .map((row) => row.id as string);
+}
+
 async function resolveProductIdsByAvailability(inStock: boolean): Promise<string[]> {
   const { data, error } = await supabase
     .from("product_variants")
@@ -402,7 +419,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
   const needsCollectionLookup = Boolean(filters.collection?.length);
-  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds] = await Promise.all([
+  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds, discountedProductIds] = await Promise.all([
     needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
     needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
     filters.size?.length ? resolveProductIdsByVariantOptionLabel("size", filters.size) : Promise.resolve<string[] | null>(null),
@@ -410,6 +427,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     filters.availability?.length === 1
       ? resolveProductIdsByAvailability(filters.availability[0] === "in-stock")
       : Promise.resolve<string[] | null>(null),
+    filters.discounted?.length ? resolveDiscountedProductIds() : Promise.resolve<string[] | null>(null),
   ]);
 
   let query = supabase
@@ -440,7 +458,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
   if (availabilityProductIds) query = query.in("id", availabilityProductIds.length ? availabilityProductIds : ["__none__"]);
   if (filters.rating?.length) query = query.gte("rating", filters.rating.includes("3-plus") ? 3 : 4);
   if (filters.featured?.length) query = query.eq("featured", true);
-  if (filters.discounted?.length) query = query.not("compare_at_price", "is", null);
+  if (discountedProductIds) query = query.in("id", discountedProductIds.length ? discountedProductIds : ["__none__"]);
 
   const sort = options.sort ?? "newest";
   if (sort === "price-asc") query = query.order("price", { ascending: true });

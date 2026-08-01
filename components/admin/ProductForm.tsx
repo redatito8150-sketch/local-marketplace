@@ -28,6 +28,7 @@ import CareInstructionsPicker from "@/components/admin/CareInstructionsPicker";
 import MaterialsComposer from "@/components/admin/MaterialsComposer";
 import FitSelect from "@/components/admin/FitSelect";
 import { resolveShippingPolicy, type BrandPolicyFields } from "@/lib/admin/shippingPolicy";
+import { discountPercentage } from "@/lib/brandProfile";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
   PRODUCT_EDITOR_SECTIONS,
@@ -588,7 +589,7 @@ export default function ProductForm({
 
         {/* 02 — Pricing */}
         <FormSection sectionId="pricing" sectionRef={(node) => { sectionRefs.current.pricing = node ?? undefined; }} number="02" title="Pricing" description="Set the default selling price used whenever a variant does not define its own final price." complete={completedSections.has("pricing")} issues={currentIssues.filter((issue) => issue.section === "pricing")}>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <PriceField
               id="product-price"
               label="Price"
@@ -602,6 +603,25 @@ export default function ProductForm({
               value={form.compareAtPrice}
               onChange={(v) => set("compareAtPrice", v)}
             />
+            <PercentField
+              id="product-discount-percent"
+              label="Discount %"
+              value={
+                Number(form.price) > 0 && Number(form.compareAtPrice) > Number(form.price)
+                  ? String(discountPercentage(Number(form.price), Number(form.compareAtPrice)))
+                  : ""
+              }
+              onChange={(pct) => {
+                const price = Number(form.price);
+                if (pct === "") {
+                  set("compareAtPrice", "");
+                  return;
+                }
+                const percent = Number(pct);
+                if (!price || !Number.isFinite(percent) || percent <= 0 || percent >= 100) return;
+                set("compareAtPrice", (price / (1 - percent / 100)).toFixed(2));
+              }}
+            />
           </div>
           <div className="mt-4 flex items-center justify-between rounded-lg border border-stone-150 bg-stone-50 px-4 py-3">
             <div>
@@ -610,7 +630,7 @@ export default function ProductForm({
             </div>
             {Number(form.compareAtPrice) > Number(form.price) && <p className="text-[13px] text-ink-soft/45 line-through">{Number(form.compareAtPrice).toLocaleString()} EGP</p>}
           </div>
-          <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price. Variant Price remains the final price for that variant.</p>
+          <p className="mt-2 text-[11.5px] text-ink-soft/50">Compare At Price is used to display a discount when higher than the selling price — set either the Compare At Price or the Discount % and the other fills in automatically. Variant Price remains the final price for that variant.</p>
         </FormSection>
 
         {/* 03 — Variants (Inventory) — comes before Media because Media's
@@ -895,6 +915,41 @@ function TextField({
         className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
       />
       {hint && <span className="mt-1 block text-[11.5px] text-ink-soft/50">{hint}</span>}
+    </label>
+  );
+}
+
+// Derived from price + compareAtPrice (see the `value` computation at the
+// call site) rather than holding its own state — typing here writes back
+// to compareAtPrice, so the two fields never drift out of sync.
+function PercentField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id?: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <div className="mt-1.5 flex items-center rounded-md border border-stone-150 bg-white focus-within:border-ink/30">
+        <input
+          id={id}
+          type="number"
+          min={0}
+          max={99}
+          step="1"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
+          className="w-full bg-transparent px-3.5 py-2.5 text-[14px] text-ink outline-none"
+        />
+        <span className="border-l border-stone-150 px-3 py-2.5 text-[13px] font-semibold text-ink-soft/60">%</span>
+      </div>
     </label>
   );
 }
