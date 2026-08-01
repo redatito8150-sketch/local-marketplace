@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { ExternalLink, Home, Layers3 } from "lucide-react";
 import { getDraftPageSections, getPageVersions } from "@/lib/data/pageStudio";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
+import { formatDateTime } from "@/lib/format";
 
 export default async function PageStudioPage() {
   const staff = await requireStaffRole("manager");
@@ -43,7 +44,7 @@ export default async function PageStudioPage() {
           </p>
           <div className="mt-4 flex items-center gap-2 border-t border-[var(--admin-border)] pt-4 text-[11.5px] text-[var(--admin-text-muted)]">
             <Layers3 className="h-4 w-4" />
-            {lastPublished ? `Published ${new Date(lastPublished).toLocaleString("en-US")}` : "Ready for first publish"}
+            {lastPublished ? `Published ${formatDateTime(lastPublished)}` : "Ready for first publish"}
           </div>
         </Link>
       </div>

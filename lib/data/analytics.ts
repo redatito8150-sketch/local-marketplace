@@ -202,7 +202,7 @@ export async function getDailyRevenueTrend(days = 14): Promise<DailyRevenuePoint
       .reduce((sum, o) => sum + Number(o.subtotal_egp), 0);
 
     points.push({
-      label: day.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      label: day.toLocaleDateString("en-US", { timeZone: "Africa/Cairo", month: "short", day: "numeric" }),
       amount,
     });
   }

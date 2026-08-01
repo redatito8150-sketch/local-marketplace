@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getAuditLogsForBrand, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
+import { formatDateTime } from "@/lib/format";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
@@ -36,7 +37,7 @@ export default async function BrandPortalLogsPage(props: { searchParams: Promise
         <DashboardFilterField label="Since"><input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
       </DashboardFilters>
       <DashboardPanel className="mt-6">
-        {logs.length ? <div className="divide-y divide-[#eee7de]">{logs.map((log) => <div key={log.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[12.5px] leading-5 text-[#51473f]">{describeAuditLog(log)}</p><span className="mt-1 inline-flex rounded-full bg-[#f1eae2] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.06em] text-[#75685f]">{log.action.replaceAll("_", " ")}</span></div><time className="whitespace-nowrap text-[10.5px] text-[#9b8e84]">{new Date(log.createdAt).toLocaleString("en-US")}</time></div>)}</div> : <DashboardEmptyState title="No matching activity" description={activeCount ? "Clear or adjust the filters to find more activity." : "Brand changes will appear here once they are recorded."} />}
+        {logs.length ? <div className="divide-y divide-[#eee7de]">{logs.map((log) => <div key={log.id} className="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[12.5px] leading-5 text-[#51473f]">{describeAuditLog(log)}</p><span className="mt-1 inline-flex rounded-full bg-[#f1eae2] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.06em] text-[#75685f]">{log.action.replaceAll("_", " ")}</span></div><time className="whitespace-nowrap text-[10.5px] text-[#9b8e84]">{formatDateTime(log.createdAt)}</time></div>)}</div> : <DashboardEmptyState title="No matching activity" description={activeCount ? "Clear or adjust the filters to find more activity." : "Brand changes will appear here once they are recorded."} />}
       </DashboardPanel>
     </div>
   );

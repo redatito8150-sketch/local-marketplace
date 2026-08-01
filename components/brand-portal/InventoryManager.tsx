@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { BrandVariant, InventoryMovement } from "@/lib/data/brandPortal";
 import { INVENTORY_REASONS, type InventoryAdjustmentType } from "@/lib/inventory/adjustmentValidation";
+import { formatDateTime } from "@/lib/format";
 
 export default function InventoryManager({ variants, history, brandSlug }: { variants: BrandVariant[]; history: InventoryMovement[]; brandSlug?: string }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -65,7 +66,7 @@ export default function InventoryManager({ variants, history, brandSlug }: { var
       </div>
       <details className="rounded-xl border border-[#e8e0d7] p-4">
         <summary className="cursor-pointer text-sm font-bold">Inventory History ({history.length})</summary>
-        <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead><tr><th className="py-2">Date</th><th>Variant</th><th>Movement</th><th>Before → After</th><th>Reason</th><th>Source</th></tr></thead><tbody className="divide-y">{history.map((movement) => <tr key={movement.id}><td className="py-2">{new Date(movement.createdAt).toLocaleString()}</td><td><code>{variants.find((variant) => variant.variantId === movement.variantId)?.sku ?? movement.variantId}</code></td><td className={movement.quantityDelta < 0 ? "text-red-700" : "text-emerald-700"}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</td><td>{movement.previousQuantity} → {movement.newQuantity}</td><td>{movement.reason}{movement.note ? ` — ${movement.note}` : ""}</td><td>{movement.source}</td></tr>)}</tbody></table></div>
+        <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead><tr><th className="py-2">Date</th><th>Variant</th><th>Movement</th><th>Before → After</th><th>Reason</th><th>Source</th></tr></thead><tbody className="divide-y">{history.map((movement) => <tr key={movement.id}><td className="py-2">{formatDateTime(movement.createdAt)}</td><td><code>{variants.find((variant) => variant.variantId === movement.variantId)?.sku ?? movement.variantId}</code></td><td className={movement.quantityDelta < 0 ? "text-red-700" : "text-emerald-700"}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</td><td>{movement.previousQuantity} → {movement.newQuantity}</td><td>{movement.reason}{movement.note ? ` — ${movement.note}` : ""}</td><td>{movement.source}</td></tr>)}</tbody></table></div>
       </details>
     </div>
   );

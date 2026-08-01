@@ -19,7 +19,7 @@ import {
   getLowStockVariantsForAdmin,
 } from "@/lib/data/admin";
 import { getRevenueSummary, getTopProducts, getTopBrands, getDailyRevenueTrend } from "@/lib/data/analytics";
-import { formatPrice } from "@/lib/format";
+import { formatDateOnly, formatDateTime, formatPrice } from "@/lib/format";
 import RevenueChart from "@/components/admin/RevenueChart";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
 import {
@@ -109,7 +109,7 @@ export default async function AdminOverviewPage() {
                       <td className="px-5 py-4"><p className="font-medium text-slate-800">{order.shippingName}</p><p className="mt-0.5 text-[11px] text-slate-500">{order.shippingEmail}</p></td>
                       <td className="px-5 py-4 font-semibold text-slate-900">{order.subtotalEgp > 0 ? formatPrice(order.subtotalEgp, "EGP") : formatPrice(order.subtotalUsd, "USD")}</td>
                       <td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${orderStatusBadgeClass(order.status)}`}>{ORDER_STATUS_LABELS[order.status]}</span></td>
-                      <td className="px-5 py-4 text-slate-500">{new Date(order.createdAt).toLocaleDateString("en-US")}</td>
+                      <td className="px-5 py-4 text-slate-500">{formatDateOnly(order.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -147,7 +147,7 @@ export default async function AdminOverviewPage() {
         </DashboardPanel>
 
         {canViewAuditLog && <DashboardPanel title="Recent user activity" description="Latest recorded actions across the platform" action={<Link href="/admin/audit-log" className="text-[12px] font-semibold text-mahalyred hover:underline">Open audit log</Link>}>
-          {auditLogs.length ? <div className="divide-y divide-slate-100">{auditLogs.slice(0, 5).map((log) => <div key={log.id} className="flex items-start gap-3 px-5 py-4"><div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-slate-100"><FileText className="h-4 w-4 text-slate-500" /></div><div className="min-w-0"><p className="text-[12.5px] leading-5 text-slate-800">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] text-slate-400">{new Date(log.createdAt).toLocaleString("en-US")}</p></div></div>)}</div> : <DashboardEmptyState title="No recorded activity" description="Administrative and brand actions will appear here." />}
+          {auditLogs.length ? <div className="divide-y divide-slate-100">{auditLogs.slice(0, 5).map((log) => <div key={log.id} className="flex items-start gap-3 px-5 py-4"><div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-slate-100"><FileText className="h-4 w-4 text-slate-500" /></div><div className="min-w-0"><p className="text-[12.5px] leading-5 text-slate-800">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] text-slate-400">{formatDateTime(log.createdAt)}</p></div></div>)}</div> : <DashboardEmptyState title="No recorded activity" description="Administrative and brand actions will appear here." />}
         </DashboardPanel>}
       </div>
 

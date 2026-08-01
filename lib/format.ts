@@ -39,6 +39,38 @@ export function formatCompactNumber(value: number): string {
   return `${(value / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
 }
 
+// Mahaly is an Egypt-only marketplace — every timestamp shown to an admin
+// or brand owner should read as Cairo local time, not whatever timezone
+// happens to run the process. Most timestamp displays in this app are
+// server components (Next.js renders `new Date(...).toLocaleString()` on
+// the Node server, not in the viewer's browser), so relying on the
+// runtime's local timezone silently shows server time (commonly UTC)
+// instead of Cairo time — pinning `timeZone` here fixes that regardless of
+// where the code actually executes.
+const SITE_TIMEZONE = "Africa/Cairo";
+
+/** e.g. "Aug 7, 2026, 3:45 PM" in Cairo local time, from any ISO/parsable timestamp. */
+export function formatDateTime(value: string | number | Date): string {
+  return new Date(value).toLocaleString("en-US", {
+    timeZone: SITE_TIMEZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/** e.g. "Aug 7, 2026" in Cairo local time, from any ISO/parsable timestamp. */
+export function formatDateOnly(value: string | number | Date): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    timeZone: SITE_TIMEZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /**
  * The one price-resolution rule used everywhere a product's active price is
  * charged or totaled (cart add, Complete Featured Look total): Variant

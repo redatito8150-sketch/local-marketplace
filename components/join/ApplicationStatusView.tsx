@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Check, Clock, MessageSquare, PartyPopper, XCircle } from "lucide-react";
 import type { BrandApplicationRecord } from "@/types";
+import { formatDateOnly } from "@/lib/format";
 
 const STATUS_COPY: Partial<Record<BrandApplicationRecord["status"], { title: string; body: string }>> = {
   submitted: {
@@ -110,7 +111,7 @@ export default function ApplicationStatusView({
             <p className="mt-5 text-[13px] font-medium text-ink-soft/60">
               You can submit a new application after{" "}
               {application.reapplicationAllowedAt
-                ? new Date(application.reapplicationAllowedAt).toLocaleDateString()
+                ? formatDateOnly(application.reapplicationAllowedAt)
                 : "the review cooldown ends"}
               .
             </p>

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal, Sparkles, Waves, Award } from "lucide-react";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
+import { formatDateTime } from "@/lib/format";
 
 const SECTIONS = [
   {
@@ -107,7 +108,7 @@ export default async function AdminContentPage() {
               </p>
               {row && (
                 <p className="mt-3 text-[11.5px] text-ink-soft/45">
-                  Last edited {new Date(row.updatedAt).toLocaleString("en-US")}
+                  Last edited {formatDateTime(row.updatedAt)}
                 </p>
               )}
             </Link>

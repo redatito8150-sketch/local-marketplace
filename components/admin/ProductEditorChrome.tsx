@@ -85,7 +85,7 @@ export function ProductEditorHeader({
           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft/55" aria-live="polite">
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : saveState === "failed" ? <AlertCircle className="h-3 w-3 text-red-600" /> : saveState === "saved" ? <Check className="h-3 w-3 text-emerald-700" /> : <Clock3 className="h-3 w-3" />}
             <span>{saveCopy}</span>
-            {lastSavedAt && saveState === "saved" && <span>· Last saved {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
+            {lastSavedAt && saveState === "saved" && <span>· Last saved {lastSavedAt.toLocaleTimeString("en-US", { timeZone: "Africa/Cairo", hour: "2-digit", minute: "2-digit" })}</span>}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { formatPrice, formatSize } from "@/lib/format";
+import { formatDateOnly, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_BADGE_CLASSES } from "@/lib/account/orderStatusLabels";
 import type { OrderRecord, OrderStatus } from "@/types";
 
@@ -44,7 +44,7 @@ export default function OrderCard({
         <div>
           <p className="text-[14px] font-semibold text-[var(--account-text)]">#{order.orderNumber}</p>
           <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">
-            {new Date(order.createdAt).toLocaleDateString("en-US")} · {fulfillmentLabel}
+            {formatDateOnly(order.createdAt)} · {fulfillmentLabel}
           </p>
         </div>
         <div className="flex items-center gap-3">

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrderForAdmin, getAuditLogsForEntity, getSiblingOrders } from "@/lib/data/admin";
-import { formatPrice, formatSize } from "@/lib/format";
+import { formatDateTime, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
@@ -28,7 +28,7 @@ export default async function AdminOrderDetailPage(
             Order #{order.orderNumber}
           </h1>
           <p className="mt-1 text-[13px] text-ink-soft/60">
-            {new Date(order.createdAt).toLocaleString("en-US")}
+            {formatDateTime(order.createdAt)}
           </p>
         </div>
         <StatusSelect
@@ -143,7 +143,7 @@ export default async function AdminOrderDetailPage(
               <div key={entry.id} className="text-[12.5px]">
                 <p className="font-medium capitalize text-ink">{ORDER_STATUS_LABELS[entry.status]}</p>
                 <p className="text-[11.5px] text-ink-soft/50">
-                  {new Date(entry.createdAt).toLocaleString("en-US")}
+                  {formatDateTime(entry.createdAt)}
                 </p>
               </div>
             ))}
@@ -160,7 +160,7 @@ export default async function AdminOrderDetailPage(
               <div key={log.id} className="text-[12.5px]">
                 <p className="font-medium text-ink capitalize">{log.action.replace("_", " ")}</p>
                 <p className="text-[11.5px] text-ink-soft/50">
-                  {log.actorLabel} · {new Date(log.createdAt).toLocaleString("en-US")}
+                  {log.actorLabel} · {formatDateTime(log.createdAt)}
                 </p>
               </div>
             ))}

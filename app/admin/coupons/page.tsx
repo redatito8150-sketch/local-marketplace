@@ -4,6 +4,7 @@ import { Pencil } from "lucide-react";
 import { getAllCouponsForAdmin } from "@/lib/data/admin";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
+import { formatDateOnly } from "@/lib/format";
 
 export default async function AdminCouponsPage() {
   const staff = await requireStaffRole("manager");
@@ -52,7 +53,7 @@ export default async function AdminCouponsPage() {
                 </td>
                 <td className="px-5 py-3 text-ink-soft/70">
                   {coupon.expiresAt
-                    ? new Date(coupon.expiresAt).toLocaleDateString("en-US")
+                    ? formatDateOnly(coupon.expiresAt)
                     : "Never"}
                 </td>
                 <td className="px-5 py-3">

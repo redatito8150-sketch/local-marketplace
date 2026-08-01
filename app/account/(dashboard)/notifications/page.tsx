@@ -7,6 +7,7 @@ import MarkAllNotificationsReadButton from "@/components/account/MarkAllNotifica
 import { getNotificationsForUser } from "@/lib/data/userNotifications";
 import type { NotificationPreferences } from "@/types";
 import { AccountPageHeader, AccountPanel } from "@/components/account/AccountUI";
+import { formatDateTime } from "@/lib/format";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   orderUpdates: true,
@@ -40,7 +41,7 @@ export default async function AccountNotificationsPage() {
                 <p className="text-[13.5px] font-semibold text-[var(--account-text)]">{n.title}</p>
                 {n.body && <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">{n.body}</p>}
                 <p className="mt-1.5 text-[11px] text-[var(--account-text-muted)]">
-                  {new Date(n.createdAt).toLocaleString()}
+                  {formatDateTime(n.createdAt)}
                 </p>
               </div>
               {!n.read && <MarkNotificationReadButton id={n.id} />}

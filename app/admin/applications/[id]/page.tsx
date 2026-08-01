@@ -19,6 +19,7 @@ import ApplicationTransitionPanel from "@/components/admin/ApplicationTransition
 import ApplicationAdminNotes from "@/components/admin/ApplicationAdminNotes";
 import ApplicationDocumentsList from "@/components/admin/ApplicationDocumentsList";
 import ApproveAndCreateBrandButton from "@/components/admin/ApproveAndCreateBrandButton";
+import { formatDateTime } from "@/lib/format";
 
 export default async function AdminApplicationDetailPage(
   props: {
@@ -46,7 +47,7 @@ export default async function AdminApplicationDetailPage(
             {application.brandName}
           </h1>
           <p className="mt-1 text-[13px] text-ink-soft/60">
-            Submitted {new Date(application.createdAt).toLocaleString("en-US")}
+            Submitted {formatDateTime(application.submittedAt ?? application.createdAt)}
             {!application.applicantUserId && " · Legacy submission (pre-auth)"}
           </p>
         </div>
@@ -302,7 +303,7 @@ export default async function AdminApplicationDetailPage(
                       {entry.reason && <span className="text-slate-400"> — {entry.reason}</span>}
                     </span>
                     <span className="shrink-0 text-[11px] text-slate-400">
-                      {new Date(entry.createdAt).toLocaleString("en-US")}
+                      {formatDateTime(entry.createdAt)}
                     </span>
                   </li>
                 ))}

@@ -7,6 +7,7 @@ import {
   WEBSITE_CHANNEL,
 } from "@/lib/join/constants";
 import type { DraftApplicationInput, SubmitApplicationInput } from "@/lib/join/validation";
+import { formatDateOnly } from "@/lib/format";
 import type {
   ApplicantAccountSnapshot,
   ApplicationStatus,
@@ -323,7 +324,7 @@ export async function createOrUpdateDraft(
   }
   if (existing && isWithinReapplicationCooldown(existing)) {
     const until = existing.reapplicationAllowedAt
-      ? new Date(existing.reapplicationAllowedAt).toLocaleDateString()
+      ? formatDateOnly(existing.reapplicationAllowedAt)
       : "later";
     throw new ApplicationServiceError(
       "REAPPLICATION_COOLDOWN_ACTIVE",

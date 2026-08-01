@@ -5,7 +5,7 @@ import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand, getProductsForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin, getAuditLogsForBrand, getBrandForAdmin } from "@/lib/data/admin";
 import { getBestSellingProductsForBrand } from "@/lib/data/collections";
-import { formatPrice } from "@/lib/format";
+import { formatDateOnly, formatDateTime, formatPrice } from "@/lib/format";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
@@ -79,7 +79,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
         <DashboardPanel title="Recent orders" description="Orders containing products from your brand" action={<Link href={`/brand-portal/orders${brandParam}`} className="text-[12px] font-semibold text-mahalyred hover:underline">View all orders</Link>}>
           {orders.length ? <div className="divide-y divide-slate-100">{orders.slice(0, 5).map((order) => (
             <div key={order.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <div><p className="text-[12.5px] font-bold text-slate-900">#{order.orderNumber}</p><p className="mt-1 text-[11px] text-slate-500">{order.shippingName} · {order.shippingCity} · {new Date(order.createdAt).toLocaleDateString("en-US")}</p></div>
+              <div><p className="text-[12.5px] font-bold text-slate-900">#{order.orderNumber}</p><p className="mt-1 text-[11px] text-slate-500">{order.shippingName} · {order.shippingCity} · {formatDateOnly(order.createdAt)}</p></div>
               <div className="flex items-center gap-3"><p className="text-[12.5px] font-bold text-slate-900">{formatPrice(orderRevenue(order), "EGP")}</p><span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${orderStatusBadgeClass(order.status as never)}`}>{ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS] ?? order.status}</span></div>
             </div>
           ))}</div> : <DashboardEmptyState title="No orders yet" description="Orders containing your products will appear here." />}
@@ -102,7 +102,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
         </DashboardPanel>
 
         <DashboardPanel title="Recent product activity" description="Changes made by your team and Mahaly staff" action={owner.accessLevel === "owner" ? <Link href={`/brand-portal/logs${brandParam}`} className="text-[12px] font-semibold text-mahalyred hover:underline">View activity</Link> : undefined}>
-          {activity.length ? <div className="divide-y divide-[#eee7de]">{activity.slice(0, 5).map((log) => <div key={log.id} className="px-5 py-4"><p className="text-[12.5px] leading-5 text-[#51473f]">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] text-[#9b8e84]">{new Date(log.createdAt).toLocaleString("en-US")}</p></div>)}</div> : <DashboardEmptyState title={owner.accessLevel === "owner" ? "No activity recorded yet" : "Activity is owner-only"} description={owner.accessLevel === "owner" ? "Product and brand changes will appear here." : "Your brand owner can review the complete activity log."} />}
+          {activity.length ? <div className="divide-y divide-[#eee7de]">{activity.slice(0, 5).map((log) => <div key={log.id} className="px-5 py-4"><p className="text-[12.5px] leading-5 text-[#51473f]">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] text-[#9b8e84]">{formatDateTime(log.createdAt)}</p></div>)}</div> : <DashboardEmptyState title={owner.accessLevel === "owner" ? "No activity recorded yet" : "Activity is owner-only"} description={owner.accessLevel === "owner" ? "Product and brand changes will appear here." : "Your brand owner can review the complete activity log."} />}
         </DashboardPanel>
       </div>
 

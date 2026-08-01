@@ -3,6 +3,7 @@ import { NOTIFICATION_TYPE_LABELS } from "@/lib/admin/statuses";
 import MarkNotificationReadButton from "@/components/admin/MarkNotificationReadButton";
 import MarkAllNotificationsReadButton from "@/components/admin/MarkAllNotificationsReadButton";
 import NotificationResolveActions from "@/components/admin/NotificationResolveActions";
+import { formatDateTime } from "@/lib/format";
 
 const RESOLUTION_LABELS: Record<string, string> = {
   approved: "Approved",
@@ -39,7 +40,7 @@ export default async function AdminNotificationsPage() {
                 <p className="mt-0.5 text-[14px] font-medium text-ink">{n.title}</p>
                 {n.body && <p className="mt-0.5 text-[12.5px] text-ink-soft/60">{n.body}</p>}
                 <p className="mt-1 text-[11.5px] text-ink-soft/40">
-                  {new Date(n.createdAt).toLocaleString("en-US")}
+                  {formatDateTime(n.createdAt)}
                 </p>
               </div>
             </div>

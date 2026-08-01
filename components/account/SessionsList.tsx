@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Monitor } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
 import { getDeviceId } from "@/lib/deviceId";
+import { formatDateTime } from "@/lib/format";
 import { accountSecondaryButton } from "@/components/account/AccountUI";
 
 interface SessionRow {
@@ -80,7 +81,7 @@ export default function SessionsList() {
                       )}
                     </p>
                     <p className="text-[11.5px] text-[var(--account-text-muted)]">
-                      Last active {new Date(session.last_seen_at).toLocaleString()}
+                      Last active {formatDateTime(session.last_seen_at)}
                     </p>
                   </div>
                 </div>
