@@ -7,10 +7,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 // all (no more "any domain can inject a script/frame"), not a perfect CSP.
 const CSP = [
   "default-src 'self'",
-  // Cloudflare Turnstile's widget script (components/account/CaptchaWidget.tsx)
-  // — without this, the script is CSP-blocked in every real browser and the
-  // widget can never render or produce a token, regardless of app-side fixes.
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   // https://lh3.googleusercontent.com is where Google serves the OAuth
@@ -20,10 +17,7 @@ const CSP = [
   `img-src 'self' data: blob: https://images.unsplash.com https://i.imgur.com https://lh3.googleusercontent.com${
     supabaseUrl ? ` ${supabaseUrl}` : ""
   }`,
-  `connect-src 'self' https://challenges.cloudflare.com${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
-  // Turnstile renders its challenge in a cross-origin iframe — with no
-  // frame-src directive this falls back to default-src 'self' and blocks it.
-  "frame-src 'self' https://challenges.cloudflare.com",
+  `connect-src 'self'${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",

@@ -36,13 +36,12 @@ interface AuthContextValue {
   profile: AuthProfile | null;
   loading: boolean;
   mfaChallenge: MfaChallenge | null;
-  signIn: (email: string, password: string, captchaToken?: string) => Promise<AuthResult>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (
     fullName: string,
     email: string,
     phone: string,
-    password: string,
-    captchaToken?: string
+    password: string
   ) => Promise<AuthResult>;
   verifyMfaChallenge: (code: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
@@ -107,17 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string, captchaToken?: string) => {
-    // Supabase's Attack Protection applies captcha verification to
-    // sign-in, not just sign-up — omitting this here fails every login
-    // with "captcha protection: request disallowed" once Attack Protection
-    // is enabled. Same as signUp, this is safely a no-op (ignored by
-    // Supabase) when the project has no captcha provider configured.
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-      options: { captchaToken },
-    });
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
 
     // Password alone only proves aal1. An account with a verified TOTP
@@ -163,8 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       fullName: string,
       email: string,
       phone: string,
-      password: string,
-      captchaToken?: string
+      password: string
     ) => {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -175,11 +164,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // (localhost in dev, the deployed domain in production) instead of
           // relying on a single fixed Site URL in the Supabase dashboard.
           emailRedirectTo: `${window.location.origin}/account`,
-          // Only sent when captcha protection is enabled in the Supabase
-          // Dashboard (NEXT_PUBLIC_TURNSTILE_SITE_KEY set) — Supabase
-          // ignores captchaToken entirely when the project has no captcha
-          // provider configured, so this is safe to always pass through.
-          captchaToken,
         },
       });
       if (error) return { error: error.message };

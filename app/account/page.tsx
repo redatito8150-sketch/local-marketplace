@@ -1,19 +1,16 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, Lock, Mail, Phone, ShieldCheck, User } from "lucide-react";
 import Logo from "@/components/shared/Logo";
 import { useAuth } from "@/context/AuthContext";
-import CaptchaWidget, { type CaptchaWidgetHandle } from "@/components/account/CaptchaWidget";
 import PasswordInput from "@/components/shared/PasswordInput";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import AuthOrbitStage from "@/components/auth/AuthOrbitStage";
 import { decidePostAuthDestination } from "@/lib/auth/postAuthDestination";
-
-const CAPTCHA_REQUIRED = Boolean(process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY);
 
 const inputClass =
   "w-full rounded-2xl border border-[#d9cfc4] bg-white/75 py-3.5 pl-11 pr-4 text-[14px] text-ink outline-none transition focus:border-mahalyred/50 focus:bg-white focus:ring-4 focus:ring-mahalyred/5";
@@ -53,12 +50,10 @@ function AccountPageContent() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [mfaCode, setMfaCode] = useState("");
-  const captchaRef = useRef<CaptchaWidgetHandle>(null);
 
   useEffect(() => {
     if (!user || loading || mfaChallenge || !profile) return;
@@ -74,19 +69,16 @@ function AccountPageContent() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (CAPTCHA_REQUIRED && !captchaToken) return setError("Please complete the verification challenge");
     if (mode === "create" && password !== confirmPassword) return setError("Passwords do not match");
     if (mode === "create" && !acceptedTerms) return setError("Please accept the Terms and Privacy Policy to continue");
     setSubmitting(true);
     setError("");
     setConfirmationMessage("");
     const result = mode === "sign-in"
-      ? await signIn(email, password, captchaToken || undefined)
-      : await signUp(fullName, email, phone, password, captchaToken || undefined);
+      ? await signIn(email, password)
+      : await signUp(fullName, email, phone, password);
     if (result.error) {
       setError(result.error);
-      captchaRef.current?.reset();
-      setCaptchaToken("");
     } else if (result.needsEmailConfirmation) {
       setConfirmationMessage("Check your inbox to confirm your account before signing in.");
     }
@@ -175,7 +167,6 @@ function AccountPageContent() {
                 <label className="flex items-start gap-2.5 pt-1 text-[11px] leading-5 text-white/42"><input type="checkbox" className="mt-1 accent-mahalyred" checked={acceptedTerms} onChange={(event) => setAcceptedTerms(event.target.checked)} /><span>I agree to the <Link href="/terms" className="font-semibold text-white hover:text-mahalyred-soft">Terms</Link> and <Link href="/privacy" className="font-semibold text-white hover:text-mahalyred-soft">Privacy Policy</Link>.</span></label>
               )}
 
-              <CaptchaWidget key={mode} ref={captchaRef} onToken={setCaptchaToken} />
               {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-[12px] font-medium text-red-700">{error}</p>}
               {confirmationMessage && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-800">{confirmationMessage}</p>}
 
