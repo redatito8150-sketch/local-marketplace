@@ -14,10 +14,14 @@ interface InlineEditableTextProps {
   // single-line <input> (Enter to save, Escape to cancel).
   multiline?: boolean;
   placeholder?: string;
-  // Renders the resolved value for display only — e.g. "Since 2020" for
-  // foundedYear — never fed back into the edit input, which always edits
-  // the raw value.
-  format?: (value: string) => string;
+  // Plain string, not a callback — a Server Component parent (this is
+  // rendered from BrandProfileHeader/about page, neither "use client")
+  // can't pass a function prop across to a Client Component at runtime
+  // ("Functions cannot be passed directly to Client Components"), so
+  // display formatting is limited to prepending a fixed prefix, e.g.
+  // prefix="Since " for foundedYear — never fed back into the edit input,
+  // which always edits the raw value.
+  prefix?: string;
 }
 
 // Facebook-style "click the pencil, edit right here" for the handful of
@@ -34,7 +38,7 @@ export default function InlineEditableText({
   className = "",
   multiline = false,
   placeholder = "Add",
-  format,
+  prefix = "",
 }: InlineEditableTextProps) {
   const { canEdit, brandSlug } = useBrandEdit();
   const [current, setCurrent] = useState(value);
@@ -84,7 +88,7 @@ export default function InlineEditableText({
   };
 
   if (!canEdit) {
-    const display = format && current ? format(String(current)) : current;
+    const display = current ? `${prefix}${current}` : current;
     return <Tag className={className}>{display}</Tag>;
   }
 
@@ -143,7 +147,7 @@ export default function InlineEditableText({
     );
   }
 
-  const display = format ? format(String(current)) : current;
+  const display = `${prefix}${current}`;
   return (
     <span className="group/inline-edit relative inline-flex items-start gap-1.5">
       <Tag className={className}>{display}</Tag>

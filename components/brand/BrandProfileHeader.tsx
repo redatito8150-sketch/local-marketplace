@@ -67,7 +67,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                       as="span"
                       className="text-[12px] text-white/80"
                       placeholder="Add founding year"
-                      format={(v) => `Since ${v}`}
+                      prefix="Since "
                     />
                   </p>
                 </div>
