@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import NotificationPreferencesForm from "@/components/account/NotificationPreferencesForm";
@@ -35,8 +36,12 @@ export default async function AccountNotificationsPage() {
         action={hasUnread ? <MarkAllNotificationsReadButton /> : undefined}
       >
         <div className="divide-y divide-[var(--account-border)]">
-          {notifications.map((n) => (
-            <div key={n.id} className={`flex items-start justify-between gap-3 p-4 sm:p-5 ${n.read ? "" : "bg-[var(--account-surface-muted)]"}`}>
+          {notifications.map((n) => {
+            const href =
+              n.relatedEntityType === "order" ? "/account/orders"
+              : n.relatedEntityType === "application" ? "/join-as-a-brand/apply"
+              : null;
+            const info = (
               <div className="min-w-0">
                 <p className="text-[13.5px] font-semibold text-[var(--account-text)]">{n.title}</p>
                 {n.body && <p className="mt-1 text-[12.5px] text-[var(--account-text-muted)]">{n.body}</p>}
@@ -44,9 +49,14 @@ export default async function AccountNotificationsPage() {
                   {formatDateTime(n.createdAt)}
                 </p>
               </div>
+            );
+            return (
+            <div key={n.id} className={`flex items-start justify-between gap-3 p-4 sm:p-5 ${n.read ? "" : "bg-[var(--account-surface-muted)]"}`}>
+              {href ? <Link href={href} className="min-w-0 hover:underline">{info}</Link> : info}
               {!n.read && <MarkNotificationReadButton id={n.id} />}
             </div>
-          ))}
+            );
+          })}
           {notifications.length === 0 && (
             <p className="p-4 text-[13px] text-[var(--account-text-muted)] sm:p-5">No notifications yet.</p>
           )}

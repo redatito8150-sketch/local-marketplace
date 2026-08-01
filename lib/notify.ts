@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "@/lib/discord";
 import { logError } from "@/lib/errorLog";
+import { getEntityAdminUrl } from "@/lib/admin/entityLinks";
+import type { AuditEntityType } from "@/lib/auditLog";
 
 export type NotificationType =
   | "order_created"
@@ -44,10 +46,12 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
 };
 
 export interface NotifyOptions {
-  // Instant-Publish only: presence of BOTH marks the row `resolution:
-  // "pending"` so the bell/page render Approve/Revert buttons — never set
-  // outside the brand portal's own product write routes.
-  relatedEntityType?: "product";
+  // Also used to build a "go to this thing" link (lib/admin/entityLinks.ts)
+  // wherever the notification is shown. Instant-Publish's Approve/Revert
+  // buttons specifically require `relatedEntityType: "product"` plus
+  // `auditLogId` (that combination marks the row `resolution: "pending"`)
+  // — every other entity type here just gets a plain link, no resolve UI.
+  relatedEntityType?: AuditEntityType;
   relatedEntityId?: string;
   auditLogId?: string | null;
   // Discord embed formatting only — never affects the stored row.
@@ -68,21 +72,21 @@ export async function notify(
   body: string = "",
   options?: NotifyOptions
 ): Promise<void> {
-  const resolvable =
-    options?.relatedEntityType && options?.relatedEntityId
-      ? {
-          relatedEntityType: options.relatedEntityType,
-          relatedEntityId: options.relatedEntityId,
-          auditLogId: options.auditLogId ?? null,
-        }
-      : undefined;
+  // "Resolvable" (Approve/Revert buttons) is specifically the Instant-
+  // Publish flow — it always passes auditLogId alongside the entity ref.
+  // Any other caller can still pass relatedEntityType/relatedEntityId on
+  // their own, purely so the bell/page can link to the entity — that must
+  // NOT also flip resolution to "pending", or an unrelated notification
+  // (e.g. an order update) would incorrectly grow Approve/Revert controls.
+  const hasEntityRef = Boolean(options?.relatedEntityType && options?.relatedEntityId);
+  const resolvable = hasEntityRef && options?.auditLogId ? { auditLogId: options.auditLogId } : undefined;
 
   const { error } = await supabaseAdmin.from("notifications").insert({
     type,
     title,
     body,
-    related_entity_type: resolvable?.relatedEntityType ?? null,
-    related_entity_id: resolvable?.relatedEntityId ?? null,
+    related_entity_type: hasEntityRef ? options!.relatedEntityType : null,
+    related_entity_id: hasEntityRef ? options!.relatedEntityId : null,
     audit_log_id: resolvable?.auditLogId ?? null,
     resolution: resolvable ? "pending" : "n/a",
   });
@@ -91,8 +95,8 @@ export async function notify(
   }
 
   const meta = [...(options?.meta ?? [])];
-  if (resolvable) {
-    meta.unshift({ label: "Product ID", value: resolvable.relatedEntityId });
+  if (hasEntityRef) {
+    meta.unshift({ label: options?.entityIdLabel ?? "ID", value: options!.relatedEntityId! });
   } else if (options?.entityId) {
     meta.unshift({ label: options.entityIdLabel ?? "ID", value: options.entityId });
   }
@@ -104,12 +108,14 @@ export async function notify(
   // `notifications` table only keeps the most recent 50 rows (a trigger
   // prunes the rest), so this is the actual permanent archive for anything
   // older than that, not just a convenience copy.
+  const entityUrl = hasEntityRef ? getEntityAdminUrl(options!.relatedEntityType!, options!.relatedEntityId!) : null;
   await sendToDiscord("notifications", {
     description: buildDiscordDescription({
       headline: title,
       meta,
       detailLabel: options?.detailLabel,
       detailBody: body || undefined,
+      link: entityUrl ? { label: "Open in admin", url: entityUrl } : undefined,
     }),
     color: NOTIFICATION_TYPE_COLORS[type],
   });

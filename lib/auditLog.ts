@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "@/lib/discord";
+import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS, type DiscordChannel } from "@/lib/discord";
 import { logError } from "@/lib/errorLog";
+import { diffEntitySnapshots, formatDiffAsText } from "@/lib/auditDiff";
+import { getEntityAdminUrl } from "@/lib/admin/entityLinks";
 
 export type AuditAction =
   | "create"
@@ -48,7 +50,28 @@ export type AuditEntityType =
   | "review"
   | "collection"
   | "option_type"
-  | "option_value";
+  | "option_value"
+  | "inventory";
+
+// Which Discord channel each entity type's activity mirrors to — see
+// lib/discord.ts for the channel keys and their env vars. #notifications
+// and #errors aren't in here; they're separate systems (lib/notify.ts,
+// lib/errorLog.ts) entirely.
+const CHANNEL_BY_ENTITY: Record<AuditEntityType, DiscordChannel> = {
+  product: "auditProducts",
+  brand: "auditBrands",
+  order: "auditOrders",
+  application: "auditApplications",
+  profile: "auditUsersRoles",
+  collection: "auditCollections",
+  inventory: "auditInventory",
+  option_type: "auditProductOptions",
+  option_value: "auditProductOptions",
+  review: "auditReviews",
+  coupon: "auditSiteMarketing",
+  site_content: "auditSiteMarketing",
+  page: "auditSiteMarketing",
+};
 
 // Green = something was added, red = something was removed, orange for
 // everything else (edits, status flips, reverts). Used only for the
@@ -169,12 +192,13 @@ export async function logAudit(entry: {
     return null;
   }
 
-  // A short, human-readable summary, not the full before/after payload —
-  // audit_logs itself is never pruned, so the DB (and the admin Audit Log
-  // page's filters) already stays the complete record; this is a live feed
-  // for visibility, not an archival backup.
+  // Real field-level detail (what changed, from what, to what) instead of
+  // just a headline — same diff the website's Audit Log page renders, so
+  // Discord and the site never disagree about what actually happened.
   const entityName = extractEntityName(entry.before, entry.after);
-  await sendToDiscord("auditLog", {
+  const diff = diffEntitySnapshots(entry.before, entry.after);
+  const entityUrl = getEntityAdminUrl(entry.entityType, entry.entityId);
+  await sendToDiscord(CHANNEL_BY_ENTITY[entry.entityType], {
     description: buildDiscordDescription({
       headline: `${capitalize(entry.entityType)} ${AUDIT_ACTION_VERBS[entry.action]}`,
       subline: entityName ?? undefined,
@@ -183,6 +207,9 @@ export async function logAudit(entry: {
         { label: "User", value: entry.actorLabel },
         { label: "Brand", value: entry.brandSlug ?? "" },
       ],
+      detailLabel: "What changed",
+      detailBody: formatDiffAsText(diff),
+      link: entityUrl ? { label: "Open in admin", url: entityUrl } : undefined,
     }),
     color: AUDIT_ACTION_COLORS[entry.action],
   });

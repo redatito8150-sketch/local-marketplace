@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   await logAudit({
     actorId: admin.id,
     actorLabel: admin.email ?? admin.id,
-    entityType: "product",
+    entityType: "inventory",
     entityId: brandIds[0],
     action: "restock",
     after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },

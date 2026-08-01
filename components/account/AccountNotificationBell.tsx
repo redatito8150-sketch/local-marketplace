@@ -50,17 +50,33 @@ export default function AccountNotificationBell({
             )}
           </div>
           <div className="max-h-72 overflow-auto">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                className={`border-b border-[var(--account-border)] px-4 py-2.5 text-[12.5px] last:border-b-0 ${
-                  n.read ? "text-[var(--account-text-muted)]" : "text-[var(--account-text)]"
-                }`}
-              >
-                <p className="font-medium">{n.title}</p>
-                {n.body && <p className="mt-0.5 text-[11.5px] text-[var(--account-text-muted)]">{n.body}</p>}
-              </div>
-            ))}
+            {notifications.map((n) => {
+              // No per-order/per-application detail page exists for
+              // customers — these go to the closest real page (the orders
+              // list, or the single apply/status page) rather than a dead end.
+              const href =
+                n.relatedEntityType === "order" ? "/account/orders"
+                : n.relatedEntityType === "application" ? "/join-as-a-brand/apply"
+                : null;
+              const rowClassName = `block border-b border-[var(--account-border)] px-4 py-2.5 text-[12.5px] last:border-b-0 ${
+                n.read ? "text-[var(--account-text-muted)]" : "text-[var(--account-text)]"
+              } ${href ? "hover:bg-[var(--account-surface-muted)]" : ""}`;
+              const content = (
+                <>
+                  <p className="font-medium">{n.title}</p>
+                  {n.body && <p className="mt-0.5 text-[11.5px] text-[var(--account-text-muted)]">{n.body}</p>}
+                </>
+              );
+              return href ? (
+                <Link key={n.id} href={href} onClick={() => setOpen(false)} className={rowClassName}>
+                  {content}
+                </Link>
+              ) : (
+                <div key={n.id} className={rowClassName}>
+                  {content}
+                </div>
+              );
+            })}
             {notifications.length === 0 && (
               <p className="px-4 py-4 text-[12.5px] text-[var(--account-text-muted)]">No notifications yet.</p>
             )}

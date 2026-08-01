@@ -629,7 +629,7 @@ function toNotificationRecord(row: NotificationRow): NotificationRecord {
     body: row.body,
     read: row.read,
     createdAt: row.created_at,
-    relatedEntityType: row.related_entity_type === "product" ? "product" : undefined,
+    relatedEntityType: row.related_entity_type ?? undefined,
     relatedEntityId: row.related_entity_id ?? undefined,
     auditLogId: row.audit_log_id ?? undefined,
     resolution: (row.resolution as NotificationRecord["resolution"]) ?? "n/a",

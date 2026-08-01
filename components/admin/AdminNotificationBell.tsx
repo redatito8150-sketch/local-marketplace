@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell } from "lucide-react";
 import type { NotificationRecord } from "@/types";
 import NotificationResolveActions from "@/components/admin/NotificationResolveActions";
+import { getEntityAdminPath } from "@/lib/admin/entityLinks";
 
 export default function AdminNotificationBell({
   notifications,
@@ -51,22 +52,34 @@ export default function AdminNotificationBell({
             )}
           </div>
           <div className="max-h-72 overflow-auto">
-            {notifications.map((n) => (
-              <div
-                key={n.id}
-                className={`border-b border-stone-100 px-4 py-2.5 text-[12.5px] last:border-b-0 ${
-                  n.read ? "text-ink-soft/60" : "text-ink"
-                }`}
-              >
-                <p className="font-medium">{n.title}</p>
-                {n.body && <p className="mt-0.5 text-[11.5px] text-ink-soft/50">{n.body}</p>}
-                {n.resolution === "pending" && (
-                  <div className="mt-2">
-                    <NotificationResolveActions notificationId={n.id} />
-                  </div>
-                )}
-              </div>
-            ))}
+            {notifications.map((n) => {
+              const href = n.relatedEntityType && n.relatedEntityId
+                ? getEntityAdminPath(n.relatedEntityType, n.relatedEntityId)
+                : null;
+              const rowClassName = `block border-b border-stone-100 px-4 py-2.5 text-[12.5px] last:border-b-0 ${
+                n.read ? "text-ink-soft/60" : "text-ink"
+              } ${href ? "hover:bg-stone-50" : ""}`;
+              const content = (
+                <>
+                  <p className="font-medium">{n.title}</p>
+                  {n.body && <p className="mt-0.5 text-[11.5px] text-ink-soft/50">{n.body}</p>}
+                  {n.resolution === "pending" && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <NotificationResolveActions notificationId={n.id} />
+                    </div>
+                  )}
+                </>
+              );
+              return href ? (
+                <Link key={n.id} href={href} onClick={() => setOpen(false)} className={rowClassName}>
+                  {content}
+                </Link>
+              ) : (
+                <div key={n.id} className={rowClassName}>
+                  {content}
+                </div>
+              );
+            })}
             {notifications.length === 0 && (
               <p className="px-4 py-4 text-[12.5px] text-ink-soft/50">No notifications yet.</p>
             )}

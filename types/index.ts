@@ -957,10 +957,12 @@ export interface NotificationRecord {
   body: string;
   read: boolean;
   createdAt: string;
-  // Instant-Publish (brand changes go live immediately, admin reviews
-  // after) — only set on brand-initiated product notifications; every
-  // other notification type stays at resolution "n/a" with no entity link.
-  relatedEntityType?: "product";
+  // Any AuditEntityType string (lib/auditLog.ts) — used to build a "go to
+  // this thing" link (lib/admin/entityLinks.ts). Only Instant-Publish
+  // brand-initiated product notifications also carry `resolution:
+  // "pending"` and get Approve/Revert controls; every other notification
+  // type can still set this pair purely for the click-through link.
+  relatedEntityType?: string;
   relatedEntityId?: string;
   auditLogId?: string;
   resolution: NotificationResolution;

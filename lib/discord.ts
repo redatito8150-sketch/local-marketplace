@@ -1,9 +1,36 @@
-export type DiscordChannel = "notifications" | "auditLog" | "errors";
+// The single "auditLog" channel this project started with is now ten
+// category-specific channels — one per kind of activity — so the owner
+// can watch (or mute) e.g. #audit-orders separately from #audit-products
+// in Discord, instead of one firehose channel for every entity type.
+// #notifications and #errors are deliberately NOT split — those stay
+// single channels.
+export type DiscordChannel =
+  | "notifications"
+  | "errors"
+  | "auditProducts"
+  | "auditBrands"
+  | "auditOrders"
+  | "auditApplications"
+  | "auditUsersRoles"
+  | "auditCollections"
+  | "auditInventory"
+  | "auditProductOptions"
+  | "auditReviews"
+  | "auditSiteMarketing";
 
 const WEBHOOK_URLS: Record<DiscordChannel, string | undefined> = {
   notifications: process.env.DISCORD_WEBHOOK_NOTIFICATIONS,
-  auditLog: process.env.DISCORD_WEBHOOK_AUDIT_LOG,
   errors: process.env.DISCORD_WEBHOOK_ERRORS,
+  auditProducts: process.env.DISCORD_WEBHOOK_AUDIT_PRODUCTS,
+  auditBrands: process.env.DISCORD_WEBHOOK_AUDIT_BRANDS,
+  auditOrders: process.env.DISCORD_WEBHOOK_AUDIT_ORDERS,
+  auditApplications: process.env.DISCORD_WEBHOOK_AUDIT_APPLICATIONS,
+  auditUsersRoles: process.env.DISCORD_WEBHOOK_AUDIT_USERS_ROLES,
+  auditCollections: process.env.DISCORD_WEBHOOK_AUDIT_COLLECTIONS,
+  auditInventory: process.env.DISCORD_WEBHOOK_AUDIT_INVENTORY,
+  auditProductOptions: process.env.DISCORD_WEBHOOK_AUDIT_PRODUCT_OPTIONS,
+  auditReviews: process.env.DISCORD_WEBHOOK_AUDIT_REVIEWS,
+  auditSiteMarketing: process.env.DISCORD_WEBHOOK_AUDIT_SITE_MARKETING,
 };
 
 // Decimal RGB values Discord's embed `color` field expects — shared across
@@ -34,6 +61,11 @@ export function buildDiscordDescription(params: {
   meta?: { label: string; value: string }[];
   detailLabel?: string;
   detailBody?: string;
+  // An absolute URL to the entity's real page on the site (see
+  // lib/admin/entityLinks.ts) — rendered as a normal markdown link so
+  // Discord makes it clickable, instead of just quoting the raw ID and
+  // making the reader go search for it themselves.
+  link?: { label: string; url: string };
 }): string {
   const lines = [`**\`${params.headline}\`**`];
   if (params.subline) lines.push(`**${params.subline}**`);
@@ -42,6 +74,9 @@ export function buildDiscordDescription(params: {
   }
   if (params.detailBody) {
     lines.push("", `**\`${params.detailLabel ?? "Details"}\`**`, params.detailBody);
+  }
+  if (params.link) {
+    lines.push("", `[${params.link.label}](${params.link.url})`);
   }
   return lines.join("\n");
 }
