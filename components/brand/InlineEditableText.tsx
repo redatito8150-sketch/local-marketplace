@@ -148,14 +148,19 @@ export default function InlineEditableText({
   }
 
   const display = `${prefix}${current}`;
+  // The pencil button is absolutely positioned (not laid out inline) so it
+  // never adds height to this span — a sibling plain <span> in the same
+  // flex row (e.g. brand.category next to this) would otherwise get
+  // vertically re-centered against a taller box and appear to "float" out
+  // of line with the rest of the row.
   return (
-    <span className="group/inline-edit relative inline-flex items-start gap-1.5">
+    <span className="group/inline-edit relative inline-block pr-5">
       <Tag className={className}>{display}</Tag>
       <button
         type="button"
         onClick={startEditing}
         aria-label={`Edit ${field}`}
-        className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-black/10 opacity-0 transition-opacity hover:bg-black/20 group-hover/inline-edit:opacity-100"
+        className="absolute right-0 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-black/10 opacity-0 transition-opacity hover:bg-black/20 group-hover/inline-edit:opacity-100"
       >
         <Pencil className="h-3 w-3" strokeWidth={2} />
       </button>
