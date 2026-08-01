@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { aggregateBrandRatings, discountPercentage, filterCollectionsByBrand, filterProductsForBrand, isActiveOffer, resolveBrandProfileRoute } from "../lib/brandProfile.ts";
 
 test("resolves real brand routes and defaults legacy routes to products", () => {
-  assert.equal(resolveBrandProfileRoute("/brands/marga/offers"), "offers");
+  assert.equal(resolveBrandProfileRoute("/brands/marga/reviews"), "reviews");
   assert.equal(resolveBrandProfileRoute("/brands/marga"), "products");
 });
 

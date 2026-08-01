@@ -1,6 +1,6 @@
 import type { BrandShopTheLookTile, Product } from "@/types";
 
-export const BRAND_PROFILE_ROUTES = ["products", "collections", "offers", "about", "reviews"] as const;
+export const BRAND_PROFILE_ROUTES = ["products", "collections", "about", "reviews"] as const;
 export type BrandProfileRoute = (typeof BRAND_PROFILE_ROUTES)[number];
 
 export function resolveBrandProfileRoute(pathname: string): BrandProfileRoute {

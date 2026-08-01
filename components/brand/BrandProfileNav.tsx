@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const tabs = [["products", "Products"], ["collections", "Collections"], ["offers", "Offers"], ["about", "About Us"], ["reviews", "Reviews"]] as const;
+const tabs = [["products", "Products"], ["collections", "Collections"], ["about", "About Us"], ["reviews", "Reviews"]] as const;
 
 export default function BrandProfileNav({ slug }: { slug: string }) {
   const pathname = usePathname();

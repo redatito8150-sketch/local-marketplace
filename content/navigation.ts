@@ -117,4 +117,9 @@ export const DISCOVER_LINKS: DiscoverLink[] = [
     description: "Picking up right now",
     href: "/trending",
   },
+  {
+    label: "Offers",
+    description: "Active discounts across every brand",
+    href: "/offers",
+  },
 ];
