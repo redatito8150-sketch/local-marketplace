@@ -5,6 +5,7 @@ import { validateOptionTypeName } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
+import { logAudit } from "@/lib/auditLog";
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -35,6 +36,16 @@ export async function POST(request: NextRequest) {
     logError("brand-portal.product-options.types.create", error.message);
     return NextResponse.json({ error: "Failed to create option type" }, { status: 500 });
   }
+
+  await logAudit({
+    actorId: owner.user.id,
+    actorLabel: owner.user.email ?? owner.user.id,
+    entityType: "option_type",
+    entityId: data.id,
+    action: "create",
+    after: { name },
+    brandSlug: owner.brandSlug ?? undefined,
+  });
 
   return NextResponse.json({
     id: data.id,

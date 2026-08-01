@@ -5,22 +5,26 @@ import { deriveSkuToken, normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/reusableDataLifecycle";
 import { validateOptionValueLabel } from "@/lib/admin/optionValidation";
 import { safeErrorResponse } from "@/lib/apiError";
+import { logAudit } from "@/lib/auditLog";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   const { id } = await params;
-  const { data: value } = await supabaseAdmin.from("option_values").select("id, brand_id").eq("id", id).maybeSingle();
+  const { data: value } = await supabaseAdmin.from("option_values").select("*").eq("id", id).maybeSingle();
   if (!value) return NextResponse.json({ error: "Option value not found" }, { status: 404 });
   if (!value.brand_id || value.brand_id !== owner.brandId) return NextResponse.json({ error: "Only your brand's custom values can be managed" }, { status: 403 });
   const body = await request.json();
+  const actorLabel = owner.user.email ?? owner.user.id;
   if (body.action === "delete") {
     const references = await optionValueReferences(id);
     if (references.selectedCount || references.variantCount || references.historical) {
       return NextResponse.json({ error: HISTORICAL_DELETE_MESSAGE, references }, { status: 409 });
     }
     const { error } = await supabaseAdmin.from("option_values").delete().eq("id", id);
-    return error ? safeErrorResponse("brand-portal.product-options.values.delete", error) : NextResponse.json({ deleted: true });
+    if (error) return safeErrorResponse("brand-portal.product-options.values.delete", error);
+    await logAudit({ actorId: owner.user.id, actorLabel, entityType: "option_value", entityId: id, action: "delete", before: value, brandSlug: owner.brandSlug ?? undefined });
+    return NextResponse.json({ deleted: true });
   }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (body.action === "archive") Object.assign(patch, { is_archived: true, archived_at: new Date().toISOString() });
@@ -36,5 +40,15 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (error.code === "23505") return NextResponse.json({ error: "That value already exists for this option" }, { status: 409 });
     return safeErrorResponse("brand-portal.product-options.values.update", error);
   }
+  await logAudit({
+    actorId: owner.user.id,
+    actorLabel,
+    entityType: "option_value",
+    entityId: id,
+    action: body.action === "archive" ? "archive" : body.action === "restore" ? "restore" : "update",
+    before: value,
+    after: patch,
+    brandSlug: owner.brandSlug ?? undefined,
+  });
   return NextResponse.json({ updated: true });
 }

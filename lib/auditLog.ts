@@ -46,7 +46,9 @@ export type AuditEntityType =
   | "site_content"
   | "page"
   | "review"
-  | "collection";
+  | "collection"
+  | "option_type"
+  | "option_value";
 
 // Green = something was added, red = something was removed, orange for
 // everything else (edits, status flips, reverts). Used only for the

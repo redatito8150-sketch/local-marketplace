@@ -3,6 +3,7 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
 import { safeErrorResponse } from "@/lib/apiError";
+import { logAudit } from "@/lib/auditLog";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -31,5 +32,13 @@ export async function POST(request: NextRequest) {
     p_operation_key: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   } as never);
   if (error) return safeErrorResponse("admin.inventory.adjustments", error, "Failed to apply the adjustment", 400);
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "product",
+    entityId: brandIds[0],
+    action: "restock",
+    after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },
+  });
   return NextResponse.json({ adjustments: data });
 }

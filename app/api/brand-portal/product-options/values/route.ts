@@ -5,6 +5,7 @@ import { validateOptionValueLabel, validateColorValueInput } from "@/lib/admin/o
 import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
+import { logAudit } from "@/lib/auditLog";
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -58,6 +59,16 @@ export async function POST(request: NextRequest) {
     logError("brand-portal.product-options.values.create", error.message);
     return NextResponse.json({ error: "Failed to create option value" }, { status: 500 });
   }
+
+  await logAudit({
+    actorId: owner.user.id,
+    actorLabel: owner.user.email ?? owner.user.id,
+    entityType: "option_value",
+    entityId: data.id,
+    action: "create",
+    after: { label, optionTypeId },
+    brandSlug: owner.brandSlug ?? undefined,
+  });
 
   return NextResponse.json({
     id: data.id,

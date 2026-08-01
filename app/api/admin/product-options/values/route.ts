@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionValueLabel, validateColorValueInput } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { logError } from "@/lib/errorLog";
+import { logAudit } from "@/lib/auditLog";
 
 // Creates a brand-private custom value under any option type (a private
 // custom Size like "Petite", a private custom Color, or a value under a
@@ -63,6 +64,15 @@ export async function POST(request: NextRequest) {
     logError("admin.product-options.values.create", error.message);
     return NextResponse.json({ error: "Failed to create option value" }, { status: 500 });
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "option_value",
+    entityId: data.id,
+    action: "create",
+    after: { label, brandId, optionTypeId },
+  });
 
   return NextResponse.json({
     id: data.id,

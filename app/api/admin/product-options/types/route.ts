@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateOptionTypeName } from "@/lib/admin/optionValidation";
 import { normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { logError } from "@/lib/errorLog";
+import { logAudit } from "@/lib/auditLog";
 
 // Creates a brand-private custom option type (e.g. "Length"). Always
 // scoped to the brandId in the body — an admin manages on behalf of a
@@ -43,6 +44,15 @@ export async function POST(request: NextRequest) {
     logError("admin.product-options.types.create", error.message);
     return NextResponse.json({ error: "Failed to create option type" }, { status: 500 });
   }
+
+  await logAudit({
+    actorId: admin.id,
+    actorLabel: admin.email ?? admin.id,
+    entityType: "option_type",
+    entityId: data.id,
+    action: "create",
+    after: { name, brandId },
+  });
 
   return NextResponse.json({
     id: data.id,
