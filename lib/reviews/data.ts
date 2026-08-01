@@ -31,7 +31,7 @@ export async function getPublicReviews(args: { brandSlug?: string; productId?: s
   const summary = calculateReviewSummary((summaryRows ?? []).map((review: any) => ({ rating: review.rating, verifiedPurchase: true, imageCount: review.review_images?.length ?? 0 })));
   let query = supabaseAdmin.from("reviews").select(`
     id,user_id,product_id,rating,title,body,created_at,updated_at,
-    products!inner(id,name,image,brand_slug,brands!inner(name)),
+    products!inner(id,name,image,brand_slug,brands!products_brand_slug_fkey!inner(name)),
     review_images(id,storage_path,display_order),
     review_replies(id,body,created_at,updated_at,brand_slug),
     review_helpful_votes(user_id)
