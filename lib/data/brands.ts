@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { logError } from "@/lib/errorLog";
 import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
+import { isWithinNewBrandWindow } from "@/lib/brandNewWindow";
 import { ProductRow, toProductCard, loadDisplayContext } from "@/lib/data/products";
 import {
   BrandPageContent,
@@ -235,5 +236,118 @@ export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
     slug: r.slug as string,
     name: r.name as string,
     thumbnail: r.hero_image as string,
+  }));
+}
+
+export interface MenuFeaturedBrand extends FeaturedBrandSummary {
+  isNew: boolean;
+}
+
+const FEATURED_BRANDS_MENU_LIMIT = 6;
+
+interface FeaturedMenuRow {
+  slug: string;
+  name: string;
+  hero_image: string;
+  created_at: string;
+  is_mahaly_partner: boolean;
+  is_sponsored: boolean;
+  sponsored_placements: string[];
+  sponsored_order: number | null;
+}
+
+// The mega menu's "Featured Brands" column — real, auto-ranked data
+// instead of the old hardcoded (and stale/deleted-brand) FEATURED_BRANDS
+// array in content/navigation.ts. Priority, in order:
+//  1. Sponsored brands pinned to "featured_brands_first", by sponsored_order.
+//  2. "New" brands (lib/brandNewWindow.ts — 30 days from created_at),
+//     newest first. A brand keeps its slot after the window passes (just
+//     loses the badge) — it's only displaced by (1)/(2) ranking above it
+//     or the slot cap below.
+//  3. Whatever slots remain: every other active brand, Mahaly-partner
+//     brands ranked first within this tier, then a daily-rotating offset
+//     into the (stably sorted) remaining pool — so which brands show up
+//     here shifts by one each day and, over enough days, every brand in
+//     the pool gets shown. No cron job / stored state: purely a function
+//     of "now", same as the discount system elsewhere in this codebase.
+export async function getFeaturedBrandsForMenu(limit = FEATURED_BRANDS_MENU_LIMIT): Promise<MenuFeaturedBrand[]> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("slug, name, hero_image, created_at, is_mahaly_partner, is_sponsored, sponsored_placements, sponsored_order")
+    .eq("is_active", true);
+
+  if (error) {
+    throw new Error(`getFeaturedBrandsForMenu failed: ${error.message}`);
+  }
+  const rows = (data ?? []) as FeaturedMenuRow[];
+
+  const sponsored = rows
+    .filter((r) => r.is_sponsored && r.sponsored_placements.includes("featured_brands_first"))
+    .sort((a, b) => (a.sponsored_order ?? Number.MAX_SAFE_INTEGER) - (b.sponsored_order ?? Number.MAX_SAFE_INTEGER));
+  const usedSlugs = new Set(sponsored.map((r) => r.slug));
+
+  const newBrands = rows
+    .filter((r) => !usedSlugs.has(r.slug) && isWithinNewBrandWindow(r.created_at, true))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  for (const r of newBrands) usedSlugs.add(r.slug);
+
+  const remainingSlots = Math.max(0, limit - sponsored.length - newBrands.length);
+  let fill: FeaturedMenuRow[] = [];
+  if (remainingSlots > 0) {
+    const pool = rows
+      .filter((r) => !usedSlugs.has(r.slug))
+      .sort((a, b) => {
+        if (a.is_mahaly_partner !== b.is_mahaly_partner) return a.is_mahaly_partner ? -1 : 1;
+        return a.slug.localeCompare(b.slug);
+      });
+    if (pool.length > 0) {
+      const dayIndex = Math.floor(Date.now() / (24 * 60 * 60 * 1000));
+      const offset = dayIndex % pool.length;
+      const rotated = [...pool.slice(offset), ...pool.slice(0, offset)];
+      fill = rotated.slice(0, remainingSlots);
+    }
+  }
+
+  const newSlugs = new Set(newBrands.map((r) => r.slug));
+  return [...sponsored, ...newBrands, ...fill].slice(0, limit).map((r) => ({
+    slug: r.slug,
+    name: r.name,
+    thumbnail: r.hero_image,
+    isNew: newSlugs.has(r.slug),
+  }));
+}
+
+export type BrandSponsorPlacement = "homepage_banner" | "mega_menu_banner" | "featured_brands_first";
+
+export interface SponsoredBrandSlide {
+  slug: string;
+  name: string;
+  tagline: string;
+  aboutDescription: string;
+  heroImage: string;
+}
+
+// Real content for the two carousel spots (homepage end-of-page section,
+// mega menu's right-side banner) — every brand with this placement in its
+// sponsored_placements, ordered by sponsored_order. Empty when nothing is
+// configured, so callers can fall back to their own static default.
+export async function getSponsoredBrandsForPlacement(placement: BrandSponsorPlacement): Promise<SponsoredBrandSlide[]> {
+  const { data, error } = await supabase
+    .from("brands")
+    .select("slug, name, tagline, hero_image, about_description, sponsored_order")
+    .eq("is_active", true)
+    .eq("is_sponsored", true)
+    .contains("sponsored_placements", [placement])
+    .order("sponsored_order", { ascending: true, nullsFirst: false });
+
+  if (error) {
+    throw new Error(`getSponsoredBrandsForPlacement(${placement}) failed: ${error.message}`);
+  }
+  return (data ?? []).map((r) => ({
+    slug: r.slug as string,
+    name: r.name as string,
+    tagline: r.tagline as string,
+    aboutDescription: r.about_description as string,
+    heroImage: r.hero_image as string,
   }));
 }

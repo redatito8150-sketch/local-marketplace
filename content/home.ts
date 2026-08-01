@@ -3,7 +3,6 @@
 // site_content (see lib/data/siteContent.ts).
 
 import type {
-  FeaturedBrandAndSponsoredContent,
   HomeHeroContent,
   HomeHeroTilesContent,
   HomeProductSectionContent,
@@ -49,12 +48,4 @@ export const HOME_NEW_ARRIVALS: HomeProductSectionContent = {
   title: "New Arrivals",
   source: "new",
   limit: 12,
-};
-
-// Fallback for the "featured_brand_and_sponsored" CMS key. Real brand
-// slugs from the seeded catalog — the admin form only lets the owner pick
-// from real brands, never a typo'd or fabricated slug.
-export const FEATURED_BRAND_AND_SPONSORED: FeaturedBrandAndSponsoredContent = {
-  featuredBrandSlug: "studio-nile",
-  sponsoredBrandSlugs: ["nola", "kai", "sahara-form", "remady-star"],
 };

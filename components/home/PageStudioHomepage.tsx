@@ -7,14 +7,14 @@ import Footer from "@/components/Footer";
 import EditableSectionFrame from "@/components/admin/EditableSectionFrame";
 import PageStudioFlexibleSection from "@/components/home/PageStudioFlexibleSection";
 import PageStudioProductGridSection from "@/components/home/PageStudioProductGridSection";
-import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS, FEATURED_BRAND_AND_SPONSORED } from "@/content/home";
+import { HOME_HERO, HOME_HERO_TILES, HOME_NEW_ARRIVALS } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import { getActiveProductsByIds, getAllActiveProducts, getNewArrivals } from "@/lib/data/products";
 import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collections";
-import { getBrandContent, getBrandSummariesBySlug } from "@/lib/data/brands";
+import { getBrandSummariesBySlug, getSponsoredBrandsForPlacement } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
 import type { ReactNode } from "react";
-import type { FeaturedBrandAndSponsoredContent, HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ShopByMoodContent } from "@/types";
+import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ShopByMoodContent } from "@/types";
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
 // Decorative-only fallback data (Page Studio preview before any real
@@ -99,9 +99,8 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
     }
     if (item.sectionType === "featured_brand") {
-      const config = item.config as unknown as FeaturedBrandAndSponsoredContent;
-      const [featuredBrand, sponsoredBrands] = await Promise.all([getBrandContent(config.featuredBrandSlug), getBrandSummariesBySlug(config.sponsoredBrandSlugs)]);
-      return { item, featuredBrand, sponsoredBrands };
+      const sponsoredBrands = await getSponsoredBrandsForPlacement("homepage_banner");
+      return { item, sponsoredBrands };
     }
     if (item.sectionType === "brand_carousel" || item.sectionType === "sponsored_brands") {
       const slugs = Array.isArray(item.config.brandSlugs) ? item.config.brandSlugs.filter((slug): slug is string => typeof slug === "string") : [];
@@ -147,7 +146,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
       const tiles = Array.isArray(value) ? value as ShopByMoodContent : SHOP_BY_MOOD;
       return frame(item, <ShopByMood key={item.id} tiles={tiles} />);
     }
-    if ("featuredBrand" in entry) return frame(item, <Sponsored key={item.id} featuredBrand={entry.featuredBrand ?? null} sponsoredBrands={entry.sponsoredBrands ?? []} />);
+    if (item.sectionType === "featured_brand" && "sponsoredBrands" in entry) return frame(item, <Sponsored key={item.id} sponsoredBrands={entry.sponsoredBrands ?? []} />);
     if ("brands" in entry) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} brands={entry.brands} />);
     if (["promotional_banner", "editorial_image", "text_block", "newsletter"].includes(item.sectionType)) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} />);
     return null;
