@@ -14,7 +14,8 @@ interface InlineEditableTextProps {
     | "storyBody"
     | "foundedYear"
     | "aboutHeadline"
-    | "aboutQuote";
+    | "aboutQuote"
+    | "collectionsPageTitle";
   value: string | number | undefined;
   as?: keyof React.JSX.IntrinsicElements;
   className?: string;

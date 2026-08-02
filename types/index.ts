@@ -539,8 +539,17 @@ export interface CollectionRecord {
   slug: string;
   description?: string;
   coverImageUrl?: string;
+  // One or more cover photos, shown as an auto-advancing slideshow when
+  // there's more than one (see components/brand/CollectionCoverCarousel).
+  coverImageUrls: string[];
+  // Short editable badge on the collection card — owner-authored, not
+  // auto-derived (unlike the old "N pieces" / month-year labels).
+  tagline?: string;
   isActive: boolean;
   publishedAt?: string;
+  // Optional scheduled reveal — set and fully configure a collection
+  // before it's actually shown to shoppers.
+  visibleFrom?: string;
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
@@ -1076,6 +1085,9 @@ export interface BrandPageContent {
   // separately (GET /api/brands/[slug]/application-story) only when an
   // owner/admin actually clicks it, never eagerly.
   hasSourceApplication: boolean;
+  // The Collections page's own editable headline ("Collections,
+  // reimagined."), same fallback-when-empty pattern as the rest.
+  collectionsPageTitle?: string;
 }
 
 export interface BrandFounder {

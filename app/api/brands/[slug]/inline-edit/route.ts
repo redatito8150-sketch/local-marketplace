@@ -25,6 +25,7 @@ const TEXT_FIELDS = {
   storyBody: { column: "story_body", required: false, maxLength: 5000 },
   aboutHeadline: { column: "about_headline", required: false, maxLength: 200 },
   aboutQuote: { column: "about_quote", required: false, maxLength: 300 },
+  collectionsPageTitle: { column: "collections_page_title", required: false, maxLength: 200 },
 } as const;
 type TextField = keyof typeof TEXT_FIELDS;
 

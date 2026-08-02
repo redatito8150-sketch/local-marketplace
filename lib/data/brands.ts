@@ -47,6 +47,7 @@ interface BrandRow {
   about_headline: string | null;
   about_quote: string | null;
   source_application_id: string | null;
+  collections_page_title: string | null;
 }
 
 // No per-brand rating aggregate column exists — weight each product's own
@@ -171,6 +172,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     aboutHeadline: brand.about_headline ?? undefined,
     aboutQuote: brand.about_quote ?? undefined,
     hasSourceApplication: Boolean(brand.source_application_id),
+    collectionsPageTitle: brand.collections_page_title ?? undefined,
   };
 }
 

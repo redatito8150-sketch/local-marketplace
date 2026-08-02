@@ -15,7 +15,9 @@ export interface CollectionExperienceItem {
   eyebrow: string;
   season: string;
   description: string;
-  coverImage: string;
+  // One or more — shown as an auto-advancing slideshow when there's more
+  // than one (see components/brand/CollectionCoverCarousel).
+  coverImages: string[];
   products: CollectionExperienceProduct[];
   isDemo?: boolean;
 }
@@ -48,6 +50,6 @@ export function makeDemoCollectionProducts(collectionIndex: number): CollectionE
 export function buildDemoCollectionItems(startIndex = 0): CollectionExperienceItem[] {
   return demoCollectionDefinitions.slice(startIndex).map((collection, index) => {
     const absoluteIndex = startIndex + index;
-    return { id: `demo-${absoluteIndex}`, name: collection.name, eyebrow: "8 pieces", season: collection.season, description: collection.description, coverImage: collection.coverImage, products: makeDemoCollectionProducts(absoluteIndex), isDemo: true };
+    return { id: `demo-${absoluteIndex}`, name: collection.name, eyebrow: "8 pieces", season: collection.season, description: collection.description, coverImages: [collection.coverImage], products: makeDemoCollectionProducts(absoluteIndex), isDemo: true };
   });
 }
