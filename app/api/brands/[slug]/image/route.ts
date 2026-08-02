@@ -8,6 +8,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { readFormData } from "@/lib/uploads/formData";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { BRAND_IMAGE_FIELDS, BRAND_IMAGE_FIELD_TO_COLUMN, type BrandImageField } from "@/lib/brandImageFields";
 
 // Inline image editing on the public brand page (cover/logo/about photo) —
 // reuses the existing, already-verified-working "product-images" bucket
@@ -18,13 +19,8 @@ import { logAudit } from "@/lib/auditLog";
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const BUCKET = "product-images";
-const ALLOWED_FIELDS = ["hero", "logo", "about"] as const;
-type BrandImageField = (typeof ALLOWED_FIELDS)[number];
-const FIELD_TO_COLUMN: Record<BrandImageField, string> = {
-  hero: "hero_image",
-  logo: "logo_image",
-  about: "about_image",
-};
+const ALLOWED_FIELDS = BRAND_IMAGE_FIELDS;
+const FIELD_TO_COLUMN = BRAND_IMAGE_FIELD_TO_COLUMN;
 
 function sanitizeFileName(name: string): string {
   return (
@@ -144,11 +140,21 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ sl
   const column = FIELD_TO_COLUMN[field as BrandImageField];
   const { data: existing } = await supabaseAdmin
     .from("brands")
-    .select(column)
+    .select("*")
     .eq("slug", params.slug)
     .maybeSingle();
 
-  const { error } = await supabaseAdmin.from("brands").update({ [column]: "" }).eq("slug", params.slug);
+  const previousUrl = existing ? (existing as Record<string, unknown>)[column] : null;
+  const backups = (existing?.deleted_image_backups as Record<string, string> | null) ?? {};
+  // Only ever remembers the single most-recently-cleared URL per field —
+  // this key gets clobbered on every delete, on purpose, so the column
+  // can never grow into a full history.
+  const nextBackups = previousUrl ? { ...backups, [field]: previousUrl } : backups;
+
+  const { error } = await supabaseAdmin
+    .from("brands")
+    .update({ [column]: "", deleted_image_backups: nextBackups })
+    .eq("slug", params.slug);
   if (error) {
     return safeErrorResponse("brands.image.remove", error, "Failed to remove image");
   }
@@ -164,5 +170,5 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ sl
     brandSlug: params.slug,
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, canRestore: Boolean(previousUrl) });
 }

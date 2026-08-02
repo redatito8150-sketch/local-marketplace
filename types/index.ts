@@ -1059,7 +1059,18 @@ export interface BrandPageContent {
   // Custom milestones an owner/admin adds on top of the always-real
   // computed ones (foundedYear, createdAt) shown on the About page.
   journeyMilestones: BrandJourneyMilestone[];
+  // The one most-recently-deleted image URL per field, if any — backs the
+  // "undo" button in InlineEditableImage (see app/api/brands/[slug]/image
+  // and its restore/ sibling). Only ever the single latest deletion, never
+  // a history.
+  deletedImageBackups: Partial<Record<BrandImageField, string>>;
 }
+
+// Kept as a plain string union (rather than importing the runtime array) so
+// this file never needs to import from lib/ — see BRAND_IMAGE_FIELDS in
+// lib/brandImageFields.ts, cross-checked against this type via `satisfies`,
+// same convention as EgyptGovernorate/EGYPT_GOVERNORATES.
+export type BrandImageField = "hero" | "logo" | "about";
 
 // Kept as a plain string union (rather than importing the runtime array) so
 // this file never needs to import from lib/ — see JOURNEY_ICON_KEYS in

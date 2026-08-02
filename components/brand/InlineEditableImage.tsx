@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { Camera, Loader2, Trash2 } from "lucide-react";
+import { Camera, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { useBrandEdit } from "./BrandEditContext";
 
 interface InlineEditableImageProps {
@@ -22,6 +22,11 @@ interface InlineEditableImageProps {
   // (e.g. a brand with no logo yet) — an editor still gets the upload
   // overlay on top of it; a non-editor just sees the fallback as-is.
   emptyPlaceholder?: React.ReactNode;
+  // Whether this field currently has a "last deleted" backup on the server
+  // (brands.deleted_image_backups — see app/api/brands/[slug]/image) —
+  // read on the initial page load so the undo button survives a refresh,
+  // not just the same client session that did the deleting.
+  hasBackup?: boolean;
 }
 
 // Facebook-style "hover the photo, see a camera icon, click to replace it"
@@ -37,11 +42,14 @@ export default function InlineEditableImage({
   imgClassName,
   overlaySizeClassName = "inset-0",
   emptyPlaceholder,
+  hasBackup = false,
 }: InlineEditableImageProps) {
   const { canEdit, brandSlug } = useBrandEdit();
   const [current, setCurrent] = useState(src);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [backupAvailable, setBackupAvailable] = useState(hasBackup);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,10 +64,34 @@ export default function InlineEditableImage({
         return;
       }
       setCurrent(undefined);
+      setBackupAvailable(Boolean(data.canRestore));
     } catch {
       setError("Remove failed. Please try again.");
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const handleRestore = async () => {
+    setRestoring(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/brands/${brandSlug}/image/restore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Restore failed");
+        return;
+      }
+      setCurrent(data.url);
+      setBackupAvailable(false);
+    } catch {
+      setError("Restore failed. Please try again.");
+    } finally {
+      setRestoring(false);
     }
   };
 
@@ -108,7 +140,7 @@ export default function InlineEditableImage({
               <Camera className="h-4 w-4 text-ink" strokeWidth={1.8} />
             )}
           </button>
-          {current && (
+          {current ? (
             <button
               type="button"
               onClick={handleRemove}
@@ -122,6 +154,23 @@ export default function InlineEditableImage({
                 <Trash2 className="h-4 w-4 text-red-600" strokeWidth={1.8} />
               )}
             </button>
+          ) : (
+            backupAvailable && (
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={uploading || restoring}
+                aria-label={`Undo delete of ${field} image`}
+                title="Restore the last deleted image"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/90 opacity-0 shadow-soft transition-opacity group-hover:opacity-100 disabled:opacity-100"
+              >
+                {restoring ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-ink" strokeWidth={2} />
+                ) : (
+                  <RotateCcw className="h-4 w-4 text-ink" strokeWidth={1.8} />
+                )}
+              </button>
+            )
           )}
           <input
             ref={fileInputRef}

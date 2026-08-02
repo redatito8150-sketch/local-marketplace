@@ -11,6 +11,7 @@ import {
   BrandValue,
   BrandShopTheLookTile,
   BrandJourneyMilestone,
+  BrandImageField,
   SimilarBrand,
 } from "@/types";
 
@@ -41,6 +42,7 @@ interface BrandRow {
   created_at: string;
   founder_name: string | null;
   journey_milestones: BrandJourneyMilestone[] | null;
+  deleted_image_backups: Partial<Record<BrandImageField, string>> | null;
 }
 
 // No per-brand rating aggregate column exists — weight each product's own
@@ -161,6 +163,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
     founderName: brand.founder_name ?? undefined,
     journeyMilestones: brand.journey_milestones ?? [],
+    deletedImageBackups: brand.deleted_image_backups ?? {},
   };
 }
 

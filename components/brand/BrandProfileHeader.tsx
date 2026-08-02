@@ -30,6 +30,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
             priority
             sizes="(max-width: 1440px) 100vw, 1360px"
             imgClassName="object-cover"
+            hasBackup={Boolean(brand.deletedImageBackups.hero)}
           />
           <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-black/10" />
           <div className="relative flex min-h-[280px] items-end p-5 sm:min-h-[350px] sm:p-8 lg:p-10">
@@ -44,6 +45,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                     sizes="96px"
                     imgClassName="object-cover"
                     emptyPlaceholder={initials(brand.name)}
+                    hasBackup={Boolean(brand.deletedImageBackups.logo)}
                   />
                 </div>
                 <div className="pb-1 text-white">

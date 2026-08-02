@@ -103,6 +103,7 @@ export default async function AboutPage({
               fill
               sizes="(max-width: 1024px) 100vw, 62vw"
               imgClassName="object-cover object-center"
+              hasBackup={Boolean(brand.deletedImageBackups.about)}
             />
           </div>
         </div>
