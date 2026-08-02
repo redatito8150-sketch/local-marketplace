@@ -204,11 +204,17 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                     editable
                     brandSlug={brandSlug}
                     collectionId={collection.id}
-                    onImagesChange={(next) =>
+                    onImagesChange={(next) => {
                       setCollections((current) =>
                         current?.map((c) => (c.id === collection.id ? { ...c, coverImageUrls: next } : c)) ?? null
-                      )
-                    }
+                      );
+                      // The public BrandCollectionsExperience below is a
+                      // separate server-rendered tree from this panel's own
+                      // state — without this, an uploaded/removed cover
+                      // photo would only ever show up here, never on the
+                      // actual public collection card, until a full reload.
+                      router.refresh();
+                    }}
                   />
                   <div className="min-w-0 p-4">
                     {isEditing ? (
