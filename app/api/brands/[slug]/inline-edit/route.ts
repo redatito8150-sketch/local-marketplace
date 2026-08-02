@@ -7,6 +7,7 @@ import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { JOURNEY_ICON_KEYS } from "@/lib/brandJourneyIcons";
+import { sanitizeRichText, stripRichText } from "@/lib/sanitizeRichText";
 
 // Single-field saves for the Facebook-style "click the pencil, edit right
 // here" affordance on the public brand page (app/brands/[slug]/**) — a
@@ -21,9 +22,9 @@ const TEXT_FIELDS = {
   tagline: { column: "tagline", required: true, maxLength: 5000 },
   city: { column: "city", required: true, maxLength: 5000 },
   websiteUrl: { column: "website_url", required: false, maxLength: 5000 },
-  aboutDescription: { column: "about_description", required: true, maxLength: 5000 },
   storyBody: { column: "story_body", required: false, maxLength: 5000 },
-  founderName: { column: "founder_name", required: false, maxLength: 80 },
+  aboutHeadline: { column: "about_headline", required: false, maxLength: 200 },
+  aboutQuote: { column: "about_quote", required: false, maxLength: 300 },
 } as const;
 type TextField = keyof typeof TEXT_FIELDS;
 
@@ -109,6 +110,43 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     return applyUpdate(params.slug, "journey_milestones", milestones, editor);
   }
 
+  // The About page's single combined intro field — rich text (bold/italic/
+  // size only, see lib/sanitizeRichText.ts), so it's sanitized server-side
+  // regardless of what the editor's own toolbar would ever produce, since
+  // this is the real trust boundary, not the client. "Required" is checked
+  // against the stripped, tag-free text so `<p></p>` doesn't count as content.
+  if (field === "aboutDescription") {
+    const raw = typeof body?.value === "string" ? body.value : "";
+    if (raw.length > 20000) {
+      return NextResponse.json({ error: "That's too long" }, { status: 400 });
+    }
+    const clean = sanitizeRichText(raw);
+    if (!stripRichText(clean)) {
+      return NextResponse.json({ error: "This field can't be empty" }, { status: 400 });
+    }
+    return applyUpdate(params.slug, "about_description", clean, editor);
+  }
+
+  // Multiple founder credits, replacing the single founder_name column —
+  // capped at 5 names, each trimmed and bounded so the About page's byline
+  // never has to wrap unpredictably.
+  if (field === "founderNames") {
+    const raw = body?.value;
+    if (!Array.isArray(raw) || raw.length > 5) {
+      return NextResponse.json({ error: "Up to 5 founders" }, { status: 400 });
+    }
+    const names: string[] = [];
+    for (const item of raw) {
+      const name = typeof item === "string" ? item.trim() : "";
+      if (!name) continue;
+      if (name.length > 80) {
+        return NextResponse.json({ error: "That name is too long" }, { status: 400 });
+      }
+      names.push(name);
+    }
+    return applyUpdate(params.slug, "founder_names", names, editor);
+  }
+
   if (typeof field !== "string" || !isTextField(field)) {
     return NextResponse.json({ error: "Invalid field" }, { status: 400 });
   }
@@ -128,7 +166,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 async function applyUpdate(
   slug: string,
   column: string,
-  value: string | number | null | { year: string; title: string; description: string; icon: string }[],
+  value: string | number | null | string[] | { year: string; title: string; description: string; icon: string }[],
   editor: { userId: string; actorLabel: string }
 ) {
   const { data: existing } = await supabaseAdmin

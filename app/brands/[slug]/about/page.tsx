@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import BrandJourneyTimeline from "@/components/brand/BrandJourneyTimeline";
+import FounderNamesEditor from "@/components/brand/FounderNamesEditor";
 import InlineEditableImage from "@/components/brand/InlineEditableImage";
-import InlineEditableSection from "@/components/brand/InlineEditableSection";
 import InlineEditableText from "@/components/brand/InlineEditableText";
+import RichTextEditableField from "@/components/brand/RichTextEditableField";
 import { getBrandContent } from "@/lib/data/brands";
+import { stripRichText } from "@/lib/sanitizeRichText";
 
 export async function generateMetadata({
   params,
@@ -17,7 +19,7 @@ export async function generateMetadata({
   return brand
     ? {
         title: `About ${brand.name} | Mahaly`,
-        description: brand.aboutDescription || brand.tagline,
+        description: stripRichText(brand.aboutDescription) || brand.tagline,
       }
     : {};
 }
@@ -33,20 +35,20 @@ export default async function AboutPage({
 
   // Generic, brand-agnostic fallback copy — never invent a specific founder
   // name, date, or stat for a real brand. Only real fields (name/city) go in.
-  const polishedIntroduction = `${brand.name} was born in ${brand.city} from a love of thoughtful design, honest materials, and the city it calls home — creating effortless pieces made for real life.`;
-  const introduction = brand.aboutDescription.trim().length > 40
-    ? brand.aboutDescription
-    : polishedIntroduction;
-  const secondParagraph = brand.storyBody.trim().length > 40
-    ? brand.storyBody
-    :
-    `From the sea breeze to ${brand.city}'s golden light, everything we create is inspired by our surroundings and made to move with you, wherever the day takes you.`;
+  // aboutDescription is the one combined intro field now (rich text, see
+  // RichTextEditableField) — the old separate storyBody second paragraph
+  // is retired from this page (story_body itself is untouched; still used
+  // by the admin BrandForm/brand-portal/mobile app).
+  const introFallback = `<p>${brand.name} was born in ${brand.city} from a love of thoughtful design, honest materials, and the city it calls home — creating effortless pieces made for real life. From the sea breeze to ${brand.city}'s golden light, everything we create is inspired by our surroundings and made to move with you, wherever the day takes you.</p>`;
+  const introduction = stripRichText(brand.aboutDescription).length > 40 ? brand.aboutDescription : introFallback;
   const aboutImage = brand.aboutImage || brand.storyImage;
+  const headlineFallback = `Designed in ${brand.city}.\nMade for everywhere.`;
+  const quoteFallback = `We started ${brand.name} to make everyday pieces feel personal again.`;
 
   // Only real, verifiable milestones — no invented founding story, no made-up
   // product counts. A brand with no recorded founding year just shows the
   // one milestone we can always vouch for (it did, in fact, join Mahaly).
-  // An owner/admin can add up to 2 of their own via BrandJourneyTimeline.
+  // An owner/admin can add their own via BrandJourneyTimeline.
   const founded = brand.foundedYear
     ? {
         year: brand.foundedYear.toString(),
@@ -68,31 +70,21 @@ export default async function AboutPage({
             <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#9b3440]">
               The story behind {brand.name}
             </p>
-            <h1 className="mt-5 font-serif text-[38px] leading-[1.08] tracking-[-0.025em] text-[#29231f] sm:text-[42px] lg:text-[44px]">
-              Designed in {brand.city}.
-              <br />
-              Made for everywhere.
-            </h1>
             <InlineEditableText
-              field="aboutDescription"
-              value={introduction}
-              as="p"
+              field="aboutHeadline"
+              value={brand.aboutHeadline || headlineFallback}
+              as="h1"
               multiline
-              className="mt-6 text-[15px] leading-7 text-[#6d645d]"
+              className="mt-5 whitespace-pre-line font-serif text-[38px] leading-[1.08] tracking-[-0.025em] text-[#29231f] sm:text-[42px] lg:text-[44px]"
             />
-            {brand.storyBody.trim().length > 40 ? (
-              <InlineEditableText
-                field="storyBody"
-                value={brand.storyBody}
-                as="p"
-                multiline
-                className="mt-5 text-[15px] leading-7 text-[#6d645d]"
+            <div className="mt-6">
+              <RichTextEditableField
+                field="aboutDescription"
+                value={introduction}
+                className="text-[15px] leading-7 text-[#6d645d] [&_p]:mb-4 last:[&_p]:mb-0"
+                canImport={brand.hasSourceApplication}
               />
-            ) : (
-              <p className="mt-5 text-[15px] leading-7 text-[#6d645d]">
-                {secondParagraph}
-              </p>
-            )}
+            </div>
           </div>
 
           <div className="relative aspect-[1.5/1] min-h-[310px] overflow-hidden rounded-[18px] bg-[#e7ddd2] shadow-[0_18px_50px_rgba(74,50,36,0.08)]">
@@ -113,21 +105,15 @@ export default async function AboutPage({
             <span className="font-serif text-[64px] leading-[0.72] text-[#8f2634]" aria-hidden="true">
               “
             </span>
-            <p className="font-serif text-[31px] leading-[1.18] tracking-[-0.015em] text-[#7c2833] sm:text-[36px] lg:text-[39px]">
-              We started {brand.name} to make everyday pieces feel personal again.
-            </p>
+            <InlineEditableText
+              field="aboutQuote"
+              value={brand.aboutQuote || quoteFallback}
+              as="p"
+              multiline
+              className="font-serif text-[31px] leading-[1.18] tracking-[-0.015em] text-[#7c2833] sm:text-[36px] lg:text-[39px]"
+            />
           </blockquote>
-          <InlineEditableSection show={Boolean(brand.founderName)}>
-            <p className="pl-[52px] text-[13px] leading-6 text-[#403833] lg:pl-0">
-              <InlineEditableText
-                field="founderName"
-                value={brand.founderName}
-                as="span"
-                className="font-medium"
-                placeholder="Add founder name (e.g. “Jane Doe — Founder”)"
-              />
-            </p>
-          </InlineEditableSection>
+          <FounderNamesEditor initial={brand.founderNames} />
         </div>
 
         <div className="mt-10 border-t border-[#e5d9ce] pt-8 lg:mt-11">

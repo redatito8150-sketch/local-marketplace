@@ -496,3 +496,14 @@ a.group:focus-visible .brand-partner-badge-icon {
     opacity: 1;
   }
 }
+
+/* The 2 size variants RichTextEditableField's toolbar can apply (see
+   lib/sanitizeRichText.ts's RICH_TEXT_SIZE_CLASSES) — relative and capped
+   on purpose so a brand's About copy can't blow past the page's own
+   typography scale. */
+.rt-size-lg {
+  font-size: 1.18em;
+}
+.rt-size-sm {
+  font-size: 0.85em;
+}

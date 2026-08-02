@@ -1054,8 +1054,9 @@ export interface BrandPageContent {
   shopTheLook: BrandShopTheLookTile[];
   isMahalyPartner: boolean;
   // Optional, owner/admin-entered via the same inline-edit pencil as
-  // tagline/aboutDescription — never auto-filled or guessed.
-  founderName?: string;
+  // tagline/aboutDescription — never auto-filled or guessed. Plural: a
+  // brand can credit more than one founder.
+  founderNames: string[];
   // Custom milestones an owner/admin adds on top of the always-real
   // computed ones (foundedYear, createdAt) shown on the About page.
   journeyMilestones: BrandJourneyMilestone[];
@@ -1064,6 +1065,16 @@ export interface BrandPageContent {
   // and its restore/ sibling). Only ever the single latest deletion, never
   // a history.
   deletedImageBackups: Partial<Record<BrandImageField, string>>;
+  // Owner/admin-editable, defaults to the page's original fixed copy when
+  // unset (see app/brands/[slug]/about/page.tsx).
+  aboutHeadline?: string;
+  aboutQuote?: string;
+  // Whether this brand was created from a brand_applications row (has a
+  // source_application_id) — gates the About page's "Import from your
+  // application" button; the application's own story text is fetched
+  // separately (GET /api/brands/[slug]/application-story) only when an
+  // owner/admin actually clicks it, never eagerly.
+  hasSourceApplication: boolean;
 }
 
 // Kept as a plain string union (rather than importing the runtime array) so

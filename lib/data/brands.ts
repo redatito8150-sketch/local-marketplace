@@ -40,9 +40,12 @@ interface BrandRow {
   shop_the_look: BrandShopTheLookTile[];
   is_mahaly_partner: boolean;
   created_at: string;
-  founder_name: string | null;
+  founder_names: string[] | null;
   journey_milestones: BrandJourneyMilestone[] | null;
   deleted_image_backups: Partial<Record<BrandImageField, string>> | null;
+  about_headline: string | null;
+  about_quote: string | null;
+  source_application_id: string | null;
 }
 
 // No per-brand rating aggregate column exists — weight each product's own
@@ -161,9 +164,12 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     storeRating: computeStoreRating(productRowsTyped),
     shopTheLook: brand.shop_the_look ?? [],
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
-    founderName: brand.founder_name ?? undefined,
+    founderNames: brand.founder_names ?? [],
     journeyMilestones: brand.journey_milestones ?? [],
     deletedImageBackups: brand.deleted_image_backups ?? {},
+    aboutHeadline: brand.about_headline ?? undefined,
+    aboutQuote: brand.about_quote ?? undefined,
+    hasSourceApplication: Boolean(brand.source_application_id),
   };
 }
 
