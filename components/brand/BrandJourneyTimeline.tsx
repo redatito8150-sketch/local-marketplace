@@ -25,7 +25,7 @@ import { useBrandEdit } from "./BrandEditContext";
 import type { BrandJourneyMilestone, JourneyIconKey } from "@/types";
 import { JOURNEY_ICON_KEYS } from "@/lib/brandJourneyIcons";
 
-const MAX_CUSTOM = 6;
+const MAX_CUSTOM = 10;
 const CURRENT_YEAR = new Date().getFullYear();
 
 const ICON_COMPONENTS: Record<JourneyIconKey, LucideIcon> = {
@@ -192,8 +192,17 @@ export default function BrandJourneyTimeline({
         onMouseMove={onDrag}
         onMouseUp={endDrag}
         onMouseLeave={endDrag}
-        className={`no-scrollbar flex gap-4 overflow-x-auto pb-2 ${isDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
+        className={`no-scrollbar overflow-x-auto pb-2 ${isDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
       >
+      {/* w-max so this inner row sizes to its natural (unclipped) content
+          width — the connecting line below is positioned relative to that,
+          so it scrolls together with the circles instead of staying fixed
+          to the viewport. */}
+      <div className="relative flex w-max gap-4">
+        <div
+          className="absolute left-6 right-6 top-6 h-px bg-[#bd8a8e]"
+          aria-hidden="true"
+        />
         {entries.map((item) => {
           const isEditingThis = item.customIndex !== null && editingIndex === item.customIndex;
           const Icon = ICON_COMPONENTS[item.icon] ?? Sparkles;
@@ -269,6 +278,7 @@ export default function BrandJourneyTimeline({
             Add milestone
           </button>
         )}
+      </div>
       </div>
       {canEdit && (
         <p className="mt-2 text-[11px] text-[#8f8078]">Drag the timeline to scroll — sorted automatically by year.</p>

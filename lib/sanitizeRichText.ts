@@ -1,4 +1,4 @@
-import DOMPurify from "isomorphic-dompurify";
+import sanitizeHtml from "sanitize-html";
 
 // Deliberately tiny allowlist for the one rich-text field on the brand
 // About page (the combined story — see app/brands/[slug]/about/page.tsx
@@ -7,32 +7,22 @@ import DOMPurify from "isomorphic-dompurify";
 // forged straight at the API wouldn't be bound by that, so this is the
 // real security boundary, not a UX nicety.
 //
-// `class` is only kept so the 2 size variants the toolbar offers
-// (see RICH_TEXT_SIZE_CLASSES) can round-trip — arbitrary class values
-// are stripped by the hook below, so this can never become a vector for
-// injecting attacker-controlled CSS classes/selectors.
+// Uses sanitize-html (htmlparser2-based) rather than isomorphic-dompurify —
+// that pulls in jsdom, which doesn't bundle reliably into Next.js's
+// serverless functions (it broke this exact page in production while
+// working fine in local dev/build). sanitize-html has no DOM/native
+// dependency, so it doesn't have that failure mode.
+//
+// `class` is only kept on <span> so the 2 size variants the toolbar offers
+// can round-trip — `allowedClasses` restricts it to exactly those values,
+// so this can never become a vector for injecting arbitrary CSS classes.
 export const RICH_TEXT_SIZE_CLASSES = ["rt-size-sm", "rt-size-lg"] as const;
 
-let hookInstalled = false;
-function ensureHook() {
-  if (hookInstalled) return;
-  DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
-    if (data.attrName === "class") {
-      const kept = data.attrValue
-        .split(/\s+/)
-        .filter((cls) => (RICH_TEXT_SIZE_CLASSES as readonly string[]).includes(cls));
-      data.attrValue = kept.join(" ");
-      if (!data.attrValue) data.keepAttr = false;
-    }
-  });
-  hookInstalled = true;
-}
-
 export function sanitizeRichText(html: string): string {
-  ensureHook();
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ["b", "strong", "i", "em", "span", "p", "br"],
-    ALLOWED_ATTR: ["class"],
+  return sanitizeHtml(html, {
+    allowedTags: ["b", "strong", "i", "em", "span", "p", "br"],
+    allowedAttributes: { span: ["class"] },
+    allowedClasses: { span: [...RICH_TEXT_SIZE_CLASSES] },
   }).trim();
 }
 
@@ -40,5 +30,5 @@ export function sanitizeRichText(html: string): string {
 // must never carry markup through — strips every tag rather than relying
 // on the caller to remember to.
 export function stripRichText(html: string): string {
-  return DOMPurify.sanitize(html, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim();
+  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }).trim();
 }

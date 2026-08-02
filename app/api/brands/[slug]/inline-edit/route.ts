@@ -75,15 +75,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 
   // Custom "Our journey" timeline entries the owner/admin adds on top of the
   // always-real computed milestones (foundedYear, brand.createdAt) already
-  // shown on the About page — capped at 6 (keeps the drag-scroll strip
+  // shown on the About page — capped at 10 (keeps the drag-scroll strip
   // sane), and every field is validated (not just typeof checked) since
   // this becomes real jsonb, not a display-only prop. `year` has to parse
   // as a real integer (not just any 20-char string) because the page sorts
   // every milestone — computed and custom — chronologically by this value.
   if (field === "journeyMilestones") {
     const raw = body?.value;
-    if (!Array.isArray(raw) || raw.length > 6) {
-      return NextResponse.json({ error: "Up to 6 milestones" }, { status: 400 });
+    if (!Array.isArray(raw) || raw.length > 10) {
+      return NextResponse.json({ error: "Up to 10 milestones" }, { status: 400 });
     }
     const currentYear = new Date().getFullYear();
     const milestones: { year: string; title: string; description: string; icon: string }[] = [];
