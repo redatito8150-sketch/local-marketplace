@@ -6,6 +6,16 @@ import { getPublicCollectionsForBrand } from "@/lib/data/brandCollections";
 import { getBrandContent } from "@/lib/data/brands";
 import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/lib/data/collectionExperience";
 
+// Overrides the shared layout's `revalidate = 60` (Next.js uses the lowest
+// value across the whole route tree) — this page's own data (collection
+// covers/products/pause state, all editable in-place by
+// CollectionsManager) needs to be fresh on every load, not served from a
+// stale ISR snapshot for up to a minute. router.refresh() after a save
+// only helps once the underlying fetches themselves aren't cached; without
+// this, a just-uploaded cover photo could sit invisible on the public card
+// for up to 60s after the management panel already showed it correctly.
+export const revalidate = 0;
+
 export async function generateMetadata({
   params,
 }: {
