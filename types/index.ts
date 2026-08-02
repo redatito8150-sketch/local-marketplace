@@ -1061,10 +1061,29 @@ export interface BrandPageContent {
   journeyMilestones: BrandJourneyMilestone[];
 }
 
+// Kept as a plain string union (rather than importing the runtime array) so
+// this file never needs to import from lib/ — see JOURNEY_ICON_KEYS in
+// lib/brandJourneyIcons.ts, cross-checked against this type via `satisfies`,
+// same convention as EgyptGovernorate/EGYPT_GOVERNORATES.
+export type JourneyIconKey =
+  | "sparkles"
+  | "store"
+  | "heart"
+  | "award"
+  | "rocket"
+  | "package"
+  | "star"
+  | "trophy"
+  | "palette"
+  | "users"
+  | "map-pin"
+  | "shopping-bag";
+
 export interface BrandJourneyMilestone {
   year: string;
   title: string;
   description: string;
+  icon: JourneyIconKey;
 }
 
 export interface BrandShopTheLookTile {

@@ -6,6 +6,7 @@ import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
+import { JOURNEY_ICON_KEYS } from "@/lib/brandJourneyIcons";
 
 // Single-field saves for the Facebook-style "click the pencil, edit right
 // here" affordance on the public brand page (app/brands/[slug]/**) — a
@@ -73,26 +74,37 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 
   // Custom "Our journey" timeline entries the owner/admin adds on top of the
   // always-real computed milestones (foundedYear, brand.createdAt) already
-  // shown on the About page — capped at 2 so the section never has to
-  // relearn its layout, and every field is validated (not just typeof
-  // checked) since this becomes real jsonb, not a display-only prop.
+  // shown on the About page — capped at 6 (keeps the drag-scroll strip
+  // sane), and every field is validated (not just typeof checked) since
+  // this becomes real jsonb, not a display-only prop. `year` has to parse
+  // as a real integer (not just any 20-char string) because the page sorts
+  // every milestone — computed and custom — chronologically by this value.
   if (field === "journeyMilestones") {
     const raw = body?.value;
-    if (!Array.isArray(raw) || raw.length > 2) {
-      return NextResponse.json({ error: "Up to 2 milestones" }, { status: 400 });
+    if (!Array.isArray(raw) || raw.length > 6) {
+      return NextResponse.json({ error: "Up to 6 milestones" }, { status: 400 });
     }
-    const milestones: { year: string; title: string; description: string }[] = [];
+    const currentYear = new Date().getFullYear();
+    const milestones: { year: string; title: string; description: string; icon: string }[] = [];
     for (const item of raw) {
-      const year = typeof item?.year === "string" ? item.year.trim() : "";
+      const yearRaw = typeof item?.year === "string" ? item.year.trim() : "";
       const title = typeof item?.title === "string" ? item.title.trim() : "";
       const description = typeof item?.description === "string" ? item.description.trim() : "";
-      if (!year || !title) {
-        return NextResponse.json({ error: "Each milestone needs a year and title" }, { status: 400 });
+      const icon = typeof item?.icon === "string" ? item.icon : "";
+      const yearNum = Number(yearRaw);
+      if (!yearRaw || !Number.isInteger(yearNum) || yearNum < 1900 || yearNum > currentYear + 10) {
+        return NextResponse.json({ error: "Enter a valid milestone year" }, { status: 400 });
       }
-      if (year.length > 20 || title.length > 60 || description.length > 200) {
+      if (!title) {
+        return NextResponse.json({ error: "Each milestone needs a title" }, { status: 400 });
+      }
+      if (title.length > 60 || description.length > 200) {
         return NextResponse.json({ error: "That's too long" }, { status: 400 });
       }
-      milestones.push({ year, title, description });
+      if (!JOURNEY_ICON_KEYS.includes(icon as (typeof JOURNEY_ICON_KEYS)[number])) {
+        return NextResponse.json({ error: "Choose a valid icon" }, { status: 400 });
+      }
+      milestones.push({ year: String(yearNum), title, description, icon });
     }
     return applyUpdate(params.slug, "journey_milestones", milestones, editor);
   }
@@ -116,7 +128,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 async function applyUpdate(
   slug: string,
   column: string,
-  value: string | number | null | { year: string; title: string; description: string }[],
+  value: string | number | null | { year: string; title: string; description: string; icon: string }[],
   editor: { userId: string; actorLabel: string }
 ) {
   const { data: existing } = await supabaseAdmin
