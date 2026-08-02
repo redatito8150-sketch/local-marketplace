@@ -86,12 +86,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       return NextResponse.json({ error: "Up to 10 milestones" }, { status: 400 });
     }
     const currentYear = new Date().getFullYear();
-    const milestones: { year: string; title: string; description: string; icon: string }[] = [];
+    const milestones: { year: string; month?: number; title: string; description: string; icon: string }[] = [];
     for (const item of raw) {
       const yearRaw = typeof item?.year === "string" ? item.year.trim() : "";
       const title = typeof item?.title === "string" ? item.title.trim() : "";
       const description = typeof item?.description === "string" ? item.description.trim() : "";
-      const icon = typeof item?.icon === "string" ? item.icon : "";
       const yearNum = Number(yearRaw);
       if (!yearRaw || !Number.isInteger(yearNum) || yearNum < 1900 || yearNum > currentYear + 10) {
         return NextResponse.json({ error: "Enter a valid milestone year" }, { status: 400 });
@@ -102,10 +101,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       if (title.length > 60 || description.length > 200) {
         return NextResponse.json({ error: "That's too long" }, { status: 400 });
       }
-      if (!JOURNEY_ICON_KEYS.includes(icon as (typeof JOURNEY_ICON_KEYS)[number])) {
-        return NextResponse.json({ error: "Choose a valid icon" }, { status: 400 });
+      const monthNum = item?.month === null || item?.month === undefined ? undefined : Number(item.month);
+      if (monthNum !== undefined && (!Number.isInteger(monthNum) || monthNum < 1 || monthNum > 12)) {
+        return NextResponse.json({ error: "Enter a valid month" }, { status: 400 });
       }
-      milestones.push({ year: String(yearNum), title, description, icon });
+      // A milestone saved before icons existed (or with a since-removed
+      // icon key) shouldn't block saving the *entire* array on every
+      // future edit — coerce quietly to a safe default instead of
+      // rejecting, same as the timeline's own display-side fallback.
+      const icon = typeof item?.icon === "string" && JOURNEY_ICON_KEYS.includes(item.icon as (typeof JOURNEY_ICON_KEYS)[number])
+        ? item.icon
+        : "sparkles";
+      milestones.push({ year: String(yearNum), ...(monthNum !== undefined ? { month: monthNum } : {}), title, description, icon });
     }
     return applyUpdate(params.slug, "journey_milestones", milestones, editor);
   }
@@ -127,24 +134,28 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     return applyUpdate(params.slug, "about_description", clean, editor);
   }
 
-  // Multiple founder credits, replacing the single founder_name column —
-  // capped at 5 names, each trimmed and bounded so the About page's byline
-  // never has to wrap unpredictably.
-  if (field === "founderNames") {
+  // Founder credits — a list, not a single field, so a brand can name more
+  // than one founder, each with their own name + title, in whatever order
+  // the owner arranges them (order is exactly the array order, saved
+  // whole on every reorder/add/edit/remove). Capped at 5.
+  if (field === "founders") {
     const raw = body?.value;
     if (!Array.isArray(raw) || raw.length > 5) {
       return NextResponse.json({ error: "Up to 5 founders" }, { status: 400 });
     }
-    const names: string[] = [];
+    const founders: { name: string; title: string }[] = [];
     for (const item of raw) {
-      const name = typeof item === "string" ? item.trim() : "";
-      if (!name) continue;
-      if (name.length > 80) {
-        return NextResponse.json({ error: "That name is too long" }, { status: 400 });
+      const name = typeof item?.name === "string" ? item.name.trim() : "";
+      const title = typeof item?.title === "string" ? item.title.trim() : "";
+      if (!name) {
+        return NextResponse.json({ error: "Each founder needs a name" }, { status: 400 });
       }
-      names.push(name);
+      if (name.length > 80 || title.length > 40) {
+        return NextResponse.json({ error: "That's too long" }, { status: 400 });
+      }
+      founders.push({ name, title: title || "Founder" });
     }
-    return applyUpdate(params.slug, "founder_names", names, editor);
+    return applyUpdate(params.slug, "founders", founders, editor);
   }
 
   if (typeof field !== "string" || !isTextField(field)) {
@@ -166,7 +177,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 async function applyUpdate(
   slug: string,
   column: string,
-  value: string | number | null | string[] | { year: string; title: string; description: string; icon: string }[],
+  value:
+    | string
+    | number
+    | null
+    | { name: string; title: string }[]
+    | { year: string; month?: number; title: string; description: string; icon: string }[],
   editor: { userId: string; actorLabel: string }
 ) {
   const { data: existing } = await supabaseAdmin

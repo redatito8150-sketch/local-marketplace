@@ -12,6 +12,7 @@ import {
   BrandShopTheLookTile,
   BrandJourneyMilestone,
   BrandImageField,
+  BrandFounder,
   SimilarBrand,
 } from "@/types";
 
@@ -40,7 +41,7 @@ interface BrandRow {
   shop_the_look: BrandShopTheLookTile[];
   is_mahaly_partner: boolean;
   created_at: string;
-  founder_names: string[] | null;
+  founders: BrandFounder[] | null;
   journey_milestones: BrandJourneyMilestone[] | null;
   deleted_image_backups: Partial<Record<BrandImageField, string>> | null;
   about_headline: string | null;
@@ -164,7 +165,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     storeRating: computeStoreRating(productRowsTyped),
     shopTheLook: brand.shop_the_look ?? [],
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
-    founderNames: brand.founder_names ?? [],
+    founders: brand.founders ?? [],
     journeyMilestones: brand.journey_milestones ?? [],
     deletedImageBackups: brand.deleted_image_backups ?? {},
     aboutHeadline: brand.about_headline ?? undefined,

@@ -131,7 +131,7 @@ export default function InlineEditableText({
             onClick={save}
             disabled={saving}
             aria-label="Save"
-            className="flex h-6 w-6 items-center justify-center rounded-full bg-mahalyred text-cream disabled:opacity-60"
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3fae6a] text-white disabled:opacity-60"
           >
             <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
           </button>

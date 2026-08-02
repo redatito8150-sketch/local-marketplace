@@ -27,6 +27,9 @@ import { JOURNEY_ICON_KEYS } from "@/lib/brandJourneyIcons";
 
 const MAX_CUSTOM = 10;
 const CURRENT_YEAR = new Date().getFullYear();
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 const ICON_COMPONENTS: Record<JourneyIconKey, LucideIcon> = {
   sparkles: Sparkles,
@@ -43,6 +46,10 @@ const ICON_COMPONENTS: Record<JourneyIconKey, LucideIcon> = {
   "shopping-bag": ShoppingBag,
 };
 
+function isValidIcon(icon: unknown): icon is JourneyIconKey {
+  return typeof icon === "string" && (JOURNEY_ICON_KEYS as readonly string[]).includes(icon);
+}
+
 interface ComputedMilestone {
   year: string;
   title: string;
@@ -52,6 +59,7 @@ interface ComputedMilestone {
 interface TimelineEntry {
   key: string;
   year: number;
+  month: number | null;
   title: string;
   description: string;
   icon: JourneyIconKey;
@@ -60,7 +68,14 @@ interface TimelineEntry {
 }
 
 function emptyDraft(): BrandJourneyMilestone {
-  return { year: "", title: "", description: "", icon: "sparkles" };
+  return { year: "", month: undefined, title: "", description: "", icon: "sparkles" };
+}
+
+// Never trust a stored milestone's icon blindly when loading it into the
+// editor — a legacy entry saved before icons existed (or since removed
+// from the picker) would otherwise show as if nothing were selected.
+function toDraft(milestone: BrandJourneyMilestone): BrandJourneyMilestone {
+  return { ...milestone, icon: isValidIcon(milestone.icon) ? milestone.icon : "sparkles" };
 }
 
 // The About page's "Our journey" strip. "Founded" and "Joined Mahaly" are
@@ -69,8 +84,9 @@ function emptyDraft(): BrandJourneyMilestone {
 // an owner/admin-managed custom milestone, saved through the same
 // field="journeyMilestones" branch as every other inline edit on this page
 // (app/api/brands/[slug]/inline-edit). The whole strip — real and custom
-// alike — is sorted chronologically by year, so a custom entry can land
-// before "Founded" or after "Joined Mahaly" without any special-casing.
+// alike — is sorted chronologically by year (then month), so a custom
+// entry can land before "Founded" or after "Joined Mahaly" without any
+// special-casing.
 export default function BrandJourneyTimeline({
   founded,
   joinedMahaly,
@@ -116,7 +132,7 @@ export default function BrandJourneyTimeline({
   };
 
   const startEdit = (index: number) => {
-    setDraft(index === -1 ? emptyDraft() : custom[index]);
+    setDraft(index === -1 ? emptyDraft() : toDraft(custom[index]));
     setEditingIndex(index);
     setError("");
   };
@@ -137,7 +153,13 @@ export default function BrandJourneyTimeline({
       return;
     }
     const next = [...custom];
-    const cleaned = { ...draft, year: String(yearNum), title: draft.title.trim(), description: draft.description.trim() };
+    const cleaned: BrandJourneyMilestone = {
+      ...draft,
+      year: String(yearNum),
+      month: draft.month,
+      title: draft.title.trim(),
+      description: draft.description.trim(),
+    };
     if (editingIndex === -1) next.push(cleaned);
     else if (editingIndex !== null) next[editingIndex] = cleaned;
     const ok = await save(next);
@@ -149,24 +171,28 @@ export default function BrandJourneyTimeline({
   };
 
   // Every entry — the two always-real ones and every custom one — sorted
-  // together by year, left to right.
+  // together by year, then month (entries with no month sort first within
+  // their year), left to right.
   const entries: TimelineEntry[] = [
-    ...(founded ? [{ key: "founded", year: Number(founded.year), title: founded.title, description: founded.description, icon: "sparkles" as JourneyIconKey, variant: "gold" as const, customIndex: null }] : []),
-    { key: "joined-mahaly", year: Number(joinedMahaly.year), title: joinedMahaly.title, description: joinedMahaly.description, icon: "store" as JourneyIconKey, variant: "gold" as const, customIndex: null },
+    ...(founded
+      ? [{ key: "founded", year: Number(founded.year), month: null, title: founded.title, description: founded.description, icon: "sparkles" as JourneyIconKey, variant: "gold" as const, customIndex: null }]
+      : []),
+    { key: "joined-mahaly", year: Number(joinedMahaly.year), month: null, title: joinedMahaly.title, description: joinedMahaly.description, icon: "store" as JourneyIconKey, variant: "gold" as const, customIndex: null },
     ...custom.map((item, index) => ({
       key: `custom-${index}`,
       year: Number(item.year),
+      month: item.month ?? null,
       title: item.title,
       description: item.description,
-      icon: item.icon,
+      icon: isValidIcon(item.icon) ? item.icon : ("sparkles" as JourneyIconKey),
       variant: "red" as const,
       customIndex: index,
     })),
-  ].sort((a, b) => a.year - b.year);
+  ].sort((a, b) => a.year * 12 + (a.month ?? 0) - (b.year * 12 + (b.month ?? 0)));
 
   const startDrag = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("button, input, textarea")) return;
+    if (target.closest("button, input, textarea, select")) return;
     if (!scrollRef.current) return;
     drag.current = { startX: e.pageX, startScroll: scrollRef.current.scrollLeft, moved: false };
     setIsDragging(true);
@@ -192,96 +218,95 @@ export default function BrandJourneyTimeline({
         onMouseMove={onDrag}
         onMouseUp={endDrag}
         onMouseLeave={endDrag}
-        className={`no-scrollbar overflow-x-auto pb-2 ${isDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
+        className={`no-scrollbar overflow-x-auto pb-2 pt-3 ${isDragging ? "cursor-grabbing select-none" : "cursor-grab"}`}
       >
-      {/* w-max so this inner row sizes to its natural (unclipped) content
-          width — the connecting line below is positioned relative to that,
-          so it scrolls together with the circles instead of staying fixed
-          to the viewport. */}
-      <div className="relative flex w-max gap-4">
-        <div
-          className="absolute left-6 right-6 top-6 h-px bg-[#bd8a8e]"
-          aria-hidden="true"
-        />
-        {entries.map((item) => {
-          const isEditingThis = item.customIndex !== null && editingIndex === item.customIndex;
-          const Icon = ICON_COMPONENTS[item.icon] ?? Sparkles;
+        {/* w-max so this inner row sizes to its natural (unclipped) content
+            width — the connecting line below is positioned relative to
+            that, so it scrolls together with the circles instead of
+            staying fixed to the viewport. */}
+        <div className="relative flex w-max gap-4">
+          <div className="absolute left-6 right-6 top-9 h-px bg-[#bd8a8e]" aria-hidden="true" />
+          {entries.map((item) => {
+            const isEditingThis = item.customIndex !== null && editingIndex === item.customIndex;
+            const Icon = ICON_COMPONENTS[item.icon] ?? Sparkles;
 
-          if (isEditingThis) {
+            if (isEditingThis) {
+              return (
+                <MilestoneEditor
+                  key={item.key}
+                  draft={draft}
+                  setDraft={setDraft}
+                  onSave={confirmEdit}
+                  onCancel={cancelEdit}
+                  saving={saving}
+                  error={error}
+                />
+              );
+            }
+
             return (
-              <MilestoneEditor
-                key={item.key}
-                draft={draft}
-                setDraft={setDraft}
-                onSave={confirmEdit}
-                onCancel={cancelEdit}
-                saving={saving}
-                error={error}
-              />
+              <article key={item.key} className="group/milestone relative w-[168px] shrink-0 pt-3 text-center">
+                {item.customIndex !== null && canEdit && (
+                  <span className="absolute -top-1 left-1/2 z-20 flex -translate-x-1/2 gap-1.5 opacity-0 transition group-hover/milestone:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(item.customIndex!)}
+                      aria-label="Edit milestone"
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-[#e2d6ca] bg-white text-[#4c433e] shadow-sm hover:bg-[#f5efe7]"
+                    >
+                      <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => remove(item.customIndex!)}
+                      aria-label="Remove milestone"
+                      className="flex h-7 w-7 items-center justify-center rounded-full border border-[#f0c9c9] bg-white text-red-600 shadow-sm hover:bg-red-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" strokeWidth={2} />
+                    </button>
+                  </span>
+                )}
+                <div
+                  className={`relative z-10 mx-auto grid h-12 w-12 place-items-center rounded-full text-white shadow-[0_4px_14px_rgba(143,38,52,0.2)] ${
+                    item.variant === "gold" ? "bg-[#c9962c]" : "bg-[#8f2634]"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" strokeWidth={1.7} />
+                </div>
+                <p className="mt-4 text-sm font-semibold text-[#514740]">
+                  {item.month ? `${MONTH_LABELS[item.month - 1]} ${item.year}` : item.year}
+                </p>
+                <h3 className="mt-1 text-[13px] font-bold text-[#302925]">{item.title}</h3>
+                <p className="mx-auto mt-2 max-w-[190px] text-[12px] leading-5 text-[#766d66]">{item.description}</p>
+              </article>
             );
-          }
+          })}
 
-          return (
-            <article key={item.key} className="group/milestone relative w-[168px] shrink-0 text-center">
-              <div
-                className={`relative z-10 mx-auto grid h-12 w-12 place-items-center rounded-full text-white shadow-[0_4px_14px_rgba(143,38,52,0.2)] ${
-                  item.variant === "gold" ? "bg-[#c9962c]" : "bg-[#8f2634]"
-                }`}
-              >
-                <Icon className="h-5 w-5" strokeWidth={1.7} />
-              </div>
-              <p className="mt-4 text-sm font-semibold text-[#514740]">{item.year}</p>
-              <h3 className="mt-1 text-[13px] font-bold text-[#302925]">{item.title}</h3>
-              <p className="mx-auto mt-2 max-w-[190px] text-[12px] leading-5 text-[#766d66]">{item.description}</p>
-              {item.customIndex !== null && canEdit && (
-                <span className="absolute -top-1 right-[calc(50%-46px)] flex gap-1 opacity-0 transition group-hover/milestone:opacity-100">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(item.customIndex!)}
-                    aria-label="Edit milestone"
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/10 hover:bg-black/20"
-                  >
-                    <Pencil className="h-3 w-3" strokeWidth={2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => remove(item.customIndex!)}
-                    aria-label="Remove milestone"
-                    className="flex h-6 w-6 items-center justify-center rounded-full bg-black/10 hover:bg-red-100 hover:text-red-600"
-                  >
-                    <Trash2 className="h-3 w-3" strokeWidth={2} />
-                  </button>
-                </span>
-              )}
-            </article>
-          );
-        })}
+          {editingIndex === -1 && (
+            <MilestoneEditor
+              draft={draft}
+              setDraft={setDraft}
+              onSave={confirmEdit}
+              onCancel={cancelEdit}
+              saving={saving}
+              error={error}
+            />
+          )}
 
-        {editingIndex === -1 && (
-          <MilestoneEditor
-            draft={draft}
-            setDraft={setDraft}
-            onSave={confirmEdit}
-            onCancel={cancelEdit}
-            saving={saving}
-            error={error}
-          />
-        )}
-
-        {canEdit && custom.length < MAX_CUSTOM && editingIndex !== -1 && (
-          <button
-            type="button"
-            onClick={() => startEdit(-1)}
-            className="flex w-[168px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#8f2634] opacity-70 transition hover:opacity-100"
-          >
-            <Plus className="h-5 w-5" strokeWidth={2} />
-            Add milestone
-          </button>
-        )}
-      </div>
+          {canEdit && custom.length < MAX_CUSTOM && editingIndex !== -1 && (
+            <button
+              type="button"
+              onClick={() => startEdit(-1)}
+              className="mt-3 flex w-[168px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#8f2634] opacity-70 transition hover:opacity-100"
+            >
+              <Plus className="h-5 w-5" strokeWidth={2} />
+              Add milestone
+            </button>
+          )}
+        </div>
       </div>
       {canEdit && (
-        <p className="mt-2 text-[11px] text-[#8f8078]">Drag the timeline to scroll — sorted automatically by year.</p>
+        <p className="mt-2 text-[11px] text-[#8f8078]">Drag the timeline to scroll — sorted automatically by date.</p>
       )}
     </div>
   );
@@ -303,7 +328,7 @@ function MilestoneEditor({
   error: string;
 }) {
   return (
-    <div className="w-[210px] shrink-0 rounded-2xl border-2 border-[#8f2634]/40 bg-white p-3 text-left">
+    <div className="mt-3 w-[210px] shrink-0 rounded-2xl border-2 border-[#8f2634]/40 bg-white p-3 text-left">
       <div className="flex flex-wrap gap-1.5">
         {JOURNEY_ICON_KEYS.map((key) => {
           const Icon = ICON_COMPONENTS[key];
@@ -325,15 +350,29 @@ function MilestoneEditor({
           );
         })}
       </div>
-      <input
-        value={draft.year}
-        onChange={(e) => setDraft({ ...draft, year: e.target.value })}
-        placeholder="Year (e.g. 2024)"
-        inputMode="numeric"
-        maxLength={4}
-        disabled={saving}
-        className="mt-2 w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#8f2634]"
-      />
+      <div className="mt-2 flex gap-1.5">
+        <select
+          value={draft.month ?? ""}
+          onChange={(e) => setDraft({ ...draft, month: e.target.value ? Number(e.target.value) : undefined })}
+          disabled={saving}
+          aria-label="Month (optional)"
+          className="w-[88px] rounded-md border border-[#ddd2c8] px-1.5 py-1 text-xs outline-none focus:border-[#8f2634]"
+        >
+          <option value="">Month</option>
+          {MONTH_LABELS.map((label, index) => (
+            <option key={label} value={index + 1}>{label}</option>
+          ))}
+        </select>
+        <input
+          value={draft.year}
+          onChange={(e) => setDraft({ ...draft, year: e.target.value })}
+          placeholder="Year"
+          inputMode="numeric"
+          maxLength={4}
+          disabled={saving}
+          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#8f2634]"
+        />
+      </div>
       <input
         value={draft.title}
         onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -357,7 +396,7 @@ function MilestoneEditor({
           onClick={onSave}
           disabled={saving}
           aria-label="Save milestone"
-          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#8f2634] text-white disabled:opacity-60"
+          className="flex h-6 w-6 items-center justify-center rounded-full bg-[#3fae6a] text-white disabled:opacity-60"
         >
           <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
         </button>

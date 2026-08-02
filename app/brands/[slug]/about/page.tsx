@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import BrandJourneyTimeline from "@/components/brand/BrandJourneyTimeline";
-import FounderNamesEditor from "@/components/brand/FounderNamesEditor";
+import FoundersEditor from "@/components/brand/FoundersEditor";
 import InlineEditableImage from "@/components/brand/InlineEditableImage";
 import InlineEditableText from "@/components/brand/InlineEditableText";
 import RichTextEditableField from "@/components/brand/RichTextEditableField";
@@ -113,7 +113,7 @@ export default async function AboutPage({
               className="font-serif text-[31px] leading-[1.18] tracking-[-0.015em] text-[#7c2833] sm:text-[36px] lg:text-[39px]"
             />
           </blockquote>
-          <FounderNamesEditor initial={brand.founderNames} />
+          <FoundersEditor initial={brand.founders} />
         </div>
 
         <div className="mt-10 border-t border-[#e5d9ce] pt-8 lg:mt-11">

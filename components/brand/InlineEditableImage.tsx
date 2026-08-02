@@ -126,7 +126,7 @@ export default function InlineEditableImage({
         emptyPlaceholder
       )}
       {canEdit && (
-        <div className={`absolute ${overlaySizeClassName} flex items-center justify-center gap-3 bg-black/0 transition-colors hover:bg-black/35 group`}>
+        <div className={`absolute z-20 ${overlaySizeClassName} flex items-center justify-center gap-3 bg-black/0 transition-colors hover:bg-black/35 group`}>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

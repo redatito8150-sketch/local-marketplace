@@ -1054,9 +1054,10 @@ export interface BrandPageContent {
   shopTheLook: BrandShopTheLookTile[];
   isMahalyPartner: boolean;
   // Optional, owner/admin-entered via the same inline-edit pencil as
-  // tagline/aboutDescription — never auto-filled or guessed. Plural: a
-  // brand can credit more than one founder.
-  founderNames: string[];
+  // tagline/aboutDescription — never auto-filled or guessed. A list (not
+  // a single field) since a brand can credit more than one founder, each
+  // with their own name and title, in whatever order the owner picks.
+  founders: BrandFounder[];
   // Custom milestones an owner/admin adds on top of the always-real
   // computed ones (foundedYear, createdAt) shown on the About page.
   journeyMilestones: BrandJourneyMilestone[];
@@ -1075,6 +1076,13 @@ export interface BrandPageContent {
   // separately (GET /api/brands/[slug]/application-story) only when an
   // owner/admin actually clicks it, never eagerly.
   hasSourceApplication: boolean;
+}
+
+export interface BrandFounder {
+  name: string;
+  // e.g. "Founder", "Co-Founder", "Creative Director" — free text, not a
+  // fixed enum, since brands describe this differently.
+  title: string;
 }
 
 // Kept as a plain string union (rather than importing the runtime array) so
@@ -1103,6 +1111,9 @@ export type JourneyIconKey =
 
 export interface BrandJourneyMilestone {
   year: string;
+  // Optional — a milestone can be dated to just a year. When set, both
+  // this and year decide the timeline's chronological sort order.
+  month?: number;
   title: string;
   description: string;
   icon: JourneyIconKey;
