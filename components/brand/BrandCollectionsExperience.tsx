@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Layers3, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Layers3, ShoppingBag, X } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
 import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/lib/data/collectionExperience";
@@ -28,22 +28,14 @@ function ProductTile({ product, index }: { product: CollectionExperienceProduct;
           sizes="(max-width: 640px) 72vw, (max-width: 1024px) 38vw, 18vw"
           className="object-cover transition-transform duration-700 group-hover:scale-[1.045]"
         />
-        {product.isDemo ? (
-          <span className="absolute left-2.5 top-2.5 rounded-full bg-black/55 px-2 py-1 text-[9px] font-bold uppercase tracking-[.08em] text-white backdrop-blur-sm">
-            Preview
-          </span>
-        ) : (
-          <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[#3a2826] opacity-0 shadow-sm backdrop-blur-sm transition duration-300 group-hover:opacity-100">
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </span>
-        )}
+        <span className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full bg-white/90 text-[#3a2826] opacity-0 shadow-sm backdrop-blur-sm transition duration-300 group-hover:opacity-100">
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </span>
       </div>
       <div className="mt-3 flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h4 className="truncate text-[13px] font-semibold text-[#332b27]">{product.name}</h4>
-          <p className="mt-1 text-[11px] text-[#847a73]">
-            {product.isDemo ? "Preview only — not for sale" : product.note}
-          </p>
+          <p className="mt-1 text-[11px] text-[#847a73]">{product.note}</p>
         </div>
         <span className="shrink-0 text-[12px] font-semibold text-[#5a4d46]">{formatPrice(product)}</span>
       </div>
@@ -60,6 +52,14 @@ function ProductTile({ product, index }: { product: CollectionExperienceProduct;
 }
 
 function ProductRail({ products }: { products: CollectionExperienceProduct[] }) {
+  if (products.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-[14px] border border-dashed border-[#e0d4c8] bg-[#fbf6ef] px-6 py-10 text-center">
+        <ShoppingBag className="h-6 w-6 text-[#b6a99b]" />
+        <p className="mt-3 text-[13px] text-[#8b8078]">No products in this collection yet.</p>
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-[repeat(4,minmax(165px,1fr))] gap-4 overflow-x-auto pb-3 [scrollbar-width:thin] sm:grid-cols-2 lg:grid-cols-4 lg:overflow-visible lg:pb-0">
       {products.slice(0, 4).map((product, index) => <ProductTile key={product.id} product={product} index={index} />)}
@@ -71,14 +71,8 @@ function CollectionCopy({ item, compact = false }: { item: CollectionExperienceI
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {item.isDemo ? (
-          <span className="rounded-full border border-white/[0.35] bg-black/25 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-white backdrop-blur-sm">Preview — coming soon</span>
-        ) : (
-          <>
-            <span className="rounded-full border border-white/[0.35] bg-black/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.1em] text-white/[0.85] backdrop-blur-sm">{item.eyebrow}</span>
-            <span className="rounded-full border border-white/[0.35] bg-black/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.1em] text-white/[0.85] backdrop-blur-sm">{item.season}</span>
-          </>
-        )}
+        <span className="rounded-full border border-white/[0.35] bg-black/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.1em] text-white/[0.85] backdrop-blur-sm">{item.eyebrow}</span>
+        <span className="rounded-full border border-white/[0.35] bg-black/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.1em] text-white/[0.85] backdrop-blur-sm">{item.season}</span>
       </div>
       <h2 className={`${compact ? "mt-3 text-[30px]" : "mt-5 text-[46px] sm:text-[58px]"} font-serif leading-[0.92] tracking-[-0.035em] text-white`}>{item.name}</h2>
       {!compact && <p className="mt-4 max-w-md text-[13px] leading-6 text-white/[0.78]">{item.description}</p>}
@@ -90,10 +84,14 @@ export default function BrandCollectionsExperience({
   brandName,
   collections,
   pageTitle,
+  detailEyebrow,
+  detailHeading,
 }: {
   brandName: string;
   collections: CollectionExperienceItem[];
   pageTitle?: string;
+  detailEyebrow?: string;
+  detailHeading?: string;
 }) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const featured = collections[0];
@@ -116,6 +114,14 @@ export default function BrandCollectionsExperience({
         </div>
         <p className="hidden max-w-sm text-right text-xs leading-5 text-[#796e66] md:block">Select a story to reveal its pieces without leaving the page.</p>
       </div>
+
+      {!featured && (
+        <div className="flex flex-col items-center justify-center rounded-[22px] border border-dashed border-[#d8cabc] bg-[#fffaf5] px-6 py-16 text-center">
+          <Layers3 className="h-8 w-8 text-[#b6a99b]" />
+          <h2 className="mt-4 text-lg font-bold text-[#2b231e]">No collections yet</h2>
+          <p className="mt-2 max-w-sm text-sm text-[#766b61]">This brand hasn&apos;t published a collection yet — check back soon.</p>
+        </div>
+      )}
 
       {featured && activeId !== featured.id ? (
         <button
@@ -150,7 +156,15 @@ export default function BrandCollectionsExperience({
             </div>
             <div className="flex min-w-0 flex-col justify-center p-5 sm:p-8 lg:p-9">
               <div className="mb-6 flex items-center justify-between gap-4">
-                <div><span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#9b3440]"><Layers3 className="h-3.5 w-3.5" />The edit</span><h3 className="mt-1 font-serif text-2xl text-[#302824]">Pieces from {featured.name}</h3></div>
+                <div>
+                  <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#9b3440]">
+                    <Layers3 className="h-3.5 w-3.5" />
+                    <InlineEditableText field="collectionsDetailEyebrow" value={detailEyebrow || "The edit"} as="span" />
+                  </span>
+                  <h3 className="mt-1 font-serif text-2xl text-[#302824]">
+                    <InlineEditableText field="collectionsDetailHeading" value={detailHeading || "Pieces from"} as="span" /> {featured.name}
+                  </h3>
+                </div>
                 <span className="text-[11px] text-[#8b8078]">{featured.products.length} pieces</span>
               </div>
               <ProductRail products={featured.products} />
@@ -185,14 +199,8 @@ export default function BrandCollectionsExperience({
                 <div className={`pointer-events-none absolute inset-x-0 bottom-0 ${isCompressed ? "p-3 sm:p-4" : "p-6"}`}>
                   {!isCompressed && (
                     <div className="mb-3 flex gap-1.5">
-                      {item.isDemo ? (
-                        <span className="rounded-full bg-black/45 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white backdrop-blur">Preview — coming soon</span>
-                      ) : (
-                        <>
-                          <span className="rounded-full bg-black/25 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white/[0.85] backdrop-blur">{item.eyebrow}</span>
-                          <span className="rounded-full bg-black/25 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white/[0.85] backdrop-blur">{item.season}</span>
-                        </>
-                      )}
+                      <span className="rounded-full bg-black/25 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white/[0.85] backdrop-blur">{item.eyebrow}</span>
+                      <span className="rounded-full bg-black/25 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white/[0.85] backdrop-blur">{item.season}</span>
                     </div>
                   )}
                   <h3 className={`${isCompressed ? "text-[15px] sm:text-xl" : "text-[28px] lg:text-[33px]"} font-serif leading-[.96] tracking-[-.025em] text-white`}>{item.name}</h3>
@@ -208,9 +216,7 @@ export default function BrandCollectionsExperience({
         <section key={`supporting-${active.id}`} className="collection-panel-enter overflow-hidden rounded-[20px] border border-[#e5d8cd] bg-[#fffaf5] p-5 shadow-[0_14px_45px_rgba(63,42,31,.065)] sm:p-7 lg:p-9">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#9b3440]">
-                {active.isDemo ? "Preview — coming soon" : `${active.eyebrow} · ${active.season}`}
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#9b3440]">{active.eyebrow} · {active.season}</p>
               <h3 className="mt-2 font-serif text-3xl tracking-[-.025em] text-[#302824] sm:text-4xl">{active.name}</h3>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-[#776c65]">{active.description}</p>
             </div>

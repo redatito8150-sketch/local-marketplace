@@ -26,6 +26,8 @@ const TEXT_FIELDS = {
   aboutHeadline: { column: "about_headline", required: false, maxLength: 200 },
   aboutQuote: { column: "about_quote", required: false, maxLength: 300 },
   collectionsPageTitle: { column: "collections_page_title", required: false, maxLength: 200 },
+  collectionsDetailEyebrow: { column: "collections_detail_eyebrow", required: false, maxLength: 60 },
+  collectionsDetailHeading: { column: "collections_detail_heading", required: false, maxLength: 60 },
 } as const;
 type TextField = keyof typeof TEXT_FIELDS;
 

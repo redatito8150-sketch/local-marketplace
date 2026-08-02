@@ -4,7 +4,7 @@ import BrandCollectionsExperience from "@/components/brand/BrandCollectionsExper
 import CollectionsManager from "@/components/brand/CollectionsManager";
 import { getPublicCollectionsForBrand } from "@/lib/data/brandCollections";
 import { getBrandContent } from "@/lib/data/brands";
-import { buildDemoCollectionItems, demoCollectionDefinitions, makeDemoCollectionProducts, type CollectionExperienceItem, type CollectionExperienceProduct } from "@/lib/data/collectionExperience";
+import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/lib/data/collectionExperience";
 
 export async function generateMetadata({
   params,
@@ -28,38 +28,38 @@ export default async function CollectionsPage({
   if (!brand) notFound();
 
   const records = await getPublicCollectionsForBrand(brand.id);
-  const liveItems: CollectionExperienceItem[] = records.map((collection, index) => {
+  // Every collection here is real — no demo/placeholder filler (removed
+  // per owner feedback: fake products shown inside a real collection with
+  // 0 real products assigned was actively confusing, not helpful). A
+  // collection with nothing assigned yet just shows an empty state
+  // prompting the owner to use "Choose products" above.
+  const collectionItems: CollectionExperienceItem[] = records.map((collection) => {
     const matchingProducts = brand.products.filter((product) => product.collectionId === collection.id);
-    const products: CollectionExperienceProduct[] = matchingProducts.length
-      ? matchingProducts.slice(0, 4).map((product) => ({
-          id: product.id,
-          name: product.name,
-          note: product.collectionName || product.productTypeName,
-          price: product.price,
-          currency: product.currency,
-          image: product.image,
-          href: `/product/${product.id}`,
-        }))
-      : makeDemoCollectionProducts(index);
+    const products: CollectionExperienceProduct[] = matchingProducts.slice(0, 4).map((product) => ({
+      id: product.id,
+      name: product.name,
+      note: product.collectionName || product.productTypeName,
+      price: product.price,
+      currency: product.currency,
+      image: product.image,
+      href: `/product/${product.id}`,
+    }));
 
     return {
       id: collection.id,
       name: collection.name,
-      eyebrow: collection.tagline || `${matchingProducts.length || products.length} pieces`,
+      eyebrow: collection.tagline || `${matchingProducts.length} piece${matchingProducts.length === 1 ? "" : "s"}`,
       season: collection.publishedAt
         ? new Intl.DateTimeFormat("en", { month: "short", year: "numeric" }).format(new Date(collection.publishedAt))
         : "Current edit",
       description: collection.description || `A considered edit of signature ${brand.name} pieces, selected to be worn together.`,
-      coverImages: collection.coverImageUrls.length ? collection.coverImageUrls : [demoCollectionDefinitions[index % demoCollectionDefinitions.length].coverImage],
+      // No fallback stock photo — a real collection with no cover uploaded
+      // yet just shows the carousel's own empty state (and, for the
+      // owner, its "add photo" control), never a fake stand-in image.
+      coverImages: collection.coverImageUrls,
       products,
     };
   });
-
-  // Only pad with clearly-labeled demo items up to 4 when the brand hasn't
-  // set up real collections yet — a brand with 4+ real ones never sees
-  // any demo filler.
-  const missingDemoItems: CollectionExperienceItem[] = liveItems.length < 4 ? buildDemoCollectionItems(liveItems.length) : [];
-  const collectionItems = [...liveItems, ...missingDemoItems];
 
   return (
     <section className="bg-[#fcf8f3]">
@@ -69,6 +69,8 @@ export default async function CollectionsPage({
           brandName={brand.name}
           collections={collectionItems}
           pageTitle={brand.collectionsPageTitle}
+          detailEyebrow={brand.collectionsDetailEyebrow}
+          detailHeading={brand.collectionsDetailHeading}
         />
       </div>
     </section>

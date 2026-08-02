@@ -1088,6 +1088,10 @@ export interface BrandPageContent {
   // The Collections page's own editable headline ("Collections,
   // reimagined."), same fallback-when-empty pattern as the rest.
   collectionsPageTitle?: string;
+  // The expanded-collection chrome text ("The edit" / "Pieces from
+  // {name}") — see components/brand/BrandCollectionsExperience.
+  collectionsDetailEyebrow?: string;
+  collectionsDetailHeading?: string;
 }
 
 export interface BrandFounder {
