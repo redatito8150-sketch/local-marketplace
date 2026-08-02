@@ -1,57 +1,146 @@
 import type { Metadata } from "next";
-import { ExternalLink, MapPin, Sparkles } from "lucide-react";
 import { notFound } from "next/navigation";
-import { getBrandContent } from "@/lib/data/brands";
+import BrandJourneyTimeline from "@/components/brand/BrandJourneyTimeline";
 import InlineEditableImage from "@/components/brand/InlineEditableImage";
-import InlineEditableText from "@/components/brand/InlineEditableText";
 import InlineEditableSection from "@/components/brand/InlineEditableSection";
+import InlineEditableText from "@/components/brand/InlineEditableText";
+import { getBrandContent } from "@/lib/data/brands";
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
-  const { slug } = await params; const brand = await getBrandContent(slug);
-  return brand ? { title: `About ${brand.name} | Mahaly`, description: brand.aboutDescription || brand.tagline } : {};
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const brand = await getBrandContent(slug);
+
+  return brand
+    ? {
+        title: `About ${brand.name} | Mahaly`,
+        description: brand.aboutDescription || brand.tagline,
+      }
+    : {};
 }
 
-export default async function AboutPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params; const brand = await getBrandContent(slug); if (!brand) notFound();
-  return <section className="mx-auto max-w-brand px-5 py-14 sm:px-6 lg:px-10 lg:py-20">
-    <div className="grid items-center gap-9 lg:grid-cols-12 lg:gap-16">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-[30px] bg-[#eee5db] lg:col-span-7">
-        <InlineEditableImage
-          field="about"
-          src={brand.aboutImage || brand.storyImage}
-          alt={`The world of ${brand.name}`}
-          fill
-          sizes="(max-width: 1024px) 100vw, 58vw"
-          imgClassName="object-cover"
-        />
-        <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-white/20 bg-black/25 p-4 text-white backdrop-blur-md">
-          <p className="text-[10px] uppercase tracking-[.2em] text-white/65">Made in {brand.city}</p>
-          <InlineEditableText field="tagline" value={brand.tagline} as="p" className="mt-1 font-serif text-xl" />
+export default async function AboutPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const brand = await getBrandContent(slug);
+  if (!brand) notFound();
+
+  // Generic, brand-agnostic fallback copy — never invent a specific founder
+  // name, date, or stat for a real brand. Only real fields (name/city) go in.
+  const polishedIntroduction = `${brand.name} was born in ${brand.city} from a love of thoughtful design, honest materials, and the city it calls home — creating effortless pieces made for real life.`;
+  const introduction = brand.aboutDescription.trim().length > 40
+    ? brand.aboutDescription
+    : polishedIntroduction;
+  const secondParagraph = brand.storyBody.trim().length > 40
+    ? brand.storyBody
+    :
+    `From the sea breeze to ${brand.city}'s golden light, everything we create is inspired by our surroundings and made to move with you, wherever the day takes you.`;
+  const aboutImage = brand.aboutImage || brand.storyImage;
+
+  // Only real, verifiable milestones — no invented founding story, no made-up
+  // product counts. A brand with no recorded founding year just shows the
+  // one milestone we can always vouch for (it did, in fact, join Mahaly).
+  // An owner/admin can add up to 2 of their own via BrandJourneyTimeline.
+  const founded = brand.foundedYear
+    ? {
+        year: brand.foundedYear.toString(),
+        title: "Founded",
+        description: `${brand.name} started here, in ${brand.city}.`,
+      }
+    : null;
+  const joinedMahaly = {
+    year: new Date(brand.createdAt).getFullYear().toString(),
+    title: "Joined Mahaly",
+    description: `A new chapter for ${brand.name} to reach more people, everywhere.`,
+  };
+
+  return (
+    <section className="bg-[#fcf8f3] text-[#2b2521]">
+      <div className="mx-auto max-w-brand px-5 pb-14 pt-10 sm:px-6 lg:px-10 lg:pb-20 lg:pt-12">
+        <div className="grid items-center gap-9 lg:grid-cols-[0.86fr_1.14fr] lg:gap-16">
+          <div className="max-w-[500px]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#9b3440]">
+              The story behind {brand.name}
+            </p>
+            <h1 className="mt-5 font-serif text-[38px] leading-[1.08] tracking-[-0.025em] text-[#29231f] sm:text-[42px] lg:text-[44px]">
+              Designed in {brand.city}.
+              <br />
+              Made for everywhere.
+            </h1>
+            <InlineEditableText
+              field="aboutDescription"
+              value={introduction}
+              as="p"
+              multiline
+              className="mt-6 text-[15px] leading-7 text-[#6d645d]"
+            />
+            {brand.storyBody.trim().length > 40 ? (
+              <InlineEditableText
+                field="storyBody"
+                value={brand.storyBody}
+                as="p"
+                multiline
+                className="mt-5 text-[15px] leading-7 text-[#6d645d]"
+              />
+            ) : (
+              <p className="mt-5 text-[15px] leading-7 text-[#6d645d]">
+                {secondParagraph}
+              </p>
+            )}
+          </div>
+
+          <div className="relative aspect-[1.5/1] min-h-[310px] overflow-hidden rounded-[18px] bg-[#e7ddd2] shadow-[0_18px_50px_rgba(74,50,36,0.08)]">
+            <InlineEditableImage
+              field="about"
+              src={aboutImage}
+              alt={`${brand.name} creative studio`}
+              fill
+              sizes="(max-width: 1024px) 100vw, 62vw"
+              imgClassName="object-cover object-center"
+            />
+          </div>
+        </div>
+
+        <div className="mt-9 grid items-center gap-7 rounded-[16px] bg-[linear-gradient(105deg,#f6eee7_0%,#faf6f1_56%,#f2e8de_100%)] px-7 py-8 sm:px-10 lg:grid-cols-[1fr_240px] lg:px-11 lg:py-9">
+          <blockquote className="flex gap-5">
+            <span className="font-serif text-[64px] leading-[0.72] text-[#8f2634]" aria-hidden="true">
+              “
+            </span>
+            <p className="font-serif text-[31px] leading-[1.18] tracking-[-0.015em] text-[#7c2833] sm:text-[36px] lg:text-[39px]">
+              We started {brand.name} to make everyday pieces feel personal again.
+            </p>
+          </blockquote>
+          <InlineEditableSection show={Boolean(brand.founderName)}>
+            <p className="pl-[52px] text-[13px] leading-6 text-[#403833] lg:pl-0">
+              <InlineEditableText
+                field="founderName"
+                value={brand.founderName}
+                as="span"
+                className="font-medium"
+                placeholder="Add founder name (e.g. “Jane Doe — Founder”)"
+              />
+            </p>
+          </InlineEditableSection>
+        </div>
+
+        <div className="mt-10 border-t border-[#e5d9ce] pt-8 lg:mt-11">
+          <h2 className="font-serif text-[30px] tracking-[-0.02em] text-[#2f2824]">
+            Our journey
+          </h2>
+
+          <BrandJourneyTimeline
+            founded={founded}
+            joinedMahaly={joinedMahaly}
+            initialCustom={brand.journeyMilestones}
+          />
         </div>
       </div>
-      <div className="lg:col-span-5"><p className="text-[11px] font-bold uppercase tracking-[.2em] text-[#8f2335]">The brand</p><h2 className="mt-3 font-serif text-4xl leading-tight text-[#261f1b] sm:text-5xl">A story made<br />with intention.</h2>
-        <InlineEditableText
-          field="aboutDescription"
-          value={brand.aboutDescription}
-          as="p"
-          multiline
-          className="mt-6 text-[15px] leading-7 text-[#675d56]"
-        />
-        <div className="mt-8 grid grid-cols-2 gap-3"><div className="rounded-2xl bg-[#f1e7dc] p-4"><MapPin className="h-4 w-4 text-[#8f2335]" /><p className="mt-4 text-[10px] uppercase tracking-widest text-[#8b7e74]">Home</p><p className="mt-1 text-sm font-semibold">{brand.city}</p></div>{brand.foundedYear && <div className="rounded-2xl bg-[#f1e7dc] p-4"><Sparkles className="h-4 w-4 text-[#8f2335]" /><p className="mt-4 text-[10px] uppercase tracking-widest text-[#8b7e74]">Established</p><p className="mt-1 text-sm font-semibold">{brand.foundedYear}</p></div>}</div>{brand.websiteUrl && <a href={brand.websiteUrl} target="_blank" rel="noreferrer" className="mt-7 inline-flex items-center gap-2 text-xs font-bold text-[#8f2335]">Visit official website <ExternalLink className="h-3.5 w-3.5" /></a>}</div>
-    </div>
-    <InlineEditableSection show={Boolean(brand.storyBody)}>
-      <div className="mx-auto grid max-w-5xl gap-8 py-20 lg:grid-cols-[.65fr_1.35fr] lg:py-28">
-        <h3 className="font-serif text-3xl text-[#261f1b]">Our story</h3>
-        <InlineEditableText
-          field="storyBody"
-          value={brand.storyBody}
-          as="p"
-          multiline
-          placeholder="Add your brand's story"
-          className="text-base leading-8 text-[#675d56]"
-        />
-      </div>
-    </InlineEditableSection>
-    {brand.values.length > 0 && <div className="border-t border-[#e3d7ca] pt-14"><p className="text-center text-[10px] font-bold uppercase tracking-[.22em] text-[#8f2335]">What we stand for</p><div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{brand.values.map((value, index) => <article key={value.title} className="rounded-[24px] border border-[#eadfd4] bg-[#fffaf4] p-6"><span className="font-serif text-2xl text-[#b99b77]">0{index + 1}</span><h4 className="mt-8 font-serif text-xl text-[#2e2722]">{value.title}</h4><p className="mt-3 text-xs leading-6 text-[#776c64]">{value.description}</p></article>)}</div></div>}
-  </section>;
+    </section>
+  );
 }

@@ -10,6 +10,7 @@ import {
   BrandCategoryTab,
   BrandValue,
   BrandShopTheLookTile,
+  BrandJourneyMilestone,
   SimilarBrand,
 } from "@/types";
 
@@ -37,6 +38,9 @@ interface BrandRow {
   similar_brand_slugs: string[];
   shop_the_look: BrandShopTheLookTile[];
   is_mahaly_partner: boolean;
+  created_at: string;
+  founder_name: string | null;
+  journey_milestones: BrandJourneyMilestone[] | null;
 }
 
 // No per-brand rating aggregate column exists — weight each product's own
@@ -136,6 +140,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     additionalCategories: brand.additional_categories ?? [],
     foundedYear: brand.founded_year ?? undefined,
     city: brand.city,
+    createdAt: brand.created_at,
     heroImage: brand.hero_image,
     logoImage: brand.logo_image ?? undefined,
     websiteUrl: brand.website_url ?? undefined,
@@ -154,6 +159,8 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     storeRating: computeStoreRating(productRowsTyped),
     shopTheLook: brand.shop_the_look ?? [],
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
+    founderName: brand.founder_name ?? undefined,
+    journeyMilestones: brand.journey_milestones ?? [],
   };
 }
 
@@ -169,6 +176,12 @@ export interface FeaturedBrandSummary {
   name: string;
   slug: string;
   thumbnail: string;
+  logoImage: string | null;
+  category: string;
+  additionalCategories: string[];
+  city: string;
+  createdAt: string;
+  followerCount: number;
   isMahalyPartner: boolean;
 }
 
@@ -229,21 +242,41 @@ export async function getBrandFulfillmentFlags(slugs: string[]): Promise<BrandFu
 export async function getFeaturedBrands(): Promise<FeaturedBrandSummary[]> {
   const { data, error } = await supabase
     .from("brands")
-    .select("slug, name, hero_image, is_mahaly_partner")
+    .select("slug, name, hero_image, logo_image, category, additional_categories, city, created_at, is_mahaly_partner")
+    .eq("is_active", true)
     .order("created_at", { ascending: true });
 
   if (error) {
     throw new Error(`getFeaturedBrands failed: ${error.message}`);
   }
-  return (data ?? []).map((r) => ({
+  const rows = data ?? [];
+  const followerCounts = await Promise.all(
+    rows.map((row) =>
+      getFollowerCountForBrand(row.slug as string).catch((countError) => {
+        logError(`getFeaturedBrands(${row.slug}) follower count failed`, countError.message);
+        return 0;
+      })
+    )
+  );
+
+  return rows.map((r, index) => ({
     slug: r.slug as string,
     name: r.name as string,
     thumbnail: r.hero_image as string,
+    logoImage: (r.logo_image as string | null) ?? null,
+    category: r.category as string,
+    additionalCategories: (r.additional_categories as string[] | null) ?? [],
+    city: r.city as string,
+    createdAt: r.created_at as string,
+    followerCount: followerCounts[index],
     isMahalyPartner: Boolean(r.is_mahaly_partner),
   }));
 }
 
-export interface MenuFeaturedBrand extends FeaturedBrandSummary {
+export interface MenuFeaturedBrand extends Pick<
+  FeaturedBrandSummary,
+  "name" | "slug" | "thumbnail" | "isMahalyPartner"
+> {
   isNew: boolean;
   isMahalyPartner: boolean;
   // Pinned via the "featured_brands_first" sponsorship placement — drives

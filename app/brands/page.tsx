@@ -1,71 +1,82 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, MapPinned, Shapes } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import BrandsDirectory from "@/components/brands/BrandsDirectory";
 import { getFeaturedBrands } from "@/lib/data/brands";
-import PartnerBadge from "@/components/shared/PartnerBadge";
 
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Brands — Mahaly",
-  description:
-    "Discover independent local brands curated by Local. Support creators, wear what matters.",
+  title: "Local Brands — Mahaly",
+  description: "Discover independent Egyptian brands, makers, and the stories behind what they create.",
 };
 
 export default async function BrandsDirectoryPage() {
   const brands = await getFeaturedBrands();
+  const categoryCount = new Set(
+    brands.flatMap((brand) => [brand.category, ...brand.additionalCategories])
+  ).size;
+  const cityCount = new Set(brands.map((brand) => brand.city)).size;
 
   return (
-    <main className="min-h-screen bg-cream">
-      <Header />
+    <main className="min-h-screen overflow-hidden bg-[#f7f1e9] text-[#211b17]">
+      <Header warmTransparent />
 
-      <section className="mx-auto max-w-screen2xl px-8 pb-6 pt-14 lg:px-12 lg:pt-20">
-        <p className="text-xs font-medium uppercase tracking-wide text-ink-soft/50">
-          {brands.length} brands and counting
-        </p>
-        <h1 className="mt-3 max-w-xl text-4xl font-bold leading-[1.1] tracking-tightest text-ink lg:text-5xl">
-          Every brand here is independent, local, and real.
-        </h1>
-        <p className="mt-4 max-w-md text-base leading-relaxed text-ink-soft/70">
-          Local partners directly with makers and studios across Egypt.
-          Every purchase supports a creator, not a warehouse.
-        </p>
-      </section>
+      <section className="mx-auto max-w-screen2xl px-4 pb-8 pt-8 sm:px-6 lg:px-12 lg:pb-10 lg:pt-10">
+        <div className="grid gap-6 lg:grid-cols-[0.78fr_1.42fr] lg:items-stretch">
+          <div className="flex flex-col justify-center px-1 py-4 lg:py-8">
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#a23d34]">Our brands</p>
+            <h1 className="mt-4 max-w-lg text-[clamp(2.8rem,5vw,5.5rem)] font-bold leading-[0.94] tracking-[-0.055em] text-[#1e1916]">
+              Local brands.<br />Real stories.
+            </h1>
+            <p className="mt-6 max-w-md text-[15px] leading-7 text-[#665c54]">
+              Discover independent brands and makers from across Egypt. Every purchase supports a creator, not a warehouse.
+            </p>
 
-      <section className="mx-auto max-w-screen2xl px-8 py-12 lg:px-12">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {brands.map((brand) => (
-            <Link
-              key={brand.slug}
-              href={`/brands/${brand.slug}`}
-              className="group relative flex h-64 flex-col justify-end overflow-hidden rounded-xl3 bg-stone-100 shadow-soft transition-shadow duration-500 hover:shadow-card"
-            >
-              <Image
-                src={brand.thumbnail}
-                alt={brand.name}
-                fill
-                sizes="(max-width: 1024px) 100vw, 33vw"
-                className="object-cover transition-transform duration-700 ease-out group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-ink/70 via-ink/10 to-transparent" />
-
-              <div className="relative flex items-center justify-between p-6">
-                <span className="flex items-center gap-1.5 text-lg font-semibold text-white">
-                  {brand.name}
-                  {brand.isMahalyPartner && <PartnerBadge className="h-4 w-4" />}
-                </span>
-                <ArrowUpRight
-                  className="h-4 w-4 text-white transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                  strokeWidth={2}
-                />
+            <div className="mt-8 grid max-w-md grid-cols-3 gap-2.5">
+              <div className="rounded-2xl border border-[#e1d6c9] bg-white/45 px-3 py-4 text-center">
+                <BadgeCheck className="mx-auto h-5 w-5 text-[#9d3d34]" />
+                <strong className="mt-2 block text-lg">{brands.length}+</strong>
+                <span className="text-[11px] text-[#776b62]">Brands</span>
               </div>
-            </Link>
-          ))}
+              <div className="rounded-2xl border border-[#e1d6c9] bg-white/45 px-3 py-4 text-center">
+                <Shapes className="mx-auto h-5 w-5 text-[#9d3d34]" />
+                <strong className="mt-2 block text-lg">{categoryCount}</strong>
+                <span className="text-[11px] text-[#776b62]">Categories</span>
+              </div>
+              <div className="rounded-2xl border border-[#e1d6c9] bg-white/45 px-3 py-4 text-center">
+                <MapPinned className="mx-auto h-5 w-5 text-[#9d3d34]" />
+                <strong className="mt-2 block text-lg">{cityCount}</strong>
+                <span className="text-[11px] text-[#776b62]">Cities</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="group relative min-h-[420px] overflow-hidden rounded-[28px] border border-white/40 bg-[#5e3728] shadow-[0_24px_70px_rgba(63,36,25,0.18)] lg:min-h-[500px]">
+            <Image
+              src="/images/brands/directory/brands-hero.png"
+              alt="An Egyptian founder curating locally made fashion, homeware, and beauty products"
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 64vw"
+              className="object-cover transition duration-[1400ms] ease-out group-hover:scale-[1.025]"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-[#1c0d08]/70 via-[#1c0d08]/15 to-transparent" />
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1d0d08]/65 to-transparent px-6 pb-7 pt-28 sm:px-8 sm:pb-8">
+              <p className="max-w-sm text-[clamp(1.35rem,3vw,2.15rem)] font-semibold leading-tight tracking-[-0.035em] text-white">
+                You can now join us to sell on “Mahaly”
+              </p>
+              <Link href="/join-as-a-brand/apply" className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-xs font-bold text-[#4a1e1a] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#fff7ef]">
+                Apply Now <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
+      <BrandsDirectory brands={brands} />
       <Footer />
     </main>
   );

@@ -1031,6 +1031,9 @@ export interface BrandPageContent {
   additionalCategories: string[];
   foundedYear?: number;
   city: string;
+  // The brand's own row creation date — real data, safe to show as "brand
+  // joined Mahaly" without inventing a date.
+  createdAt: string;
   heroImage: string;
   logoImage?: string;
   websiteUrl?: string;
@@ -1050,6 +1053,18 @@ export interface BrandPageContent {
   storeRating: number;
   shopTheLook: BrandShopTheLookTile[];
   isMahalyPartner: boolean;
+  // Optional, owner/admin-entered via the same inline-edit pencil as
+  // tagline/aboutDescription — never auto-filled or guessed.
+  founderName?: string;
+  // Custom milestones an owner/admin adds on top of the always-real
+  // computed ones (foundedYear, createdAt) shown on the About page.
+  journeyMilestones: BrandJourneyMilestone[];
+}
+
+export interface BrandJourneyMilestone {
+  year: string;
+  title: string;
+  description: string;
 }
 
 export interface BrandShopTheLookTile {

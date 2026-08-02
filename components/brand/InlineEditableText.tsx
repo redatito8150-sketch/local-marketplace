@@ -5,7 +5,7 @@ import { Pencil, Check, X, Plus } from "lucide-react";
 import { useBrandEdit } from "./BrandEditContext";
 
 interface InlineEditableTextProps {
-  field: "name" | "tagline" | "city" | "websiteUrl" | "aboutDescription" | "storyBody" | "foundedYear";
+  field: "name" | "tagline" | "city" | "websiteUrl" | "aboutDescription" | "storyBody" | "foundedYear" | "founderName";
   value: string | number | undefined;
   as?: keyof React.JSX.IntrinsicElements;
   className?: string;

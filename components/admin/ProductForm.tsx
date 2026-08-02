@@ -667,7 +667,7 @@ export default function ProductForm({
               </div>
             );
           })()}
-          <p className="mt-2 text-[11.5px] text-ink-soft/50">Leave Discount % empty for no discount. Leave "Discount ends" empty for a discount that runs indefinitely. Variant Price remains the final price for that variant (the discount % still applies on top of it).</p>
+          <p className="mt-2 text-[11.5px] text-ink-soft/50">Leave Discount % empty for no discount. Leave &quot;Discount ends&quot; empty for a discount that runs indefinitely. Variant Price remains the final price for that variant (the discount % still applies on top of it).</p>
         </FormSection>
 
         {/* 03 — Variants (Inventory) — comes before Media because Media's

@@ -382,3 +382,117 @@ body {
     scroll-behavior: auto !important;
   }
 }
+
+/* Brands directory partner badge: one welcoming entrance, then a richer hover reveal. */
+@keyframes brand-partner-badge-intro {
+  0%, 12% { max-width: 32px; }
+  38%, 91% { max-width: 150px; }
+  100% { max-width: 32px; }
+}
+
+@keyframes brand-partner-label-intro {
+  0%, 27% { opacity: 0; transform: translateX(-7px); }
+  42%, 72% { opacity: 1; transform: translateX(0); }
+  90%, 100% { opacity: 0; transform: translateX(-4px); }
+}
+
+@keyframes brand-partner-icon-intro {
+  0%, 10% { transform: rotate(0deg) scale(1); }
+  42% { transform: rotate(360deg) scale(1); }
+  76% { transform: rotate(360deg) scale(1.18); }
+  88%, 100% { transform: rotate(360deg) scale(1); }
+}
+
+@keyframes brand-partner-badge-hover {
+  0% { max-width: 32px; }
+  48%, 100% { max-width: 150px; }
+}
+
+@keyframes brand-partner-label-hover {
+  0%, 32% { opacity: 0; transform: translateX(-7px); }
+  52%, 100% { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes brand-partner-icon-hover {
+  0% { transform: rotate(0deg) scale(1); }
+  58% { transform: rotate(360deg) scale(1); }
+  79% { transform: rotate(360deg) scale(1.18); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.brand-partner-badge {
+  max-width: 32px;
+  transform-origin: right center;
+  will-change: max-width;
+}
+
+.brand-partner-badge-intro {
+  animation: brand-partner-badge-intro 2.35s cubic-bezier(.22, .75, .25, 1) .45s both !important;
+}
+
+.brand-partner-badge-intro .brand-partner-badge-label {
+  opacity: 0;
+  animation: brand-partner-label-intro 2.35s ease .45s both !important;
+}
+
+.brand-partner-badge-intro .brand-partner-badge-icon {
+  animation: brand-partner-icon-intro 2.35s cubic-bezier(.2, .8, .25, 1) .45s both !important;
+}
+
+.brand-partner-badge-label {
+  opacity: 0;
+}
+
+a.group:hover .brand-partner-badge,
+a.group:focus-visible .brand-partner-badge {
+  animation: brand-partner-badge-hover .95s cubic-bezier(.2, .8, .25, 1) both !important;
+}
+
+a.group:hover .brand-partner-badge-label,
+a.group:focus-visible .brand-partner-badge-label {
+  animation: brand-partner-label-hover .95s ease both !important;
+}
+
+a.group:hover .brand-partner-badge-icon,
+a.group:focus-visible .brand-partner-badge-icon {
+  animation: brand-partner-icon-hover .95s cubic-bezier(.2, .8, .25, 1) both !important;
+}
+
+@keyframes collectionFeatureReveal {
+  0% { opacity: 0; transform: translateY(14px) scale(.992); clip-path: inset(0 0 18% 0 round 22px); }
+  100% { opacity: 1; transform: translateY(0) scale(1); clip-path: inset(0 0 0 0 round 22px); }
+}
+
+@keyframes collectionPanelReveal {
+  0% { opacity: 0; transform: translateY(-10px); clip-path: inset(0 0 100% 0 round 20px); }
+  55% { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0); clip-path: inset(0 0 0 0 round 20px); }
+}
+
+@keyframes collectionProductRise {
+  0% { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.collection-feature-enter {
+  animation: collectionFeatureReveal 680ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.collection-panel-enter {
+  animation: collectionPanelReveal 620ms cubic-bezier(.2,.78,.2,1) both;
+  transform-origin: top center;
+}
+
+.collection-product-enter {
+  opacity: 0;
+  animation: collectionProductRise 520ms cubic-bezier(.2,.72,.25,1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collection-feature-enter,
+  .collection-panel-enter,
+  .collection-product-enter {
+    animation: none !important;
+    opacity: 1;
+  }
+}

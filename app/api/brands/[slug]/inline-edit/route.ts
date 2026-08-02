@@ -16,12 +16,13 @@ import { safeErrorResponse } from "@/lib/apiError";
 // rendered on the public page are editable here — see the field table this
 // was scoped against.
 const TEXT_FIELDS = {
-  name: { column: "name", required: true },
-  tagline: { column: "tagline", required: true },
-  city: { column: "city", required: true },
-  websiteUrl: { column: "website_url", required: false },
-  aboutDescription: { column: "about_description", required: true },
-  storyBody: { column: "story_body", required: false },
+  name: { column: "name", required: true, maxLength: 5000 },
+  tagline: { column: "tagline", required: true, maxLength: 5000 },
+  city: { column: "city", required: true, maxLength: 5000 },
+  websiteUrl: { column: "website_url", required: false, maxLength: 5000 },
+  aboutDescription: { column: "about_description", required: true, maxLength: 5000 },
+  storyBody: { column: "story_body", required: false, maxLength: 5000 },
+  founderName: { column: "founder_name", required: false, maxLength: 80 },
 } as const;
 type TextField = keyof typeof TEXT_FIELDS;
 
@@ -70,6 +71,32 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     return applyUpdate(params.slug, "founded_year", value, editor);
   }
 
+  // Custom "Our journey" timeline entries the owner/admin adds on top of the
+  // always-real computed milestones (foundedYear, brand.createdAt) already
+  // shown on the About page — capped at 2 so the section never has to
+  // relearn its layout, and every field is validated (not just typeof
+  // checked) since this becomes real jsonb, not a display-only prop.
+  if (field === "journeyMilestones") {
+    const raw = body?.value;
+    if (!Array.isArray(raw) || raw.length > 2) {
+      return NextResponse.json({ error: "Up to 2 milestones" }, { status: 400 });
+    }
+    const milestones: { year: string; title: string; description: string }[] = [];
+    for (const item of raw) {
+      const year = typeof item?.year === "string" ? item.year.trim() : "";
+      const title = typeof item?.title === "string" ? item.title.trim() : "";
+      const description = typeof item?.description === "string" ? item.description.trim() : "";
+      if (!year || !title) {
+        return NextResponse.json({ error: "Each milestone needs a year and title" }, { status: 400 });
+      }
+      if (year.length > 20 || title.length > 60 || description.length > 200) {
+        return NextResponse.json({ error: "That's too long" }, { status: 400 });
+      }
+      milestones.push({ year, title, description });
+    }
+    return applyUpdate(params.slug, "journey_milestones", milestones, editor);
+  }
+
   if (typeof field !== "string" || !isTextField(field)) {
     return NextResponse.json({ error: "Invalid field" }, { status: 400 });
   }
@@ -79,7 +106,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
   if (config.required && !raw) {
     return NextResponse.json({ error: "This field can't be empty" }, { status: 400 });
   }
-  if (raw.length > 5000) {
+  if (raw.length > config.maxLength) {
     return NextResponse.json({ error: "That's too long" }, { status: 400 });
   }
 
@@ -89,7 +116,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
 async function applyUpdate(
   slug: string,
   column: string,
-  value: string | number | null,
+  value: string | number | null | { year: string; title: string; description: string }[],
   editor: { userId: string; actorLabel: string }
 ) {
   const { data: existing } = await supabaseAdmin
