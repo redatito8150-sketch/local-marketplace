@@ -34,11 +34,13 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-black/10" />
           {/* Absolutely positioned and sized to its own content (not the
-              full min-h box) — otherwise this row's invisible "empty" upper
-              space (from items-end) would still intercept clicks/hover
-              across the whole hero, burying InlineEditableImage's own
-              camera/remove buttons underneath it. */}
-          <div className="absolute inset-x-0 bottom-0 z-10 flex items-end p-5 sm:p-8 lg:p-10">
+              full min-h box) so it doesn't intercept clicks/hover across
+              the whole hero. z-30 — deliberately *above*
+              InlineEditableImage's own z-20 overlay, since the logo/name/
+              Follow/Share here live in the one region where the two boxes
+              still do overlap (the bottom strip) and must win there, or
+              none of them would be clickable at all. */}
+          <div className="absolute inset-x-0 bottom-0 z-30 flex items-end p-5 sm:p-8 lg:p-10">
             <div className="flex w-full flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
                 <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#fffaf4] font-serif text-xl text-[#7f1d2d] shadow-xl sm:h-24 sm:w-24">
