@@ -106,8 +106,18 @@ export default function CollectionCoverCarousel({
     }
   };
 
+  // No hardcoded position utility on this wrapper on purpose —
+  // `fillClassName` always supplies its own ("absolute inset-0" for the
+  // public experience, "relative h-32 ..." for the management panel), and
+  // Tailwind only ever applies ONE of two conflicting `position` utilities
+  // on the same element (whichever wins the cascade order, not the one
+  // listed last in the class string) — hardcoding "relative" here silently
+  // broke every "absolute inset-0" caller, which is exactly why an
+  // uploaded cover photo showed correctly in the management thumbnail
+  // (its own "relative h-32" never conflicted) but never on the actual
+  // public card.
   return (
-    <div className={`group/carousel relative overflow-hidden ${fillClassName}`}>
+    <div className={`group/carousel overflow-hidden ${fillClassName}`}>
       {images.length > 0 ? (
         <Image src={images[safeIndex]} alt={alt} fill priority={priority} sizes={sizes} className="object-cover" />
       ) : (
