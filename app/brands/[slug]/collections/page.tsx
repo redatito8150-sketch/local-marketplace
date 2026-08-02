@@ -14,7 +14,16 @@ import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/li
 // only helps once the underlying fetches themselves aren't cached; without
 // this, a just-uploaded cover photo could sit invisible on the public card
 // for up to 60s after the management panel already showed it correctly.
+// All three directives set below are belt-and-suspenders for the exact
+// same goal — `revalidate = 0` alone left production still serving stale
+// covers for some viewers, most likely because Vercel's Data Cache is
+// durable *across* deployments (redeploying doesn't clear it on its own)
+// and/or its edge network cached an early response before this fix
+// shipped; `dynamic`/`fetchCache` are the more explicit, harder-to-miss
+// opt-outs of every cache layer Next.js controls for this route.
 export const revalidate = 0;
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export async function generateMetadata({
   params,
