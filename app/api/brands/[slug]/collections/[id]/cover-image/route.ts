@@ -13,7 +13,7 @@ import { logAudit } from "@/lib/auditLog";
 // than one photo, added/removed one at a time here.
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const MAX_IMAGES = 6;
+const MAX_IMAGES = 4;
 const BUCKET = "product-images";
 
 function sanitizeFileName(name: string): string {

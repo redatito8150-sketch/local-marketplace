@@ -162,7 +162,7 @@ export default function BrandCollectionsExperience({
                     <InlineEditableText field="collectionsDetailEyebrow" value={detailEyebrow || "The edit"} as="span" />
                   </span>
                   <h3 className="mt-1 font-serif text-2xl text-[#302824]">
-                    <InlineEditableText field="collectionsDetailHeading" value={detailHeading || "Pieces from"} as="span" /> {featured.name}
+                    <InlineEditableText field="collectionsDetailHeading" value={detailHeading || "Pieces from this edit"} as="span" />
                   </h3>
                 </div>
                 <span className="text-[11px] text-[#8b8078]">{featured.products.length} pieces</span>

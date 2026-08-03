@@ -5,7 +5,7 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2 } from "lucide-react";
 
 const AUTO_ADVANCE_MS = 10000;
-const MAX_IMAGES = 6;
+const MAX_IMAGES = 4;
 
 // One or more cover photos per collection, auto-advancing every ~10s when
 // there's more than one — any viewer can also override manually (arrows or

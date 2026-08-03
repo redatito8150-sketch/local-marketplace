@@ -69,7 +69,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
         brand_id: editor.brandId,
         name,
         slug: attempt === 0 ? slug : `${baseSlug}-${attempt + 1}`,
-        is_active: true,
+        // Starts paused, not live — a brand-new collection usually has no
+        // cover photo/products yet, and shouldn't show up publicly (even
+        // half set-up) the instant it's created. The owner explicitly hits
+        // Resume (or sets a scheduled visible_from) once it's actually
+        // ready, both already in CollectionsManager.
+        is_active: false,
         published_at: new Date().toISOString(),
         created_by: editor.userId,
         // Appends at the end of the owner's current drag-to-reorder
