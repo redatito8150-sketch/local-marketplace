@@ -35,6 +35,8 @@ const roleValue = (roleId: string) => `role:${roleId}`;
 
 export default function UserAccessControl({
   userId,
+  userEmail,
+  userName,
   currentAccess,
   currentBrand,
   brands,
@@ -42,6 +44,11 @@ export default function UserAccessControl({
   currentRoleId,
 }: {
   userId: string;
+  // The account this control assigns access to — shown in the "add this
+  // person too" row of the owner-conflict dialog below, so the admin can
+  // tell at a glance who they're about to add alongside the existing owners.
+  userEmail: string | null;
+  userName: string | null;
   currentAccess: Access;
   currentBrand?: BrandOption;
   brands: BrandOption[];
@@ -54,9 +61,16 @@ export default function UserAccessControl({
   const [brandSlug, setBrandSlug] = useState(currentBrand?.slug ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // Set only while the "this brand already has an owner" warning is up —
-  // holds the pending brand so the two choices below know what to act on.
+  // Set only while the owner-conflict checklist is up — holds the pending
+  // brand and its current owners so the checklist below knows what to act on.
   const [conflict, setConflict] = useState<{ brandSlug: string; owners: OwnerInfo[] } | null>(null);
+  // Which of conflict.owners stay a Brand Owner — unchecking one demotes
+  // them to plain customer instead of the old all-or-nothing choice.
+  const [keepOwnerIds, setKeepOwnerIds] = useState<Set<string>>(new Set());
+  // Whether this account (the one the select is for) actually gets added
+  // as a co-owner — lets the admin back out of adding them without
+  // cancelling the whole dialog and losing the keep/remove choices above.
+  const [addNewPerson, setAddNewPerson] = useState(true);
 
   // A currently-held role/tier that isn't in the (rank-filtered) options
   // list — either it outranks the viewer or is a legacy tier with no
@@ -165,6 +179,8 @@ export default function UserAccessControl({
         setSaving(false);
         if (otherOwners.length > 0) {
           setConflict({ brandSlug: slug, owners: otherOwners });
+          setKeepOwnerIds(new Set(otherOwners.map((owner) => owner.id)));
+          setAddNewPerson(true);
           return;
         }
         await saveAccountType("brand_owner", slug, "replace");
@@ -175,11 +191,60 @@ export default function UserAccessControl({
     }
   };
 
-  const resolveConflict = async (mode: AssignMode) => {
+  const toggleKeepOwner = (ownerId: string) => {
+    setKeepOwnerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ownerId)) next.delete(ownerId);
+      else next.add(ownerId);
+      return next;
+    });
+  };
+
+  const confirmConflict = async () => {
     if (!conflict) return;
-    const slug = conflict.brandSlug;
+    const { brandSlug: slug, owners } = conflict;
+    const toDemote = owners.filter((owner) => !keepOwnerIds.has(owner.id));
     setConflict(null);
-    await saveAccountType("brand_owner", slug, mode);
+    setSaving(true);
+    setError("");
+    try {
+      if (addNewPerson) {
+        // 'add' — every currently-kept owner's link is left untouched;
+        // anyone unchecked above is demoted separately below instead of
+        // relying on 'replace' (which would wipe every other owner, not
+        // just the unchecked ones).
+        const res = await fetch(`/api/admin/users/${userId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access: "brand_owner", brandSlug: slug, mode: "add" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(data.error ?? "Failed to update access");
+          resetToCurrent();
+          return;
+        }
+      } else {
+        resetToCurrent();
+      }
+      await Promise.all(
+        toDemote.map((owner) =>
+          fetch(`/api/admin/users/${owner.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ access: "customer" }),
+          })
+        )
+      );
+      router.refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelConflict = () => {
+    setConflict(null);
+    resetToCurrent();
   };
 
   return (
@@ -224,41 +289,68 @@ export default function UserAccessControl({
       {error && <p className="text-[11px] text-red-600">{error}</p>}
 
       {conflict && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-label="Brand already has an owner">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-label="Manage brand owners">
           <div className="w-full max-w-sm rounded-xl3 bg-white p-6 shadow-card">
             <h3 className="text-[15px] font-bold text-ink">This brand already has an owner</h3>
-            <ul className="mt-3 space-y-1.5 text-[13px] text-ink-soft/80">
-              {conflict.owners.map((owner) => (
-                <li key={owner.id} className="rounded-md bg-stone-50 px-3 py-2">
-                  {owner.name || owner.email || owner.id}
-                  {owner.name && owner.email ? <span className="text-ink-soft/50"> — {owner.email}</span> : null}
-                </li>
-              ))}
-            </ul>
-            <p className="mt-3 text-[12.5px] text-ink-soft/70">
-              What do you want to do? Both owners would get identical Brand Owner permissions.
+            <p className="mt-1.5 text-[12.5px] text-ink-soft/70">
+              Uncheck anyone who should lose Brand Owner access — they go back to a plain
+              customer. Everyone left checked keeps identical Brand Owner permissions.
             </p>
-            <div className="mt-4 flex flex-col gap-2">
+
+            <div className="mt-4 space-y-2">
+              {conflict.owners.map((owner) => (
+                <label
+                  key={owner.id}
+                  className="flex items-start gap-2.5 rounded-md border border-stone-150 px-3 py-2.5"
+                >
+                  <input
+                    type="checkbox"
+                    checked={keepOwnerIds.has(owner.id)}
+                    onChange={() => toggleKeepOwner(owner.id)}
+                    className="mt-0.5 h-4 w-4 flex-none accent-ink"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate text-[13px] font-semibold text-ink">
+                      {owner.name || owner.email || owner.id}
+                    </span>
+                    {owner.email && (
+                      <span className="block truncate text-[11.5px] text-ink-soft/50">{owner.email}</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="my-4 border-t border-stone-150" />
+
+            <label className="flex items-start gap-2.5 rounded-md border border-stone-150 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={addNewPerson}
+                onChange={(e) => setAddNewPerson(e.target.checked)}
+                className="mt-0.5 h-4 w-4 flex-none accent-ink"
+              />
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-semibold text-ink">
+                  {userName || userEmail || "This account"}
+                </span>
+                {userEmail && <span className="block truncate text-[11.5px] text-ink-soft/50">{userEmail}</span>}
+              </span>
+            </label>
+
+            {error && <p className="mt-3 text-[11.5px] text-red-600">{error}</p>}
+
+            <div className="mt-5 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => resolveConflict("add")}
+                onClick={confirmConflict}
                 className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream"
               >
-                Keep {conflict.owners.length === 1 ? "them" : "all of them"} — add this person too
+                Confirm
               </button>
               <button
                 type="button"
-                onClick={() => resolveConflict("replace")}
-                className="rounded-md border border-red-200 bg-red-50 px-4 py-2.5 text-[13px] font-semibold text-red-700"
-              >
-                Remove {conflict.owners.length === 1 ? "them" : "all of them"} — assign only this person
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConflict(null);
-                  resetToCurrent();
-                }}
+                onClick={cancelConflict}
                 className="rounded-md border border-stone-150 px-4 py-2.5 text-[13px] font-semibold text-ink hover:bg-stone-50"
               >
                 Cancel
