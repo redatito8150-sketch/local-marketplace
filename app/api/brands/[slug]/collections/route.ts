@@ -72,6 +72,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
         is_active: true,
         published_at: new Date().toISOString(),
         created_by: editor.userId,
+        // Appends at the end of the owner's current drag-to-reorder
+        // arrangement (see CollectionsOrderPanel) — `count` is exactly
+        // this brand's existing collection count, checked against the cap
+        // just above.
+        sort_order: count ?? 0,
       })
       .select("id, slug")
       .single();

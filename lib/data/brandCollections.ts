@@ -21,6 +21,7 @@ interface CollectionRow {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  sort_order: number;
 }
 
 export function toCollectionRecord(row: CollectionRow): CollectionRecord {
@@ -39,7 +40,20 @@ export function toCollectionRecord(row: CollectionRow): CollectionRecord {
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    sortOrder: row.sort_order ?? 0,
   };
+}
+
+// Postgres "undefined_column" — the one specific case where an ORDER BY
+// on a brand-new column (sort_order, added in
+// 20260808000007_collections_sort_order.sql) fails outright rather than
+// just coming back empty, unlike every other column added so far this
+// round (those only ever showed up as undefined in a plain SELECT, never
+// broke the query). Falls back to the previous ordering so this page
+// doesn't 500 for the entire window between deploying this code and
+// actually running that migration.
+function isUndefinedColumnError(error: { code?: string } | null): boolean {
+  return error?.code === "42703";
 }
 
 // A collection with a future visible_from is otherwise fully active/
@@ -56,13 +70,23 @@ function isVisibleNow(row: Pick<CollectionRow, "visible_from">): boolean {
 // caller — slug is only ever used to find the brand, never to query
 // collections directly.
 export async function getPublicCollectionsForBrand(brandId: string): Promise<CollectionRecord[]> {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("collections")
     .select("*")
     .eq("brand_id", brandId)
     .eq("is_active", true)
     .not("published_at", "is", null)
-    .order("published_at", { ascending: false });
+    .order("sort_order", { ascending: true });
+
+  if (error && isUndefinedColumnError(error)) {
+    ({ data, error } = await supabase
+      .from("collections")
+      .select("*")
+      .eq("brand_id", brandId)
+      .eq("is_active", true)
+      .not("published_at", "is", null)
+      .order("published_at", { ascending: false }));
+  }
 
   if (error) throw new Error(`getPublicCollectionsForBrand failed: ${error.message}`);
   return ((data as CollectionRow[] | null) ?? []).filter(isVisibleNow).map(toCollectionRecord);
@@ -92,11 +116,19 @@ export async function getPublicCollectionBySlug(
 // can see and resume a paused or not-yet-visible collection.
 export async function getAllCollectionsForBrand(brandId: string): Promise<CollectionRecord[]> {
   const { supabaseAdmin } = await import("@/lib/supabase/admin");
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from("collections")
     .select("*")
     .eq("brand_id", brandId)
-    .order("created_at", { ascending: true });
+    .order("sort_order", { ascending: true });
+
+  if (error && isUndefinedColumnError(error)) {
+    ({ data, error } = await supabaseAdmin
+      .from("collections")
+      .select("*")
+      .eq("brand_id", brandId)
+      .order("created_at", { ascending: true }));
+  }
 
   if (error) throw new Error(`getAllCollectionsForBrand failed: ${error.message}`);
   return ((data as CollectionRow[] | null) ?? []).map(toCollectionRecord);

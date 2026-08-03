@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import BrandCollectionsExperience from "@/components/brand/BrandCollectionsExperience";
-import CollectionsManager from "@/components/brand/CollectionsManager";
+import CollectionsOrderPanel from "@/components/brand/CollectionsOrderPanel";
 import { getPublicCollectionsForBrand } from "@/lib/data/brandCollections";
 import { getBrandContent } from "@/lib/data/brands";
 import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/lib/data/collectionExperience";
@@ -9,7 +9,7 @@ import type { CollectionExperienceItem, CollectionExperienceProduct } from "@/li
 // Overrides the shared layout's `revalidate = 60` (Next.js uses the lowest
 // value across the whole route tree) — this page's own data (collection
 // covers/products/pause state, all editable in-place by
-// CollectionsManager) needs to be fresh on every load, not served from a
+// CollectionsOrderPanel) needs to be fresh on every load, not served from a
 // stale ISR snapshot for up to a minute. router.refresh() after a save
 // only helps once the underlying fetches themselves aren't cached; without
 // this, a just-uploaded cover photo could sit invisible on the public card
@@ -83,7 +83,7 @@ export default async function CollectionsPage({
   return (
     <section className="bg-[#fcf8f3]">
       <div className="mx-auto max-w-brand px-5 pb-16 pt-8 sm:px-6 lg:px-10 lg:pb-20 lg:pt-10">
-        <CollectionsManager brandSlug={slug} />
+        <CollectionsOrderPanel brandSlug={slug} />
         <BrandCollectionsExperience
           brandName={brand.name}
           collections={collectionItems}

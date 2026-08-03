@@ -553,6 +553,11 @@ export interface CollectionRecord {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  // Display order the owner chose via drag-to-reorder on the brand
+  // profile's Collections page (components/brand/CollectionsOrderPanel) —
+  // position 0 is treated as the "featured" collection everywhere the
+  // public experience distinguishes one, no separate flag needed.
+  sortOrder: number;
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
 
 interface CollectionOption {
   id: string;
@@ -10,17 +9,16 @@ interface CollectionOption {
   isActive: boolean;
 }
 
-function slugPreview(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
-}
-
-// Brand-scoped Collection dropdown + inline "Create Collection" modal.
-// Reloads its option list whenever `brandId` changes (the parent form is
-// responsible for clearing the selected collectionId on that same change —
-// see ProductForm's brand-change handler).
+// Brand-scoped Collection dropdown — read-only picker, on purpose. Creating
+// and managing collections used to be possible from here too (an inline
+// "Create Collection"/"Manage Collections" modal), which was one of 3
+// separate places a brand could end up creating a collection with no link
+// between them. Collection creation/editing now lives in exactly one place,
+// /brand-portal/collections (components/brand/CollectionsManager) — this
+// component only ever lists what's already there. Reloads its option list
+// whenever `brandId` changes (the parent form is responsible for clearing
+// the selected collectionId on that same change — see ProductForm's
+// brand-change handler).
 export default function CollectionSelect({
   brandId,
   value,
@@ -36,9 +34,6 @@ export default function CollectionSelect({
 }) {
   const [options, setOptions] = useState<CollectionOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [manageOpen, setManageOpen] = useState(false);
-  const [managementError, setManagementError] = useState("");
 
   const listUrl = brandId
     ? apiBasePath === "/api/admin"
@@ -99,162 +94,16 @@ export default function CollectionSelect({
           ))}
         </select>
       </label>
-      <button
-        type="button"
-        disabled={!brandId}
-        onClick={() => setModalOpen(true)}
-        className="mt-1.5 flex items-center gap-1.5 text-[12px] font-semibold text-ink hover:underline disabled:cursor-not-allowed disabled:text-ink-soft/40 disabled:no-underline"
-      >
-        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
-        Create Collection
-      </button>
-      <button type="button" disabled={!brandId || options.length === 0} onClick={() => setManageOpen(true)} className="ml-3 mt-1.5 text-[12px] font-semibold text-ink hover:underline disabled:opacity-40">
-        Manage Collections
-      </button>
-
-      {modalOpen && (
-        <CreateCollectionModal
-          brandId={brandId}
-          apiBasePath={apiBasePath}
-          brandSlug={brandSlug}
-          onClose={() => setModalOpen(false)}
-          onCreated={async (id) => {
-            setModalOpen(false);
-            await loadCollections();
-            onChange(id);
-          }}
-        />
+      {apiBasePath === "/api/brand-portal" && (
+        <a
+          href={`/brand-portal/collections${brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : ""}`}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-1.5 inline-block text-[12px] font-semibold text-ink hover:underline"
+        >
+          Create or manage collections →
+        </a>
       )}
-      {manageOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-label="Manage collections">
-          <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-xl3 bg-white p-6 shadow-card">
-            <div className="flex items-center justify-between"><h3 className="font-bold">Manage Collections</h3><button type="button" onClick={() => setManageOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>
-            {managementError && <p className="mt-3 rounded bg-red-50 p-2 text-[12px] text-red-700">{managementError}</p>}
-            <div className="mt-4 space-y-2">
-              {options.map((option) => <div key={option.id} className="flex flex-wrap items-center gap-2 rounded border border-stone-150 p-3">
-                <span className="mr-auto text-[13px] font-semibold">{option.name}</span>
-                {(["rename", option.isActive ? "archive" : "restore", "delete"] as const).map((action) => <button key={action} type="button" className="rounded border px-2 py-1 text-[11.5px] capitalize" onClick={async () => {
-                  const name = action === "rename" ? window.prompt("New Collection name", option.name) : undefined;
-                  if (action === "rename" && !name?.trim()) return;
-                  if (action === "delete" && !window.confirm(`Delete "${option.name}" permanently?`)) return;
-                  const brandQuery = apiBasePath === "/api/brand-portal" && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
-                  const response = await fetch(`${apiBasePath}/collections/${option.id}${brandQuery}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, name, ...(apiBasePath === "/api/admin" ? { brandId } : {}) }) });
-                  const data = await response.json();
-                  if (!response.ok) { setManagementError(data.error ?? "Management action failed"); return; }
-                  setManagementError(""); await loadCollections(); if (action === "delete" && value === option.id) onChange("");
-                }}>{action}</button>)}
-              </div>)}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CreateCollectionModal({
-  brandId,
-  apiBasePath,
-  brandSlug,
-  onClose,
-  onCreated,
-}: {
-  brandId: string;
-  apiBasePath: "/api/brand-portal" | "/api/admin";
-  brandSlug?: string;
-  onClose: () => void;
-  onCreated: (id: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!name.trim()) {
-      setError("Collection name is required");
-      return;
-    }
-    setSubmitting(true);
-    setError("");
-    try {
-      const brandQuery = apiBasePath === "/api/brand-portal" && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
-      const res = await fetch(`${apiBasePath}/collections${brandQuery}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim() || undefined,
-          ...(apiBasePath === "/api/admin" ? { brandId } : {}),
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong");
-        return;
-      }
-      onCreated(data.id);
-    } catch {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-label="Create collection">
-      <div className="w-full max-w-sm rounded-xl3 bg-white p-6 shadow-card">
-        <div className="flex items-center justify-between">
-          <h3 className="text-[15px] font-bold text-ink">New Collection</h3>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-md p-1.5 text-ink-soft/50 hover:bg-stone-100">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
-          <label className="block">
-            <span className="text-[12.5px] font-medium text-ink-soft/70">Collection Name</span>
-            <input
-              type="text"
-              autoFocus
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-            />
-            {name.trim() && (
-              <span className="mt-1 block text-[11px] text-ink-soft/50">Slug: {slugPreview(name)}</span>
-            )}
-          </label>
-          <label className="block">
-            <span className="text-[12.5px] font-medium text-ink-soft/70">Description (optional)</span>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={3}
-              className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30"
-            />
-          </label>
-          {error && (
-            <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">{error}</p>
-          )}
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {submitting ? "Creating…" : "Create Collection"}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-stone-150 px-4 py-2.5 text-[13px] font-semibold text-ink hover:bg-stone-50"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
