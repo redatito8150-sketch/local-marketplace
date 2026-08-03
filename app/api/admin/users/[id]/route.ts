@@ -63,10 +63,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Select a brand" }, { status: 400 });
   }
 
+  // 'add' (co-owner — every existing owner of this brand keeps their link)
+  // vs the default 'replace' (this becomes the brand's *only* owner). Only
+  // meaningful for brand_owner; the UI (UserAccessControl) only ever sends
+  // it after showing the "this brand already has an owner" warning itself.
+  const mode = body.mode === "add" ? "add" : "replace";
+
   const { error } = await supabaseAdmin.rpc("set_user_access", {
     p_user_id: params.id,
     p_access: access,
     p_brand_slug: needsBrand ? body.brandSlug.trim() : null,
+    p_mode: mode,
   });
 
   if (error) {
@@ -87,6 +94,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     after: {
       access,
       brandSlug: needsBrand ? body.brandSlug.trim() : null,
+      mode: access === "brand_owner" ? mode : undefined,
     },
   });
 

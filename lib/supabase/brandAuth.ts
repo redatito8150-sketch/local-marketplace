@@ -62,11 +62,22 @@ export async function requireBrandOwner(
     .eq("owner_user_id", user.id)
     .order("name");
 
+  // access_level distinguishes a co-owner (added via the "keep every
+  // existing owner, add this person too" path — see set_user_access's
+  // p_mode='add') from a real assistant — both are rows in the same
+  // table now. A brand's *primary* owner (brands.owner_user_id) is caught
+  // by the ownedBrands query above and always wins the membershipMap
+  // insert below; this is what gives every *other* co-owner the same
+  // "owner" accessLevel (and therefore identical brand-portal permissions)
+  // without needing their own owner_user_id slot.
   const { data: staffRows } = await supabase
     .from("brand_staff")
-    .select("brand_id")
+    .select("brand_id, access_level")
     .eq("user_id", user.id);
-  const staffBrandIds = [...new Set((staffRows ?? []).map((row) => row.brand_id))];
+  const staffAccessByBrandId = new Map(
+    (staffRows ?? []).map((row) => [row.brand_id as string, (row.access_level as BrandAccessLevel | null) ?? "assistant"])
+  );
+  const staffBrandIds = [...staffAccessByBrandId.keys()];
   const { data: staffBrands } = staffBrandIds.length
     ? await supabase
       .from("brands")
@@ -92,7 +103,7 @@ export async function requireBrandOwner(
         id: brand.id,
         slug: brand.slug,
         name: brand.name,
-        accessLevel: "assistant",
+        accessLevel: staffAccessByBrandId.get(brand.id) ?? "assistant",
         setupStatus: brand.setup_status,
         isActive: brand.is_active,
       });
