@@ -43,27 +43,18 @@ export async function PATCH(request: NextRequest) {
     .eq("slug", owner.brandSlug)
     .maybeSingle();
 
+  // hero/logo/about images, about description, and tagline are edited live
+  // on the brand page (InlineEditableImage/RichTextEditableField) now, not
+  // through this form — never touch those columns here or a save would
+  // silently wipe them.
   const { error } = await supabaseAdmin
     .from("brands")
     .update({
-      tagline: body.tagline,
       category: body.category,
+      additional_categories: body.additionalCategories ?? [],
       founded_year: body.foundedYear ?? null,
       city: body.city,
-      hero_image: body.heroImage,
-      logo_image: body.logoImage || null,
-      website_url: body.websiteUrl || null,
-      about_description: body.aboutDescription,
-      about_image: body.aboutImage,
-      story_image: body.storyImage,
-      story_image_2: body.storyImage2 || null,
       story_body: body.storyBody,
-      info_badges: body.infoBadges,
-      category_tabs: body.categoryTabs,
-      active_tab: body.activeTab || "shop-all",
-      values: body.values,
-      similar_brand_slugs: body.similarBrandSlugs,
-      shop_the_look: body.shopTheLook ?? [],
       shipping_policy: body.shippingPolicy?.trim() || null,
       return_policy: body.returnPolicy?.trim() || null,
       return_window_days: body.returnWindowDays ?? null,

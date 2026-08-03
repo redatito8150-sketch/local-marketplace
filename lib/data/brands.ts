@@ -6,14 +6,9 @@ import { isWithinNewBrandWindow } from "@/lib/brandNewWindow";
 import { ProductRow, toProductCard, loadDisplayContext } from "@/lib/data/products";
 import {
   BrandPageContent,
-  BrandInfoBadge,
-  BrandCategoryTab,
-  BrandValue,
-  BrandShopTheLookTile,
   BrandJourneyMilestone,
   BrandImageField,
   BrandFounder,
-  SimilarBrand,
 } from "@/types";
 
 interface BrandRow {
@@ -27,18 +22,9 @@ interface BrandRow {
   city: string;
   hero_image: string;
   logo_image: string | null;
-  website_url: string | null;
   about_description: string;
   about_image: string;
-  story_image: string;
-  story_image_2: string | null;
   story_body: string;
-  info_badges: BrandInfoBadge[];
-  category_tabs: BrandCategoryTab[];
-  active_tab: string;
-  values: BrandValue[];
-  similar_brand_slugs: string[];
-  shop_the_look: BrandShopTheLookTile[];
   is_mahaly_partner: boolean;
   created_at: string;
   founders: BrandFounder[] | null;
@@ -102,24 +88,19 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     );
   }
 
-  const { data: similarRows, error: similarError } = await supabase
-    .from("brands")
-    .select("slug, name, category, city, hero_image")
-    .in("slug", brand.similar_brand_slugs?.length ? brand.similar_brand_slugs : ["__none__"]);
-
-  // Similar brands are supplementary — degrade quietly rather than failing
-  // the whole brand page if this secondary lookup breaks.
-  if (similarError) {
-    logError(`getBrandContent(${slug}) similar brands query failed`, similarError.message);
+  // The "Collections" stat on BrandProfileHeader — real published-collection
+  // count, replacing the old shop_the_look.length (which never reflected
+  // anything real). Supplementary — degrades quietly to 0 rather than
+  // failing the whole brand page if this secondary lookup breaks.
+  const { count: collectionsCount, error: collectionsCountError } = await supabase
+    .from("collections")
+    .select("id", { count: "exact", head: true })
+    .eq("brand_id", brand.id)
+    .eq("is_active", true)
+    .not("published_at", "is", null);
+  if (collectionsCountError) {
+    logError(`getBrandContent(${slug}) collections count query failed`, collectionsCountError.message);
   }
-
-  const similarBrands: SimilarBrand[] = (similarRows ?? []).map((r) => ({
-    id: r.slug,
-    name: r.name,
-    category: r.category,
-    city: r.city,
-    image: r.hero_image,
-  }));
 
   const productRowsTyped = (productRows ?? []) as ProductRow[];
   // Full Product shape (not the old lightweight BrandProduct) so the real
@@ -152,21 +133,13 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     createdAt: brand.created_at,
     heroImage: brand.hero_image,
     logoImage: brand.logo_image ?? undefined,
-    websiteUrl: brand.website_url ?? undefined,
     aboutDescription: brand.about_description,
     aboutImage: brand.about_image,
-    infoBadges: brand.info_badges ?? [],
-    categoryTabs: brand.category_tabs ?? [],
-    activeTab: brand.active_tab ?? "shop-all",
     products,
-    storyImage: brand.story_image,
-    storyImage2: brand.story_image_2 ?? undefined,
     storyBody: brand.story_body,
-    values: brand.values ?? [],
-    similarBrands,
     followerCount,
     storeRating: computeStoreRating(productRowsTyped),
-    shopTheLook: brand.shop_the_look ?? [],
+    collectionsCount: collectionsCount ?? 0,
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
     founders: brand.founders ?? [],
     journeyMilestones: brand.journey_milestones ?? [],

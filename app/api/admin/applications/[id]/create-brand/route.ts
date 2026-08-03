@@ -89,14 +89,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     heroImage: PLACEHOLDER_IMAGE,
     aboutDescription: application.brandStory,
     aboutImage: PLACEHOLDER_IMAGE,
-    storyImage: PLACEHOLDER_IMAGE,
     storyBody: application.brandStory,
-    infoBadges: [],
-    categoryTabs: [],
-    activeTab: "shop-all",
-    values: [],
-    similarBrandSlugs: [],
-    shopTheLook: [],
   };
 
   const { data: resultSlug, error: rpcError } = await supabaseAdmin.rpc("convert_application_to_brand", {

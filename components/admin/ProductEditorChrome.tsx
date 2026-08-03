@@ -94,7 +94,7 @@ export function ProductEditorHeader({
         <div className="flex shrink-0 items-center gap-2">
           {!isBrandPortal && <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-md border border-stone-150 px-3 text-[12px] font-semibold text-ink hover:bg-stone-50 disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save as Draft</button>}
           <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">
-            {isBrandPortal ? "Submit for Review" : "Publish Product"}
+            Publish Product
           </button>
         </div>
       </div>
@@ -177,6 +177,6 @@ export function ProductEditorBottomBar({ dirty, submitting, isBrandPortal, onSav
   return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
     <span className="mr-auto text-[11.5px] font-medium text-ink-soft/55">{dirty ? "Unsaved changes" : "All changes saved"}</span>
     {!isBrandPortal && <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>}
-    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{isBrandPortal ? "Submit for Review" : "Publish Product"}</button>
+    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">Publish Product</button>
   </div>;
 }

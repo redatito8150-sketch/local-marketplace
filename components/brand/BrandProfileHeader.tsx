@@ -16,7 +16,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
   const stats = [
     { icon: Package, value: brand.products.length, label: "Products" },
     { icon: Users, value: formatCompactNumber(brand.followerCount), label: "Followers" },
-    { icon: Layers3, value: brand.shopTheLook.length, label: "Collections" },
+    { icon: Layers3, value: brand.collectionsCount, label: "Collections" },
   ];
   return (
     <header className="bg-[#f5eee5] pt-3">

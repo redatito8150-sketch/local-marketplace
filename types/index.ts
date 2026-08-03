@@ -359,30 +359,6 @@ export interface WishlistItem {
 
 // ── Brand page types (LOCAL brand-page template) ────────────────────────────
 
-export interface BrandInfoBadge {
-  icon: "location" | "flag" | "truck" | "leaf";
-  label: string;
-}
-
-export interface BrandValue {
-  icon: "flag" | "package" | "leaf" | "pen";
-  title: string;
-  description: string;
-}
-
-export interface SimilarBrand {
-  id: string;
-  name: string;
-  category: string;
-  city: string;
-  image: string;
-}
-
-export interface BrandCategoryTab {
-  id: string;
-  label: string;
-}
-
 export interface ProductReview {
   id: string;
   author: string;
@@ -482,7 +458,6 @@ export interface BrandRecord {
   id: string;
   slug: string;
   name: string;
-  tagline: string;
   category: string;
   additionalCategories: string[];
   isActive: boolean;
@@ -507,20 +482,14 @@ export interface BrandRecord {
   hasProducts?: boolean;
   foundedYear?: number;
   city: string;
+  // Read-only here — the admin brands list thumbnail is the only remaining
+  // consumer; both are edited via InlineEditableImage on the live brand
+  // page now, not this form.
   heroImage: string;
   logoImage?: string;
-  websiteUrl?: string;
   aboutDescription: string;
   aboutImage: string;
-  storyImage: string;
-  storyImage2?: string;
   storyBody: string;
-  infoBadges: BrandInfoBadge[];
-  categoryTabs: BrandCategoryTab[];
-  activeTab: string;
-  values: BrandValue[];
-  similarBrandSlugs: string[];
-  shopTheLook: BrandShopTheLookTile[];
   ownerUserId?: string;
   ownerEmail?: string;
   // Shipping & Returns policy priority: this Brand's fields, falling back
@@ -1040,6 +1009,11 @@ export interface BrandPageContent {
   id: string;
   slug: string;
   name: string;
+  // No longer editable anywhere (removed from both the old brand-portal
+  // form and the inline-edit system) but still real, live data —
+  // components/navigation/BrandsMegaMenu.tsx and components/Sponsored.tsx
+  // both read it as the fallback description when aboutDescription is
+  // empty.
   tagline: string;
   category: string;
   additionalCategories: string[];
@@ -1050,22 +1024,17 @@ export interface BrandPageContent {
   createdAt: string;
   heroImage: string;
   logoImage?: string;
-  websiteUrl?: string;
   aboutDescription: string;
   aboutImage: string;
-  infoBadges: BrandInfoBadge[];
-  categoryTabs: BrandCategoryTab[];
-  activeTab: string;
   products: Product[];
-  storyImage: string;
-  storyImage2?: string;
   storyBody: string;
-  values: BrandValue[];
-  similarBrands: SimilarBrand[];
   // Round 4 — real, computed stats replacing decorative content.
   followerCount: number;
   storeRating: number;
-  shopTheLook: BrandShopTheLookTile[];
+  // Active/published collections this brand has — the "Collections" stat
+  // on BrandProfileHeader (replaces the old shop_the_look.length, which
+  // never reflected anything real).
+  collectionsCount: number;
   isMahalyPartner: boolean;
   // Optional, owner/admin-entered via the same inline-edit pencil as
   // tagline/aboutDescription — never auto-filled or guessed. A list (not
@@ -1138,12 +1107,6 @@ export interface BrandJourneyMilestone {
   title: string;
   description: string;
   icon: JourneyIconKey;
-}
-
-export interface BrandShopTheLookTile {
-  image: string;
-  title: string;
-  href: string;
 }
 
 // ── Account addresses (Supabase `addresses` table) ──────────────────────────

@@ -41,7 +41,7 @@ export default async function AboutPage({
   // by the admin BrandForm/brand-portal/mobile app).
   const introFallback = `<p>${brand.name} was born in ${brand.city} from a love of thoughtful design, honest materials, and the city it calls home — creating effortless pieces made for real life. From the sea breeze to ${brand.city}'s golden light, everything we create is inspired by our surroundings and made to move with you, wherever the day takes you.</p>`;
   const introduction = stripRichText(brand.aboutDescription).length > 40 ? brand.aboutDescription : introFallback;
-  const aboutImage = brand.aboutImage || brand.storyImage;
+  const aboutImage = brand.aboutImage;
   const headlineFallback = `Designed in ${brand.city}.\nMade for everywhere.`;
   const quoteFallback = `We started ${brand.name} to make everyday pieces feel personal again.`;
 

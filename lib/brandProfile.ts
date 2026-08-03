@@ -1,4 +1,4 @@
-import type { BrandShopTheLookTile, Product } from "@/types";
+import type { Product } from "@/types";
 import { isDiscountActive } from "./pricing.ts";
 
 export const BRAND_PROFILE_ROUTES = ["products", "collections", "about", "reviews"] as const;
@@ -11,10 +11,6 @@ export function resolveBrandProfileRoute(pathname: string): BrandProfileRoute {
 
 export function filterProductsForBrand<T extends { brand: string }>(products: T[], brandName: string): T[] {
   return products.filter((product) => product.brand.toLocaleLowerCase() === brandName.toLocaleLowerCase());
-}
-
-export function filterCollectionsByBrand(tiles: BrandShopTheLookTile[]): BrandShopTheLookTile[] {
-  return tiles.filter((tile) => Boolean(tile.image?.trim() && tile.title?.trim()));
 }
 
 export function aggregateBrandRatings(products: Array<Pick<Product, "rating" | "reviewCount">>) {

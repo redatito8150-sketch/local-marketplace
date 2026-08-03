@@ -27,11 +27,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
   // Slug is the primary key and the /brands/[slug] URL — it's locked in the
   // UI, and ignored here even if a caller sends a different value, so a
   // rename can never silently orphan a product's brand_slug.
+  //
+  // hero/logo/about images, about description, and tagline are NOT part of
+  // this update — BrandForm no longer collects them (they're edited live on
+  // the brand page via InlineEditableImage/RichTextEditableField), so this
+  // route must never touch those columns or it would silently wipe them.
   const { error } = await supabaseAdmin
     .from("brands")
     .update({
       name: body.name,
-      tagline: body.tagline,
       category: body.category,
       additional_categories: body.additionalCategories ?? [],
       sku_prefix: body.skuPrefix.trim().toUpperCase(),
@@ -42,20 +46,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
       sponsored_order: body.sponsoredOrder ?? null,
       founded_year: body.foundedYear ?? null,
       city: body.city,
-      hero_image: body.heroImage,
-      logo_image: body.logoImage || null,
-      website_url: body.websiteUrl || null,
-      about_description: body.aboutDescription,
-      about_image: body.aboutImage,
-      story_image: body.storyImage,
-      story_image_2: body.storyImage2 || null,
       story_body: body.storyBody,
-      info_badges: body.infoBadges,
-      category_tabs: body.categoryTabs,
-      active_tab: body.activeTab || "shop-all",
-      values: body.values,
-      similar_brand_slugs: body.similarBrandSlugs,
-      shop_the_look: body.shopTheLook,
       shipping_policy: body.shippingPolicy?.trim() || null,
       return_policy: body.returnPolicy?.trim() || null,
       return_window_days: body.returnWindowDays ?? null,

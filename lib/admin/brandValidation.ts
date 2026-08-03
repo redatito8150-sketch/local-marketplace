@@ -1,5 +1,3 @@
-import type { BrandInfoBadge, BrandCategoryTab, BrandValue, BrandShopTheLookTile } from "@/types";
-
 // Mirrors the DB check constraint in
 // supabase/migrations/20260807000005_brand_sponsorship.sql.
 export const SPONSOR_PLACEMENTS = [
@@ -12,7 +10,11 @@ export type BrandSponsorPlacement = (typeof SPONSOR_PLACEMENTS)[number];
 export interface BrandInput {
   slug: string;
   name: string;
-  tagline: string;
+  // Not editable from any form anymore (BrandsMegaMenu/Sponsored still read
+  // it live as a fallback description) — only ever set at brand creation
+  // (e.g. app/api/admin/applications/[id]/create-brand/route.ts) or left to
+  // its DB default of ''.
+  tagline?: string;
   category: string;
   // Extra categories beyond the primary one above — rendered as the "+N"
   // badge next to the category on the public brand page.
@@ -37,20 +39,15 @@ export interface BrandInput {
   sponsoredOrder?: number | null;
   foundedYear?: number;
   city: string;
-  heroImage: string;
+  // hero/logo/about images and about description are edited live on the
+  // brand page (InlineEditableImage/RichTextEditableField), not through
+  // this form — kept here as optional since brand-creation flows (e.g.
+  // create-brand/route.ts) still set an initial placeholder value.
+  heroImage?: string;
   logoImage?: string;
-  websiteUrl?: string;
-  aboutDescription: string;
-  aboutImage: string;
-  storyImage: string;
-  storyImage2?: string;
+  aboutDescription?: string;
+  aboutImage?: string;
   storyBody: string;
-  infoBadges: BrandInfoBadge[];
-  categoryTabs: BrandCategoryTab[];
-  activeTab: string;
-  values: BrandValue[];
-  similarBrandSlugs: string[];
-  shopTheLook: BrandShopTheLookTile[];
   // Shipping & Returns policy priority source — all optional; an unset
   // brand falls back to the marketplace default (see lib/admin/shippingPolicy.ts).
   shippingPolicy?: string;
@@ -66,16 +63,11 @@ export function validateBrandInput(body: BrandInput): string | null {
     return "Slug is required and must be lowercase letters, numbers, and hyphens only";
   }
   if (!body.name?.trim()) return "Name is required";
-  if (!body.tagline?.trim()) return "Tagline is required";
   if (!body.category?.trim()) return "Category is required";
   if (!body.skuPrefix?.trim() || !SKU_PREFIX_PATTERN.test(body.skuPrefix.trim())) {
     return "SKU Prefix is required and must be 2–6 uppercase letters/numbers";
   }
   if (!body.city?.trim()) return "City is required";
-  if (!body.heroImage?.trim()) return "Hero image URL is required";
-  if (!body.aboutDescription?.trim()) return "About description is required";
-  if (!body.aboutImage?.trim()) return "About image URL is required";
-  if (!body.storyImage?.trim()) return "Story image URL is required";
   if (!body.storyBody?.trim()) return "Story body is required";
   if (
     body.returnWindowDays != null &&

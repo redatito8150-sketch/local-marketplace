@@ -74,9 +74,11 @@ interface ProductFormProps {
   // Brand-portal mode: forces the brand field to one brand (shown
   // read-only, never editable — a brand owner/assistant can never
   // reassign their own product to a different brand), submits to a
-  // different API base path, and replaces Draft/Publish with a single
-  // "Submit for Review" action label (the write itself still publishes
-  // immediately per the Instant-Publish model — see CLAUDE.md).
+  // different API base path, and shows a single "Publish Product" action
+  // (no separate Draft/Publish split) — the write goes live immediately
+  // per the Instant-Publish model (see CLAUDE.md); the label used to say
+  // "Submit for Review", which actively contradicted that and implied a
+  // pre-approval gate that was deliberately removed.
   lockedBrand?: { id: string; name: string };
   // Brand-portal mode has no BrandSelect list to read policy fields from
   // (the brand is locked) — this carries the locked brand's own Shipping &

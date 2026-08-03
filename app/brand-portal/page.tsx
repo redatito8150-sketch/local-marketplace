@@ -51,7 +51,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
   const outOfStock = variants.filter((variant) => variant.quantity <= 0);
   const pendingProducts = products.filter((product) => product.status === "pending_review" || product.status === "changes_requested" || product.hasPendingEdit);
   const pendingActions = pendingOrders.length + lowStock.length + outOfStock.length + pendingProducts.length;
-  const profileFields = brand ? [brand.tagline, brand.category, brand.city, brand.heroImage, brand.logoImage, brand.websiteUrl, brand.aboutDescription, brand.aboutImage, brand.storyBody, brand.storyImage] : [];
+  const profileFields = brand ? [brand.category, brand.city, brand.heroImage, brand.logoImage, brand.aboutDescription, brand.aboutImage, brand.storyBody] : [];
   const profileCompleteness = profileFields.length ? Math.round((profileFields.filter(Boolean).length / profileFields.length) * 100) : 0;
   const brandParam = owner.isImpersonating ? `?brand=${owner.brandSlug}` : "";
 

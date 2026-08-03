@@ -92,14 +92,7 @@ const baseBrand: BrandInput = {
   heroImage: "/hero.jpg",
   aboutDescription: "About",
   aboutImage: "/about.jpg",
-  storyImage: "/story.jpg",
   storyBody: "Story",
-  infoBadges: [],
-  categoryTabs: [],
-  activeTab: "shop-all",
-  values: [],
-  similarBrandSlugs: [],
-  shopTheLook: [],
 };
 
 test("validateBrandInput accepts a valid SKU prefix", () => {

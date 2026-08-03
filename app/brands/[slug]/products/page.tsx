@@ -25,8 +25,6 @@ export default async function BrandProductsPage({ params }: { params: Promise<{ 
             brandName={brand.name}
             products={brand.products}
             filterGroups={groups}
-            categoryTabs={[]}
-            defaultActiveTab="shop-all"
             showHeading={false}
             compactProducts={false}
             mediumProducts

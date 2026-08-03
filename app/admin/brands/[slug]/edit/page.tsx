@@ -1,18 +1,13 @@
 import { notFound } from "next/navigation";
-import { getAllBrandsForAdmin, getBrandForAdmin } from "@/lib/data/admin";
+import { getBrandForAdmin } from "@/lib/data/admin";
 import BrandForm from "@/components/admin/BrandForm";
 import LinkBrandOwnerField from "@/components/admin/LinkBrandOwnerField";
 
 export default async function EditBrandPage(props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
-  const [brand, allBrands] = await Promise.all([
-    getBrandForAdmin(params.slug),
-    getAllBrandsForAdmin(),
-  ]);
+  const brand = await getBrandForAdmin(params.slug);
 
   if (!brand) notFound();
-
-  const otherBrands = allBrands.filter((b) => b.slug !== brand.slug);
 
   return (
     <div>
@@ -28,7 +23,7 @@ export default async function EditBrandPage(props: { params: Promise<{ slug: str
         </div>
       </div>
 
-      <BrandForm mode="edit" initial={brand} otherBrands={otherBrands} />
+      <BrandForm mode="edit" initial={brand} />
     </div>
   );
 }

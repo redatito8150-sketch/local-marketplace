@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { BrandCategoryTab, FilterGroup, Product, ViewMode } from "@/types";
+import { FilterGroup, Product, ViewMode } from "@/types";
 import { useProductFilters } from "@/lib/hooks/useProductFilters";
-import CategoryNav from "@/components/brand/CategoryNav";
 import ProductGrid from "@/components/category/ProductGrid";
 import CatalogControls, { CatalogEmptyState } from "@/components/category/CatalogControls";
 
@@ -34,8 +33,6 @@ export default function BrandShoppingArea({
   brandName,
   products,
   filterGroups,
-  categoryTabs,
-  defaultActiveTab,
   showHeading = true,
   compactProducts = true,
   roomyProducts = false,
@@ -45,8 +42,6 @@ export default function BrandShoppingArea({
   brandName: string;
   products: Product[];
   filterGroups: FilterGroup[];
-  categoryTabs: BrandCategoryTab[];
-  defaultActiveTab: string;
   showHeading?: boolean;
   compactProducts?: boolean;
   roomyProducts?: boolean;
@@ -54,34 +49,13 @@ export default function BrandShoppingArea({
   minimalProductCards?: boolean;
 }) {
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState(defaultActiveTab || "shop-all");
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   const { selected, sort, setSort, toggleFilter, clearFilters, sortedProducts, priceBounds, setPriceRange } =
     useProductFilters(products, initialSelectedFromParams(searchParams));
 
-  // Category tabs are brand-curated free text (an admin can name them
-  // anything), so there's no guaranteed schema field they map to. "Shop
-  // All" always shows everything; any other tab matches against the
-  // product's own Collection value (case-insensitive) — the same field an
-  // admin already fills in per product — and falls back to showing
-  // everything rather than an empty grid if nothing matches yet.
-  const tabFilteredProducts = useMemo(() => {
-    if (!activeTab || activeTab === "shop-all") return sortedProducts;
-    const tabLabel = categoryTabs.find((t) => t.id === activeTab)?.label;
-    if (!tabLabel) return sortedProducts;
-    const matches = sortedProducts.filter(
-      (p) => p.collectionName?.toLowerCase() === tabLabel.toLowerCase()
-    );
-    return matches.length > 0 ? matches : sortedProducts;
-  }, [sortedProducts, activeTab, categoryTabs]);
-
   return (
     <>
-      {categoryTabs.length > 0 && (
-        <CategoryNav tabs={categoryTabs} active={activeTab} onChange={setActiveTab} />
-      )}
-
       <section id="shop" className={`mx-auto max-w-brand ${showHeading ? "px-6 py-16 lg:px-10" : "pt-2 lg:pt-3"}`}>
         {showHeading && <h2 className="mb-8 text-2xl font-medium tracking-tight text-charcoal">
           Shop {brandName}
@@ -94,7 +68,7 @@ export default function BrandShoppingArea({
             selected={selected}
             onToggle={toggleFilter}
             onClear={clearFilters}
-            productCount={tabFilteredProducts.length}
+            productCount={sortedProducts.length}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             sort={sort}
@@ -104,11 +78,11 @@ export default function BrandShoppingArea({
           />
 
           <div className={minimalProductCards ? "pt-6 lg:pt-7" : "pt-7"}>
-            {tabFilteredProducts.length === 0 ? (
+            {sortedProducts.length === 0 ? (
               <CatalogEmptyState onClear={clearFilters} />
             ) : (
               <ProductGrid
-                products={tabFilteredProducts}
+                products={sortedProducts}
                 viewMode={viewMode}
                 compact={compactProducts}
                 roomy={roomyProducts}
