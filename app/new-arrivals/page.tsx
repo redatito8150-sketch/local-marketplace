@@ -1,30 +1,25 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import Breadcrumb from "@/components/category/Breadcrumb";
-import CollectionSection from "@/components/collection/CollectionSection";
-import { getNewArrivals } from "@/lib/data/products";
+import NewArrivalsExperience from "@/components/new-arrivals/NewArrivalsExperience";
+import { getMarketplaceCatalogPage, getNewArrivals } from "@/lib/data/products";
 
 export const revalidate = 60;
 
 export const metadata = {
   title: "New Arrivals — Mahaly",
-  description: "The newest pieces from Local's independent Egyptian brands.",
+  description: "The newest pieces from Mahaly's independent Egyptian brands.",
 };
 
 export default async function NewArrivalsPage() {
-  const products = await getNewArrivals();
+  const newArrivals = await getNewArrivals();
+  const products = newArrivals.length
+    ? newArrivals
+    : (await getMarketplaceCatalogPage({ pageSize: 24, sort: "newest" })).products;
 
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="min-h-screen bg-[#f7f3ee]">
       <Header />
-      <Breadcrumb current="New Arrivals" />
-      <CollectionSection
-        eyebrow="Just landed"
-        title="New Arrivals"
-        description="Fresh pieces from Local's independent brands, marked new by the brands themselves."
-        products={products}
-        emptyMessage="No new arrivals right now — check back soon."
-      />
+      <NewArrivalsExperience products={products} />
       <Footer />
     </main>
   );

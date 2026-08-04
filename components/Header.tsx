@@ -16,7 +16,7 @@ import { useWishlist } from "@/context/WishlistContext";
 
 const NAV_LINKS = [
   { label: "Home", href: "/#home" },
-  { label: "Deals", href: "#deals" },
+  { label: "Deals", href: "/offers" },
   { label: "About", href: "#about" },
 ];
 
@@ -27,13 +27,13 @@ const MOBILE_NAV_LINKS = [
   { label: "Home", href: "/#home" },
   { label: "Brands", href: "/brands" },
   ...DISCOVER_LINKS.map(({ label, href }) => ({ label, href })),
-  { label: "Deals", href: "#deals" },
+  { label: "Deals", href: "/offers" },
   { label: "About", href: "#about" },
 ];
 
 export default function Header({ warmTransparent = false }: { warmTransparent?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
-  const [active, setActive] = useState("Home");
+  const [activeAnchor, setActiveAnchor] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
@@ -49,6 +49,11 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
     : profile?.role === "brand_owner" || profile?.role === "brand_assistant"
       ? "/brand-portal"
       : null;
+  const isNavActive = (label: string, href: string) => {
+    if (label === "Home") return pathname === "/";
+    if (href.startsWith("/") && !href.includes("#")) return pathname === href;
+    return activeAnchor === label;
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -98,13 +103,13 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
             <Link
               key={link.label}
               href={link.href}
-              onClick={() => setActive(link.label)}
+              onClick={() => setActiveAnchor(link.label)}
               className="group relative text-[15px] font-medium text-ink-soft transition-colors hover:text-ink"
             >
               {link.label}
               <span
                 className={`absolute -bottom-1 left-0 h-px bg-mahalyred transition-all duration-300 ${
-                  active === link.label ? "w-full" : "w-0 group-hover:w-full"
+                  isNavActive(link.label, link.href) ? "w-full" : "w-0 group-hover:w-full"
                 }`}
               />
             </Link>
@@ -117,13 +122,13 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
             <Link
               key={link.label}
               href={link.href}
-              onClick={() => setActive(link.label)}
+              onClick={() => setActiveAnchor(link.label)}
               className="group relative text-[15px] font-medium text-ink-soft transition-colors hover:text-ink"
             >
               {link.label}
               <span
                 className={`absolute -bottom-1 left-0 h-px bg-mahalyred transition-all duration-300 ${
-                  active === link.label ? "w-full" : "w-0 group-hover:w-full"
+                  isNavActive(link.label, link.href) ? "w-full" : "w-0 group-hover:w-full"
                 }`}
               />
             </Link>
