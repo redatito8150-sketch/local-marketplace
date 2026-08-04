@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
@@ -6,12 +7,16 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
 import type { MoodTileContent } from "@/types";
 
+const MAX_IMAGES = 4;
+
 function validate(tiles: unknown): string | null {
   if (!Array.isArray(tiles) || tiles.length === 0) return "At least one tile is required";
   for (const tile of tiles as Partial<MoodTileContent>[]) {
     if (!tile.label?.trim()) return "Every tile needs a label";
-    if (!tile.image?.trim()) return "Every tile needs an image URL";
-    if (!tile.href?.trim()) return "Every tile needs a link";
+    if (!Array.isArray(tile.images) || tile.images.length === 0) return "Every tile needs at least one image";
+    if (tile.images.length > MAX_IMAGES) return `A tile can have at most ${MAX_IMAGES} images`;
+    if (tile.images.some((url) => typeof url !== "string" || !url.trim())) return "Every image needs a URL";
+    if (tile.productIds !== undefined && !Array.isArray(tile.productIds)) return "Invalid product selection";
   }
   return null;
 }
@@ -48,8 +53,8 @@ export async function PUT(request: NextRequest) {
   const tiles: MoodTileContent[] = (body.tiles as Partial<MoodTileContent>[]).map((t) => ({
     id: t.id?.trim() || slugify(t.label!.trim()),
     label: t.label!.trim(),
-    image: t.image!.trim(),
-    href: t.href!.trim(),
+    images: (t.images as string[]).map((url) => url.trim()).slice(0, MAX_IMAGES),
+    productIds: Array.isArray(t.productIds) ? t.productIds.filter((id): id is string => typeof id === "string") : [],
   }));
 
   const { error } = await supabaseAdmin
@@ -69,6 +74,11 @@ export async function PUT(request: NextRequest) {
     before: existing?.value ?? SHOP_BY_MOOD,
     after: tiles,
   });
+
+  // The homepage is `force-static` (app/page.tsx) — without this, a saved
+  // change here would sit in the DB but never actually appear on the live
+  // site until the next unrelated redeploy.
+  revalidatePath("/");
 
   return NextResponse.json({ ok: true });
 }

@@ -21,7 +21,6 @@ const TEXT_FIELDS = {
   name: { column: "name", required: true, maxLength: 5000 },
   tagline: { column: "tagline", required: true, maxLength: 5000 },
   city: { column: "city", required: true, maxLength: 5000 },
-  websiteUrl: { column: "website_url", required: false, maxLength: 5000 },
   storyBody: { column: "story_body", required: false, maxLength: 5000 },
   aboutHeadline: { column: "about_headline", required: false, maxLength: 200 },
   aboutQuote: { column: "about_quote", required: false, maxLength: 300 },

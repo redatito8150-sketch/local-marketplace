@@ -9,7 +9,6 @@ interface InlineEditableTextProps {
     | "name"
     | "tagline"
     | "city"
-    | "websiteUrl"
     | "aboutDescription"
     | "storyBody"
     | "foundedYear"

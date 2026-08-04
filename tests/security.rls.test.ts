@@ -299,7 +299,6 @@ async function createDisposableBrand(admin: any, overrides: Record<string, unkno
       hero_image: "/x.jpg",
       about_description: "x",
       about_image: "/x.jpg",
-      story_image: "/x.jpg",
       story_body: "x",
       ...overrides,
     })

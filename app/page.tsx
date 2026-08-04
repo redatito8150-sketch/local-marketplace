@@ -1,7 +1,10 @@
 import PageStudioHomepage from "@/components/home/PageStudioHomepage";
 import { HOME_HERO, HOME_HERO_TILES } from "@/content/home";
 import { SHOP_BY_MOOD } from "@/content/shopByMood";
+import { getSiteContentWithFallback } from "@/lib/data/siteContent";
+import { getActiveProductsByIds } from "@/lib/data/products";
 import type { PageSectionRecord, PageSectionType } from "@/lib/pageStudio/registry";
+import type { ResolvedMoodTile, ShopByMoodContent } from "@/types";
 
 export const dynamic = "force-static";
 
@@ -9,15 +12,30 @@ function fallbackSection(sectionKey: string, sectionType: PageSectionType, posit
   return { id: `fallback-${sectionKey}`, pageKey: "home", sectionKey, sectionType, position, isRequired: position <= 30, config, visible: true, updatedAt: new Date(0).toISOString() };
 }
 
-function localDesignSections(): PageSectionRecord[] {
+function localDesignSections(moodTiles: ResolvedMoodTile[]): PageSectionRecord[] {
   return [
     fallbackSection("home_hero", "hero", 10, HOME_HERO as unknown as Record<string, unknown>),
     fallbackSection("home_hero_tiles", "category_cards", 20, HOME_HERO_TILES as unknown as Record<string, unknown>),
     fallbackSection("home_benefits", "benefits_strip", 30, { items: [] }),
-    fallbackSection("shop_by_mood", "mood_tiles", 60, { items: SHOP_BY_MOOD }),
+    fallbackSection("shop_by_mood", "mood_tiles", 60, { items: moodTiles }),
   ];
 }
 
-export default function Home() {
-  return <PageStudioHomepage sections={localDesignSections()} />;
+// The admin's Shop by Mood picks are stored as productIds only (see
+// types/index.ts's MoodTileContent) — resolved into real, live Product
+// rows here so a product edited/unpublished elsewhere is always reflected,
+// never denormalized into the saved content itself.
+async function resolveMoodTiles(): Promise<ResolvedMoodTile[]> {
+  const tiles = await getSiteContentWithFallback<ShopByMoodContent>("shop_by_mood", SHOP_BY_MOOD);
+  return Promise.all(
+    tiles.map(async (tile) => ({
+      ...tile,
+      products: await getActiveProductsByIds(tile.productIds, Math.max(1, tile.productIds.length)),
+    }))
+  );
+}
+
+export default async function Home() {
+  const moodTiles = await resolveMoodTiles();
+  return <PageStudioHomepage sections={localDesignSections(moodTiles)} />;
 }

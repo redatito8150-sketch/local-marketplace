@@ -65,11 +65,21 @@ export interface HomeProductSectionContent {
 export interface MoodTileContent {
   id: string;
   label: string;
-  image: string;
-  href: string;
+  // Up to 4 — same cap as a Collection's cover photos, rendered the same
+  // way (CollectionCoverCarousel), auto-advancing when there's more than one.
+  images: string[];
+  // Admin hand-picked, resolved to live Product rows at render time
+  // (lib/data/products.ts's getActiveProductsByIds) — never stored
+  // denormalized here, so a product edited/unpublished elsewhere is
+  // always reflected without touching this content.
+  productIds: string[];
 }
 
 export type ShopByMoodContent = MoodTileContent[];
+
+// The shape actually handed to components/ShopByMood.tsx — MoodTileContent
+// plus each tile's productIds already resolved to real Product rows.
+export type ResolvedMoodTile = MoodTileContent & { products: Product[] };
 
 export interface JoinHeroContent {
   label: string;

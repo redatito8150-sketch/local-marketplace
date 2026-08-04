@@ -14,7 +14,17 @@ import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collecti
 import { getBrandSummariesBySlug } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
 import type { ReactNode } from "react";
-import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ShopByMoodContent } from "@/types";
+import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ResolvedMoodTile } from "@/types";
+
+// The Page Studio draft/preview editor (/admin/page-studio/home/edit) can
+// render a raw, DB-authored "mood_tiles" section whose productIds were
+// never resolved to real products (unlike app/page.tsx's live homepage,
+// which always resolves them before this component ever sees them) —
+// this fallback just shows an empty product list in that admin-only
+// preview rather than fetching live data mid-render.
+const withNoProducts = (tiles: ShopByMoodContentFallback): ResolvedMoodTile[] =>
+  tiles.map((tile) => ({ ...tile, products: [] }));
+type ShopByMoodContentFallback = typeof SHOP_BY_MOOD;
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
 // Decorative-only fallback data (Page Studio preview before any real
@@ -96,8 +106,8 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
   const newestProducts = homepageProducts.slice(0, 10);
   const moodSection = section(sections, "shop_by_mood");
   const moodTiles = Array.isArray(moodSection?.config.items)
-    ? moodSection.config.items as ShopByMoodContent
-    : SHOP_BY_MOOD;
+    ? moodSection.config.items as ResolvedMoodTile[]
+    : withNoProducts(SHOP_BY_MOOD);
   const prepared = await Promise.all(renderable.map(async (item) => {
     if (["product_carousel", "product_grid", "all_products_preview", "custom_product_collection"].includes(item.sectionType)) {
       return { item, products: await productRows(item.config, item.sectionType === "all_products_preview") };
@@ -144,7 +154,7 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     }
     if (item.sectionType === "mood_tiles") {
       const value = item.config.items;
-      const tiles = Array.isArray(value) ? value as ShopByMoodContent : SHOP_BY_MOOD;
+      const tiles = Array.isArray(value) ? value as ResolvedMoodTile[] : withNoProducts(SHOP_BY_MOOD);
       return frame(item, <ShopByMood key={item.id} tiles={tiles} />);
     }
     if ("brands" in entry) return frame(item, <PageStudioFlexibleSection key={item.id} type={item.sectionType} config={item.config} brands={entry.brands} />);
