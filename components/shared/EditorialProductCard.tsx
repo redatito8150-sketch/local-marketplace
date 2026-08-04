@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Heart, Star } from "lucide-react";
+import { Heart, ShoppingBag, Star } from "lucide-react";
 import { formatPrice } from "@/lib/format";
+import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { getEffectivePrice } from "@/lib/pricing";
@@ -16,6 +17,7 @@ type EditorialProductCardProps = {
 };
 
 export default function EditorialProductCard({ product, badge, showOriginalPrice = false }: EditorialProductCardProps) {
+  const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
   const variant = product.variants?.find((item) => isVariantPurchasable(item)) ?? product.variants?.[0];
@@ -32,6 +34,24 @@ export default function EditorialProductCard({ product, badge, showOriginalPrice
       price: displayPrice,
       currency: product.currency,
       image: product.image,
+    });
+  };
+
+  const addToCart = () => {
+    addItem({
+      productId: product.id,
+      variantId: variant?.id,
+      name: product.name,
+      brand: product.brand,
+      brandSlug: product.brandSlug ?? "",
+      price: displayPrice,
+      currency: product.currency,
+      image: product.image,
+      size: variant?.optionValues.find((option) => option.optionTypeName === "Size")?.label ?? product.sizes[0] ?? "",
+      color: variant?.optionValues.find((option) => option.optionTypeName === "Color")?.label,
+      quantity: 1,
+      availableSizes: product.sizes,
+      availableColors: product.colors.map((item) => item.name),
     });
   };
 
@@ -54,9 +74,20 @@ export default function EditorialProductCard({ product, badge, showOriginalPrice
             <span className="ml-1 text-[9px] font-medium text-white/55">({product.reviewCount ?? 0})</span>
           </div>
         </div>
-        <div className="pointer-events-none absolute bottom-4 left-4 z-20 flex items-center gap-2 sm:bottom-[18px] sm:left-[18px]">
-          <p className="w-fit rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-[11px] font-bold leading-none text-white shadow-sm backdrop-blur-sm">{formatPrice(displayPrice, product.currency)}</p>
-          {showOriginalPrice && displayPrice < basePrice ? <span className="translate-y-1 text-[10px] font-semibold text-white/70 opacity-0 line-through drop-shadow-md transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">{formatPrice(basePrice, product.currency)}</span> : null}
+        <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex items-center justify-between gap-2 sm:inset-x-[18px] sm:bottom-[18px]">
+          <div className="flex items-center gap-2">
+            <p className="w-fit rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-[11px] font-bold leading-none text-white shadow-sm backdrop-blur-sm">{formatPrice(displayPrice, product.currency)}</p>
+            {showOriginalPrice && displayPrice < basePrice ? <span className="translate-y-1 text-[10px] font-semibold text-white/70 opacity-0 line-through drop-shadow-md transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">{formatPrice(basePrice, product.currency)}</span> : null}
+          </div>
+          <button
+            type="button"
+            onClick={addToCart}
+            disabled={!product.inStock}
+            aria-label={`Add ${product.name} to cart for ${formatPrice(displayPrice, product.currency)}`}
+            className="pointer-events-auto flex h-8 w-8 shrink-0 translate-y-2 items-center justify-center rounded-full bg-white/95 text-ink opacity-0 shadow-[0_3px_10px_rgba(0,0,0,0.12)] backdrop-blur transition duration-300 hover:scale-105 hover:bg-mahalyred hover:text-white disabled:cursor-not-allowed disabled:opacity-40 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+          >
+            <ShoppingBag className="h-3.5 w-3.5" strokeWidth={1.8} />
+          </button>
         </div>
       </div>
     </article>
