@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -23,6 +23,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { getEffectivePrice } from "@/lib/pricing";
 import EditorialProductCard from "@/components/shared/EditorialProductCard";
+import { DEFAULT_THEATER_GRADIENT, theaterGradientFromHex } from "@/lib/color/theaterGradient";
 import type { Product } from "@/types";
 
 type ProductKind = "clothing" | "accessories" | "shoes" | "bags";
@@ -114,7 +115,7 @@ function TheaterProductCard({ product, slot }: { product: Product; slot: number 
   );
 }
 
-function ProductTheater({ products }: { products: Product[] }) {
+function ProductTheater({ products, onActiveColorChange }: { products: Product[]; onActiveColorChange?: (hex: string | undefined) => void }) {
   const reduceMotion = useReducedMotion();
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
@@ -124,6 +125,10 @@ function ProductTheater({ products }: { products: Product[] }) {
   const activeProduct = products[activeIndex];
   const purchase = getPurchaseDetails(activeProduct);
   const wishlisted = isWishlisted(activeProduct.id);
+
+  useEffect(() => {
+    onActiveColorChange?.(activeProduct.colors[0]?.hex);
+  }, [activeProduct, onActiveColorChange]);
 
   const move = (direction: number) => {
     setActiveStep((current) => current + direction);
@@ -240,6 +245,10 @@ function ProductTheater({ products }: { products: Product[] }) {
 export default function NewArrivalsExperience({ products }: { products: Product[] }) {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [sort, setSort] = useState("newest");
+  const [heroGradient, setHeroGradient] = useState(DEFAULT_THEATER_GRADIENT);
+  const handleActiveColorChange = useCallback((hex: string | undefined) => {
+    setHeroGradient(theaterGradientFromHex(hex));
+  }, []);
   const arrivals = products;
   const theaterProducts = useMemo(() => arrivals.slice(0, 9), [arrivals]);
   const visibleArrivals = useMemo(() => {
@@ -257,7 +266,12 @@ export default function NewArrivalsExperience({ products }: { products: Product[
 
   return (
     <div className="bg-[#f7f3ee] text-ink">
-      <section className="relative overflow-hidden border-b border-[#eadfd7] bg-[radial-gradient(circle_at_50%_30%,#fffdfb_0%,#f8efea_43%,#f3e9e3_100%)]" aria-labelledby="new-arrivals-title">
+      <motion.section
+        animate={{ background: heroGradient }}
+        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+        className="relative overflow-hidden border-b border-[#eadfd7]"
+        aria-labelledby="new-arrivals-title"
+      >
         <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:linear-gradient(115deg,transparent_15%,rgba(255,255,255,.8)_48%,transparent_76%)]" />
         <div className="relative mx-auto max-w-[1600px]">
           <div className="relative z-30 flex flex-col items-center px-7 pb-1 pt-11 text-center sm:px-12 sm:pt-12 lg:pt-14">
@@ -268,7 +282,7 @@ export default function NewArrivalsExperience({ products }: { products: Product[
           </div>
           <div className="mx-auto w-full max-w-[1500px]">
             {theaterProducts.length ? (
-              <ProductTheater products={theaterProducts} />
+              <ProductTheater products={theaterProducts} onActiveColorChange={handleActiveColorChange} />
             ) : (
               <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 px-6 py-16 text-center sm:min-h-[420px]">
                 <p className="font-serif text-2xl text-[#12100f]">New drops are on the way.</p>
@@ -277,7 +291,7 @@ export default function NewArrivalsExperience({ products }: { products: Product[
             )}
           </div>
         </div>
-      </section>
+      </motion.section>
 
       <section id="more-to-explore" className="relative mx-auto max-w-[1500px] scroll-mt-24 px-5 pb-20 pt-10 sm:px-8 lg:px-12">
         <div className="relative z-20 rounded-[16px] border border-black/5 bg-white/90 px-3 shadow-[0_14px_45px_rgba(44,31,22,.10)] backdrop-blur-xl sm:px-5">
