@@ -179,9 +179,16 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   (full CRUD + checkout prefill), Settings (profile/password/delete),
   Notifications (preference toggles), Payment Methods (placeholder, no
   gateway yet), Recently Viewed, Followed Brands.
-- Redesigned public brand pages (`/brands/[slug]`) — real Follow, stats
-  band, Shop-the-Look, brand-scoped Best Sellers, a real product
-  filter/sort (shared with `/shop/[category]` via `useProductFilters`).
+- Redesigned public brand pages (`/brands/[slug]`, now a thin redirect to
+  `/brands/[slug]/products` with `/about`/`/collections`/`/reviews`
+  siblings) — real Follow and a real product filter/sort (shared with
+  `/shop/[category]` via `useProductFilters`). The original single-page
+  redesign also had a stats band, Shop-the-Look, and brand-scoped Best
+  Sellers; those components (`BrandStatsBand`, `ShopTheLook`,
+  `BrandBestSellers`) stopped being referenced once the page split into
+  sub-routes and were removed as dead code on 2026-08-05 — they are **not
+  currently live**. Re-adding any of them to the new route structure is
+  open work, not a revert.
 - Role-gated cross-navigation: admin ↔ brand-portal ↔ account, each link
   only visible to accounts with the matching role/ownership.
 - **Instant-Publish**: a brand owner/assistant's product

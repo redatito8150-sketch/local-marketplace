@@ -1,6 +1,26 @@
 -- ============================================================================
 -- LOCAL marketplace — Supabase schema
 -- Run this once in the Supabase SQL editor (or via `supabase db push`).
+--
+-- !!! KNOWN STALE — DO NOT PROVISION A NEW ENVIRONMENT FROM THIS FILE ALONE.
+-- As of 2026-08-05, this file reflects roughly migrations #1-21 of the 65
+-- files in supabase/migrations/ (through 20260727000001), plus one later
+-- file applied out of order. Migrations #22-65 (product taxonomy/options/
+-- variants rebuild, reviews system, inventory rebuild, multi-brand order
+-- splitting, custom roles/permissions, brand_id-based ownership replacing
+-- brand_slug, and more) are NOT reflected here at all — entire tables
+-- (reviews, product_options, taxonomy_nodes, collections, user_notifications,
+-- roles/permissions, and others), RLS policies, and RPC function bodies that
+-- exist live do not appear in this file.
+--
+-- To provision a fresh environment that actually matches production,
+-- replay every file in supabase/migrations/ in filename (chronological)
+-- order instead of running this file. Regenerating this file itself needs
+-- a live `supabase db dump`/`pg_dump` against the real project (not
+-- available in this pass — no Supabase CLI/direct Postgres connection
+-- string on hand) rather than a manual rewrite, to avoid shipping a
+-- "corrected" file that's still subtly wrong. Tracked as MIG-001 in
+-- docs/audits/2026-08-04-security-and-repository-organization/08-deferred-risks-and-recommendations.md.
 -- ============================================================================
 
 -- Needed for gen_random_uuid()

@@ -1,5 +1,19 @@
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 
+// Mirrors lib/seo.ts's SITE_URL resolution (NEXT_PUBLIC_SITE_URL, falling
+// back to Vercel's own production/preview URL) — kept in sync there so
+// admin-authored content that stores an absolute site URL (e.g. Shop by
+// Mood images edited via the CMS, instead of a relative path) doesn't get
+// rejected by next/image as an unconfigured remote host. Deliberately not
+// a hardcoded domain string, per lib/seo.ts's own "nothing hardcodes a
+// production domain" convention.
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ??
+  (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ??
+  "";
+const siteHostname = siteUrl ? new URL(siteUrl).hostname : "";
+
 // Deliberately permissive on script/style-src (`unsafe-inline`/`unsafe-eval`)
 // — Next.js's own hydration payload and dev/HMR need them, and a stricter
 // nonce-based policy is a separate, riskier change to get exactly right.
@@ -16,7 +30,7 @@ const CSP = [
   // outright and shows a broken image, regardless of any app-side fix.
   `img-src 'self' data: blob: https://images.unsplash.com https://i.imgur.com https://lh3.googleusercontent.com${
     supabaseUrl ? ` ${supabaseUrl}` : ""
-  }`,
+  }${siteHostname ? ` https://${siteHostname}` : ""}`,
   `connect-src 'self'${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
   "frame-ancestors 'self'",
   "base-uri 'self'",
@@ -40,6 +54,14 @@ const nextConfig = {
         hostname: "kdrrzrboibwyxzrfwsgu.supabase.co",
         pathname: "/storage/v1/object/public/**",
       },
+      ...(siteHostname
+        ? [
+            {
+              protocol: "https",
+              hostname: siteHostname,
+            },
+          ]
+        : []),
     ],
   },
   async headers() {
