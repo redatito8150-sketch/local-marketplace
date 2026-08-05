@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Mail } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import InlineError from "@/components/shared/InlineError";
 import { supabase } from "@/lib/supabase/client";
 
 export default function ForgotPasswordPage() {
@@ -66,11 +67,7 @@ export default function ForgotPasswordPage() {
               />
             </div>
 
-            {error && (
-              <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
-                {error}
-              </p>
-            )}
+            {error && <InlineError error={error} />}
 
             <button
               type="submit"

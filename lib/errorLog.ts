@@ -1,4 +1,4 @@
-import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "@/lib/discord";
+import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "./discord.ts";
 
 // Drop-in replacement for a bare console.error at every "this failed, but
 // don't throw" site in the codebase — keeps the exact same local server-log

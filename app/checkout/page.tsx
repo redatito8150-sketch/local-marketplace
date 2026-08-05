@@ -10,7 +10,10 @@ import { useAuth } from "@/context/AuthContext";
 import { formatSize } from "@/lib/format";
 import { useShippingPreview } from "@/lib/hooks/useShippingPreview";
 import { groupItemsByFulfillment, shipmentShippingFee } from "@/lib/cart/fulfillmentGroups";
-import type { AddressLabel, AddressRecord } from "@/types";
+import { fetchWithAppError } from "@/lib/errors/client";
+import InlineError from "@/components/shared/InlineError";
+import FieldError from "@/components/shared/FieldError";
+import type { AddressLabel, AddressRecord, AppError } from "@/types";
 
 type Step = "shipping" | "payment" | "confirmation";
 
@@ -71,7 +74,7 @@ export default function CheckoutPage() {
   );
   const [shipping, setShipping] = useState<ShippingForm>(EMPTY_SHIPPING);
   const [placing, setPlacing] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<AppError | null>(null);
 
   // Saved addresses for a signed-in shopper — lets checkout offer a real
   // selector instead of just prefilling the default into a flat form.
@@ -140,90 +143,84 @@ export default function CheckoutPage() {
     if (!couponInput.trim()) return;
     setCouponChecking(true);
     setCouponError("");
-    try {
-      const res = await fetch("/api/coupons/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: couponInput, subtotalEgp: subtotal.egp }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setCouponError(data.error ?? "This code isn't valid");
-        setAppliedCoupon(null);
-        return;
-      }
-      setAppliedCoupon({ code: data.code, discountEgp: data.discountEgp });
-    } catch {
-      setCouponError("Couldn't check that code — please try again.");
-    } finally {
-      setCouponChecking(false);
+
+    const result = await fetchWithAppError<{ code: string; discountEgp: number }>("/api/coupons/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: couponInput, subtotalEgp: subtotal.egp }),
+    });
+    setCouponChecking(false);
+
+    if (!result.ok) {
+      setCouponError(result.error.userMessage);
+      setAppliedCoupon(null);
+      return;
     }
+    setAppliedCoupon({ code: result.data.code, discountEgp: result.data.discountEgp });
   };
 
-  const placeOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitOrder = async () => {
     setPlacing(true);
-    setError("");
+    setError(null);
 
-    try {
-      // Using a saved address as-is → pass its id straight through.
-      // Typing a brand-new one with "save to my account" checked → create
-      // it first so the order can reference a real address id; left
-      // unchecked (or for guests, who have nowhere to save to) the order
-      // just uses the flat shipping fields with no addressId at all.
-      let addressId: string | undefined =
-        selectedAddressId !== NEW_ADDRESS ? selectedAddressId : undefined;
+    // Using a saved address as-is → pass its id straight through. Typing a
+    // brand-new one with "save to my account" checked → create it first so
+    // the order can reference a real address id; left unchecked (or for
+    // guests, who have nowhere to save to) the order just uses the flat
+    // shipping fields with no addressId at all.
+    let addressId: string | undefined =
+      selectedAddressId !== NEW_ADDRESS ? selectedAddressId : undefined;
 
-      if (selectedAddressId === NEW_ADDRESS && user && saveNewAddress) {
-        const saveRes = await fetch("/api/account/addresses", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            label: newAddressLabel,
-            firstName: shipping.firstName,
-            lastName: shipping.lastName,
-            phone: shipping.phone,
-            addressLine: shipping.address,
-            city: shipping.city,
-            governorate: shipping.governorate,
-          }),
-        });
-        if (saveRes.ok) {
-          const saved = await saveRes.json();
-          addressId = saved.id;
-        }
-      }
-
-      const res = await fetch("/api/orders", {
+    if (selectedAddressId === NEW_ADDRESS && user && saveNewAddress) {
+      const saveResult = await fetchWithAppError<{ id: string }>("/api/account/addresses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: items.map((item) => ({
-            productId: item.productId,
-            size: item.size,
-            color: item.color,
-            quantity: item.quantity,
-          })),
-          shipping,
-          couponCode: appliedCoupon?.code,
-          addressId,
+          label: newAddressLabel,
+          firstName: shipping.firstName,
+          lastName: shipping.lastName,
+          phone: shipping.phone,
+          addressLine: shipping.address,
+          city: shipping.city,
+          governorate: shipping.governorate,
         }),
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong placing your order.");
-        return;
-      }
-
-      setOrderNumbers(data.orderNumbers ?? []);
-      clearCart();
-      setStep("confirmation");
-    } catch {
-      setError("Something went wrong placing your order. Please try again.");
-    } finally {
-      setPlacing(false);
+      // Saving the address is a convenience, not a requirement for placing
+      // this order — if it fails, silently fall through to the flat
+      // shipping fields rather than blocking checkout over it.
+      if (saveResult.ok) addressId = saveResult.data.id;
     }
+
+    const orderResult = await fetchWithAppError<{ orderNumbers: string[] }>("/api/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: items.map((item) => ({
+          productId: item.productId,
+          size: item.size,
+          color: item.color,
+          quantity: item.quantity,
+        })),
+        shipping,
+        couponCode: appliedCoupon?.code,
+        addressId,
+      }),
+    });
+
+    setPlacing(false);
+    if (!orderResult.ok) {
+      setError(orderResult.error);
+      return;
+    }
+
+    setOrderNumbers(orderResult.data.orderNumbers ?? []);
+    clearCart();
+    setStep("confirmation");
+  };
+
+  const placeOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    void submitOrder();
   };
 
   if (items.length === 0 && step !== "confirmation") {
@@ -465,11 +462,7 @@ export default function CheckoutPage() {
                   </p>
                 </div>
 
-                {error && (
-                  <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
-                    {error}
-                  </p>
-                )}
+                {error && <InlineError error={error} onRetry={submitOrder} />}
 
                 <button
                   type="submit"
@@ -591,9 +584,7 @@ export default function CheckoutPage() {
                     </button>
                   </div>
                 )}
-                {couponError && (
-                  <p className="mt-1.5 text-[12px] text-red-600">{couponError}</p>
-                )}
+                <FieldError id="coupon-error" error={couponError || undefined} />
               </div>
 
               <div className="mt-4 space-y-2 border-t border-stone-150 pt-4 text-[13.5px] text-ink-soft/75">

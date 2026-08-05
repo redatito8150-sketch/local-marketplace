@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import BrandShoppingArea from "@/components/brand/BrandShoppingArea";
 import BrandEmptyState from "@/components/brand/BrandEmptyState";
+import { ProductCardSkeletonGrid } from "@/components/shared/ProductCardSkeleton";
 import { getBrandContent } from "@/lib/data/brands";
 import { buildDynamicFilterGroups } from "@/lib/filters";
 
@@ -20,7 +21,7 @@ export default async function BrandProductsPage({ params }: { params: Promise<{ 
   return (
     <section className="mx-auto max-w-brand px-5 py-6 sm:px-6 lg:px-10 lg:py-8">
       {brand.products.length ? (
-        <Suspense fallback={null}>
+        <Suspense fallback={<ProductCardSkeletonGrid count={brand.products.length > 12 ? 12 : brand.products.length} className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-4" />}>
           <BrandShoppingArea
             brandName={brand.name}
             products={brand.products}

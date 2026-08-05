@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, Loader2, MessageSquare, Upload, X } from "lucide-react";
+import InlineError from "@/components/shared/InlineError";
 import type { BrandApplicationRecord, BrandApplicationDocumentRecord, EgyptGovernorate, FulfillmentResponsibility } from "@/types";
 import {
   APPLICANT_ROLES,
@@ -362,7 +363,7 @@ export default function ApplyBrandForm({
       return true;
     } catch (e) {
       if (!quiet) {
-        setError(e instanceof Error ? e.message : "Failed to save your progress.");
+        setError(e instanceof Error ? e.message : "We couldn't save your progress. Check your connection and try again.");
       }
       return false;
     } finally {
@@ -414,7 +415,7 @@ export default function ApplyBrandForm({
       setApplication(res.application);
       setSubmitted(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to submit your application.");
+      setError(e instanceof Error ? e.message : "We couldn't submit your application. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -430,7 +431,7 @@ export default function ApplyBrandForm({
         setDocuments((docs) => [...docs, res.document]);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to upload document.");
+      setError(e instanceof Error ? e.message : "The document upload was interrupted. Check your connection and try again.");
     } finally {
       setUploading(false);
     }
@@ -442,7 +443,7 @@ export default function ApplyBrandForm({
       const res = await withdrawApplicationRequest();
       setApplication(res.application);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to withdraw application.");
+      setError(e instanceof Error ? e.message : "We couldn't withdraw your application. Check your connection and try again.");
     } finally {
       setWithdrawing(false);
     }
@@ -1043,11 +1044,7 @@ export default function ApplyBrandForm({
         </div>
       )}
 
-      {error && (
-        <p className="mt-5 max-w-2xl rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
-          {error}
-        </p>
-      )}
+      {error && <InlineError error={error} className="mt-5 max-w-2xl" />}
 
       <div className="mt-8 flex max-w-2xl items-center gap-3">
         {stepIndex > 0 && (
@@ -1229,6 +1226,7 @@ function Field({
   required?: boolean;
   error?: string;
 }) {
+  const errorId = error ? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-error` : undefined;
   return (
     <label className="block">
       <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
@@ -1239,11 +1237,17 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}
+        aria-invalid={Boolean(error)}
+        aria-describedby={errorId}
         className={`mt-1.5 w-full rounded-md border bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none focus:border-ink/30 ${
           error ? "border-red-300" : "border-stone-150"
         }`}
       />
-      {error && <span className="mt-1 block text-[12px] text-red-600">{error}</span>}
+      {error && (
+        <span id={errorId} role="alert" className="mt-1 block text-[12px] text-red-600">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

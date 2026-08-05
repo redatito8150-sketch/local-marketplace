@@ -1168,3 +1168,42 @@ export interface LegalSection {
   title: string;
   body: LegalBlock[];
 }
+
+// ── Normalized user-facing error contract ────────────────────────────────
+// Every API response and Supabase-auth-facing call site should describe a
+// failure using this shape (built via lib/errors/*) instead of a bare
+// string — one consistent contract for every error surface (field error,
+// form summary, inline banner, toast) instead of each page inventing its
+// own. `userMessage` is always safe to render as-is; raw technical detail
+// (Postgres/Supabase error text, stack traces) never belongs in this type
+// and must go through logError()/safeErrorResponse() instead.
+export type ErrorCategory =
+  | "validation"
+  | "authentication"
+  | "authorization"
+  | "conflict"
+  | "not_found"
+  | "rate_limit"
+  | "network"
+  | "timeout"
+  | "file_upload"
+  | "storage"
+  | "database_constraint"
+  | "server_unavailable"
+  | "external_provider"
+  | "unknown";
+
+export interface AppError {
+  category: ErrorCategory;
+  userMessage: string;
+  // Present only for validation errors with per-field detail — keyed by
+  // field name, same convention ApplyBrandForm's Zod-issue mapping already
+  // used, generalized so every form can share one shape.
+  fieldErrors?: Record<string, string>;
+  retryable: boolean;
+  suggestedAction?: string;
+  // Only set for the "unknown" category, where the real cause can't be
+  // safely described to the user — lets support trace it back through
+  // logError()'s Discord mirror without exposing anything in the UI itself.
+  correlationId?: string;
+}

@@ -10,6 +10,7 @@ import {
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getDeviceId } from "@/lib/deviceId";
+import { normalizeAuthError } from "@/lib/errors/authMessages";
 
 interface AuthResult {
   error?: string;
@@ -108,7 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+    if (error) return { error: normalizeAuthError("auth.signIn", error).userMessage };
 
     // Password alone only proves aal1. An account with a verified TOTP
     // factor also needs aal2 before it's really "signed in" — leave the
@@ -133,14 +134,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
         factorId: mfaChallenge.factorId,
       });
-      if (challengeError) return { error: challengeError.message };
+      if (challengeError) return { error: normalizeAuthError("auth.mfa.challenge", challengeError).userMessage };
 
       const { error: verifyError } = await supabase.auth.mfa.verify({
         factorId: mfaChallenge.factorId,
         challengeId: challenge.id,
         code,
       });
-      if (verifyError) return { error: verifyError.message };
+      if (verifyError) {
+        // The one auth failure mode with a genuinely more useful specific
+        // message than normalizeAuthError's defaults — an incorrect code
+        // is extremely common (typo, expired app entry) and "sign in
+        // again" (its default "session"/generic wording) would be
+        // actively misleading here.
+        return { error: /invalid|incorrect/i.test(verifyError.message) ? "That code is incorrect. Check your authenticator app and try again." : normalizeAuthError("auth.mfa.verify", verifyError).userMessage };
+      }
 
       setMfaChallenge(null);
       return {};
@@ -166,7 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           emailRedirectTo: `${window.location.origin}/account`,
         },
       });
-      if (error) return { error: error.message };
+      if (error) return { error: normalizeAuthError("auth.signUp", error).userMessage };
       // If email confirmation is required, Supabase returns a user but no
       // session — surface that distinctly so the UI can show the right message.
       if (data.user && !data.session) return { needsEmailConfirmation: true };
