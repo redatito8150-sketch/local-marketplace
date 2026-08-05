@@ -16,6 +16,7 @@ import {
   SHIPPING_COVERAGE_OPTIONS,
 } from "@/lib/join/constants";
 import ApplicationTransitionPanel from "@/components/admin/ApplicationTransitionPanel";
+import ApplicationDeletePanel from "@/components/admin/ApplicationDeletePanel";
 import ApplicationAdminNotes from "@/components/admin/ApplicationAdminNotes";
 import ApplicationDocumentsList from "@/components/admin/ApplicationDocumentsList";
 import ApproveAndCreateBrandButton from "@/components/admin/ApproveAndCreateBrandButton";
@@ -322,6 +323,9 @@ export default async function AdminApplicationDetailPage(
               currentStatus={application.status}
               initialNotes={application.adminNotes ?? ""}
             />
+          </Section>
+          <Section title="Danger zone">
+            <ApplicationDeletePanel applicationId={application.id} />
           </Section>
         </div>
       </div>

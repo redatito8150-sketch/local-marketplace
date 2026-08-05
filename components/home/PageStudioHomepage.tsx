@@ -14,7 +14,7 @@ import { getBestSellingProducts, getTrendingProducts } from "@/lib/data/collecti
 import { getBrandSummariesBySlug } from "@/lib/data/brands";
 import { PAGE_SECTION_REGISTRY, type PageSectionRecord } from "@/lib/pageStudio/registry";
 import type { ReactNode } from "react";
-import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, Product, ResolvedMoodTile } from "@/types";
+import type { HomeHeroContent, HomeHeroTilesContent, HomeProductSectionContent, ResolvedMoodTile } from "@/types";
 
 // The Page Studio draft/preview editor (/admin/page-studio/home/edit) can
 // render a raw, DB-authored "mood_tiles" section whose productIds were
@@ -27,25 +27,7 @@ const withNoProducts = (tiles: ShopByMoodContentFallback): ResolvedMoodTile[] =>
 type ShopByMoodContentFallback = typeof SHOP_BY_MOOD;
 
 const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/shop/all", bestsellers: "/shop/all", featured: "/shop/all?featured=true", all: "/shop/all" };
-// Decorative-only fallback data (Page Studio preview before any real
-// content/products exist) — never read from the DB, so the taxonomy
-// fields below are filler, not resolved from a real product type.
-const PREVIEW_TAXONOMY = { productTypeId: "", mainCategory: "", productGroup: "", productTypeName: "" };
-const PREVIEW_AUDIENCE: Record<"men" | "women" | "kids", Product["audience"]> = {
-  men: "men",
-  women: "women",
-  kids: "kids_baby",
-};
-const PREVIEW_PRODUCTS: Product[] = [
-  { id: "preview-stone-overshirt", category: "men", audience: PREVIEW_AUDIENCE.men, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Stone Linen Overshirt", price: 1850, currency: "EGP", rating: 5, reviewCount: 18, image: "/images/products/saqr-stone-overshirt/main.webp", sizes: ["S", "M", "L"], colors: [], inStock: true },
-  { id: "preview-cloud-cardigan", category: "women", audience: PREVIEW_AUDIENCE.women, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Cloud Knit Cardigan", price: 1420, currency: "EGP", rating: 5, reviewCount: 24, image: "/images/products/nabta-cloud-cardigan/main.webp", sizes: ["S", "M", "L"], colors: [], inStock: true },
-  { id: "preview-field-bag", category: "men", audience: PREVIEW_AUDIENCE.men, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Field Leather Bag", price: 2100, currency: "EGP", rating: 4, reviewCount: 11, image: "/images/products/saqr-field-bag/main.webp", sizes: [], colors: [], inStock: true },
-  { id: "preview-sage-jacket", category: "kids", audience: PREVIEW_AUDIENCE.kids, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Sage Chore Jacket", price: 1180, currency: "EGP", rating: 5, reviewCount: 16, image: "/images/products/nabta-sage-chore-jacket/main.webp", sizes: ["4Y", "6Y", "8Y"], colors: [], inStock: true },
-  { id: "preview-navy-polo", category: "men", audience: PREVIEW_AUDIENCE.men, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Navy Knit Polo", price: 1320, currency: "EGP", rating: 4, reviewCount: 21, image: "/images/products/saqr-navy-knit-polo/main.webp", sizes: ["M", "L", "XL"], colors: [], inStock: true },
-  { id: "preview-coral-daypack", category: "kids", audience: PREVIEW_AUDIENCE.kids, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Coral Daypack", price: 890, currency: "EGP", rating: 5, reviewCount: 13, image: "/images/products/nabta-coral-daypack/main.webp", sizes: [], colors: [], inStock: true },
-  { id: "preview-leather-loafer", category: "men", audience: PREVIEW_AUDIENCE.men, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Cairo Leather Loafer", price: 2450, currency: "EGP", rating: 5, reviewCount: 29, image: "/images/products/saqr-leather-loafer/main.webp", sizes: ["41", "42", "43"], colors: [], inStock: true },
-  { id: "preview-sky-tee", category: "kids", audience: PREVIEW_AUDIENCE.kids, ...PREVIEW_TAXONOMY, brand: "Mahaly", name: "Sky Pocket Tee", price: 620, currency: "EGP", rating: 4, reviewCount: 10, image: "/images/products/nabta-sky-pocket-tee/main.webp", sizes: ["4Y", "6Y", "8Y"], colors: [], inStock: true },
-];
+
 function section(sections: PageSectionRecord[], key: string) {
   return sections.find((item) => item.sectionKey === key && item.visible);
 }
@@ -99,11 +81,10 @@ export default async function PageStudioHomepage({ sections, editMode = false }:
     // entirely by which brand(s) the admin marked Sponsored.
     item.sectionType !== "featured_brand"
   );
-  // Keep this design-preview branch independent from the live catalog while
-  // it runs locally alongside other worktrees. The real product sections can
-  // be reconnected when the design is approved.
-  const homepageProducts = PREVIEW_PRODUCTS;
-  const newestProducts = homepageProducts.slice(0, 10);
+  const [homepageProducts, newestProducts] = await Promise.all([
+    getAllActiveProducts(10, "newest"),
+    getNewArrivals(10),
+  ]);
   const moodSection = section(sections, "shop_by_mood");
   const moodTiles = Array.isArray(moodSection?.config.items)
     ? moodSection.config.items as ResolvedMoodTile[]
