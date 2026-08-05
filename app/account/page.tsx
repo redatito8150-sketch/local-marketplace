@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import PasswordInput from "@/components/shared/PasswordInput";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import AuthOrbitStage from "@/components/auth/AuthOrbitStage";
+import AuthPageSkeleton from "@/components/auth/AuthPageSkeleton";
 import { decidePostAuthDestination } from "@/lib/auth/postAuthDestination";
 
 const inputClass =
@@ -34,7 +35,7 @@ function SocialOptions({ next }: { next?: string | null }) {
 }
 
 export default function AccountPage() {
-  return <Suspense fallback={<div className="min-h-screen bg-[#f4eee7]" />}><AccountPageContent /></Suspense>;
+  return <Suspense fallback={<AuthPageSkeleton />}><AccountPageContent /></Suspense>;
 }
 
 function AccountPageContent() {
