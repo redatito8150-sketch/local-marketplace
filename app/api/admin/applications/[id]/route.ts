@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminUser } from "@/lib/supabase/adminAuth";
+import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
@@ -242,4 +242,60 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
 
   return NextResponse.json({ id: params.id, status: nextStatus });
+}
+
+// Deleting an application is irreversible (unlike status transitions, which
+// can be corrected with another PATCH), so this requires the top staff rank
+// rather than the plain requireAdminUser() the PATCH handler above uses.
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
+  const staff = await requireStaffRole("admin");
+  if (!staff) {
+    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  }
+
+  let body: { reason?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
+  if (!reason) {
+    return NextResponse.json({ error: "A reason is required to delete an application." }, { status: 400 });
+  }
+
+  const application = await getApplicationForAdmin(params.id);
+  if (!application) {
+    return NextResponse.json({ error: "Application not found" }, { status: 404 });
+  }
+
+  // Child tables carry a FK on application_id — must go before the parent
+  // row, same ordering used by the brand_applications rows this mirrors.
+  const childTables = [
+    "brand_application_revisions",
+    "brand_application_status_history",
+    "brand_application_documents",
+    "brand_application_information_requests",
+  ];
+  for (const table of childTables) {
+    const { error } = await supabaseAdmin.from(table).delete().eq("application_id", params.id);
+    if (error) return safeErrorResponse("admin.applications.delete", error);
+  }
+
+  const { error } = await supabaseAdmin.from("brand_applications").delete().eq("id", params.id);
+  if (error) return safeErrorResponse("admin.applications.delete", error);
+
+  await logAudit({
+    actorId: staff.user.id,
+    actorLabel: staff.user.email ?? staff.user.id,
+    entityType: "application",
+    entityId: params.id,
+    action: "delete",
+    before: application,
+    after: { reason },
+  });
+
+  return NextResponse.json({ id: params.id, deleted: true });
 }
