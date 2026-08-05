@@ -162,29 +162,37 @@ export default function DealsExperience({ products }: { products: Product[] }) {
             <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#e5bd78]">The Mahaly offer</motion.p>
             <motion.h1 id="deals-title" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65 }} className="mt-3 font-serif text-[44px] font-semibold leading-[0.98] tracking-[-0.04em] sm:text-[56px] lg:text-[clamp(48px,4vw,68px)]">The pieces you saved.<br />Now within reach.</motion.h1>
             <p className="mt-5 max-w-sm text-[13px] leading-6 text-white/70">Limited-time prices from independent local brands — selected from the offers ending first.</p>
-            <div className="mt-8 rounded-[14px] border border-[#d6a45d]/70 bg-black/10 px-4 py-3 shadow-[0_15px_45px_rgba(0,0,0,.18)] backdrop-blur sm:inline-flex sm:items-center sm:gap-5">
-              <div className="flex items-center gap-2 border-b border-white/15 pb-3 text-[12px] sm:border-b-0 sm:border-r sm:pb-0 sm:pr-5"><Clock3 className="h-5 w-5 text-[#e5bd78]" strokeWidth={1.5} />Offer ends in</div>
-              <div className="mt-3 flex items-start gap-4 sm:mt-0">
-                {[{ value: countdown.days, label: "days" }, { value: countdown.hours, label: "hrs" }, { value: countdown.minutes, label: "min" }].map((part, index) => <div key={part.label} className="flex items-start gap-4"><div className="text-center"><span className="font-serif text-[25px] leading-none">{part.value}</span><span className="mt-1 block text-[8px] uppercase tracking-widest text-white/50">{part.label}</span></div>{index < 2 ? <span className="mt-1 text-[#d6a45d]">·</span> : null}</div>)}
-              </div>
+            {heroProducts.length ? (
+              <>
+                <div className="mt-8 rounded-[14px] border border-[#d6a45d]/70 bg-black/10 px-4 py-3 shadow-[0_15px_45px_rgba(0,0,0,.18)] backdrop-blur sm:inline-flex sm:items-center sm:gap-5">
+                  <div className="flex items-center gap-2 border-b border-white/15 pb-3 text-[12px] sm:border-b-0 sm:border-r sm:pb-0 sm:pr-5"><Clock3 className="h-5 w-5 text-[#e5bd78]" strokeWidth={1.5} />Offer ends in</div>
+                  <div className="mt-3 flex items-start gap-4 sm:mt-0">
+                    {[{ value: countdown.days, label: "days" }, { value: countdown.hours, label: "hrs" }, { value: countdown.minutes, label: "min" }].map((part, index) => <div key={part.label} className="flex items-start gap-4"><div className="text-center"><span className="font-serif text-[25px] leading-none">{part.value}</span><span className="mt-1 block text-[8px] uppercase tracking-widest text-white/50">{part.label}</span></div>{index < 2 ? <span className="mt-1 text-[#d6a45d]">·</span> : null}</div>)}
+                  </div>
+                </div>
+                <p className="mt-3 text-[10px] text-white/45">Prices return when the timer ends.</p>
+              </>
+            ) : (
+              <p className="mt-8 text-[13px] text-white/60">No active offers right now — check back soon.</p>
+            )}
+          </div>
+        </div>
+        {heroProducts.length ? (
+          <div className="relative z-10 min-h-[360px] overflow-x-auto bg-transparent lg:min-h-0 lg:overflow-hidden">
+            <div aria-hidden className="absolute inset-0 hidden lg:grid lg:grid-cols-[1.3fr_1fr_1fr]">
+              {heroProducts.map((product, index) => <HeroBackdrop key={product.id} product={product} index={index} isFirst={index === 0} isLast={index === heroProducts.length - 1} />)}
             </div>
-            <p className="mt-3 text-[10px] text-white/45">Prices return when the timer ends.</p>
+            <div aria-hidden className="pointer-events-none absolute inset-0 z-[7] hidden bg-[#390809] opacity-95 [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_3px,rgba(255,255,255,.06)_4px,transparent_5px)] lg:block [clip-path:polygon(0_0,12.6%_0,0_100%)]" />
+            <svg aria-hidden viewBox="0 0 1000 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[8] hidden h-full w-full lg:block">
+              <path d="M 126 0 L 0 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+              <path d="M 429 0 L 303 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+              <path d="M 732 0 L 606 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
+            </svg>
+            <div className="relative z-10 grid min-h-[360px] w-max min-w-full grid-cols-[repeat(3,minmax(250px,1fr))] gap-[3px] lg:h-full lg:min-h-0 lg:w-full lg:grid-cols-3 lg:gap-0">
+              {heroProducts.map((product, index) => <HeroDeal key={product.id} product={product} index={index} />)}
+            </div>
           </div>
-        </div>
-        <div className="relative z-10 min-h-[360px] overflow-x-auto bg-transparent lg:min-h-0 lg:overflow-hidden">
-          <div aria-hidden className="absolute inset-0 hidden lg:grid lg:grid-cols-[1.3fr_1fr_1fr]">
-            {heroProducts.map((product, index) => <HeroBackdrop key={product.id} product={product} index={index} isFirst={index === 0} isLast={index === heroProducts.length - 1} />)}
-          </div>
-          <div aria-hidden className="pointer-events-none absolute inset-0 z-[7] hidden bg-[#390809] opacity-95 [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_3px,rgba(255,255,255,.06)_4px,transparent_5px)] lg:block [clip-path:polygon(0_0,12.6%_0,0_100%)]" />
-          <svg aria-hidden viewBox="0 0 1000 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-[8] hidden h-full w-full lg:block">
-            <path d="M 126 0 L 0 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-            <path d="M 429 0 L 303 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-            <path d="M 732 0 L 606 100" fill="none" stroke="white" strokeWidth="3" vectorEffect="non-scaling-stroke" />
-          </svg>
-          <div className="relative z-10 grid min-h-[360px] w-max min-w-full grid-cols-[repeat(3,minmax(250px,1fr))] gap-[3px] lg:h-full lg:min-h-0 lg:w-full lg:grid-cols-3 lg:gap-0">
-            {heroProducts.map((product, index) => <HeroDeal key={product.id} product={product} index={index} />)}
-          </div>
-        </div>
+        ) : null}
       </section>
 
       <section className="mx-auto max-w-[1500px] px-5 pb-20 pt-5 sm:px-8 lg:px-12">

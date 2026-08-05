@@ -87,12 +87,12 @@ export const CATEGORIES: Record<CategorySlug, CategoryContent> = {
       },
     ],
     featuredBrand: {
-      heading: "SAQR CAIRO",
+      heading: "Featured Local Brand",
       description:
-        "Measured tailoring, relaxed utility, and considered menswear made in Cairo.",
-      ctaLabel: "Discover SAQR",
-      image: "/images/brands/saqr-cairo/campaign.webp",
-      href: "/brands/saqr-cairo",
+        "Measured tailoring, relaxed utility, and considered menswear from Egypt's independent makers.",
+      ctaLabel: "Discover The Brand",
+      image:
+        "https://images.unsplash.com/photo-1516257984-b1b4d707412e?w=1600&q=80",
     },
   },
   kids: {
@@ -134,12 +134,12 @@ export const CATEGORIES: Record<CategorySlug, CategoryContent> = {
       },
     ],
     featuredBrand: {
-      heading: "NABTA KIDS",
+      heading: "Featured Local Brand",
       description:
         "Soft natural fabrics, happy color, and practical shapes for growing adventures.",
-      ctaLabel: "Discover NABTA",
-      image: "/images/brands/nabta-kids/campaign.webp",
-      href: "/brands/nabta-kids",
+      ctaLabel: "Discover The Brand",
+      image:
+        "https://images.unsplash.com/photo-1522771930-78848d9293e8?w=1600&q=80",
     },
   },
 };

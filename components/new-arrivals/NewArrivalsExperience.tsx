@@ -27,51 +27,6 @@ import type { Product } from "@/types";
 
 type ProductKind = "clothing" | "accessories" | "shoes" | "bags";
 
-function previewProduct(
-  id: string,
-  name: string,
-  brand: string,
-  price: number,
-  image: string,
-  audience: Product["audience"],
-  productTypeName: string,
-): Product {
-  return {
-    id,
-    name,
-    brand,
-    brandSlug: brand.toLowerCase().replace(/\s+/g, "-"),
-    price,
-    currency: "EGP",
-    image,
-    audience,
-    category: audience === "kids_baby" ? "kids" : audience === "women" ? "women" : "men",
-    productTypeId: id,
-    mainCategory: productTypeName === "Bag" ? "Accessories" : "Fashion",
-    productGroup: productTypeName,
-    productTypeName,
-    rating: 4.8,
-    reviewCount: 24,
-    sizes: [],
-    colors: [],
-    inStock: true,
-    variants: [],
-    isNew: true,
-  };
-}
-
-const PREVIEW_ARRIVALS: Product[] = [
-  previewProduct("stone-overshirt", "Stone Linen Overshirt", "SAQR CAIRO", 1850, "/images/products/saqr-stone-overshirt/main.webp", "men", "Shirt"),
-  previewProduct("charcoal-trouser", "Tailored Linen Pant", "SAQR CAIRO", 1650, "/images/products/saqr-charcoal-trouser/main.webp", "men", "Trousers"),
-  previewProduct("field-bag", "Leather Crossbody Bag", "SAQR CAIRO", 2950, "/images/products/saqr-field-bag/main.webp", "unisex", "Bag"),
-  previewProduct("leather-loafer", "Cairo Leather Loafer", "SAQR CAIRO", 2450, "/images/products/saqr-leather-loafer/main.webp", "men", "Shoes"),
-  previewProduct("sand-blazer", "Sand Linen Blazer", "SAQR CAIRO", 2750, "/images/products/saqr-sand-linen-blazer/main.webp", "men", "Blazer"),
-  previewProduct("navy-polo", "Navy Knit Polo", "SAQR CAIRO", 1320, "/images/products/saqr-navy-knit-polo/main.webp", "men", "Shirt"),
-  previewProduct("cloud-cardigan", "Cloud Knit Cardigan", "NABTA", 1420, "/images/products/nabta-cloud-cardigan/main.webp", "women", "Cardigan"),
-  previewProduct("coral-daypack", "Coral Daypack", "NABTA", 890, "/images/products/nabta-coral-daypack/main.webp", "kids_baby", "Bag"),
-  previewProduct("sunstep-sneaker", "Sunstep Sneaker", "NABTA", 980, "/images/products/nabta-sunstep-sneaker/main.webp", "kids_baby", "Shoes"),
-];
-
 const FILTERS = [
   { id: "all", label: "All", icon: Grid2X2 },
   { id: "women", label: "Women", icon: UserRound },
@@ -285,7 +240,7 @@ function ProductTheater({ products }: { products: Product[] }) {
 export default function NewArrivalsExperience({ products }: { products: Product[] }) {
   const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [sort, setSort] = useState("newest");
-  const arrivals = useMemo(() => products.length ? products : PREVIEW_ARRIVALS, [products]);
+  const arrivals = products;
   const theaterProducts = useMemo(() => arrivals.slice(0, 9), [arrivals]);
   const visibleArrivals = useMemo(() => {
     const filtered = arrivals.filter((item) => {
@@ -312,7 +267,14 @@ export default function NewArrivalsExperience({ products }: { products: Product[
             <Link href="#more-to-explore" className="group mt-3 inline-flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.04em] text-[#cc1115]">The everyday edit <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" strokeWidth={1.8} /></Link>
           </div>
           <div className="mx-auto w-full max-w-[1500px]">
-            <ProductTheater products={theaterProducts} />
+            {theaterProducts.length ? (
+              <ProductTheater products={theaterProducts} />
+            ) : (
+              <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 px-6 py-16 text-center sm:min-h-[420px]">
+                <p className="font-serif text-2xl text-[#12100f]">New drops are on the way.</p>
+                <p className="max-w-sm text-[13px] text-[#5f5a56]">Check back soon — this space will feature the newest pieces from Mahaly&apos;s independent brands.</p>
+              </div>
+            )}
           </div>
         </div>
       </section>
