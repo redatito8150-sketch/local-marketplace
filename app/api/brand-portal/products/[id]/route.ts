@@ -140,7 +140,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     valueIdsByOptionType: new Map(Object.entries(productBody.valueIdsByOptionType)),
   });
   if (!optionsResult.ok) {
-    return NextResponse.json({ error: `Product updated, but ${optionsResult.error}` }, { status: 500 });
+    return NextResponse.json({ error: `Product updated. However, ${optionsResult.error}` }, { status: 500 });
   }
 
   const variantsResult = await syncProductVariants({
@@ -151,7 +151,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   });
   if (!variantsResult.ok) {
-    return NextResponse.json({ error: `Product updated, but ${variantsResult.error}` }, { status: 500 });
+    return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
   }
 
   const colorImagesResult = await replaceProductColorImages({
@@ -159,10 +159,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     colorImages: productBody.colorImages,
   });
   if (!colorImagesResult.ok) {
-    return NextResponse.json({ error: `Product updated, but ${colorImagesResult.error}` }, { status: 500 });
+    return NextResponse.json({ error: `Product updated. However, ${colorImagesResult.error}` }, { status: 500 });
   }
   const mediaResult = await replaceProductMedia({ productId: params.id, coverUrl: productBody.image, galleryUrls: productBody.images ?? [], colorImages: productBody.colorImages });
-  if (!mediaResult.ok) return NextResponse.json({ error: `Product updated, but ${mediaResult.error}` }, { status: 500 });
+  if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
 

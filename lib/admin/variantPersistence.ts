@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildComboKey } from "@/lib/inventory/variantCombinations";
 import { buildVariantSkuBase, buildVariantSkuWithSuffix } from "@/lib/inventory/variantSku";
+import { logError } from "@/lib/errorLog";
 import type { SellingStatus } from "@/types";
 
 export interface VariantEditInput {
@@ -16,6 +17,17 @@ export interface VariantEditInput {
 export type SyncVariantsResult =
   | { ok: true; variantIds: string[]; removedArchivedCount: number; removedDeletedCount: number }
   | { ok: false; error: string };
+
+// Every `error` string this module returns used to interpolate the raw
+// Postgres error message (`${error.message}`) straight into text that
+// flowed, unmodified, all the way to the client's error banner — a real
+// internal-detail leak (schema/constraint text reaching the browser). The
+// real message is now only ever passed to logError() (console + Discord
+// #errors mirror); every returned `error` is a fixed, safe string.
+function fail(context: string, pgError: { message: string }, safeMessage: string): { ok: false; error: string } {
+  logError(context, pgError.message);
+  return { ok: false, error: safeMessage };
+}
 
 // Safe variant regeneration: matches submitted combinations against
 // existing variants by their (order-independent) combo key. A match
@@ -40,7 +52,7 @@ export async function syncProductVariants(params: {
     .eq("product_id", productId)
     .eq("is_archived", false);
   if (existingError) {
-    return { ok: false, error: `Failed to load existing variants: ${existingError.message}` };
+    return fail("variantPersistence.loadExisting", existingError, "We couldn't load this product's current variants. Try again.");
   }
   const existingByCombo = new Map((existingRows ?? []).map((row) => [row.combo_key as string, row.id as string]));
 
@@ -57,7 +69,7 @@ export async function syncProductVariants(params: {
       .select("id, sku_token")
       .in("id", allValueIds);
     if (valuesError) {
-      return { ok: false, error: `Failed to resolve option values: ${valuesError.message}` };
+      return fail("variantPersistence.resolveOptionValues", valuesError, "We couldn't resolve this product's color/size options. Try again.");
     }
     for (const v of values ?? []) tokenById.set(v.id as string, v.sku_token as string);
   }
@@ -77,7 +89,7 @@ export async function syncProductVariants(params: {
         })
         .eq("id", existingId);
       if (updateError) {
-        return { ok: false, error: `Failed to update variant: ${updateError.message}` };
+        return fail("variantPersistence.updateVariant", updateError, "We couldn't save this variant's changes. Try again.");
       }
       variantIds.push(existingId);
       continue;
@@ -89,7 +101,7 @@ export async function syncProductVariants(params: {
     const tokens = edit.optionValueIds.map((id) => tokenById.get(id)).filter((t): t is string => Boolean(t));
     const base = buildVariantSkuBase(productSku, tokens);
     let newVariantId: string | null = null;
-    let lastError: string | null = null;
+    let lastError: { message: string } | null = null;
     for (let attempt = 0; attempt < 5 && !newVariantId; attempt++) {
       const sku = buildVariantSkuWithSuffix(base, attempt);
       const { data: inserted, error: insertError } = await supabaseAdmin.rpc(
@@ -110,14 +122,18 @@ export async function syncProductVariants(params: {
       if (!insertError && inserted) {
         newVariantId = inserted as string;
       } else if (insertError && insertError.code !== "23505") {
-        lastError = insertError.message;
+        lastError = insertError;
         break;
       } else if (insertError) {
-        lastError = insertError.message;
+        lastError = insertError;
       }
     }
     if (!newVariantId) {
-      return { ok: false, error: `Failed to generate a unique variant SKU: ${lastError ?? "unknown error"}` };
+      return fail(
+        "variantPersistence.generateSku",
+        lastError ?? { message: "unknown error" },
+        "We couldn't generate a unique SKU for this variant. Try saving again."
+      );
     }
 
     variantIds.push(newVariantId);
@@ -148,7 +164,7 @@ export async function syncProductVariants(params: {
         .update({ is_archived: true })
         .eq("id", existingId);
       if (archiveError) {
-        return { ok: false, error: `Failed to archive removed variant: ${archiveError.message}` };
+        return fail("variantPersistence.archiveVariant", archiveError, "We couldn't remove this variant. Try again.");
       }
       removedArchivedCount += 1;
     } else {
@@ -157,7 +173,7 @@ export async function syncProductVariants(params: {
         .delete()
         .eq("id", existingId);
       if (deleteError) {
-        return { ok: false, error: `Failed to remove variant: ${deleteError.message}` };
+        return fail("variantPersistence.deleteVariant", deleteError, "We couldn't remove this variant. Try again.");
       }
       removedDeletedCount += 1;
     }
@@ -179,7 +195,7 @@ export async function replaceProductColorImages(params: {
     .delete()
     .eq("product_id", productId);
   if (deleteError) {
-    return { ok: false, error: `Failed to reset color images: ${deleteError.message}` };
+    return fail("variantPersistence.resetColorImages", deleteError, "We couldn't save the color images. Try again.");
   }
 
   const entries = Object.entries(colorImages).filter(([, url]) => url?.trim());
@@ -189,7 +205,7 @@ export async function replaceProductColorImages(params: {
     entries.map(([optionValueId, imageUrl]) => ({ product_id: productId, option_value_id: optionValueId, image_url: imageUrl }))
   );
   if (insertError) {
-    return { ok: false, error: `Failed to save color images: ${insertError.message}` };
+    return fail("variantPersistence.saveColorImages", insertError, "We couldn't save the color images. Try again.");
   }
   return { ok: true };
 }
@@ -205,7 +221,7 @@ export async function replaceProductMedia(params: {
   const orderedUrls = [...new Set([params.coverUrl, ...params.galleryUrls, ...Object.values(params.colorImages)].filter(Boolean))].slice(0, 50);
   const colorByUrl = new Map(Object.entries(params.colorImages).map(([valueId, url]) => [url, valueId]));
   const { error: deleteError } = await supabaseAdmin.from("product_media").delete().eq("product_id", params.productId);
-  if (deleteError) return { ok: false, error: `Failed to reset product media: ${deleteError.message}` };
+  if (deleteError) return fail("variantPersistence.resetMedia", deleteError, "We couldn't save the product media. Try again.");
   if (!orderedUrls.length) return { ok: true };
   const { error } = await supabaseAdmin.from("product_media").insert(orderedUrls.map((url, displayOrder) => ({
     product_id: params.productId,
@@ -214,7 +230,7 @@ export async function replaceProductMedia(params: {
     is_cover: url === params.coverUrl,
     color_option_value_id: colorByUrl.get(url) ?? null,
   })));
-  return error ? { ok: false, error: `Failed to save product media: ${error.message}` } : { ok: true };
+  return error ? fail("variantPersistence.saveMedia", error, "We couldn't save the product media. Try again.") : { ok: true };
 }
 
 // Replaces a product's option-type/value selections (product_options /
@@ -233,7 +249,7 @@ export async function replaceProductOptionSelections(params: {
     .delete()
     .eq("product_id", productId);
   if (deleteError) {
-    return { ok: false, error: `Failed to reset product options: ${deleteError.message}` };
+    return fail("variantPersistence.resetOptions", deleteError, "We couldn't save the product's variant options. Try again.");
   }
 
   for (let i = 0; i < optionTypeIdsInOrder.length; i++) {
@@ -244,7 +260,7 @@ export async function replaceProductOptionSelections(params: {
       .select("id")
       .single();
     if (insertError || !created) {
-      return { ok: false, error: `Failed to save product options: ${insertError?.message}` };
+      return fail("variantPersistence.saveOptions", insertError ?? { message: "insert returned no row" }, "We couldn't save the product's variant options. Try again.");
     }
 
     const valueIds = valueIdsByOptionType.get(optionTypeId) ?? [];
@@ -257,7 +273,7 @@ export async function replaceProductOptionSelections(params: {
         }))
       );
       if (valuesError) {
-        return { ok: false, error: `Failed to save product option values: ${valuesError.message}` };
+        return fail("variantPersistence.saveOptionValues", valuesError, "We couldn't save the product's variant options. Try again.");
       }
     }
   }

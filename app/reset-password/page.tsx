@@ -8,6 +8,8 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { supabase } from "@/lib/supabase/client";
 import PasswordInput from "@/components/shared/PasswordInput";
+import InlineError from "@/components/shared/InlineError";
+import { normalizeAuthError } from "@/lib/errors/authMessages";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -52,7 +54,7 @@ export default function ResetPasswordPage() {
     setSubmitting(false);
 
     if (error) {
-      setError(error.message);
+      setError(normalizeAuthError("auth.resetPassword", error).userMessage);
       return;
     }
     setDone(true);
@@ -103,11 +105,7 @@ export default function ResetPasswordPage() {
               inputClassName="w-full rounded-md border border-stone-150 bg-white py-3 pl-11 pr-11 text-[14px] text-ink outline-none focus:border-ink/30"
             />
 
-            {error && (
-              <p className="rounded-md bg-red-50 px-3.5 py-2.5 text-[13px] font-medium text-red-700">
-                {error}
-              </p>
-            )}
+            {error && <InlineError error={error} />}
 
             <button
               type="submit"
