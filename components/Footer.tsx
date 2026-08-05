@@ -3,7 +3,7 @@ import { LockKeyhole, RefreshCw, LayoutGrid } from "lucide-react";
 import Logo from "@/components/shared/Logo";
 
 const columns = [
-  { title: "Shop", links: ["New arrivals", "Best sellers", "Women", "Men", "Home", "Kids"] },
+  { title: "Shop", links: ["New arrivals", "Women", "Men", "Home", "Kids"] },
   { title: "Discover", links: ["Brands", "Collections", "Stories", "Gift cards", "Local guides"] },
   { title: "Help", links: ["Contact us", "FAQs", "Shipping & returns", "Terms & conditions", "Privacy Policy"] },
   { title: "About", links: ["Our mission", "For brands", "Careers", "Press"] },
@@ -16,7 +16,6 @@ const columns = [
 // text instead of a dead hash link.
 const FOOTER_HREFS: Record<string, string> = {
   "New arrivals": "/new-arrivals",
-  "Best sellers": "/best-sellers",
   Women: "/shop/women",
   Men: "/shop/men",
   Home: "/shop/home",

@@ -26,7 +26,7 @@ const withNoProducts = (tiles: ShopByMoodContentFallback): ResolvedMoodTile[] =>
   tiles.map((tile) => ({ ...tile, products: [] }));
 type ShopByMoodContentFallback = typeof SHOP_BY_MOOD;
 
-const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/trending", bestsellers: "/best-sellers", featured: "/shop/all?featured=true", all: "/shop/all" };
+const VIEW_ALL_HREF: Record<string, string> = { new: "/new-arrivals", trending: "/shop/all", bestsellers: "/shop/all", featured: "/shop/all?featured=true", all: "/shop/all" };
 // Decorative-only fallback data (Page Studio preview before any real
 // content/products exist) — never read from the DB, so the taxonomy
 // fields below are filler, not resolved from a real product type.

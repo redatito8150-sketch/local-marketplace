@@ -35,9 +35,7 @@ export function absoluteUrl(path: string): string {
 // separate change from this one.
 export const PUBLIC_STATIC_ROUTES = [
   "",
-  "/best-sellers",
   "/new-arrivals",
-  "/trending",
   "/brands",
   "/journal",
   "/join-as-a-brand",
