@@ -1,10 +1,10 @@
 import Skeleton from "@/components/shared/Skeleton";
 
-// Matches CompactProductCard/EditorialProductCard's shared shape: a full-
-// bleed aspect-[0.78] rounded-[18px] image tile with a price pill anchored
-// at the bottom-left. Used everywhere those cards appear (homepage
-// sections, New Arrivals, Offers, wishlist, search results) instead of
-// each grid hand-rolling its own placeholder rectangle.
+// Matches ProductTile/CompactProductCard's shared shape: a full-bleed
+// aspect-[0.78] rounded-[18px] image tile with a price pill anchored at
+// the bottom-left. Used everywhere those cards appear (homepage sections,
+// New Arrivals, Offers, wishlist, search results) instead of each grid
+// hand-rolling its own placeholder rectangle.
 export default function ProductCardSkeleton() {
   return (
     <div className="relative aspect-[0.78] overflow-hidden rounded-[18px] bg-stone-100">

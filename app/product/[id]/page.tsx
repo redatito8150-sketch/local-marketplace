@@ -7,7 +7,7 @@ import ProductAccordion from "@/components/product/ProductAccordion";
 import ProductReviews from "@/components/product/ProductReviews";
 import RelatedProducts from "@/components/product/RelatedProducts";
 import RecentlyViewedTracker from "@/components/product/RecentlyViewedTracker";
-import { getProductById, getRelatedProductCards } from "@/lib/data/products";
+import { getProductById, getActiveProductsByIds } from "@/lib/data/products";
 import { supabase } from "@/lib/supabase/client";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -44,7 +44,7 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
   const product = await getProductById(params.id);
   if (!product) notFound();
 
-  const related = await getRelatedProductCards(product.relatedIds);
+  const related = await getActiveProductsByIds(product.relatedIds, 4);
   const reviewResult = await getPublicReviews({ productId: product.id, filters: { photos:false, verified:false, replied:false, sort:"recent", page:1 } });
   const serverClient = await createSupabaseServerClient();
   const { data: { user } } = await serverClient.auth.getUser();

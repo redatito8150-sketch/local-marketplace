@@ -37,7 +37,6 @@ export default function BrandShoppingArea({
   compactProducts = true,
   roomyProducts = false,
   mediumProducts = false,
-  minimalProductCards = false,
 }: {
   brandName: string;
   products: Product[];
@@ -46,7 +45,6 @@ export default function BrandShoppingArea({
   compactProducts?: boolean;
   roomyProducts?: boolean;
   mediumProducts?: boolean;
-  minimalProductCards?: boolean;
 }) {
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -77,7 +75,7 @@ export default function BrandShoppingArea({
             onPriceChange={setPriceRange}
           />
 
-          <div className={minimalProductCards ? "pt-6 lg:pt-7" : "pt-7"}>
+          <div className="pt-7">
             {sortedProducts.length === 0 ? (
               <CatalogEmptyState onClear={clearFilters} />
             ) : (
@@ -87,7 +85,6 @@ export default function BrandShoppingArea({
                 compact={compactProducts}
                 roomy={roomyProducts}
                 medium={mediumProducts}
-                minimalCard={minimalProductCards}
               />
             )}
           </div>

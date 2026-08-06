@@ -1,10 +1,9 @@
 import Link from "next/link";
-import Image from "next/image";
 import { Search as SearchIcon } from "lucide-react";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
-import { searchProducts } from "@/lib/data/products";
-import { formatPrice } from "@/lib/format";
+import { searchProductCards } from "@/lib/data/products";
+import ProductTile from "@/components/shared/ProductTile";
 
 export async function generateMetadata(
   props: {
@@ -26,7 +25,7 @@ export default async function SearchPage(
 ) {
   const searchParams = await props.searchParams;
   const query = searchParams.q ?? "";
-  const results = await searchProducts(query);
+  const results = await searchProductCards(query);
 
   return (
     <main className="min-h-screen bg-cream">
@@ -60,28 +59,7 @@ export default async function SearchPage(
         ) : (
           <div className="mt-10 grid grid-cols-2 gap-x-6 gap-y-12 sm:grid-cols-3 lg:grid-cols-4">
             {results.map((result) => (
-              <Link key={result.id} href={result.href} className="group">
-                <div className="relative aspect-[3/3.9] w-full overflow-hidden rounded-[16px] bg-beige-50">
-                  <Image
-                    src={result.image}
-                    alt={result.name}
-                    fill
-                    sizes="(max-width: 1024px) 50vw, 25vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                </div>
-                <div className="mt-3.5">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
-                    {result.brand}
-                  </p>
-                  <h3 className="mt-1 text-[14px] font-medium leading-snug text-ink">
-                    {result.name}
-                  </h3>
-                  <p className="mt-1.5 text-[14px] font-semibold text-ink">
-                    {formatPrice(result.price, result.currency)}
-                  </p>
-                </div>
-              </Link>
+              <ProductTile key={result.id} product={result} nameClassName="text-[13px] font-semibold leading-snug" />
             ))}
           </div>
         )}

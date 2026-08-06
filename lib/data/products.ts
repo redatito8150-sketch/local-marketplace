@@ -686,77 +686,22 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   return detail;
 }
 
-export interface RelatedProductCard {
-  id: string;
-  name: string;
-  brand: string;
-  price: number;
-  currency: "USD" | "EGP";
-  image: string;
-  rating: number;
-  reviewCount: number;
-}
-
-export async function getRelatedProductCards(
-  ids: string[]
-): Promise<RelatedProductCard[]> {
-  if (ids.length === 0) return [];
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .in("id", ids)
-    .eq("status", "published")
-    .eq("paused_by_brand", false)
-    .or(publishDateLiveFilter());
-  // Intentionally degrade quietly here (unlike the other functions in this
-  // file): related products are a secondary "you may also like" section,
-  // not core content. A failure here shouldn't take down the whole
-  // product page via the error boundary.
-  if (error) {
-    logError("getRelatedProductCards failed", error.message);
-    return [];
-  }
-  if (!data) return [];
-
-  return (data as ProductRow[]).map((row) => ({
-    id: row.id,
-    name: row.name,
-    brand: row.brand_name,
-    price: Number(row.price),
-    currency: row.currency,
-    image: row.image,
-    rating: Math.round(row.rating),
-    reviewCount: row.review_count,
-  }));
-}
-
-export interface SearchResult {
-  id: string;
-  name: string;
-  brand: string;
-  price: number;
-  currency: "USD" | "EGP";
-  image: string;
-  href: string;
-}
-
 function escapeLikePattern(value: string): string {
   // Escape LIKE/ILIKE wildcard characters so user input is matched
   // literally instead of being interpreted as a wildcard pattern.
   return value.replace(/[%_]/g, (match) => `\\${match}`);
 }
 
-export async function searchProducts(
-  query: string,
-  limit: number = 24
-): Promise<SearchResult[]> {
+// Shared by both search functions below: the two parameterized ilike
+// queries (name, brand) instead of one interpolated `.or()` filter string
+// — user input never gets parsed as PostgREST filter syntax — deduped and
+// capped at `limit`.
+async function runProductSearch(query: string, limit: number): Promise<ProductRow[]> {
   const q = query.trim();
   if (!q) return [];
 
   const pattern = `%${escapeLikePattern(q)}%`;
 
-  // Two parameterized queries instead of one interpolated `.or()` filter
-  // string — user input never gets parsed as PostgREST filter syntax.
   const [byName, byBrand] = await Promise.all([
     supabase
       .from("products")
@@ -791,15 +736,46 @@ export async function searchProducts(
     }
   );
 
-  return (merged as ProductRow[])
-    .slice(0, limit)
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      brand: row.brand_name,
-      price: Number(row.price),
-      currency: row.currency,
-      image: row.image,
-      href: `/product/${row.id}`,
-    }));
+  return (merged as ProductRow[]).slice(0, limit);
+}
+
+export interface SearchResult {
+  id: string;
+  name: string;
+  brand: string;
+  price: number;
+  currency: "USD" | "EGP";
+  image: string;
+  href: string;
+}
+
+// Lightweight rows for the header's live autocomplete dropdown — a plain
+// thumbnail/name/price row, not a product card, so it skips the taxonomy/
+// variants lookups searchProductCards() below needs.
+export async function searchProducts(
+  query: string,
+  limit: number = 24
+): Promise<SearchResult[]> {
+  const rows = await runProductSearch(query, limit);
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    brand: row.brand_name,
+    price: Number(row.price),
+    currency: row.currency,
+    image: row.image,
+    href: `/product/${row.id}`,
+  }));
+}
+
+// Full product cards for the /search results grid.
+export async function searchProductCards(
+  query: string,
+  limit: number = 24
+): Promise<Product[]> {
+  const rows = await runProductSearch(query, limit);
+  const ctx = await loadDisplayContext(rows);
+  const cards = rows.map((row) => toProductCard(row, ctx));
+  const variantsByProduct = await getVariantsForProducts(cards.map((card) => card.id));
+  return cards.map((card) => attachVariantDerivedFields(card, variantsByProduct.get(card.id) ?? []));
 }
