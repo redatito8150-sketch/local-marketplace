@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { checkAndNotifyRestock } from "@/lib/backInStock";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -40,5 +41,6 @@ export async function POST(request: NextRequest) {
     action: "restock",
     after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },
   });
+  await checkAndNotifyRestock(ids);
   return NextResponse.json({ adjustments: data });
 }

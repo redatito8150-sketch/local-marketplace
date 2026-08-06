@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { checkAndNotifyRestock } from "@/lib/backInStock";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -48,5 +49,9 @@ export async function POST(request: NextRequest) {
     after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },
     brandSlug: owner.brandSlug ?? undefined,
   });
+  // Re-verifies purchasability itself and no-ops for anything that isn't
+  // actually purchasable now or has no waiting subscribers — safe (and
+  // cheap) to call for every touched variant rather than pre-filtering.
+  await checkAndNotifyRestock(ids);
   return NextResponse.json({ adjustments: data });
 }

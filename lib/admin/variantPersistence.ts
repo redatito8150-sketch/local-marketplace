@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildComboKey } from "@/lib/inventory/variantCombinations";
 import { buildVariantSkuBase, buildVariantSkuWithSuffix } from "@/lib/inventory/variantSku";
 import { logError } from "@/lib/errorLog";
+import { checkAndNotifyRestock } from "@/lib/backInStock";
 import type { SellingStatus } from "@/types";
 
 export interface VariantEditInput {
@@ -181,6 +182,14 @@ export async function syncProductVariants(params: {
       removedDeletedCount += 1;
     }
   }
+
+  // Covers a variant whose selling_status just flipped back to "active"
+  // here (quantity itself is never touched by this save path — see the
+  // update above — only Inventory's own adjustments RPC changes that, and
+  // calls this too). Re-verifies purchasability itself and no-ops for
+  // anything not actually purchasable or with no waiting subscribers, so
+  // it's safe to call for every touched variant rather than pre-filtering.
+  await checkAndNotifyRestock(variantIds);
 
   return { ok: true, variantIds, removedArchivedCount, removedDeletedCount };
 }

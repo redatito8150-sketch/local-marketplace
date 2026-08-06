@@ -12,6 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { publishDateLiveFilter } from "@/lib/newArrivals";
+import { getSubscribedVariantIds } from "@/lib/backInStock";
 
 export const revalidate = 60;
 
@@ -49,6 +50,7 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
   const serverClient = await createSupabaseServerClient();
   const { data: { user } } = await serverClient.auth.getUser();
   const eligibleItems = user ? await getEligibleOrderItems(user.id, product.id) : [];
+  const subscribedVariantIds = user ? await getSubscribedVariantIds(user.id, product.id) : [];
 
   return (
     <main className="min-h-screen bg-cream">
@@ -64,7 +66,7 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
 
       <section className="mx-auto max-w-screen2xl px-8 pb-16 lg:px-12">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
-          <ProductGalleryAndInfo product={product} />
+          <ProductGalleryAndInfo product={product} signedIn={Boolean(user)} subscribedVariantIds={subscribedVariantIds} />
         </div>
 
         <div className="mt-16 grid grid-cols-1 gap-16 lg:grid-cols-2 lg:gap-16">
