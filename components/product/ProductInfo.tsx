@@ -221,7 +221,11 @@ export default function ProductInfo({
       brandSlug: product.brandSlug ?? "",
       price: displayPrice,
       currency: product.currency,
-      image: product.images[0],
+      // The selected Color's own photo when there is one (same mapping
+      // ProductGallery/ProductAccordion use), not always the product's
+      // generic cover — so the cart/checkout actually show what was
+      // ordered.
+      image: (selectedColor && product.colorImages?.[selectedColor]) || product.images[0],
       // Real, matchable value — a sizeless product's variant has no Size
       // option at all, so this stays "" to match it; formatSize() turns
       // this into "One Size" only where it's shown to the shopper.

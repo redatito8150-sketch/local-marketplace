@@ -8,6 +8,7 @@ import type { OptionValueOption, VariantRow } from "./InventoryVariantsSection";
 import ColorSwatch from "./ColorSwatch";
 import ColorOptionPicker, { type NewColorInput } from "./ColorOptionPicker";
 import SizeValueSelector from "./SizeValueSelector";
+import { sortByLabel } from "@/lib/inventory/sizeOrder";
 
 type RowState = "not_created" | "created" | "zero_stock";
 
@@ -160,6 +161,9 @@ export default function VariantTable({
       const size = sizeById.get(sizeId)!;
       map.get(colorId)?.push({ size, variant });
     }
+    // Smallest at the top, always — not whatever order sizes happened to
+    // be added in.
+    for (const [colorId, rows] of map) map.set(colorId, sortByLabel(rows, (row) => row.size.label));
     return map;
   }, [colorValues, variants, sizeById]);
 

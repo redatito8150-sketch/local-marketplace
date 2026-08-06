@@ -4,6 +4,7 @@ import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
 import { buildComboKey } from "@/lib/inventory/variantCombinations";
+import { sortByLabel } from "@/lib/inventory/sizeOrder";
 import type { NewColorInput } from "./ColorOptionPicker";
 
 export interface OptionTypeOption {
@@ -99,7 +100,10 @@ export default function InventoryVariantsSection({
     ? availableOptionValues.filter((v) => v.optionTypeId === colorType.id && (!v.isArchived || colorValueIds.includes(v.id)))
     : [];
   const availableSizeValues = sizeType
-    ? availableOptionValues.filter((v) => v.optionTypeId === sizeType.id && (!v.isArchived || sizeValueIds.includes(v.id)))
+    ? sortByLabel(
+        availableOptionValues.filter((v) => v.optionTypeId === sizeType.id && (!v.isArchived || sizeValueIds.includes(v.id))),
+        (v) => v.label
+      )
     : [];
 
   const ensureOptionTypeActive = (optionTypeId: string) =>
