@@ -22,7 +22,7 @@ import {
 import {
   applicantInfoSchema,
   brandInfoSchema,
-  legalInfoObjectSchema,
+  legalInfoSchema,
   operationsInfoSchema,
   consentSchema,
   submitApplicationSchema,
@@ -99,6 +99,7 @@ interface FormState {
   commercialRegistrationNumber: string;
   taxRegistrationNumber: string;
   legalBusinessName: string;
+  legalStatusOther: string;
   priceMin: string;
   priceMax: string;
   fulfillmentResponsibility: FulfillmentResponsibility | "";
@@ -163,6 +164,7 @@ function emptyForm(): FormState {
     commercialRegistrationNumber: "",
     taxRegistrationNumber: "",
     legalBusinessName: "",
+    legalStatusOther: "",
     priceMin: "",
     priceMax: "",
     fulfillmentResponsibility: "",
@@ -208,6 +210,7 @@ function fromApplication(app: BrandApplicationRecord): FormState {
     commercialRegistrationNumber: app.commercialRegistrationNumber ?? "",
     taxRegistrationNumber: app.taxRegistrationNumber ?? "",
     legalBusinessName: app.legalBusinessName ?? "",
+    legalStatusOther: app.legalStatusOther ?? "",
     priceMin: app.priceMin !== undefined ? String(app.priceMin) : "",
     priceMax: app.priceMax !== undefined ? String(app.priceMax) : "",
     fulfillmentResponsibility: app.fulfillmentResponsibility ?? "",
@@ -243,6 +246,7 @@ function toDraftInput(form: FormState): DraftApplicationInput {
     commercialRegistrationNumber: form.commercialRegistrationNumber || undefined,
     taxRegistrationNumber: form.taxRegistrationNumber || undefined,
     legalBusinessName: form.legalBusinessName || undefined,
+    legalStatusOther: form.legalStatusOther || undefined,
     priceMin: form.priceMin ? Number(form.priceMin) : undefined,
     priceMax: form.priceMax ? Number(form.priceMax) : undefined,
     fulfillmentResponsibility:
@@ -270,9 +274,11 @@ export default function ApplyBrandForm({
     initialApplication ? fromApplication(initialApplication) : emptyForm()
   );
   const [stepIndex, setStepIndex] = useState(0);
-  // The furthest step the applicant has actually reached — the stepper only
-  // allows jumping back to a step at or before this one, never forward into
-  // an unreached step.
+  // Steps the applicant has actually left (via Next/Back/clicking another
+  // step, or a failed submit) at least once — the stepper only shows a red
+  // "incomplete" X for a step once it's been left unfinished; an untouched
+  // step ahead just shows an empty amber-outlined circle, not an error.
+  const [attemptedSteps, setAttemptedSteps] = useState<Set<number>>(new Set());
   const [documents, setDocuments] = useState<BrandApplicationDocumentRecord[]>([]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -327,7 +333,7 @@ export default function ApplyBrandForm({
     () => ({
       applicant: applicantInfoSchema,
       brand: brandInfoSchema,
-      legal: legalInfoObjectSchema,
+      legal: legalInfoSchema,
       operations: operationsInfoSchema,
       review: consentSchema,
     }),
@@ -373,19 +379,23 @@ export default function ApplyBrandForm({
 
   function handleNext() {
     const next = Math.min(stepIndex + 1, STEPS.length - 1);
+    setAttemptedSteps((prev) => new Set(prev).add(stepIndex));
     setFieldErrors({});
     setStepIndex(next);
     void persistDraft({ quiet: true });
   }
 
   function handleBack() {
+    setAttemptedSteps((prev) => new Set(prev).add(stepIndex));
     setStepIndex((i) => Math.max(i - 1, 0));
   }
 
-  // The stepper only allows jumping to a step already reached — clicking
-  // ahead into an unreached step is a no-op. Draft data lives in `form`
-  // regardless of stepIndex, so switching steps never loses anything.
+  // Draft data lives in `form` regardless of stepIndex, so jumping between
+  // steps (in either direction) never loses anything.
   function goToStep(index: number) {
+    if (index !== stepIndex) {
+      setAttemptedSteps((prev) => new Set(prev).add(stepIndex));
+    }
     setFieldErrors({});
     setStepIndex(index);
     void persistDraft({ quiet: true });
@@ -404,6 +414,7 @@ export default function ApplyBrandForm({
         if (typeof key === "string" && !errors[key]) errors[key] = issue.message;
       }
       setFieldErrors(errors);
+      setAttemptedSteps(new Set(STEPS.map((_, i) => i)));
       setError("Please complete all required fields before submitting.");
       return;
     }
@@ -513,6 +524,7 @@ export default function ApplyBrandForm({
         steps={STEPS}
         currentIndex={stepIndex}
         stepValidity={stepValidity}
+        attemptedSteps={attemptedSteps}
         onSelect={goToStep}
       />
 
@@ -589,7 +601,7 @@ export default function ApplyBrandForm({
             </div>
 
             <div>
-              <span className="text-[12.5px] font-medium text-ink-soft/70">Category</span>
+              <span className="text-[12.5px] font-medium text-ink-soft/70">Category<RequiredDot /></span>
               <div className="mt-1.5">
                 <ChannelCards
                   options={PRODUCT_CATEGORY_OPTIONS}
@@ -654,7 +666,7 @@ export default function ApplyBrandForm({
           </div>
 
           <div className="space-y-3">
-            <SectionLabel>C. Sales channels</SectionLabel>
+            <SectionLabel>C. Sales channels<RequiredDot /></SectionLabel>
             <ChannelCards
               options={SALES_CHANNEL_OPTIONS}
               selected={form.salesChannelsList}
@@ -722,6 +734,7 @@ export default function ApplyBrandForm({
             </span>
             <p className="mt-2.5 text-[14.5px] font-semibold text-ink">
               Will you handle packaging & fulfillment yourself, or do you want to partner with Mahaly?
+              <RequiredDot />
             </p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft/60">
               If you partner with Mahaly, we take care of packaging, storage, and shipping — you only manage your brand page and product listings.
@@ -762,7 +775,7 @@ export default function ApplyBrandForm({
           </div>
 
           <div>
-            <span className="text-[12.5px] font-medium text-ink-soft/70">Price range (EGP)</span>
+            <span className="text-[12.5px] font-medium text-ink-soft/70">Price range (EGP) (optional)</span>
             <div className="mt-1.5 grid grid-cols-2 gap-4">
               <label className="block">
                 <span className="text-[11.5px] text-ink-soft/50">Minimum price</span>
@@ -862,11 +875,22 @@ export default function ApplyBrandForm({
               required
             />
           )}
-          <Field
-            label="Legal business name"
-            value={form.legalBusinessName}
-            onChange={(v) => set("legalBusinessName", v)}
-          />
+          {(form.legalStatus === "both_docs" || form.legalStatus === "documents_pending") && (
+            <Field
+              label="Legal business name"
+              value={form.legalBusinessName}
+              onChange={(v) => set("legalBusinessName", v)}
+            />
+          )}
+          {form.legalStatus === "other" && (
+            <Field
+              label="Please specify your registration status"
+              value={form.legalStatusOther}
+              onChange={(v) => set("legalStatusOther", v)}
+              error={fieldErrors.legalStatusOther}
+              required
+            />
+          )}
 
           <div>
             <span className="text-[12.5px] font-medium text-ink-soft/70">
@@ -989,7 +1013,11 @@ export default function ApplyBrandForm({
           <ReviewSection title="Legal & documents" onEdit={() => goToStep(STEP_INDEX.legal)}>
             <ReviewRow
               label="Business registration status"
-              value={labelFor(LEGAL_STATUS_OPTIONS, form.legalStatus)}
+              value={
+                form.legalStatus === "other"
+                  ? form.legalStatusOther || "Other"
+                  : labelFor(LEGAL_STATUS_OPTIONS, form.legalStatus)
+              }
             />
             {Boolean(form.commercialRegistrationNumber) && (
               <ReviewRow
@@ -1024,6 +1052,7 @@ export default function ApplyBrandForm({
               className="mt-0.5"
             />
             I confirm the information provided is accurate to the best of my knowledge.
+            <RequiredDot />
           </label>
           {fieldErrors.consentAccurate && (
             <p className="text-[12px] text-red-600">{fieldErrors.consentAccurate}</p>
@@ -1037,6 +1066,7 @@ export default function ApplyBrandForm({
               className="mt-0.5"
             />
             I agree to Mahaly&apos;s review process and privacy terms.
+            <RequiredDot />
           </label>
           {fieldErrors.consentTerms && (
             <p className="text-[12px] text-red-600">{fieldErrors.consentTerms}</p>
@@ -1081,17 +1111,28 @@ export default function ApplyBrandForm({
 }
 
 // Clickable progress stepper — ●────────○────────○────────○────────○.
-// Every step is a keyboard-accessible button. Its icon reports whether that
-// section currently passes validation; final submission remains the gate.
+// Every step is a keyboard-accessible button, in one of four states:
+//   - complete: that section currently passes validation — filled red check.
+//   - current: the step being edited right now, not yet complete — filled
+//     solid amber, no icon. This is what tells the applicant "you're here,
+//     keep going," without implying anything is wrong yet.
+//   - error: a step the applicant has already left (Next/Back/clicked
+//     elsewhere, or a failed submit) while still incomplete — red X. This
+//     only appears once they've actually moved away from it, never on a
+//     step they simply haven't reached yet.
+//   - untouched: a step ahead that hasn't been visited/left yet — empty
+//     circle with an amber outline, no icon, nothing alarming.
 function Stepper({
   steps,
   currentIndex,
   stepValidity,
+  attemptedSteps,
   onSelect,
 }: {
   steps: readonly { id: string; label: string }[];
   currentIndex: number;
   stepValidity: boolean[];
+  attemptedSteps: Set<number>;
   onSelect: (index: number) => void;
 }) {
   return (
@@ -1099,6 +1140,41 @@ function Stepper({
       {steps.map((s, i) => {
         const valid = stepValidity[i];
         const current = i === currentIndex;
+        const attempted = attemptedSteps.has(i);
+        const state: "complete" | "current" | "error" | "untouched" = valid
+          ? "complete"
+          : current
+            ? "current"
+            : attempted
+              ? "error"
+              : "untouched";
+
+        const circleClass =
+          state === "complete"
+            ? "bg-mahalyred text-white shadow-sm"
+            : state === "current"
+              ? "bg-amber-400 text-white shadow-sm"
+              : state === "error"
+                ? "border border-red-300 bg-white text-red-500"
+                : "border-2 border-amber-300 bg-white";
+
+        const labelClass = current
+          ? "text-ink"
+          : state === "complete"
+            ? "text-ink-soft/70"
+            : state === "error"
+              ? "text-red-500/70"
+              : "text-ink-soft/40";
+
+        const statusText =
+          state === "complete"
+            ? "complete"
+            : state === "current"
+              ? "in progress"
+              : state === "error"
+                ? "incomplete"
+                : "not started";
+
         return (
           <li key={s.id} className="flex flex-1 flex-col items-center last:flex-none">
             <div className="flex w-full items-center">
@@ -1106,30 +1182,22 @@ function Stepper({
                 type="button"
                 onClick={() => onSelect(i)}
                 aria-current={current ? "step" : undefined}
-                aria-label={`Step ${i + 1}: ${s.label}, ${
-                  valid ? "complete" : "incomplete"
-                }${current ? ", current step" : ""}`}
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 ${
-                  valid
-                    ? "bg-mahalyred text-white shadow-sm"
-                    : "border border-red-300 bg-white text-red-500"
-                } ${current ? "ring-2 ring-mahalyred/25 ring-offset-2" : ""} cursor-pointer`}
+                aria-label={`Step ${i + 1}: ${s.label}, ${statusText}${current ? ", current step" : ""}`}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold outline-none transition-all focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 ${circleClass} ${
+                  current ? "ring-2 ring-mahalyred/25 ring-offset-2" : ""
+                } cursor-pointer`}
               >
-                {valid ? (
+                {state === "complete" ? (
                   <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
-                ) : (
+                ) : state === "error" ? (
                   <X className="h-3.5 w-3.5" strokeWidth={2.2} />
-                )}
+                ) : null}
               </button>
               {i < steps.length - 1 && (
                 <div className={`h-px flex-1 ${valid ? "bg-mahalyred/55" : "bg-stone-150"}`} />
               )}
             </div>
-            <span
-              className={`mt-2 max-w-[6.5rem] text-center text-[11px] font-medium leading-tight sm:text-[11.5px] ${
-                current ? "text-ink" : valid ? "text-ink-soft/70" : "text-red-500/70"
-              }`}
-            >
+            <span className={`mt-2 max-w-[6.5rem] text-center text-[11px] font-medium leading-tight sm:text-[11.5px] ${labelClass}`}>
               {s.label}
             </span>
           </li>
@@ -1207,6 +1275,13 @@ function labelFor(options: { value: string; label: string }[], value: string): s
   return options.find((o) => o.value === value)?.label ?? value;
 }
 
+// Small red dot marking a required field's label — every field without one
+// is optional. Purely visual (the actual required-ness still comes from
+// each step's Zod schema; this prop just mirrors it into the UI).
+function RequiredDot() {
+  return <span aria-hidden="true" className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" />;
+}
+
 function Field({
   label,
   type = "text",
@@ -1229,7 +1304,7 @@ function Field({
   const errorId = error ? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-error` : undefined;
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}{required && <RequiredDot />}</span>
       <input
         type={type}
         inputMode={inputMode}
@@ -1425,7 +1500,7 @@ function SearchableSelect<T extends string>({
   return (
     <div className="relative" ref={containerRef}>
       <label className="block" htmlFor={baseId}>
-        <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+        <span className="text-[12.5px] font-medium text-ink-soft/70">{label}{required && <RequiredDot />}</span>
         <input
           id={baseId}
           type="text"
@@ -1505,7 +1580,7 @@ function TextAreaField({
   return (
     <label className="block">
       <span className="flex items-center justify-between gap-3">
-        <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+        <span className="text-[12.5px] font-medium text-ink-soft/70">{label}{required && <RequiredDot />}</span>
         {maxLength !== undefined && (
           <span className="shrink-0 text-[11.5px] text-ink-soft/40">
             {value.length} / {maxLength}
@@ -1545,7 +1620,7 @@ function SelectField({
 }) {
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
+      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}{required && <RequiredDot />}</span>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}

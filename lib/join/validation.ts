@@ -116,10 +116,18 @@ export const legalInfoObjectSchema = z.object({
   commercialRegistrationNumber: optionalString(60),
   taxRegistrationNumber: optionalString(60),
   legalBusinessName: optionalString(160),
+  // Only meaningful when legalStatus === "other" — see the refinement below.
+  // Same pattern as applicantRoleOther above.
+  legalStatusOther: optionalString(160),
 });
 
 function legalInfoRefinements<
-  T extends { legalStatus: string; commercialRegistrationNumber?: string; taxRegistrationNumber?: string }
+  T extends {
+    legalStatus: string;
+    commercialRegistrationNumber?: string;
+    taxRegistrationNumber?: string;
+    legalStatusOther?: string;
+  }
 >(schema: z.ZodType<T>) {
   return schema
     .refine(
@@ -133,6 +141,10 @@ function legalInfoRefinements<
         !LEGAL_STATUSES_WITH_TAX_CARD.includes(data.legalStatus as never) ||
         Boolean(data.taxRegistrationNumber),
       { message: "Tax registration number is required", path: ["taxRegistrationNumber"] }
+    )
+    .refine(
+      (data) => data.legalStatus !== "other" || Boolean(data.legalStatusOther),
+      { message: "Please specify your registration status", path: ["legalStatusOther"] }
     );
 }
 

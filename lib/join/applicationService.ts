@@ -56,6 +56,7 @@ interface BrandApplicationRow {
   commercial_registration_number: string | null;
   tax_registration_number: string | null;
   legal_business_name: string | null;
+  legal_status_other: string | null;
   product_price_range: string | null;
   products_manufactured_by_brand: boolean | null;
   made_to_order: boolean | null;
@@ -140,6 +141,7 @@ export function toBrandApplicationRecord(row: BrandApplicationRow): BrandApplica
     commercialRegistrationNumber: row.commercial_registration_number ?? undefined,
     taxRegistrationNumber: row.tax_registration_number ?? undefined,
     legalBusinessName: row.legal_business_name ?? undefined,
+    legalStatusOther: row.legal_status_other ?? undefined,
     productPriceRange: row.product_price_range ?? undefined,
     productsManufacturedByBrand: row.products_manufactured_by_brand ?? undefined,
     madeToOrder: row.made_to_order ?? undefined,
@@ -285,6 +287,7 @@ function draftInputToRow(input: DraftApplicationInput) {
     commercial_registration_number: input.commercialRegistrationNumber,
     tax_registration_number: input.taxRegistrationNumber,
     legal_business_name: input.legalBusinessName,
+    legal_status_other: input.legalStatusOther,
     price_min: input.priceMin,
     price_max: input.priceMax,
     manufacturing_model: input.manufacturingModel,
