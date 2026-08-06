@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
-import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
+import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, ProductVariant, TaxonomyNode } from "@/types";
 import {
   validateProductInput,
   validateProductSections,
@@ -20,6 +20,7 @@ import InventoryVariantsSection, {
   type InventoryVariantsValue,
   type OptionTypeOption,
   type OptionValueOption,
+  type VariantRow,
 } from "@/components/admin/InventoryVariantsSection";
 import type { NewColorInput } from "@/components/admin/ColorOptionPicker";
 import CustomOptionManager from "@/components/admin/CustomOptionManager";
@@ -130,6 +131,30 @@ function toDatetimeLocalValue(iso: string): string {
   )}:${pad(d.getMinutes())}`;
 }
 
+// The editor's Matrix rows are keyed by a flat optionValueIds array; the
+// wire/DB shape (ProductVariant, from both an initial ProductRecord load
+// and a save response's `data.variants`) carries the richer optionValues
+// object array instead. Every place that feeds server variant data into
+// form state must go through this — assigning ProductVariant[] straight
+// into VariantRow[] type-checks fine (fetch responses are untyped `any`)
+// but leaves every row's optionValueIds undefined, which throws the next
+// time the Matrix renders (buildComboKey() calls .sort() on it) — that's
+// what the post-save router.refresh() re-render was hitting, surfacing as
+// the brand-portal error boundary right after a successful Publish.
+function variantsToRows(variants: ProductVariant[]): VariantRow[] {
+  return variants.map((v) => ({
+    id: v.id,
+    optionValueIds: v.optionValues.map((s) => s.optionValueId),
+    sku: v.sku,
+    quantity: v.quantity,
+    variantPrice: v.variantPrice,
+    variantDiscountPercent: v.variantDiscountPercent,
+    lowStockThresholdOverride: v.lowStockThresholdOverride,
+    sellingStatus: v.sellingStatus,
+    updatedAt: v.updatedAt,
+  }));
+}
+
 function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsValue {
   const optionTypeIds: string[] = [];
   const valueIdsByOptionType: Record<string, string[]> = {};
@@ -148,17 +173,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
     optionTypeIds,
     valueIdsByOptionType,
     allowedCombinations: (product?.variants ?? []).map((v) => v.optionValues.map((s) => s.optionValueId)),
-    variants: (product?.variants ?? []).map((v) => ({
-      id: v.id,
-      optionValueIds: v.optionValues.map((s) => s.optionValueId),
-      sku: v.sku,
-      quantity: v.quantity,
-      variantPrice: v.variantPrice,
-      variantDiscountPercent: v.variantDiscountPercent,
-      lowStockThresholdOverride: v.lowStockThresholdOverride,
-      sellingStatus: v.sellingStatus,
-      updatedAt: v.updatedAt,
-    })),
+    variants: variantsToRows(product?.variants ?? []),
     colorImages: product?.colorImages ?? {},
   };
 }
@@ -515,7 +530,7 @@ export default function ProductForm({
       // reflect them in the now-read-only fields immediately rather than
       // waiting on a full page reload.
       const nextVariants: InventoryVariantsValue = data.variants
-        ? { ...form.inventoryVariants, variants: data.variants }
+        ? { ...form.inventoryVariants, variants: variantsToRows(data.variants) }
         : form.inventoryVariants;
       const nextForm = { ...form, status: targetStatus, inventoryVariants: nextVariants };
       setForm(nextForm);

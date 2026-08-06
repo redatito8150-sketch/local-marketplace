@@ -119,16 +119,26 @@ export default function InventoryVariantsSection({
     const color = availableOptionValues.find((v) => v.id === id);
     const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
     const hasStockOrHistory = affected.some((v) => Boolean(v.id) || v.quantity > 0);
+
+    // A color with real inventory/order history isn't actually removable —
+    // its saved variant rows stay submitted either way, so this used to
+    // promise "will be archived", hide the row locally, and then have it
+    // reappear on the very next save/edit with nothing having changed. Say
+    // so plainly instead of offering a removal that doesn't happen: point
+    // at Inventory (set stock to 0) as the real way to stop it selling.
+    if (hasStockOrHistory) {
+      window.alert(
+        `${color?.label ?? "This color"} can't be removed — it has ${affected.length} saved variant(s) with inventory or order history, so its records have to stay. To stop it from being sold, set its size(s) to 0 stock from Inventory instead.`
+      );
+      return;
+    }
+
     const message = affected.length === 0
       ? `Remove ${color?.label ?? "this color"} from the product? Its uploaded image and any sizes added later would need to be re-added.`
-      : hasStockOrHistory
-      ? `Remove ${color?.label ?? "this color"}? It has ${affected.length} saved variant(s) with inventory or history — they will be archived, not deleted (SKUs and stock records are preserved). Continue?`
       : `Remove ${color?.label ?? "this color"}? It has ${affected.length} unsaved variant(s) — they will be removed. Continue?`;
     if (!window.confirm(message)) return;
     const nextValueIds = colorValueIds.filter((v) => v !== id);
-    const nextVariants = affected.length === 0
-      ? value.variants
-      : value.variants.filter((v) => !v.optionValueIds.includes(id) || v.id); // unsaved rows drop; saved rows are archived server-side on save
+    const nextVariants = affected.length === 0 ? value.variants : value.variants.filter((v) => !v.optionValueIds.includes(id));
     const nextColorImages = { ...value.colorImages };
     if (nextValueIds.length === 0 || !colorValueIds.includes(id)) delete nextColorImages[id];
     set({
