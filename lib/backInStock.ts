@@ -86,26 +86,56 @@ async function loadVariantNotifyDetails(variantIds: string[]): Promise<Map<strin
     supabaseAdmin.from("products").select("id, name, image, brand_slug").in("id", productIds),
     supabaseAdmin
       .from("product_variant_values")
-      .select("variant_id, option_values(label)")
+      .select("variant_id, option_value_id, option_values(label, option_types(name))")
       .in("variant_id", variantIds),
   ]);
 
   const productById = new Map((products ?? []).map((row) => [row.id as string, row]));
   const labelsByVariant = new Map<string, string[]>();
-  for (const row of (valueRows ?? []) as unknown as { variant_id: string; option_values: { label: string } | null }[]) {
+  // The Color option value each variant selected — used below to pull that
+  // exact color's photo (product_media) instead of always sending the
+  // product's generic cover image regardless of which color someone
+  // actually asked to be notified about.
+  const colorValueIdByVariant = new Map<string, string>();
+  for (const row of (valueRows ?? []) as unknown as {
+    variant_id: string;
+    option_value_id: string;
+    option_values: { label: string; option_types: { name: string } | null } | null;
+  }[]) {
     if (!row.option_values) continue;
     const list = labelsByVariant.get(row.variant_id) ?? [];
     list.push(row.option_values.label);
     labelsByVariant.set(row.variant_id, list);
+    if (row.option_values.option_types?.name.toLowerCase() === "color") {
+      colorValueIdByVariant.set(row.variant_id, row.option_value_id);
+    }
   }
+
+  // Same source of truth as the product page's own Color -> image mapping
+  // (see getProductById in lib/data/products.ts) — one row per Color per
+  // product, keyed by (product_id, color_option_value_id).
+  const colorValueIds = [...new Set(colorValueIdByVariant.values())];
+  const { data: mediaRows } = colorValueIds.length
+    ? await supabaseAdmin
+        .from("product_media")
+        .select("product_id, color_option_value_id, storage_reference")
+        .in("product_id", productIds)
+        .in("color_option_value_id", colorValueIds)
+        .eq("is_archived", false)
+    : { data: [] as { product_id: string; color_option_value_id: string; storage_reference: string }[] };
+  const colorImageByKey = new Map(
+    (mediaRows ?? []).map((row) => [`${row.product_id}:${row.color_option_value_id}`, row.storage_reference as string])
+  );
 
   for (const row of variantRows) {
     const product = productById.get(row.product_id as string);
     if (!product) continue;
+    const colorValueId = colorValueIdByVariant.get(row.id as string);
+    const colorImage = colorValueId ? colorImageByKey.get(`${row.product_id}:${colorValueId}`) : undefined;
     result.set(row.id as string, {
       productId: row.product_id as string,
       productName: product.name as string,
-      image: product.image as string,
+      image: colorImage ?? (product.image as string),
       brandSlug: (product.brand_slug as string | null) ?? undefined,
       variantLabel: (labelsByVariant.get(row.id as string) ?? []).join(" / "),
     });
