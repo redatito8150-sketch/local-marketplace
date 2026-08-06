@@ -98,9 +98,16 @@ export default function ProductTile({
             </div>
           )}
         </div>
-        <p className="mt-3 inline-flex rounded-full border border-white/25 bg-black/35 px-3 py-1.5 text-[12px] font-bold shadow-lg backdrop-blur-md">
-          {formatPrice(displayPrice, product.currency)}
-        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <p className="inline-flex rounded-full border border-white/25 bg-black/35 px-3 py-1.5 text-[12px] font-bold shadow-lg backdrop-blur-md">
+            {formatPrice(displayPrice, product.currency)}
+          </p>
+          {displayPrice < product.price && (
+            <span className="text-[11px] font-semibold text-white/60 line-through opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-visible:opacity-100">
+              {formatPrice(product.price, product.currency)}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );
