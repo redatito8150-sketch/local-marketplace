@@ -22,7 +22,7 @@ import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { getEffectivePrice } from "@/lib/pricing";
-import EditorialProductCard from "@/components/shared/EditorialProductCard";
+import CompactProductCard from "@/components/shared/CompactProductCard";
 import { DEFAULT_THEATER_GRADIENT, theaterGlowFromHex, theaterGradientFromHex } from "@/lib/color/theaterGradient";
 import type { Product } from "@/types";
 
@@ -314,7 +314,7 @@ export default function NewArrivalsExperience({ products }: { products: Product[
         {visibleArrivals.length ? (
           <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
             <AnimatePresence mode="popLayout">
-              {visibleArrivals.map((item, index) => <motion.div key={item.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.38, delay: Math.min(index, 5) * 0.04 }}><EditorialProductCard product={item} /></motion.div>)}
+              {visibleArrivals.map((item, index) => <motion.div key={item.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.38, delay: Math.min(index, 5) * 0.04 }}><CompactProductCard product={item} /></motion.div>)}
             </AnimatePresence>
           </motion.div>
         ) : <div className="rounded-[18px] border border-dashed border-black/10 bg-white/55 py-16 text-center"><p className="font-serif text-2xl">More local drops are on the way.</p><button type="button" onClick={() => setActiveFilter("all")} className="mt-4 text-sm font-semibold text-mahalyred">View all arrivals</button></div>}

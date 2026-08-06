@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, Baby, Clock3, Grid2X2, Package, Shirt, ShoppingBag, Sparkles, Tag, UserRound } from "lucide-react";
-import EditorialProductCard from "@/components/shared/EditorialProductCard";
+import CompactProductCard from "@/components/shared/CompactProductCard";
 import { formatPrice } from "@/lib/format";
 import { getEffectivePrice } from "@/lib/pricing";
 import type { Product } from "@/types";
@@ -207,7 +207,7 @@ export default function DealsExperience({ products }: { products: Product[] }) {
           <div className="flex flex-wrap items-center gap-2.5 text-[11px]"><label className="sr-only" htmlFor="deal-sort">Sort deals</label><select id="deal-sort" value={sort} onChange={(event) => setSort(event.target.value as DealSort)} className="rounded-full border border-black/10 bg-white px-4 py-2 outline-none transition focus:border-mahalyred/50"><option value="ending-soon">Ending soon</option><option value="discount-high">Biggest saving</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select>{budgetMax ? <button type="button" onClick={() => setBudgetMax(null)} className="rounded-full bg-mahalyred px-4 py-2 font-semibold text-white">Under EGP {budgetMax.toLocaleString("en-US")} ×</button> : null}<span className="ml-1 whitespace-nowrap text-ink-soft/60">{visibleProducts.length} items</span></div>
         </div>
 
-        {visibleProducts.length ? <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6"><AnimatePresence mode="popLayout">{visibleProducts.map((product, index) => <motion.div key={product.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.38, delay: Math.min(index, 5) * 0.04 }}><EditorialProductCard product={product} badge={`-${Math.round(product.discountPercent ?? 0)}%`} showOriginalPrice /></motion.div>)}</AnimatePresence></motion.div> : <div className="rounded-[18px] border border-dashed border-black/10 bg-white/55 py-16 text-center"><p className="font-serif text-2xl">No deals match this selection yet.</p><button type="button" onClick={() => { setActiveFilter("all"); setBudgetMax(null); }} className="mt-4 text-sm font-semibold text-mahalyred">View all deals</button></div>}
+        {visibleProducts.length ? <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6"><AnimatePresence mode="popLayout">{visibleProducts.map((product, index) => <motion.div key={product.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.38, delay: Math.min(index, 5) * 0.04 }}><CompactProductCard product={product} /></motion.div>)}</AnimatePresence></motion.div> : <div className="rounded-[18px] border border-dashed border-black/10 bg-white/55 py-16 text-center"><p className="font-serif text-2xl">No deals match this selection yet.</p><button type="button" onClick={() => { setActiveFilter("all"); setBudgetMax(null); }} className="mt-4 text-sm font-semibold text-mahalyred">View all deals</button></div>}
 
         <div className="mt-8 grid gap-4 lg:grid-cols-2">
           <BudgetPanel limit={500} products={products} active={budgetMax === 500} onSelect={() => setBudgetMax((current) => current === 500 ? null : 500)} />

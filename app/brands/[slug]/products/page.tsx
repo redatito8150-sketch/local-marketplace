@@ -29,7 +29,6 @@ export default async function BrandProductsPage({ params }: { params: Promise<{ 
             showHeading={false}
             compactProducts={false}
             mediumProducts
-            minimalProductCards
           />
         </Suspense>
       ) : (
