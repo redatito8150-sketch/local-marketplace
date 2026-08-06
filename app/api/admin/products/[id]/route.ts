@@ -15,6 +15,7 @@ import {
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { safeErrorResponse } from "@/lib/apiError";
+import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -93,6 +94,19 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  await checkAndNotifyWishlistPriceDrop(
+    params.id,
+    { discountPercent: existing.discount_percent, discountEndsAt: existing.discount_ends_at },
+    {
+      discountPercent: body.discountPercent ?? null,
+      discountEndsAt: body.discountEndsAt ?? null,
+      price: body.price,
+      name: body.name,
+      image: body.image,
+      currency: body.currency,
+    }
+  );
 
   const notifyMeta = {
     entityId: params.id,

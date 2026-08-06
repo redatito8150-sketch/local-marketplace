@@ -20,6 +20,7 @@ import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { loadProductColorImages, loadProductOptionSelections } from "@/lib/admin/loadProductOptionSelections";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
+import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -82,6 +83,44 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         entityIdLabel: "Product ID",
         actorLabel: owner.user.email ?? owner.user.id,
         detailLabel: "Brand",
+      }
+    );
+
+    return NextResponse.json({ ok: true });
+  }
+
+  // Lightweight quick-action from the products list row (replaces the old
+  // Pause toggle there) — a published product is already complete (it had
+  // to be, to get published), so archiving it from here needs no
+  // additional completeness check, unlike the full editor's own Archive
+  // button. No review, available to owner and assistant alike.
+  if (body.action === "archive") {
+    const { error } = await supabaseAdmin
+      .from("products")
+      .update({ status: "archived" })
+      .eq("id", params.id);
+    if (error) {
+      return safeErrorResponse("brand-portal.products.quick-archive", error, "Failed to archive");
+    }
+
+    const auditLogId = await logAudit({
+      actorId: owner.user.id,
+      actorLabel: owner.user.email ?? owner.user.id,
+      entityType: "product",
+      entityId: params.id,
+      action: "archive",
+      before: existing,
+      brandSlug: owner.brandSlug ?? undefined,
+    });
+    await notify(
+      "product_archived",
+      `Archived: ${existing.name}`,
+      describeProductArchive(existing),
+      {
+        relatedEntityType: "product",
+        relatedEntityId: params.id,
+        auditLogId,
+        actorLabel: owner.user.email ?? owner.user.id,
       }
     );
 
@@ -171,6 +210,19 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  await checkAndNotifyWishlistPriceDrop(
+    params.id,
+    { discountPercent: existing.discount_percent, discountEndsAt: existing.discount_ends_at },
+    {
+      discountPercent: productBody.discountPercent ?? null,
+      discountEndsAt: productBody.discountEndsAt ?? null,
+      price: productBody.price,
+      name: productBody.name,
+      image: productBody.image,
+      currency: productBody.currency,
+    }
+  );
 
   const auditLogId = await logAudit({
     actorId: owner.user.id,
