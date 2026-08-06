@@ -54,6 +54,11 @@ export async function POST(request: NextRequest) {
   // Never trust the client for which brand this belongs to, even though
   // the form locks it — force it server-side to the caller's own brand.
   body.brandId = owner.brandId;
+  // Brand-portal only ever writes draft or published (never archived —
+  // that stays an admin-only action) — anything else collapses to
+  // published, matching the single "Publish Product" default this route
+  // originally always forced.
+  body.status = body.status === "draft" ? "draft" : "published";
 
   const validationError = validateProductInput(body);
   if (validationError) {
@@ -86,8 +91,6 @@ export async function POST(request: NextRequest) {
   }
 
   const productPayload = buildProductPersistencePayload(body, {
-    status: "published",
-    publishDate: new Date().toISOString(),
     submittedBy: owner.user.id,
   });
   productPayload.sku = generatedSku;
@@ -154,17 +157,21 @@ export async function POST(request: NextRequest) {
     brandSlug: owner.brandSlug ?? undefined,
   });
 
-  await notify(
-    "product_published",
-    `New product published: ${body.name}`,
-    describeProductCreate(body),
-    {
-      relatedEntityType: "product",
-      relatedEntityId: id,
-      auditLogId,
-      actorLabel: owner.user.email ?? owner.user.id,
-    }
-  );
+  // A draft save isn't live yet — nothing for the admin to review/revert,
+  // so only notify once the brand owner actually publishes.
+  if (body.status === "published") {
+    await notify(
+      "product_published",
+      `New product published: ${body.name}`,
+      describeProductCreate(body),
+      {
+        relatedEntityType: "product",
+        relatedEntityId: id,
+        auditLogId,
+        actorLabel: owner.user.email ?? owner.user.id,
+      }
+    );
+  }
 
   return NextResponse.json({ id, sku: generatedSku, variants });
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, TaxonomyNode } from "@/types";
 import {
   validateProductInput,
@@ -152,6 +153,7 @@ function toInventoryVariantsValue(product?: ProductRecord): InventoryVariantsVal
       sku: v.sku,
       quantity: v.quantity,
       variantPrice: v.variantPrice,
+      variantDiscountPercent: v.variantDiscountPercent,
       lowStockThresholdOverride: v.lowStockThresholdOverride,
       sellingStatus: v.sellingStatus,
       updatedAt: v.updatedAt,
@@ -263,6 +265,9 @@ export default function ProductForm({
   const [saveFailed, setSaveFailed] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | undefined>();
   const [activeSection, setActiveSection] = useState<ProductEditorSectionId>("basic");
+  // Closed by default — the live preview is opt-in via the floating eye
+  // button rather than always claiming half the screen.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
@@ -532,6 +537,14 @@ export default function ProductForm({
   };
 
   const submitting = submittingStatus !== null;
+  // Product-level Discount % and per-variant Variant Discount % are
+  // mutually exclusive — a product is either discounted as a whole or
+  // per-color, never both at once (avoids a variant's effective price
+  // silently stacking two separate discounts).
+  const hasVariantDiscount = form.inventoryVariants.variants.some(
+    (v) => v.variantDiscountPercent != null && v.variantDiscountPercent > 0
+  );
+  const productDiscountPercent = form.discountPercent ? Number(form.discountPercent) : undefined;
   const currentIssues = validateProductSections(buildPayload(form.status));
   // The green "Complete" badge means "actually ready to publish", not just
   // "no errors for the current Draft/Published status" — some rules (e.g.
@@ -596,7 +609,11 @@ export default function ProductForm({
         onPublish={() => submit("published")}
         onBack={handleCancel}
       />
-      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-[minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[minmax(520px,1.05fr)_minmax(500px,0.95fr)] xl:items-start">
+      <div
+        className={`grid min-w-0 grid-cols-1 gap-6 xl:items-start ${
+          previewOpen ? "xl:grid-cols-[minmax(420px,1.08fr)_minmax(390px,0.92fr)] 2xl:grid-cols-[minmax(520px,1.05fr)_minmax(500px,0.95fr)]" : ""
+        }`}
+      >
         <div className="min-w-0 space-y-6">
           <ProductErrorSummary issues={submittedIssues} onNavigate={navigateToIssue} />
 
@@ -679,6 +696,8 @@ export default function ProductForm({
               label="Discount %"
               value={form.discountPercent}
               onChange={(v) => set("discountPercent", v)}
+              disabled={hasVariantDiscount}
+              lockMessage="Locked because a per-variant discount is set below — remove it first to discount the whole product instead."
             />
             <div>
               <label htmlFor="product-discount-ends-at" className="text-[12.5px] font-medium text-ink-soft/70">
@@ -746,6 +765,7 @@ export default function ProductForm({
             currency="EGP"
             productSkuPreview={form.sku || "(generated after first save)"}
             productPrice={Number(form.price) || 0}
+            productDiscountPercent={productDiscountPercent}
             disabled={!form.brandId}
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
@@ -862,43 +882,59 @@ export default function ProductForm({
           </FormSection>
         )}
 
-        <ProductEditorBottomBar dirty={hasUnsavedChanges} submitting={submitting} isBrandPortal={isBrandPortal} onSaveDraft={() => submit("draft")} onPublish={() => submit("published")} />
+        <ProductEditorBottomBar dirty={hasUnsavedChanges} submitting={submitting} onSaveDraft={() => submit("draft")} onPublish={() => submit("published")} />
       </div>
 
-      <div ref={previewRef} className="min-w-0 xl:sticky xl:top-[158px] xl:h-[calc(100vh-174px)]">
-        <ProductLivePreview
-          form={{
-            name: form.name,
-            brandName: form.brandName,
-            audience: form.audience,
-            productTypeId: form.productTypeId,
-            collectionName: "",
-            price: form.price,
-            discountPercent: form.discountPercent,
-            discountEndsAt: form.discountEndsAt,
-            image: form.image,
-            images: form.images,
-            inventoryVariants: form.inventoryVariants,
-            description: form.description,
-            details: form.details,
-            careInstructions: form.careInstructions,
-            materials: form.materials,
-            fit: form.fit,
-            shippingReturns: resolvedShippingPolicy.text,
-            modelHeight: form.modelHeight,
-            modelWearing: form.modelWearing,
-            sku: form.sku,
-            featured: form.featured,
-          }}
-          taxonomyNodes={taxonomyNodes}
-          optionValues={optionValues}
-          optionTypes={optionTypes}
-          productId={currentProductId}
-          hasUnsavedChanges={hasUnsavedChanges}
-          justSaved={justSaved}
-        />
+      {previewOpen && (
+        <div ref={previewRef} className="min-w-0 xl:sticky xl:top-[158px] xl:h-[calc(100vh-174px)]">
+          <ProductLivePreview
+            form={{
+              name: form.name,
+              brandName: form.brandName,
+              audience: form.audience,
+              productTypeId: form.productTypeId,
+              collectionName: "",
+              price: form.price,
+              discountPercent: form.discountPercent,
+              discountEndsAt: form.discountEndsAt,
+              image: form.image,
+              images: form.images,
+              inventoryVariants: form.inventoryVariants,
+              description: form.description,
+              details: form.details,
+              careInstructions: form.careInstructions,
+              materials: form.materials,
+              fit: form.fit,
+              shippingReturns: resolvedShippingPolicy.text,
+              modelHeight: form.modelHeight,
+              modelWearing: form.modelWearing,
+              sku: form.sku,
+              featured: form.featured,
+            }}
+            taxonomyNodes={taxonomyNodes}
+            optionValues={optionValues}
+            optionTypes={optionTypes}
+            productId={currentProductId}
+            hasUnsavedChanges={hasUnsavedChanges}
+            justSaved={justSaved}
+            onClose={() => setPreviewOpen(false)}
+          />
+        </div>
+      )}
       </div>
-      </div>
+
+      <button
+        type="button"
+        onClick={() => setPreviewOpen((v) => !v)}
+        aria-pressed={previewOpen}
+        aria-label={previewOpen ? "Hide live preview" : "Show live preview"}
+        title={previewOpen ? "Hide live preview" : "Show live preview"}
+        className={`fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-colors ${
+          previewOpen ? "bg-ink text-cream hover:bg-ink/90" : "bg-white text-ink border border-stone-200 hover:border-ink/40"
+        }`}
+      >
+        {previewOpen ? <EyeOff className="h-5 w-5" strokeWidth={1.8} /> : <Eye className="h-5 w-5" strokeWidth={1.8} />}
+      </button>
     </div>
   );
 }
@@ -1027,16 +1063,20 @@ function PercentField({
   label,
   value,
   onChange,
+  disabled,
+  lockMessage,
 }: {
   id?: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
+  lockMessage?: string;
 }) {
   return (
     <label className="block">
       <span className="text-[12.5px] font-medium text-ink-soft/70">{label}</span>
-      <div className="mt-1.5 flex items-center rounded-md border border-stone-150 bg-white focus-within:border-ink/30">
+      <div className={`mt-1.5 flex items-center rounded-md border border-stone-150 bg-white focus-within:border-ink/30 ${disabled ? "opacity-50" : ""}`}>
         <input
           id={id}
           type="number"
@@ -1045,11 +1085,18 @@ function PercentField({
           step="1"
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
           placeholder="0"
-          className="w-full bg-transparent px-3.5 py-2.5 text-[14px] text-ink outline-none"
+          className="w-full bg-transparent px-3.5 py-2.5 text-[14px] text-ink outline-none disabled:cursor-not-allowed"
         />
         <span className="border-l border-stone-150 px-3 py-2.5 text-[13px] font-semibold text-ink-soft/60">%</span>
       </div>
+      {disabled && lockMessage && (
+        <span className="mt-1 flex items-start gap-1 text-[11px] text-amber-700">
+          <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" strokeWidth={2} />
+          {lockMessage}
+        </span>
+      )}
     </label>
   );
 }

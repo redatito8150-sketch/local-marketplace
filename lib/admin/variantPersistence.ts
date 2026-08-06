@@ -10,6 +10,7 @@ export interface VariantEditInput {
   quantity: number;
   openingStock?: number;
   variantPrice?: number | null;
+  variantDiscountPercent?: number | null;
   lowStockThresholdOverride?: number | null;
   sellingStatus: SellingStatus;
 }
@@ -83,6 +84,7 @@ export async function syncProductVariants(params: {
         .from("product_variants")
         .update({
           variant_price: edit.variantPrice ?? null,
+          variant_discount_percent: edit.variantDiscountPercent ?? null,
           low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,
           selling_status: edit.sellingStatus,
           updated_at: new Date().toISOString(),
@@ -112,6 +114,7 @@ export async function syncProductVariants(params: {
           p_combo_key: comboKey,
           p_opening_stock: edit.openingStock ?? edit.quantity ?? 0,
           p_variant_price: edit.variantPrice ?? null,
+          p_variant_discount_percent: edit.variantDiscountPercent ?? null,
           p_low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,
           p_selling_status: edit.sellingStatus,
           p_option_value_ids: edit.optionValueIds,

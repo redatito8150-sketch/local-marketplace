@@ -12,6 +12,9 @@ export interface VariantRowInput {
   quantity: number;
   openingStock?: number;
   variantPrice?: number;
+  // Mutually exclusive with the product-level discountPercent below — see
+  // the check in validateProductSections().
+  variantDiscountPercent?: number;
   lowStockThresholdOverride?: number;
   sellingStatus: SellingStatus;
 }
@@ -99,6 +102,12 @@ function validateVariants(variants: VariantRowInput[]): string | null {
     ) {
       return "Variant Price cannot be negative";
     }
+    if (
+      variant.variantDiscountPercent != null &&
+      (!Number.isFinite(variant.variantDiscountPercent) || variant.variantDiscountPercent <= 0 || variant.variantDiscountPercent >= 100)
+    ) {
+      return "Variant Discount % must be between 1 and 99";
+    }
     if (!VALID_SELLING_STATUSES.includes(variant.sellingStatus)) {
       return "Invalid Selling Status";
     }
@@ -152,6 +161,16 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
 
   const variantError = validateVariants(body.variants);
   if (variantError) add("inventory", variantError, "inventory-variants");
+
+  // Server-side backstop for the mutual-exclusion the editor UI already
+  // enforces by disabling one field while the other is set — a product
+  // discount and a per-variant discount can never both be active, or a
+  // variant's effective price would silently stack two separate discounts.
+  const hasProductDiscount = body.discountPercent != null && body.discountPercent > 0;
+  const hasVariantDiscount = body.variants.some((v) => v.variantDiscountPercent != null && v.variantDiscountPercent > 0);
+  if (hasProductDiscount && hasVariantDiscount) {
+    add("pricing", "A product can't have both a product-wide Discount % and a per-variant Variant Discount % at the same time.", "product-discount-percent");
+  }
 
   // Single-color products fall back to the Main Image (see "media" check
   // above) — a dedicated Color image only becomes mandatory once the

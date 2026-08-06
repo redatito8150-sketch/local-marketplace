@@ -13,7 +13,7 @@ import { getOrdersForUser } from "@/lib/data/orders";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isVariantPurchasable, calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
-import { getEffectivePrice } from "@/lib/pricing";
+import { getVariantEffectivePrice } from "@/lib/pricing";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
 import type { ShippingSettingsContent } from "@/types";
 
@@ -146,8 +146,16 @@ export async function POST(request: NextRequest) {
         brand_slug: product.brand_slug ?? "",
         // The real, live price at the moment of payment — if a discount
         // expired between add-to-cart and checkout, this correctly charges
-        // the full base price, not whatever the cart displayed earlier.
-        price: getEffectivePrice(variant.variantPrice ?? Number(product.price), product.discount_percent, product.discount_ends_at),
+        // the full base price, not whatever the cart displayed earlier. A
+        // variant discount and the product's own discount are mutually
+        // exclusive, so this picks whichever one actually applies.
+        price: getVariantEffectivePrice(
+          Number(product.price),
+          variant.variantPrice,
+          product.discount_percent,
+          product.discount_ends_at,
+          variant.variantDiscountPercent
+        ).price,
         currency: product.currency,
         size: item.size,
         color: item.color ?? "",

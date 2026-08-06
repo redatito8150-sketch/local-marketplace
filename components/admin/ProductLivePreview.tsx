@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ExternalLink, ImageOff, Monitor, RefreshCw, Smartphone } from "lucide-react";
+import { ExternalLink, EyeOff, ImageOff, Monitor, RefreshCw, Smartphone } from "lucide-react";
 import ProductBreadcrumb from "@/components/product/ProductBreadcrumb";
 import ProductGallery from "@/components/product/ProductGallery";
 import ProductInfo from "@/components/product/ProductInfo";
@@ -30,6 +30,7 @@ export default function ProductLivePreview({
   productId,
   hasUnsavedChanges,
   justSaved,
+  onClose,
 }: {
   form: ProductPreviewFormValues;
   taxonomyNodes: TaxonomyNode[];
@@ -38,6 +39,10 @@ export default function ProductLivePreview({
   productId?: string;
   hasUnsavedChanges: boolean;
   justSaved: boolean;
+  // Present when the preview panel is togglable (the editor's floating eye
+  // button) rather than always-on — omit to keep this component reusable
+  // wherever there's no such toggle (e.g. read-only embeds).
+  onClose?: () => void;
 }) {
   const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
   const [mounted, setMounted] = useState(false);
@@ -156,6 +161,21 @@ export default function ProductLivePreview({
             >
               <Smartphone className="h-3.5 w-3.5" strokeWidth={1.8} />
             </button>
+
+            {onClose && (
+              <>
+                <div className="mx-1 h-4 w-px bg-stone-150" />
+                <button
+                  type="button"
+                  title="Hide live preview"
+                  aria-label="Hide live preview"
+                  onClick={onClose}
+                  className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+                >
+                  <EyeOff className="h-3.5 w-3.5" strokeWidth={1.8} />
+                </button>
+              </>
+            )}
           </div>
         </div>
 

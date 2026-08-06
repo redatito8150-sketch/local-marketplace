@@ -8,6 +8,7 @@ interface VariantRow {
   quantity: number;
   low_stock_threshold_override: number | null;
   variant_price: number | null;
+  variant_discount_percent: number | null;
   selling_status: SellingStatus;
   is_archived: boolean;
   created_at: string;
@@ -63,6 +64,7 @@ export async function loadProductVariants(
     quantity: v.quantity,
     lowStockThresholdOverride: v.low_stock_threshold_override ?? undefined,
     variantPrice: v.variant_price ?? undefined,
+    variantDiscountPercent: v.variant_discount_percent ?? undefined,
     sellingStatus: v.selling_status,
     isArchived: v.is_archived,
     optionValues: (valuesByVariant.get(v.id) ?? [])

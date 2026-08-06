@@ -69,7 +69,10 @@ export default function MediaGallery({
   colors: MediaGalleryColor[];
   disabled?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
+  // Which single box is currently uploading — "cover", "gallery", or
+  // `color:${colorId}` — not a shared boolean, so uploading one image
+  // doesn't flip every other box's spinner/disabled state on too.
+  const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [error, setError] = useState("");
   const coverInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +86,7 @@ export default function MediaGallery({
   const handleCoverUpload = async (files: FileList | File[]) => {
     const file = Array.from(files)[0];
     if (!file) return;
-    setBusy(true);
+    setUploadingSlot("cover");
     setError("");
     try {
       const url = await uploadOne(file, folderId);
@@ -92,7 +95,7 @@ export default function MediaGallery({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setBusy(false);
+      setUploadingSlot(null);
     }
   };
 
@@ -107,7 +110,7 @@ export default function MediaGallery({
     const remaining = Math.max(0, GALLERY_CAP - galleryCount);
     const list = Array.from(files).slice(0, remaining);
     if (list.length === 0) return;
-    setBusy(true);
+    setUploadingSlot("gallery");
     setError("");
     try {
       const uploaded: string[] = [];
@@ -116,17 +119,22 @@ export default function MediaGallery({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setBusy(false);
+      setUploadingSlot(null);
     }
   };
 
   const handleColorUpload = async (colorId: string, files: FileList | File[]) => {
     const file = Array.from(files)[0];
     if (!file) return;
-    setBusy(true);
+    setUploadingSlot(`color:${colorId}`);
     setError("");
     try {
-      const url = await uploadOne(file, "color-images");
+      // Was hardcoded to the literal string "color-images" — never a real
+      // product id, so the server's ownership check (isUuid(folderId) /
+      // the product actually existing) always rejected it with "Not
+      // authorized for this product" for a brand owner. Color images need
+      // the same real folderId cover/gallery uploads already use.
+      const url = await uploadOne(file, folderId);
       const existing = colorImages[colorId];
       if (existing) {
         await deleteOne(existing);
@@ -138,7 +146,7 @@ export default function MediaGallery({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setBusy(false);
+      setUploadingSlot(null);
     }
   };
 
@@ -184,7 +192,7 @@ export default function MediaGallery({
             ) : (
               <button
                 type="button"
-                disabled={disabled || busy}
+                disabled={disabled || uploadingSlot === "cover"}
                 onClick={() => coverInputRef.current?.click()}
                 className="flex h-full w-full flex-col items-center justify-center gap-1 text-ink-soft/50 hover:text-ink"
               >
@@ -262,11 +270,11 @@ export default function MediaGallery({
             <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">Gallery</span>
             <button
               type="button"
-              disabled={disabled || busy}
+              disabled={disabled || uploadingSlot === "gallery"}
               onClick={() => galleryInputRef.current?.click()}
               className="mt-1 flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-stone-200 text-ink-soft/50 hover:border-ink/40 hover:text-ink"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={1.8} />}
+              {uploadingSlot === "gallery" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" strokeWidth={1.8} />}
               <span className="text-[10px]">Add ({GALLERY_CAP - galleryCount} left)</span>
             </button>
             <input
@@ -292,11 +300,11 @@ export default function MediaGallery({
             </span>
             <button
               type="button"
-              disabled={disabled || busy}
+              disabled={disabled || uploadingSlot === `color:${color.id}`}
               onClick={() => colorInputRefs.current[color.id]?.click()}
               className="mt-1 flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-amber-300 bg-amber-50/40 text-amber-700 hover:border-amber-400"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" strokeWidth={1.8} />}
+              {uploadingSlot === `color:${color.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" strokeWidth={1.8} />}
               <span className="text-[10px]">Upload</span>
             </button>
             <input
