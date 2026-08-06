@@ -9,21 +9,22 @@ import { productCardBadge } from "@/lib/brandProfile";
 import { getEffectivePrice } from "@/lib/pricing";
 import type { Product } from "@/types";
 
-// The single product-tile design used across the storefront: full-bleed
-// image, a badge/heart/price always visible, brand+name+available colors
-// revealed on hover (or focus, for keyboard users). `aspect`/`sizes`/
-// `nameClassName` are the only things that vary between call sites
-// (CompactProductCard's hero tiles vs. category/ProductCard's grid) — the
-// look itself is intentionally identical everywhere, not per-page.
+// The single product-tile design AND size used across the storefront —
+// same aspect ratio everywhere (originally the homepage's), so a card
+// looks like the same object whether it's in a 4-column shop grid, a
+// brand page, search results, or a homepage carousel. Only `sizes`
+// (an image-loading hint, not a visible dimension) and `nameClassName`
+// (hero tiles read larger/serif; dense grids read smaller) still vary by
+// call site.
+const CARD_ASPECT = "aspect-[0.78]";
+
 export default function ProductTile({
   product,
-  aspect = "aspect-[3/3.9]",
-  sizes = "(max-width: 1024px) 50vw, 25vw",
+  sizes = "(max-width: 640px) 72vw, 280px",
   eager = false,
   nameClassName = "font-serif text-[21px] font-semibold leading-tight",
 }: {
   product: Product;
-  aspect?: string;
   sizes?: string;
   eager?: boolean;
   nameClassName?: string;
@@ -36,7 +37,7 @@ export default function ProductTile({
   return (
     <Link
       href={`/product/${product.id}`}
-      className={`group relative block ${aspect} overflow-hidden rounded-[18px] bg-stone-100 shadow-[0_16px_45px_rgba(24,19,14,0.16)] transition duration-500 hover:-translate-y-1 hover:shadow-[0_26px_65px_rgba(24,19,14,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred focus-visible:ring-offset-4`}
+      className={`group relative block ${CARD_ASPECT} overflow-hidden rounded-[18px] bg-stone-100 shadow-[0_16px_45px_rgba(24,19,14,0.16)] transition duration-500 hover:-translate-y-1 hover:shadow-[0_26px_65px_rgba(24,19,14,0.28)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred focus-visible:ring-offset-4`}
     >
       <div className="absolute inset-0">
         <Image

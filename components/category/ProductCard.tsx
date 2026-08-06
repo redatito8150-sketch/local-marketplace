@@ -10,35 +10,26 @@ import { productCardBadge } from "@/lib/brandProfile";
 import { getEffectivePrice } from "@/lib/pricing";
 import ProductTile from "@/components/shared/ProductTile";
 
-// Grid mode is the shared ProductTile design (see that file) at each
-// page's existing tile shape — `compact` only changes the aspect ratio,
-// never the look itself. List mode is a distinct row layout (an overlay
-// tile doesn't read well at that width/height), but shares the same badge
-// priority (an active discount always beats "New") and shows available
-// colors instead of a star rating, same as the grid tile.
+// Grid mode is the shared ProductTile design and size (see that file) —
+// the same card everywhere, not a per-page shape. List mode is a
+// distinct row layout (an overlay tile doesn't read well at that width/
+// height), but shares the same badge priority (an active discount always
+// beats "New") and shows available colors instead of a star rating, same
+// as the grid tile.
 export default function ProductCard({
   product,
   viewMode = "grid",
-  compact = false,
   eager = false,
 }: {
   product: Product;
   viewMode?: ViewMode;
-  compact?: boolean;
   eager?: boolean;
 }) {
   if (viewMode === "list") {
     return <ProductListRow product={product} eager={eager} />;
   }
 
-  return (
-    <ProductTile
-      product={product}
-      aspect={compact ? "aspect-[1.28]" : "aspect-[3/3.9]"}
-      eager={eager}
-      nameClassName="text-[13px] font-semibold leading-snug"
-    />
-  );
+  return <ProductTile product={product} eager={eager} nameClassName="text-[13px] font-semibold leading-snug" />;
 }
 
 function ProductListRow({ product, eager }: { product: Product; eager?: boolean }) {
@@ -59,11 +50,7 @@ function ProductListRow({ product, eager }: { product: Product; eager?: boolean 
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
         {badge && (
-          <span
-            className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream ${
-              badge.kind === "soldOut" ? "bg-ink/85" : "bg-mahalyred"
-            }`}
-          >
+          <span className="absolute left-2 top-2 rounded-full bg-mahalyred px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream">
             {badge.label}
           </span>
         )}
