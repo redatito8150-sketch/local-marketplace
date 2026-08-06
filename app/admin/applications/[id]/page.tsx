@@ -1,19 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import { getApplicationDocuments, getApplicationStatusHistory } from "@/lib/join/applicationService";
 import { APPLICATION_STATUS_LABELS, applicationStatusBadgeClass } from "@/lib/admin/statuses";
 import {
   BUSINESS_SIZE_OPTIONS,
-  FULFILLMENT_MODEL_OPTIONS,
   FULFILLMENT_RESPONSIBILITY_OPTIONS,
-  INVENTORY_MODEL_OPTIONS,
-  INVENTORY_MODEL_VALUES,
   LEGAL_STATUS_OPTIONS,
-  MANUFACTURING_MODEL_OPTIONS,
   PREPARATION_TIME_OPTIONS,
   RETURNS_POLICY_OPTIONS,
-  SHIPPING_COVERAGE_OPTIONS,
 } from "@/lib/join/constants";
 import ApplicationTransitionPanel from "@/components/admin/ApplicationTransitionPanel";
 import ApplicationDeletePanel from "@/components/admin/ApplicationDeletePanel";
@@ -37,8 +33,16 @@ export default async function AdminApplicationDetailPage(
   ]);
 
   const snapshot = application.applicantAccountSnapshot;
-  const rebuilt = application.applicationData;
   const legalStatusLabel = LEGAL_STATUS_OPTIONS.find((o) => o.value === application.legalStatus)?.label;
+
+  // Mirrors the applicant-facing form's own required/optional rules
+  // (lib/join/validation.ts) so this review reads as a match for what the
+  // applicant actually saw, not a stale snapshot of fields the form no
+  // longer collects.
+  const roleMissing =
+    !application.applicantRole || (application.applicantRole === "other" && !application.applicantRoleOther);
+  const legalStatusMissing =
+    !application.legalStatus || (application.legalStatus === "other" && !application.legalStatusOther);
 
   return (
     <div>
@@ -106,187 +110,121 @@ export default async function AdminApplicationDetailPage(
             </Section>
           )}
 
-          <Section title="Applicant">
-            <Field label="Full name" value={application.founderName} />
-            <Field label="Email" value={application.email} />
-            <Field label="Phone" value={application.phone} />
-            <Field
+          {/* The four sections below mirror the applicant-facing form's own
+              steps (components/join/ApplyBrandForm.tsx) exactly — same
+              fields, same order, same required/optional split — so this
+              page never drifts from what the applicant actually saw.
+              ReviewField color-codes each required field: green check when
+              filled, red "Missing" when not. Optional fields never get that
+              treatment — an empty optional field is just "—", not a problem. */}
+          <Section title="About you">
+            <ReviewField label="Full name" value={application.founderName} required />
+            <ReviewField label="Business email" value={application.email} required />
+            <ReviewField label="Phone number" value={application.phone} required />
+            <ReviewField
               label="Role"
               value={
                 application.applicantRole === "other"
-                  ? `Other — ${application.applicantRoleOther || "—"}`
-                  : application.applicantRole ?? "—"
+                  ? application.applicantRoleOther
+                    ? `Other — ${application.applicantRoleOther}`
+                    : ""
+                  : application.applicantRole ?? ""
               }
+              required
+              missing={roleMissing}
             />
           </Section>
 
-          <Section title="Brand">
-            <Field label="Brand name" value={application.brandName} />
-            <Field label="Arabic name" value={application.brandNameAr || "—"} />
-            <Field label="English name" value={application.brandNameEn || "—"} />
-            <Field
-              label="Categories"
-              value={[application.productCategory, ...application.additionalCategories].filter(Boolean).join(", ") || "—"}
+          <Section title="Your brand">
+            <ReviewField label="Brand name (English)" value={application.brandNameEn ?? ""} required />
+            <ReviewField label="Brand name (Arabic)" value={application.brandNameAr ?? ""} required />
+            <ReviewField
+              label="Category"
+              value={[application.productCategory, ...application.additionalCategories].filter(Boolean).join(", ")}
+              required
+              missing={!application.productCategory}
             />
-            {Object.keys(application.salesChannelLinks ?? {}).length > 0 ? (
-              <Field
-                label="Sales channel links"
-                value={
-                  Object.entries(application.salesChannelLinks)
-                    .map(([channel, link]) => `${channel}: ${link || "—"}`)
-                    .join(" · ") || "—"
-                }
-              />
-            ) : (
-              <>
-                <Field label="Website" value={application.websiteUrl || "—"} />
-                <Field label="Instagram / other" value={application.instagramOrWebsite || "—"} />
-                <Field
-                  label="Other social"
-                  value={application.otherSocialUrls.join(", ") || "—"}
-                />
-              </>
-            )}
-            <Field label="Brand story" value={application.brandStory} />
-            <Field label="Founding year" value={application.foundingYear?.toString() ?? "—"} />
-            <Field
-              label="Location"
-              value={[application.city, application.country].filter(Boolean).join(", ") || "—"}
-            />
-            <Field
+            <ReviewField label="Country" value={application.country ?? "Egypt"} />
+            <ReviewField label="City" value={application.city ?? ""} required />
+            <ReviewField label="Founded" value={application.foundingYear?.toString() ?? ""} required />
+            <ReviewField label="Brand story" value={application.brandStory} />
+            <ReviewField
               label="Sales channels"
-              value={application.salesChannelsList.join(", ") || application.salesChannels || "—"}
+              value={application.salesChannelsList.join(", ")}
+              required
+              missing={application.salesChannelsList.length === 0}
             />
-            <Field
-              label="Approx. products"
-              value={
-                labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxProductCountRange) ??
-                application.approxProductCount?.toString() ??
-                "—"
-              }
+            {Object.entries(application.salesChannelLinks ?? {})
+              .filter(([, link]) => link)
+              .map(([channel, link]) => (
+                <ReviewField key={channel} label={`${channel} link`} value={link} />
+              ))}
+            <ReviewField
+              label="Approx. product count"
+              value={labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxProductCountRange) ?? ""}
+              required
             />
-            <Field
+            <ReviewField
               label="Approx. monthly orders"
-              value={
-                labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxMonthlyOrdersRange) ??
-                application.approxMonthlyOrders ??
-                "—"
-              }
+              value={labelForOrFallback(BUSINESS_SIZE_OPTIONS, application.approxMonthlyOrdersRange) ?? ""}
+              required
             />
-          </Section>
-
-          {rebuilt && (
-            <>
-              <Section title="Brand overview (structured)">
-                <Field label="Primary category" value={rebuilt.primaryCategory || "—"} />
-                <Field label="Target audiences" value={rebuilt.targetAudiences?.join(", ") || "—"} />
-                <Field label="Short description" value={rebuilt.shortDescription || "—"} />
-                <Field label="What makes it different" value={rebuilt.brandDifference || "—"} />
-                <Field label="Team size" value={rebuilt.teamSizeRange?.replaceAll("_", "–") || "—"} />
-              </Section>
-              <Section title="Operational readiness (structured)">
-                <Field label="Product categories" value={rebuilt.productCategories?.join(", ") || "—"} />
-                <Field label="Variants" value={rebuilt.variantReadiness?.replaceAll("_", " ") || "—"} />
-                <Field label="Manufacturing" value={rebuilt.manufacturingModel?.replaceAll("_", " ") || "—"} />
-                <Field label="Inventory models" value={rebuilt.inventoryModels?.join(", ") || "—"} />
-                <Field label="Inventory storage" value={rebuilt.inventoryStorage?.replaceAll("_", " ") || "—"} />
-                <Field label="Order preparation" value={rebuilt.orderPreparation?.replaceAll("_", " ") || "—"} />
-                <Field label="Courier pickup" value={rebuilt.courierPickup || "—"} />
-                <Field label="Shipping coverage" value={rebuilt.shippingCoverage?.join(", ") || "—"} />
-              </Section>
-            </>
-          )}
-
-          <Section title="Legal & documents">
-            <Field
-              label="Business registration status"
-              value={
-                application.legalStatus === "other"
-                  ? `Other — ${application.legalStatusOther || "—"}`
-                  : legalStatusLabel ?? application.legalStatus ?? "—"
-              }
-            />
-            <Field
-              label="Commercial registration #"
-              value={application.commercialRegistrationNumber || "—"}
-            />
-            <Field label="Tax registration #" value={application.taxRegistrationNumber || "—"} />
-            <Field label="Legal business name" value={application.legalBusinessName || "—"} />
-            <div className="mt-3">
-              <ApplicationDocumentsList applicationId={application.id} documents={documents} />
-            </div>
           </Section>
 
           <Section title="Products & operations">
-            <Field
+            <ReviewField
               label="Fulfillment"
               value={
                 FULFILLMENT_RESPONSIBILITY_OPTIONS.find(
                   (o) => o.value === application.fulfillmentResponsibility
-                )?.title ?? "—"
+                )?.title ?? ""
               }
+              required
             />
-            <Field
+            <ReviewField
               label="Price range"
               value={
                 application.priceMin !== undefined || application.priceMax !== undefined
                   ? `EGP ${application.priceMin ?? "0"} – ${application.priceMax ?? "—"}`
-                  : application.productPriceRange || "—"
+                  : ""
               }
             />
-            <Field
-              label="Manufacturing model"
+            <ReviewField
+              label="Average preparation time"
+              value={labelForOrFallback(PREPARATION_TIME_OPTIONS, application.avgPreparationTimeRange) ?? ""}
+              required
+            />
+            <ReviewField
+              label="Returns and exchanges"
+              value={labelForOrFallback(RETURNS_POLICY_OPTIONS, application.returnsPolicy) ?? ""}
+              required
+            />
+            <ReviewField
+              label="Returns & exchanges details"
+              value={application.returnsPolicyDetails ?? ""}
+              required
+            />
+          </Section>
+
+          <Section title="Legal & documents">
+            <ReviewField
+              label="Business registration status"
               value={
-                labelForOrFallback(MANUFACTURING_MODEL_OPTIONS, application.manufacturingModel) ??
-                boolLabel(application.productsManufacturedByBrand)
+                application.legalStatus === "other"
+                  ? application.legalStatusOther
+                    ? `Other — ${application.legalStatusOther}`
+                    : ""
+                  : legalStatusLabel ?? application.legalStatus ?? ""
               }
+              required
+              missing={legalStatusMissing}
             />
-            <Field
-              label="Fulfillment model"
-              value={
-                labelForOrFallback(FULFILLMENT_MODEL_OPTIONS, application.fulfillmentModel) ??
-                boolLabel(application.madeToOrder)
-              }
-            />
-            <Field
-              label="Avg. preparation time"
-              value={
-                labelForOrFallback(PREPARATION_TIME_OPTIONS, application.avgPreparationTimeRange) ??
-                application.avgPreparationTime ??
-                "—"
-              }
-            />
-            <Field
-              label="Shipping coverage"
-              value={
-                labelForOrFallback(SHIPPING_COVERAGE_OPTIONS, application.shippingCoverageOption) ??
-                application.shippingCoverage ??
-                "—"
-              }
-            />
-            {application.shippingGovernorates.length > 0 && (
-              <Field label="Selected governorates" value={application.shippingGovernorates.join(", ")} />
-            )}
-            <Field
-              label="Returns / exchanges"
-              value={
-                labelForOrFallback(RETURNS_POLICY_OPTIONS, application.returnsPolicy) ??
-                boolLabel(application.returnExchangeAvailable)
-              }
-            />
-            {application.returnsPolicyDetails && (
-              <Field label="Returns / exchanges details" value={application.returnsPolicyDetails} />
-            )}
-            <Field
-              label="Inventory model"
-              value={
-                application.inventoryModel.length > 0
-                  ? INVENTORY_MODEL_OPTIONS.filter((label) =>
-                      application.inventoryModel.includes(INVENTORY_MODEL_VALUES[label])
-                    ).join(", ")
-                  : application.inventoryStatus || "—"
-              }
-            />
+            <ReviewField label="Commercial registration #" value={application.commercialRegistrationNumber ?? ""} />
+            <ReviewField label="Tax registration #" value={application.taxRegistrationNumber ?? ""} />
+            <ReviewField label="Legal business name" value={application.legalBusinessName ?? ""} />
+            <div className="mt-3">
+              <ApplicationDocumentsList applicationId={application.id} documents={documents} />
+            </div>
           </Section>
 
           {(application.rejectionReason || application.changesRequestedMessage) && (
@@ -340,11 +278,6 @@ export default async function AdminApplicationDetailPage(
   );
 }
 
-function boolLabel(value: boolean | undefined): string {
-  if (value === undefined) return "—";
-  return value ? "Yes" : "No";
-}
-
 // Applications submitted before the fixed-choice rework have no value in
 // these new columns — returns null (not "—") so callers can fall back to
 // the legacy free-text/boolean field instead of shadowing it.
@@ -372,6 +305,42 @@ function Field({ label, value }: { label: string; value: string }) {
         {label}
       </p>
       <p className="mt-1 text-[14px] leading-relaxed text-ink">{value}</p>
+    </div>
+  );
+}
+
+// Like Field, but aware of whether the applicant's own form required this
+// value — a required field with no value renders in red with a "Missing"
+// call-out and an alert icon; filled-in required fields get a small green
+// check. Optional fields never get either treatment (missing ?? defaults to
+// !value only when required is set, so an empty optional field just reads
+// "—" like it always has).
+function ReviewField({
+  label,
+  value,
+  required,
+  missing,
+}: {
+  label: string;
+  value: string;
+  required?: boolean;
+  missing?: boolean;
+}) {
+  const isMissing = required && (missing ?? !value);
+  return (
+    <div>
+      <p className="flex items-center gap-1.5 text-[12px] font-medium uppercase tracking-wide text-ink-soft/50">
+        {label}
+        {required &&
+          (isMissing ? (
+            <AlertCircle className="h-3 w-3 shrink-0 text-red-500" strokeWidth={2.5} />
+          ) : (
+            <CheckCircle2 className="h-3 w-3 shrink-0 text-green-600" strokeWidth={2.5} />
+          ))}
+      </p>
+      <p className={`mt-1 text-[14px] leading-relaxed ${isMissing ? "font-semibold text-red-600" : "text-ink"}`}>
+        {isMissing ? "Missing" : value || "—"}
+      </p>
     </div>
   );
 }

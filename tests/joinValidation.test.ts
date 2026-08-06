@@ -39,6 +39,7 @@ const validSubmission = {
   avgPreparationTimeRange: "1_2_days",
   shippingCoverageOption: "all_egypt",
   returnsPolicy: "returns_and_exchanges",
+  returnsPolicyDetails: "Exchanges accepted within 14 days, unworn with tags attached.",
   inventoryModel: ["in_stock"],
   consentAccurate: true,
   consentTerms: true,
@@ -57,13 +58,14 @@ test("submitApplicationSchema requires consent checkboxes to be true", () => {
   assert.equal(result.success, false);
 });
 
-test("submitApplicationSchema requires a commercial registration number when legal status needs one", () => {
-  const result = submitApplicationSchema.safeParse({
+test("submitApplicationSchema never requires commercial/tax registration numbers, regardless of legal status", () => {
+  const withoutNumbers = submitApplicationSchema.safeParse({
     ...validSubmission,
     legalStatus: "commercial_registration_only",
     commercialRegistrationNumber: undefined,
+    taxRegistrationNumber: undefined,
   });
-  assert.equal(result.success, false);
+  assert.equal(withoutNumbers.success, true);
 
   const withNumber = submitApplicationSchema.safeParse({
     ...validSubmission,
@@ -71,6 +73,42 @@ test("submitApplicationSchema requires a commercial registration number when leg
     commercialRegistrationNumber: "12345",
   });
   assert.equal(withNumber.success, true);
+});
+
+test("submitApplicationSchema requires specifying a status when legalStatus is 'other'", () => {
+  const result = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    legalStatus: "other",
+    legalStatusOther: undefined,
+  });
+  assert.equal(result.success, false);
+
+  const withOther = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    legalStatus: "other",
+    legalStatusOther: "Registered as a freelancer with the tax authority",
+  });
+  assert.equal(withOther.success, true);
+});
+
+test("submitApplicationSchema requires returns policy, its details, and avg. preparation time", () => {
+  const missingReturnsPolicy = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    returnsPolicy: undefined,
+  });
+  assert.equal(missingReturnsPolicy.success, false);
+
+  const missingReturnsDetails = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    returnsPolicyDetails: "",
+  });
+  assert.equal(missingReturnsDetails.success, false);
+
+  const missingPrepTime = submitApplicationSchema.safeParse({
+    ...validSubmission,
+    avgPreparationTimeRange: undefined,
+  });
+  assert.equal(missingPrepTime.success, false);
 });
 
 test("submitApplicationSchema requires at least one sales channel", () => {

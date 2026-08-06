@@ -547,6 +547,7 @@ export default function ApplyBrandForm({
               onChange={(v) => set("email", v)}
               error={fieldErrors.email}
               required
+              tooltip="This can be a different contact email if needed — brand owner access is granted to the account you're signed in with, not necessarily this address. Whichever account you're logged into now will get full control over your brand page, products, orders, and everything else in the brand portal once approved."
             />
           </div>
           <div className={`grid gap-4 ${form.applicantRole === "other" ? "grid-cols-3" : "grid-cols-2"}`}>
@@ -824,6 +825,7 @@ export default function ApplyBrandForm({
             onChange={(v) => set("avgPreparationTimeRange", v)}
             options={PREPARATION_TIME_OPTIONS}
             error={fieldErrors.avgPreparationTimeRange}
+            required
           />
 
           <div className="space-y-2.5">
@@ -833,6 +835,7 @@ export default function ApplyBrandForm({
               onChange={(v) => set("returnsPolicy", v)}
               options={RETURNS_POLICY_OPTIONS}
               error={fieldErrors.returnsPolicy}
+              required
             />
             <TextAreaField
               label="Returns & exchanges details"
@@ -840,6 +843,7 @@ export default function ApplyBrandForm({
               value={form.returnsPolicyDetails}
               onChange={(v) => set("returnsPolicyDetails", v)}
               error={fieldErrors.returnsPolicyDetails}
+              required
               rows={4}
               maxLength={500}
             />
@@ -863,7 +867,6 @@ export default function ApplyBrandForm({
               value={form.commercialRegistrationNumber}
               onChange={(v) => set("commercialRegistrationNumber", v)}
               error={fieldErrors.commercialRegistrationNumber}
-              required
             />
           )}
           {LEGAL_STATUSES_WITH_TAX_CARD.includes(form.legalStatus as never) && (
@@ -872,7 +875,6 @@ export default function ApplyBrandForm({
               value={form.taxRegistrationNumber}
               onChange={(v) => set("taxRegistrationNumber", v)}
               error={fieldErrors.taxRegistrationNumber}
-              required
             />
           )}
           {(form.legalStatus === "both_docs" || form.legalStatus === "documents_pending") && (
@@ -1291,6 +1293,7 @@ function Field({
   onChange,
   required,
   error,
+  tooltip,
 }: {
   label: string;
   type?: string;
@@ -1300,11 +1303,16 @@ function Field({
   onChange: (value: string) => void;
   required?: boolean;
   error?: string;
+  tooltip?: string;
 }) {
   const errorId = error ? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-error` : undefined;
   return (
     <label className="block">
-      <span className="text-[12.5px] font-medium text-ink-soft/70">{label}{required && <RequiredDot />}</span>
+      <span className="flex items-center gap-1.5 text-[12.5px] font-medium text-ink-soft/70">
+        {label}
+        {required && <RequiredDot />}
+        {tooltip && <InfoTooltip text={tooltip} />}
+      </span>
       <input
         type={type}
         inputMode={inputMode}
