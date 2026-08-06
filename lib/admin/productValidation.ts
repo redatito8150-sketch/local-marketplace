@@ -77,8 +77,9 @@ export interface ProductValidationIssue {
   optional?: boolean;
 }
 
-function validateVariants(variants: VariantRowInput[]): string | null {
-  if (!Array.isArray(variants) || variants.length === 0) {
+function validateVariants(variants: VariantRowInput[], requireAtLeastOne: boolean): string | null {
+  if (!Array.isArray(variants)) return "Invalid variants";
+  if (requireAtLeastOne && variants.length === 0) {
     return "Every product needs at least one variant — generate variants below, or leave every option unselected for a single default variant.";
   }
 
@@ -134,7 +135,23 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   if (!body.productTypeId?.trim()) {
     add("basic", "A complete Main Category / Product Group / Product Type selection is required", "product-taxonomy");
   }
-  if (!Number.isFinite(body.price) || body.price <= 0) add("pricing", "Price must be a positive number", "product-price");
+  if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
+    add("visibility", "Invalid status", "product-status");
+  }
+
+  // A Draft exists specifically so a brand owner can save whatever they
+  // have and come back later — only "what kind of product is this"
+  // (name/brand/audience/category, checked unconditionally above) is
+  // required to save one at all. Everything below (price, cover image,
+  // description, having any variants) is only enforced once the product
+  // is actually going public — Published or Archived both need the full
+  // picture; Archived just skips the "has purchasable stock" rule further
+  // down, since an archived product isn't for sale right now by definition.
+  const requiresCompleteInfo = body.status !== "draft";
+
+  if (requiresCompleteInfo && (!Number.isFinite(body.price) || body.price <= 0)) {
+    add("pricing", "Price must be a positive number", "product-price");
+  }
   if (
     body.discountPercent != null &&
     (!Number.isFinite(body.discountPercent) || body.discountPercent <= 0 || body.discountPercent >= 100)
@@ -144,13 +161,11 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   if (body.discountEndsAt != null && Number.isNaN(new Date(body.discountEndsAt).getTime())) {
     add("pricing", "Discount end date is invalid", "product-discount-ends-at");
   }
-  if (!body.image?.trim()) add("media", "Main image is required", "product-media");
-  if (!body.description?.trim()) add("details", "Description is required", "product-description");
-  else if (body.description.length > DESCRIPTION_MAX_LENGTH) {
+  if (requiresCompleteInfo && !body.image?.trim()) add("media", "Main image is required", "product-media");
+  if (requiresCompleteInfo && !body.description?.trim()) {
+    add("details", "Description is required", "product-description");
+  } else if (body.description && body.description.length > DESCRIPTION_MAX_LENGTH) {
     add("details", `Description must be ${DESCRIPTION_MAX_LENGTH} characters or fewer`, "product-description");
-  }
-  if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
-    add("visibility", "Invalid status", "product-status");
   }
   if (!Number.isInteger(body.defaultLowStockThreshold) || body.defaultLowStockThreshold < 0) {
     add("inventory", "Default Low Stock Alert must be a whole, non-negative number", "inventory-variants");
@@ -159,7 +174,7 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
     add("inventory", "A product can have a maximum of 3 variant options.", "inventory-variants");
   }
 
-  const variantError = validateVariants(body.variants);
+  const variantError = validateVariants(body.variants, requiresCompleteInfo);
   if (variantError) add("inventory", variantError, "inventory-variants");
 
   // Server-side backstop for the mutual-exclusion the editor UI already
@@ -174,15 +189,19 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
 
   // Single-color products fall back to the Main Image (see "media" check
   // above) — a dedicated Color image only becomes mandatory once the
-  // product has 2+ Colors, and only for publishing (Draft always saves).
+  // product has 2+ Colors, and only once it's actually going public
+  // (Published or Archived — Draft always saves regardless).
   const colorValueIds = body.colorOptionTypeId ? body.valueIdsByOptionType[body.colorOptionTypeId] ?? [] : [];
-  if (body.status === "published" && colorValueIds.length >= 2) {
+  if (requiresCompleteInfo && colorValueIds.length >= 2) {
     const missingLabelIds = colorValueIds.filter((id) => !body.colorImages[id]?.trim());
     if (missingLabelIds.length > 0) {
       add("media", "This product has multiple colors — add a primary image for each color before publishing.", "product-media");
     }
   }
 
+  // Archived is intentionally "not for sale right now" — it still needs
+  // the full product info above, just not live purchasable stock, unlike
+  // Published which does.
   if (body.status === "published") {
     const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
     if (!hasPurchasable) {
@@ -191,12 +210,13 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   }
 
   // Materials are optional, but once any are added their percentages must
-  // total exactly 100 before publishing (Draft may stay incomplete).
+  // total exactly 100 once the product is going public (Draft may stay
+  // incomplete).
   const materials = body.materials ?? [];
   if (materials.length > 0) {
     const total = materials.reduce((sum, m) => sum + (Number.isFinite(m.percentage) ? m.percentage : 0), 0);
     const totalIsValid = Math.abs(total - 100) < 0.01;
-    if (body.status === "published" && !totalIsValid) {
+    if (requiresCompleteInfo && !totalIsValid) {
       add("details", `Material percentages must total exactly 100% (currently ${Math.round(total * 100) / 100}%).`, "product-materials");
     }
     if (materials.some((m) => !m.material?.trim())) {

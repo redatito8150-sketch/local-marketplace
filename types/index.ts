@@ -302,6 +302,11 @@ export interface ProductTaxonomyFields {
   featured?: boolean;
   status?: ProductStatus;
   publishDate?: string;
+  // Stamped the moment a product first becomes a draft, cleared the moment
+  // it leaves draft (lib/admin/productPersistence.ts) — drives the 10-day
+  // auto-expiry countdown (lib/admin/expireDrafts.ts). undefined for a
+  // product that's never been a draft, or predates this feature.
+  draftStartedAt?: string;
   defaultLowStockThreshold?: number;
   // Computed fresh on every read from status + publishDate (see
   // lib/newArrivals.ts) — never a stored/editable flag.

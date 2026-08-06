@@ -7,6 +7,27 @@ import { Pencil, Star } from "lucide-react";
 import type { ProductRecord } from "@/types";
 import { formatPrice } from "@/lib/format";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
+import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
+
+function StatusCell({ product }: { product: ProductRecord }) {
+  if (product.status === "draft") {
+    const daysLeft = draftDaysRemaining(product.draftStartedAt);
+    return (
+      <span
+        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+          daysLeft != null && daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
+        }`}
+        title={daysLeft != null ? "Auto-deleted if left incomplete" : undefined}
+      >
+        Draft{daysLeft != null ? ` — ${Math.max(daysLeft, 0)}d left` : ""}
+      </span>
+    );
+  }
+  if (product.status === "archived") {
+    return <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>;
+  }
+  return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>;
+}
 
 export default function BulkProductActions({ products }: { products: ProductRecord[] }) {
   const router = useRouter();
@@ -120,6 +141,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
             <th className="px-5 py-3 font-medium">Brand</th>
             <th className="px-5 py-3 font-medium">Category</th>
             <th className="px-5 py-3 font-medium">Price</th>
+            <th className="px-5 py-3 font-medium">Status</th>
             <th className="px-5 py-3 font-medium">Stock</th>
             <th className="px-5 py-3 font-medium" />
           </tr>
@@ -152,6 +174,9 @@ export default function BulkProductActions({ products }: { products: ProductReco
               </td>
               <td className="px-5 py-3 font-medium text-ink">
                 {formatPrice(product.price, product.currency)}
+              </td>
+              <td className="px-5 py-3">
+                <StatusCell product={product} />
               </td>
               <td className="px-5 py-3">
                 <span

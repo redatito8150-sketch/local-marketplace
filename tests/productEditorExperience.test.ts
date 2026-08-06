@@ -29,8 +29,12 @@ const validProduct: ProductInput = {
 };
 
 test("structured product validation groups issues by editor section and field anchor", () => {
+  // status: "published" — price/image/description are only required once
+  // a product is actually going public (see lib/admin/productValidation.ts's
+  // requiresCompleteInfo); a Draft is intentionally allowed to skip them.
   const issues = validateProductSections({
     ...validProduct,
+    status: "published",
     name: "",
     price: -1,
     discountPercent: 150,
@@ -46,6 +50,43 @@ test("structured product validation groups issues by editor section and field an
 
 test("a valid product produces no editor section issues", () => {
   assert.deepEqual(validateProductSections(validProduct), []);
+});
+
+// A Draft exists specifically so incomplete work can be saved and finished
+// later — only "what kind of product is this" (name/brand/audience/
+// category) is required to save one at all.
+test("a draft with missing price/image/description/variants produces no issues", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "draft",
+    price: 0,
+    image: "",
+    description: "",
+    variants: [],
+  });
+  assert.deepEqual(issues, []);
+});
+
+test("archiving requires the same completeness as publishing, minus purchasable stock", () => {
+  const incomplete = validateProductSections({
+    ...validProduct,
+    status: "archived",
+    price: 0,
+    image: "",
+    description: "",
+  });
+  assert.ok(incomplete.some((issue) => issue.fieldId === "product-price"));
+  assert.ok(incomplete.some((issue) => issue.fieldId === "product-media"));
+  assert.ok(incomplete.some((issue) => issue.fieldId === "product-description"));
+
+  // Complete info, but zero stock — fine for Archived (not for sale right
+  // now by definition), unlike Published which would reject this.
+  const zeroStock = validateProductSections({
+    ...validProduct,
+    status: "archived",
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
+  });
+  assert.deepEqual(zeroStock, []);
 });
 
 test("publish readiness is reported inside Inventory & Variants", () => {

@@ -14,6 +14,10 @@ export function buildProductPersistencePayload(
     // is optional; the merchant shouldn't have to fill it in by hand), while
     // never resetting it on a later re-save of an already-published product.
     previousPublishDate?: string | null;
+    // The existing row's status before this save (undefined on create) —
+    // drives draft_started_at below. Distinct from `status` above, which
+    // is the *target* the caller wants to force this save to.
+    previousStatus?: ProductInput["status"];
     submittedBy?: string | null;
     clearReviewState?: boolean;
   }
@@ -73,6 +77,17 @@ export function buildProductPersistencePayload(
     payload.publish_date = body.publishDate;
   } else if (targetStatus === "published" && !overrides?.previousPublishDate) {
     payload.publish_date = new Date().toISOString();
+  }
+
+  // Draft's 10-day window (lib/admin/expireDrafts.ts) is timed from the
+  // moment a product *first* becomes a draft — re-saving while already a
+  // draft must never reset that clock (else "Save as Draft" would let you
+  // extend it forever), so this only ever stamps or clears, it never
+  // touches an already-running clock.
+  if (targetStatus === "draft" && overrides?.previousStatus !== "draft") {
+    payload.draft_started_at = new Date().toISOString();
+  } else if (targetStatus !== "draft") {
+    payload.draft_started_at = null;
   }
 
   if (overrides?.submittedBy !== undefined) {

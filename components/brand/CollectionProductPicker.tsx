@@ -9,6 +9,7 @@ interface PickerProduct {
   name: string;
   image: string;
   inThisCollection: boolean;
+  status: string;
 }
 
 // Fast multi-select for "which products belong in this collection" —
@@ -131,7 +132,14 @@ export default function CollectionProductPicker({
                       <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#f1e9e1]">
                         <Image src={product.image} alt="" fill sizes="44px" className="object-cover" />
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-[#332b27]">{product.name}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm text-[#332b27]">
+                        {product.name}
+                        {product.status === "archived" && (
+                          <span className="ml-1.5 rounded-full bg-[#f1eae2] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#8a7d73]">
+                            Archived
+                          </span>
+                        )}
+                      </span>
                       <span
                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
                           checked ? "border-[#8f2634] bg-[#8f2634] text-white" : "border-[#ddd2c8]"

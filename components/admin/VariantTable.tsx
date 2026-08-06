@@ -239,11 +239,11 @@ export default function VariantTable({
             <thead>
               <tr className="border-b border-stone-150 bg-stone-50 text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
                 <th className="min-w-[200px] px-3 py-2.5">Color / Size</th>
-                <th className="px-3 py-2.5">SKU <span className="font-normal normal-case text-ink-soft/40">(Auto)</span></th>
-                <th className="px-3 py-2.5">Stock <span className="font-normal normal-case text-ink-soft/40">(Opening Stock)</span></th>
+                <th className="px-3 py-2.5">SKU<br /><span className="font-normal normal-case text-ink-soft/40">(Auto)</span></th>
+                <th className="px-3 py-2.5">Stock<br /><span className="font-normal normal-case text-ink-soft/40">(Opening Stock)</span></th>
                 <th className="px-3 py-2.5" title="Applies from the product default unless overridden here.">Low Stock Alert</th>
                 <th className="px-3 py-2.5">
-                  Variant Price ({currency}) <span className="font-normal normal-case text-ink-soft/40">(Leave empty for base price)</span>
+                  Variant Price ({currency})<br /><span className="font-normal normal-case text-ink-soft/40">(Leave empty for base price)</span>
                 </th>
                 <th className="px-3 py-2.5" title="Only one of Product Discount % or Variant Discount % can be set at a time.">
                   Variant Discount %
