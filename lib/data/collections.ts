@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Product } from "@/types";
 import { ProductRow, toProductCard, loadDisplayContext } from "./products";
+import { publishDateLiveFilter } from "../newArrivals";
 
 // Ranks product ids by total quantity sold, optionally restricted to orders
 // placed within the last `sinceDays` days (for "Trending" vs. all-time
@@ -57,7 +58,8 @@ async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
     .select("*")
     .in("id", ids)
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
   if (error) {
     throw new Error(`getProductCardsByIds failed: ${error.message}`);
   }
@@ -99,7 +101,8 @@ async function getTopSellingProductIdsForBrand(
     .select("id")
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
 
   if (brandProductsError) {
     throw new Error(
@@ -149,6 +152,7 @@ export async function getBestSellingProductsForBrand(
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
     .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter())
     .order("created_at", { ascending: false })
     .limit(limit);
 

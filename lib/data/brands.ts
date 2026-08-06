@@ -3,6 +3,7 @@ import { logError } from "@/lib/errorLog";
 import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isWithinNewBrandWindow } from "@/lib/brandNewWindow";
+import { publishDateLiveFilter } from "@/lib/newArrivals";
 import { ProductRow, toProductCard, loadDisplayContext } from "@/lib/data/products";
 import {
   BrandPageContent,
@@ -80,7 +81,8 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     .select("*")
     .eq("brand_slug", slug)
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
 
   if (productsError) {
     throw new Error(
