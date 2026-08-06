@@ -56,6 +56,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
         patch.visible_from = null;
       } else if (typeof raw === "string" && !Number.isNaN(new Date(raw).getTime())) {
         patch.visible_from = new Date(raw).toISOString();
+        // Setting a reveal date is the owner saying "show this once its
+        // time comes" — it should read as Scheduled, not stay stuck on
+        // Paused from whenever it was being built out of sight.
+        // isVisibleNow() (lib/data/brandCollections.ts) still keeps it out
+        // of the public reads until visible_from actually passes, so this
+        // can't skip the wait — it only clears the separate, manual pause.
+        patch.is_active = true;
       } else {
         return NextResponse.json({ error: "Enter a valid date" }, { status: 400 });
       }
