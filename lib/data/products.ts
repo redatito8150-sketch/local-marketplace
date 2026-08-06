@@ -5,7 +5,7 @@ import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/audience";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { resolveShippingPolicy } from "@/lib/admin/shippingPolicy";
-import { NEW_ARRIVAL_WINDOW_DAYS, isWithinNewArrivalWindow } from "@/lib/newArrivals";
+import { NEW_ARRIVAL_WINDOW_DAYS, isWithinNewArrivalWindow, isPublishDateLive, publishDateLiveFilter } from "@/lib/newArrivals";
 import {
   Audience,
   CategorySlug,
@@ -226,6 +226,7 @@ export async function getProductsByCategory(
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
     .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter())
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(`getProductsByCategory(${category}) failed: ${error.message}`);
@@ -245,7 +246,8 @@ export async function getProductCountLabel(
     .select("id", { count: "exact", head: true })
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
 
   if (error) {
     throw new Error(`getProductCountLabel(${category}) failed: ${error.message}`);
@@ -259,7 +261,8 @@ export async function getProductCountLabel(
 export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   // A product is New for exactly NEW_ARRIVAL_WINDOW_DAYS after its actual
   // publish_date (not a stored is_new flag) — see lib/newArrivals.ts.
-  const windowStart = new Date(Date.now() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("products")
     .select("*")
@@ -267,6 +270,10 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     .eq("paused_by_brand", false)
     .not("publish_date", "is", null)
     .gte("publish_date", windowStart)
+    // A scheduled-for-the-future publish_date previously leaked into New
+    // Arrivals immediately (the .gte above has no upper bound on its own)
+    // — this excludes anything not actually live yet.
+    .lte("publish_date", now.toISOString())
     .order("publish_date", { ascending: false })
     .limit(limit);
 
@@ -295,7 +302,8 @@ export async function getAllActiveProducts(
     .from("products")
     .select("*")
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
 
   if (featuredOnly) query = query.eq("featured", true);
   if (sorting === "price-asc") query = query.order("price", { ascending: true });
@@ -321,7 +329,8 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
     .select("*")
     .in("id", selected)
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
   if (error) throw new Error(`getActiveProductsByIds failed: ${error.message}`);
   const rows = ((data as ProductRow[]) ?? []);
   const ctx = await loadDisplayContext(rows);
@@ -417,7 +426,8 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     .from("products")
     .select("*", { count: "exact" })
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
 
   const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
   if (search) query = query.or(`name.ilike.%${search}%,brand_name.ilike.%${search}%`);
@@ -503,6 +513,7 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
     .select("id, brand_name, audience, product_type_id, collection_id, material, fit, discount_percent, discount_ends_at, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter())
     .limit(2000);
 
   if (error) throw new Error(`getMarketplaceCatalogFacets failed: ${error.message}`);
@@ -575,7 +586,8 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   if (
     !data ||
     (data as ProductRow).status !== "published" ||
-    (data as ProductRow).paused_by_brand
+    (data as ProductRow).paused_by_brand ||
+    !isPublishDateLive((data as ProductRow).publish_date)
   )
     return null;
 
@@ -658,6 +670,7 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
     .neq("id", id)
     .eq("status", "published")
     .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter())
     .eq("product_type_id", row.product_type_id)
     .limit(4);
 
@@ -693,7 +706,8 @@ export async function getRelatedProductCards(
     .select("*")
     .in("id", ids)
     .eq("status", "published")
-    .eq("paused_by_brand", false);
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
   // Intentionally degrade quietly here (unlike the other functions in this
   // file): related products are a secondary "you may also like" section,
   // not core content. A failure here shouldn't take down the whole
@@ -750,6 +764,7 @@ export async function searchProducts(
       .ilike("name", pattern)
       .eq("status", "published")
       .eq("paused_by_brand", false)
+      .or(publishDateLiveFilter())
       .limit(limit),
     supabase
       .from("products")
@@ -757,6 +772,7 @@ export async function searchProducts(
       .ilike("brand_name", pattern)
       .eq("status", "published")
       .eq("paused_by_brand", false)
+      .or(publishDateLiveFilter())
       .limit(limit),
   ]);
 

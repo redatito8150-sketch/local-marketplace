@@ -11,11 +11,21 @@ import { getProductById, getRelatedProductCards } from "@/lib/data/products";
 import { supabase } from "@/lib/supabase/client";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { publishDateLiveFilter } from "@/lib/newArrivals";
 
 export const revalidate = 60;
 
 export async function generateStaticParams() {
-  const { data } = await supabase.from("products").select("id");
+  // Not the real visibility gate (getProductById below is — this only
+  // controls which pages Next bothers pre-rendering at build time), but a
+  // scheduled-for-the-future product would otherwise get a static path
+  // built and then immediately 404 on every visit until its date arrives.
+  const { data } = await supabase
+    .from("products")
+    .select("id")
+    .eq("status", "published")
+    .eq("paused_by_brand", false)
+    .or(publishDateLiveFilter());
   return (data ?? []).map((row) => ({ id: row.id as string }));
 }
 
