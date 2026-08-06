@@ -23,7 +23,7 @@ import { useWishlist } from "@/context/WishlistContext";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { getEffectivePrice } from "@/lib/pricing";
 import EditorialProductCard from "@/components/shared/EditorialProductCard";
-import { DEFAULT_THEATER_GRADIENT, theaterGradientFromHex } from "@/lib/color/theaterGradient";
+import { DEFAULT_THEATER_GRADIENT, theaterGlowFromHex, theaterGradientFromHex } from "@/lib/color/theaterGradient";
 import type { Product } from "@/types";
 
 type ProductKind = "clothing" | "accessories" | "shoes" | "bags";
@@ -101,11 +101,11 @@ function TheaterProductCard({ product, slot }: { product: Product; slot: number 
       aria-hidden={Math.abs(slot) > 2}
     >
       <Link href={`/product/${product.id}`} tabIndex={Math.abs(slot) > 2 ? -1 : 0} aria-label={`View ${product.name}`} className="absolute inset-0 z-20" draggable={false} />
-      {product.isNew ? (
-        <span className="absolute left-[8%] top-[5%] z-10 rounded-full bg-white/90 px-2.5 py-1 text-[clamp(8px,.7vw,11px)] font-extrabold uppercase tracking-[0.05em] text-[#d20d10] shadow-[0_4px_14px_rgba(86,40,25,.08)]">New</span>
-      ) : null}
-      <div className="relative h-[82%] w-full px-[6%] pb-2 pt-[14%]">
-        <Image src={product.image} alt="" fill sizes="(max-width: 768px) 170px, 235px" className="pointer-events-none object-contain p-[7%] drop-shadow-[0_18px_18px_rgba(52,31,18,.18)]" draggable={false} />
+      <div className="relative h-[82%] w-full pb-1">
+        <Image src={product.image} alt="" fill sizes="(max-width: 768px) 170px, 235px" className="pointer-events-none object-contain p-[4%] drop-shadow-[0_18px_18px_rgba(52,31,18,.18)]" draggable={false} />
+        {product.isNew ? (
+          <span className="absolute left-[8%] top-[5%] z-10 rounded-full bg-white/90 px-2.5 py-1 text-[clamp(8px,.7vw,11px)] font-extrabold uppercase tracking-[0.05em] text-[#d20d10] shadow-[0_4px_14px_rgba(86,40,25,.08)]">New</span>
+        ) : null}
       </div>
       <div className="absolute inset-x-0 bottom-0 flex h-[18%] items-center justify-center border-t border-[#8d6849]/10 bg-white/68 px-3 backdrop-blur-md">
         <h3 className="line-clamp-2 text-center text-[clamp(10px,.85vw,14px)] font-semibold leading-tight text-[#171310]">{product.name}</h3>
@@ -185,7 +185,12 @@ function ProductTheater({ products, onActiveColorChange }: { products: Product[]
   return (
     <div className="relative min-h-[480px] overflow-hidden sm:min-h-[555px] lg:min-h-[610px]" style={{ perspective: "1200px" }}>
       <div className="pointer-events-none absolute left-1/2 top-[6%] h-[64%] w-[72%] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(255,255,255,.95)_0%,rgba(255,244,236,.62)_44%,transparent_72%)] blur-2xl" />
-      <div className="pointer-events-none absolute bottom-[142px] left-1/2 z-[16] h-[clamp(310px,32vw,430px)] w-[clamp(220px,25vw,340px)] -translate-x-1/2 rounded-[50%] bg-[radial-gradient(ellipse_at_center,rgba(231,177,44,.58)_0%,rgba(218,158,25,.3)_38%,rgba(193,132,20,.1)_60%,transparent_76%)] blur-[12px]" aria-hidden />
+      <motion.div
+        animate={{ background: theaterGlowFromHex(activeProduct.colors[0]?.hex) }}
+        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+        className="pointer-events-none absolute bottom-[142px] left-1/2 z-[16] h-[clamp(310px,32vw,430px)] w-[clamp(220px,25vw,340px)] -translate-x-1/2 rounded-[50%] blur-[12px]"
+        aria-hidden
+      />
 
       <motion.div
         className="absolute inset-0 z-20 touch-pan-y"
@@ -269,10 +274,13 @@ export default function NewArrivalsExperience({ products }: { products: Product[
       <motion.section
         animate={{ background: heroGradient }}
         transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-        className="relative overflow-hidden border-b border-[#eadfd7]"
+        className="relative overflow-hidden"
         aria-labelledby="new-arrivals-title"
       >
         <div className="pointer-events-none absolute inset-0 opacity-50 [background-image:linear-gradient(115deg,transparent_15%,rgba(255,255,255,.8)_48%,transparent_76%)]" />
+        {/* Blends the section's shifting gradient into the page's base cream
+            instead of cutting off at a hard edge above the filter bar. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-b from-transparent to-[#f7f3ee]" />
         <div className="relative mx-auto max-w-[1600px]">
           <div className="relative z-30 flex flex-col items-center px-7 pb-1 pt-11 text-center sm:px-12 sm:pt-12 lg:pt-14">
             <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#cf1014] sm:text-[11px]">New on Mahaly</motion.p>

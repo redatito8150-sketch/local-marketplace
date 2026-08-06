@@ -50,6 +50,25 @@ function hslToHex(h: number, s: number, l: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+// The soft radial glow that sits behind the active theater card — same
+// alpha/stop structure as the original fixed-amber version, just recolored
+// to the active product's swatch so the glow and the section background
+// always read as one cohesive tint.
+// "at 50% 50%" instead of the "center" keyword, and no explicit "ellipse"
+// keyword (it's the CSS default for radial-gradient) — Framer Motion's
+// gradient interpolator only reliably preserves numeric/percentage tokens
+// while animating between two gradient strings, and silently drops
+// keyword-only segments like "ellipse at center".
+export const DEFAULT_THEATER_GLOW =
+  "radial-gradient(at 50% 50%, rgba(231,177,44,.58) 0%, rgba(218,158,25,.3) 38%, rgba(193,132,20,.1) 60%, transparent 76%)";
+
+export function theaterGlowFromHex(hex: string | undefined): string {
+  const rgb = hex ? hexToRgb(hex) : null;
+  if (!rgb) return DEFAULT_THEATER_GLOW;
+  const { r, g, b } = rgb;
+  return `radial-gradient(at 50% 50%, rgba(${r},${g},${b},.58) 0%, rgba(${r},${g},${b},.3) 38%, rgba(${r},${g},${b},.1) 60%, transparent 76%)`;
+}
+
 export function theaterGradientFromHex(hex: string | undefined): string {
   if (!hex) return DEFAULT_THEATER_GRADIENT;
   const rgb = hexToRgb(hex);
