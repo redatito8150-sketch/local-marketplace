@@ -70,6 +70,16 @@ export function ProductEditorHeader({
     changes_requested: "bg-red-50 text-red-700",
   };
   const saveCopy = saveState === "saving" ? "Saving" : saveState === "failed" ? "Save failed" : saveState === "unsaved" ? "Unsaved changes" : "Saved";
+  // Brand-portal has no Draft/Publish split (Instant-Publish model — a
+  // brand-owner write goes live the moment they click Publish, there's no
+  // draft to save) and the Visibility section that would explain a "Draft"
+  // badge is hidden for them, so a brand-new not-yet-saved product showing
+  // literal "draft" here read as a confusing, unexplained state with no
+  // control to change it. Show the accurate "Not published yet" instead —
+  // once they publish, `status` becomes "published" and this no longer
+  // applies.
+  const displayStatus = isBrandPortal && status === "draft" ? "Not published yet" : status;
+  const displayStatusClass = isBrandPortal && status === "draft" ? "bg-stone-100 text-ink-soft/65" : statusStyles[status];
 
   return (
     <header className="sticky top-[72px] z-30 -mx-4 mb-6 space-y-2.5 border-y border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10">
@@ -80,7 +90,7 @@ export function ProductEditorHeader({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-[18px] font-bold tracking-tight text-ink">{title || "New Product"}</h1>
-            <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold capitalize ${statusStyles[status]}`}>{status}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold capitalize ${displayStatusClass}`}>{displayStatus}</span>
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft/55" aria-live="polite">
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : saveState === "failed" ? <AlertCircle className="h-3 w-3 text-red-600" /> : saveState === "saved" ? <Check className="h-3 w-3 text-emerald-700" /> : <Clock3 className="h-3 w-3" />}

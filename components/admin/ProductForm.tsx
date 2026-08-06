@@ -220,6 +220,42 @@ export default function ProductForm({
   const isBrandPortal = Boolean(lockedBrand);
   const optionsApiBase = isBrandPortal ? "/api/brand-portal" : "/api/admin";
   const brandQuery = isBrandPortal && brandSlug ? `?brand=${encodeURIComponent(brandSlug)}` : "";
+
+  // Save now keeps the admin on this page instead of redirecting to the
+  // list, so a first-time create needs to remember the id it gets back and
+  // switch to PATCHing from then on instead of POSTing a duplicate.
+  const [currentMode, setCurrentMode] = useState(mode);
+  const [currentProductId, setCurrentProductId] = useState(productId);
+
+  // Client-side only draft cache — never sent to the server, so it carries
+  // none of the "incomplete data going live" risk a real autosave-to-DB
+  // would for brand-portal's instant-publish model. Restores an in-progress
+  // new product if the tab reloads or crashes; saved on every step
+  // navigation so moving between sections never quietly loses work. Keyed
+  // off currentMode (not the static mode prop) so it stops applying the
+  // instant a real save succeeds and flips create -> edit — from then on
+  // this always reflects the real saved DB state, never a stale local
+  // copy. One slot per brand (not per random session id) so a reload can
+  // actually find what an earlier tab cached.
+  const localDraftKey = currentMode === "create" ? `mahaly:product-draft:${lockedBrand?.id ?? "admin"}` : null;
+  function persistLocalDraft(nextForm: FormState) {
+    if (!localDraftKey) return;
+    try {
+      window.localStorage.setItem(localDraftKey, JSON.stringify(nextForm));
+    } catch {
+      // Storage full/unavailable — losing the local safety-net cache isn't
+      // worth surfacing an error over.
+    }
+  }
+  function clearLocalDraft() {
+    if (!localDraftKey) return;
+    try {
+      window.localStorage.removeItem(localDraftKey);
+    } catch {
+      // Nothing to clean up if storage is unavailable.
+    }
+  }
+
   const [form, setForm] = useState<FormState>(() => toFormState(initial, lockedBrand));
   const [submittingStatus, setSubmittingStatus] = useState<ProductStatus | null>(null);
   const [error, setError] = useState("");
@@ -233,13 +269,30 @@ export default function ProductForm({
   const colorType = optionTypes.find((t) => t.key === "color");
   const sizeType = optionTypes.find((t) => t.key === "size");
 
-  // Save now keeps the admin on this page instead of redirecting to the
-  // list, so a first-time create needs to remember the id it gets back and
-  // switch to PATCHing from then on instead of POSTing a duplicate.
-  const [currentMode, setCurrentMode] = useState(mode);
-  const [currentProductId, setCurrentProductId] = useState(productId);
   const saveOperationKey = useRef(crypto.randomUUID());
   const [savedSnapshot, setSavedSnapshot] = useState(form);
+
+  // Restoring the local draft cache after mount (not in the useState
+  // initializer above) so the client's first render still matches the
+  // server-rendered HTML — localStorage isn't available during SSR, and
+  // reading it during the initial render would cause a hydration mismatch.
+  // Same one-time-hydration pattern already used by CartContext/WishlistContext.
+  useEffect(() => {
+    if (!localDraftKey) return;
+    try {
+      const cached = window.localStorage.getItem(localDraftKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as FormState;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setForm(parsed);
+        setSavedSnapshot(parsed);
+      }
+    } catch {
+      // Corrupt/unreadable cache — ignore and keep the fresh-form default.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time hydration on mount only
+  }, []);
+
   const [justSaved, setJustSaved] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<Partial<Record<ProductEditorSectionId, HTMLElement>>>({});
@@ -449,6 +502,9 @@ export default function ProductForm({
       // product it just made instead of re-posting a duplicate next save.
       setCurrentProductId(data.id);
       if (currentMode === "create") setCurrentMode("edit");
+      // The real save succeeded — the local safety-net cache would only
+      // ever go stale from here on, so drop it.
+      clearLocalDraft();
       // Server-generated variant SKUs only exist after a successful save —
       // reflect them in the now-read-only fields immediately rather than
       // waiting on a full page reload.
@@ -508,6 +564,11 @@ export default function ProductForm({
   const resolvedShippingPolicy = resolveShippingPolicy(selectedBrandPolicy);
 
   function navigateToSection(sectionId: ProductEditorSectionId) {
+    // Cache progress locally every time the editor moves to another
+    // section — a lightweight safety net, not a real save (nothing is sent
+    // to the server here), so an in-progress product is never lost to a
+    // closed tab or crash between real Publish/Save-as-Draft clicks.
+    persistLocalDraft(form);
     const target = sectionRefs.current[sectionId];
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
     requestAnimationFrame(() => target?.focus({ preventScroll: true }));
@@ -764,8 +825,8 @@ export default function ProductForm({
 
         {/* 06 — Visibility (admin-only: status/scheduling/featured are
             editorial calls the brand portal never makes directly — a
-            brand-portal submission's status is always decided by the
-            review flow, never typed in here) */}
+            brand-portal write is instant-publish with a single "Publish
+            Product" action, so there's no status/schedule to set here) */}
         {!isBrandPortal && (
           <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Use the existing publication and merchandising controls." complete={completedSections.has("visibility")} issues={currentIssues.filter((issue) => issue.section === "visibility")}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
