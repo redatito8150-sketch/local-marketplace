@@ -6,7 +6,16 @@ import { getActiveProductsByIds } from "@/lib/data/products";
 import type { PageSectionRecord, PageSectionType } from "@/lib/pageStudio/registry";
 import type { ResolvedMoodTile, ShopByMoodContent } from "@/types";
 
-export const dynamic = "force-static";
+// Was `dynamic = "force-static"` — fully frozen at build time with no
+// time-based refresh, relying entirely on the admin's Page Studio/Shop by
+// Mood "publish" actions calling revalidatePath("/") to ever update. That
+// meant a brand's own new/scheduled product (nothing to do with Page
+// Studio) could never appear here until the next full redeploy, even long
+// after its Publish Date passed. ISR with the same 60s window used
+// elsewhere (getNewArrivals, /new-arrivals, /product/[id]) fixes that,
+// while the existing revalidatePath("/") calls still force an immediate
+// refresh on top of it.
+export const revalidate = 60;
 
 function fallbackSection(sectionKey: string, sectionType: PageSectionType, position: number, config: Record<string, unknown>): PageSectionRecord {
   return { id: `fallback-${sectionKey}`, pageKey: "home", sectionKey, sectionType, position, isRequired: position <= 30, config, visible: true, updatedAt: new Date(0).toISOString() };

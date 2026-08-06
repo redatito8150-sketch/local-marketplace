@@ -8,6 +8,7 @@ import type { ProductRecord } from "@/types";
 import { formatPrice } from "@/lib/format";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
 import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
+import { isPublishDateLive } from "@/lib/newArrivals";
 
 function StatusCell({ product }: { product: ProductRecord }) {
   if (product.status === "draft") {
@@ -25,6 +26,17 @@ function StatusCell({ product }: { product: ProductRecord }) {
   }
   if (product.status === "archived") {
     return <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>;
+  }
+  // A "published" row with a future Publish Date isn't actually live yet —
+  // same gate the storefront queries use (lib/newArrivals.ts). Plain
+  // "Published" here would mislead the admin into thinking it's already
+  // visible to customers.
+  if (product.status === "published" && !isPublishDateLive(product.publishDate ?? null)) {
+    return (
+      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700" title={product.publishDate}>
+        Scheduled — {new Date(product.publishDate!).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+      </span>
+    );
   }
   return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>;
 }
