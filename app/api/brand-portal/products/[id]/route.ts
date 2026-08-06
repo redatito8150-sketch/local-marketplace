@@ -97,9 +97,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Brand is immutable after creation — whatever the client sends is
   // ignored, always the caller's own brand.
   productBody.brandId = owner.brandId;
-  // Brand-portal only ever writes draft or published (never archived —
-  // that stays the separate DELETE action below).
-  productBody.status = productBody.status === "draft" ? "draft" : "published";
+  // Brand-portal writes draft, published, or archived from the editor's
+  // own Save as Draft / Archive / Publish actions — archiving here is
+  // distinct from the DELETE action below (a quick "remove this" shortcut
+  // regardless of completeness); this path is gated by the same
+  // completeness bar as publishing (validateProductSections below).
+  productBody.status = productBody.status === "draft" || productBody.status === "archived" ? productBody.status : "published";
 
   const validationError = validateProductInput(productBody);
   if (validationError) {
@@ -123,6 +126,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const productPayload = buildProductPersistencePayload(productBody, {
     previousPublishDate: existing.publish_date,
+    previousStatus: existing.status,
     submittedBy: owner.user.id,
     clearReviewState: true,
   });

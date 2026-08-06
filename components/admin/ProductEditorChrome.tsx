@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Check, ChevronLeft, Clock3, Loader2, Save } from "lucide-react";
+import { AlertCircle, Archive, Check, ChevronLeft, Clock3, Loader2, Save } from "lucide-react";
 import type { ProductStatus } from "@/types";
 import type { ProductEditorSectionId, ProductValidationIssue } from "@/lib/admin/productValidation";
 
@@ -39,12 +39,13 @@ export function ProductEditorHeader({
   saveState,
   lastSavedAt,
   submitting,
-  isBrandPortal,
   activeSection,
   issues,
   completed,
   onNavigateStep,
   onSaveDraft,
+  onArchive,
+  canArchive,
   onPublish,
   onBack,
 }: {
@@ -53,12 +54,16 @@ export function ProductEditorHeader({
   saveState: EditorSaveState;
   lastSavedAt?: Date;
   submitting: boolean;
-  isBrandPortal: boolean;
   activeSection: ProductEditorSectionId;
   issues: ProductValidationIssue[];
   completed: Set<ProductEditorSectionId>;
   onNavigateStep: (id: ProductEditorSectionId) => void;
   onSaveDraft: () => void;
+  onArchive: () => void;
+  // Archiving needs the same full-info completeness as Publishing (just
+  // not live purchasable stock) — disabled with an explanatory title
+  // until that's true, same as Publish itself failing validation would.
+  canArchive: boolean;
   onPublish: () => void;
   onBack: () => void;
 }) {
@@ -90,9 +95,18 @@ export function ProductEditorHeader({
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <ProductStepper activeSection={activeSection} issues={issues} completed={completed} onNavigate={onNavigateStep} isBrandPortal={isBrandPortal} />
-        <div className="flex shrink-0 items-center gap-2">
+        <ProductStepper activeSection={activeSection} issues={issues} completed={completed} onNavigate={onNavigateStep} />
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-md border border-stone-150 px-3 text-[12px] font-semibold text-ink hover:bg-stone-50 disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save as Draft</button>
+          <button
+            type="button"
+            disabled={submitting || !canArchive}
+            onClick={onArchive}
+            title={canArchive ? undefined : "Complete all required product info first"}
+            className="hidden min-h-10 items-center gap-1.5 rounded-md border border-stone-150 px-3 text-[12px] font-semibold text-ink hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
+          >
+            <Archive className="h-3.5 w-3.5" /> Archive
+          </button>
           <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">
             Publish Product
           </button>
@@ -111,15 +125,13 @@ function ProductStepper({
   issues,
   completed,
   onNavigate,
-  isBrandPortal,
 }: {
   activeSection: ProductEditorSectionId;
   issues: ProductValidationIssue[];
   completed: Set<ProductEditorSectionId>;
   onNavigate: (id: ProductEditorSectionId) => void;
-  isBrandPortal: boolean;
 }) {
-  const steps = PRODUCT_EDITOR_STEPS.filter((step) => !isBrandPortal || step.id !== "visibility");
+  const steps = PRODUCT_EDITOR_STEPS;
   return (
     <nav aria-label="Product editor steps" className="min-w-0 flex-1 overflow-x-auto">
       <ol className="flex items-center gap-1.5">
@@ -173,10 +185,33 @@ export function ProductErrorSummary({ issues, onNavigate }: { issues: ProductVal
   );
 }
 
-export function ProductEditorBottomBar({ dirty, submitting, onSaveDraft, onPublish }: { dirty: boolean; submitting: boolean; onSaveDraft: () => void; onPublish: () => void }) {
-  return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
+export function ProductEditorBottomBar({
+  dirty,
+  submitting,
+  onSaveDraft,
+  onArchive,
+  canArchive,
+  onPublish,
+}: {
+  dirty: boolean;
+  submitting: boolean;
+  onSaveDraft: () => void;
+  onArchive: () => void;
+  canArchive: boolean;
+  onPublish: () => void;
+}) {
+  return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex flex-wrap items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
     <span className="mr-auto text-[11.5px] font-medium text-ink-soft/55">{dirty ? "Unsaved changes" : "All changes saved"}</span>
     <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>
+    <button
+      type="button"
+      disabled={submitting || !canArchive}
+      onClick={onArchive}
+      title={canArchive ? undefined : "Complete all required product info first"}
+      className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      Archive
+    </button>
     <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">Publish Product</button>
   </div>;
 }

@@ -5,6 +5,7 @@ import { Pencil, Plus } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
+import { deleteExpiredDrafts, draftDaysRemaining } from "@/lib/admin/expireDrafts";
 import { formatPrice } from "@/lib/format";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
@@ -27,6 +28,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
   if (!owner.brandId) { const brands = await getAllBrandsForAdmin(); return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />; }
+  await deleteExpiredDrafts(owner.brandId);
   const allProducts = await getProductsForBrand(owner.brandId, owner.isImpersonating);
   const query = params.q?.trim().toLowerCase();
   const products = allProducts.filter((product) => {
@@ -66,7 +68,11 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
       </DashboardFilters>
       <DashboardPanel className="mt-6">
         {products.length ? <div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-[13px]"><thead className="border-b border-[#e8e0d7] bg-[#fbf8f4] text-[10.5px] uppercase tracking-[0.08em] text-[#897b70]"><tr><th className="px-5 py-3 font-semibold">Product</th><th className="px-5 py-3 font-semibold">Category</th><th className="px-5 py-3 font-semibold">Price</th><th className="px-5 py-3 font-semibold">Inventory</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-[#eee7de]">{products.map((product) => {
-          const statusInfo = STATUS_LABELS[product.status] ?? { label: product.status, className: "bg-slate-100 text-slate-600" };
+          const baseStatusInfo = STATUS_LABELS[product.status] ?? { label: product.status, className: "bg-slate-100 text-slate-600" };
+          const daysLeft = product.status === "draft" ? draftDaysRemaining(product.draftStartedAt) : null;
+          const statusInfo = daysLeft != null
+            ? { label: `Draft — ${Math.max(daysLeft, 0)}d left`, className: daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800" }
+            : baseStatusInfo;
           const editHref = `/brand-portal/products/${product.id}/edit${brandParam}`;
           return <tr key={product.id} className="hover:bg-[#fbf8f4]"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="relative h-11 w-11 flex-none overflow-hidden rounded-xl bg-[#f1eae2]"><Image src={product.image} alt={product.name} fill className="object-cover" /></div><div><p className="font-bold text-[#302b27]">{product.name}</p>{product.collection && <p className="mt-0.5 text-[11px] text-[#8a7d73]">{product.collection}</p>}</div></div></td><td className="px-5 py-4 text-[#75685f]"><p>{product.mainCategory ?? "—"}</p>{product.productType && <p className="mt-0.5 text-[11px] text-[#9b8e84]">{product.productType}</p>}</td><td className="px-5 py-4 font-bold text-[#302b27]">{formatPrice(product.price, product.currency)}</td><td className="px-5 py-4"><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${product.inStock ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>{product.inStock ? "In stock" : "Out of stock"}</span></td><td className="px-5 py-4"><div className="flex flex-wrap gap-1.5"><span className={`rounded-full px-2.5 py-1 text-[10.5px] font-bold ${statusInfo.className}`}>{statusInfo.label}</span>{product.hasPendingEdit && <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Edit pending</span>}{product.pausedByBrand && <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10.5px] font-bold text-slate-600">Paused</span>}</div>{product.reviewNotes && <p className="mt-1.5 max-w-xs text-[11px] text-red-600">{product.reviewNotes}</p>}</td><td className="px-5 py-4"><div className="flex items-center justify-end gap-1">{product.status === "published" && <ProductPauseToggle productId={product.id} paused={product.pausedByBrand} />}<Link href={editHref} aria-label={`Edit ${product.name}`} className="rounded-lg p-2 text-[#8a7d73] hover:bg-[#f1eae2] hover:text-[#302b27]"><Pencil className="h-4 w-4" /></Link><RequestDeletionButton productId={product.id} name={product.name} alreadyRequested={Boolean(product.deletionRequestedAt)} /></div></td></tr>;
         })}</tbody></table></div> : <DashboardEmptyState title="No matching products" description={activeCount ? "Clear or adjust the filters to see more products." : "Add your first product to start building the catalog."} />}

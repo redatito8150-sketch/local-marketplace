@@ -29,6 +29,7 @@ import CareInstructionsPicker from "@/components/admin/CareInstructionsPicker";
 import MaterialsComposer from "@/components/admin/MaterialsComposer";
 import FitSelect from "@/components/admin/FitSelect";
 import { resolveShippingPolicy, type BrandPolicyFields } from "@/lib/admin/shippingPolicy";
+import { DRAFT_EXPIRY_DAYS } from "@/lib/admin/expireDrafts";
 import { getEffectivePrice, isDiscountActive } from "@/lib/pricing";
 import { DEFAULT_PRODUCT_TAXONOMY } from "@/content/productTaxonomy";
 import {
@@ -600,12 +601,13 @@ export default function ProductForm({
         saveState={saveState}
         lastSavedAt={lastSavedAt}
         submitting={submitting}
-        isBrandPortal={isBrandPortal}
         activeSection={activeSection}
         issues={currentIssues}
         completed={completedSections}
         onNavigateStep={navigateToSection}
         onSaveDraft={() => submit("draft")}
+        onArchive={() => submit("archived")}
+        canArchive={publishReadinessIssues.length === 0}
         onPublish={() => submit("published")}
         onBack={handleCancel}
       />
@@ -843,46 +845,49 @@ export default function ProductForm({
           </div>
         </FormSection>
 
-        {/* 06 — Visibility (admin-only: status/scheduling/featured are
-            editorial calls the brand portal never makes directly — a
-            brand-portal write is instant-publish with a single "Publish
-            Product" action, so there's no status/schedule to set here) */}
-        {!isBrandPortal && (
-          <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Use the existing publication and merchandising controls." complete={completedSections.has("visibility")} issues={currentIssues.filter((issue) => issue.section === "visibility")}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <SelectField
-                id="product-status"
-                label="Status"
-                required
-                value={form.status}
-                onChange={(v) => set("status", v as ProductStatus)}
-                options={[
-                  // "Draft" is no longer offered as a choice here — use the
-                  // "Save as Draft" action below instead. Still shown if
-                  // that's this product's current status, so an existing
-                  // Draft product doesn't render an unselected dropdown.
-                  ...(form.status === "draft" ? [{ value: "draft", label: "Draft" }] : []),
-                  { value: "published", label: "Published" },
-                  { value: "archived", label: "Archived" },
-                ]}
-              />
-              <div>
-                <TextField
-                  label="Publish Date (optional)"
-                  type="datetime-local"
-                  value={form.publishDate}
-                  onChange={(v) => set("publishDate", v)}
-                />
-              </div>
-            </div>
-
-            <p className="mt-4 text-[11px] text-ink-soft/45">
-              A product is automatically marked <strong>New</strong> — badged on its cover image and included in New Arrivals — for the first 20 days after it&apos;s Published, then removed from both automatically. There&apos;s nothing to set by hand. Featured Product is managed by Admin from the products list, not here.
+        {/* 06 — Visibility, available to both admin and brand-portal. Status
+            itself is set by the Save as Draft / Archive / Publish Product
+            actions in the header/bottom bar (not a dropdown here — a
+            dropdown value with no dedicated "commit this" action was
+            previously dead: Publish Product always forced "published"
+            regardless of what was selected here). Archive and Publish both
+            require the full product info below to be complete; Draft never
+            does — that's the entire point of a draft. */}
+        <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Visibility" description="Choose when this product goes live, or keep it archived until you're ready." complete={completedSections.has("visibility")} issues={currentIssues.filter((issue) => issue.section === "visibility")}>
+          {publishReadinessIssues.length > 0 ? (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-amber-800">
+              This product still has required info missing above, so it can only be saved as a <strong>Draft</strong> for now
+              {" "}— {DRAFT_EXPIRY_DAYS} days from when it first became one, after which it&apos;s automatically removed if still
+              incomplete. Complete every section to unlock <strong>Archive</strong> (kept hidden, ready to reveal later) or{" "}
+              <strong>Publish Product</strong> (goes live immediately).
             </p>
-          </FormSection>
-        )}
+          ) : (
+            <>
+              <TextField
+                label="Publish Date (optional)"
+                type="datetime-local"
+                value={form.publishDate}
+                onChange={(v) => set("publishDate", v)}
+              />
+              <p className="mt-2 text-[11px] text-ink-soft/45">
+                Use the <strong>Publish Product</strong> action to go live now, or <strong>Archive</strong> to keep this
+                hidden — handy for preparing several products (e.g. a whole Collection) out of sight and revealing them
+                together later. A product is automatically marked <strong>New</strong> — badged on its cover image and
+                included in New Arrivals — for the first 20 days after it&apos;s Published, then removed from both
+                automatically. Featured Product is managed by Admin from the products list, not here.
+              </p>
+            </>
+          )}
+        </FormSection>
 
-        <ProductEditorBottomBar dirty={hasUnsavedChanges} submitting={submitting} onSaveDraft={() => submit("draft")} onPublish={() => submit("published")} />
+        <ProductEditorBottomBar
+          dirty={hasUnsavedChanges}
+          submitting={submitting}
+          onSaveDraft={() => submit("draft")}
+          onArchive={() => submit("archived")}
+          canArchive={publishReadinessIssues.length === 0}
+          onPublish={() => submit("published")}
+        />
       </div>
 
       {previewOpen && (

@@ -36,7 +36,9 @@ const validProduct: ProductInput = {
 // ── Description ─────────────────────────────────────────────────────────
 
 test("Description: required validation fires with a clear message", () => {
-  const issues = validateProductSections({ ...validProduct, description: "" });
+  // status: "published" — Description is only required once a product is
+  // actually going public (a Draft is intentionally allowed to skip it).
+  const issues = validateProductSections({ ...validProduct, status: "published", description: "" });
   const issue = issues.find((i) => i.fieldId === "product-description");
   assert.ok(issue);
   assert.match(issue.message, /description/i);

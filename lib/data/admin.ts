@@ -56,6 +56,7 @@ interface ProductRow {
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
+  draft_started_at: string | null;
   pending_changes: Record<string, unknown> | null;
   review_notes: string | null;
   submitted_by: string | null;
@@ -131,6 +132,7 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     featured: row.featured,
     status: row.status,
     publishDate: row.publish_date ?? undefined,
+    draftStartedAt: row.draft_started_at ?? undefined,
     pendingChanges: row.pending_changes,
     reviewNotes: row.review_notes ?? undefined,
     submittedBy: row.submitted_by ?? undefined,

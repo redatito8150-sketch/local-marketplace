@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ slug:
 
   const { data, error } = await supabaseAdmin
     .from("products")
-    .select("id, name, image, collection_id")
+    .select("id, name, image, collection_id, status")
     .eq("brand_id", editor.brandId)
     .order("name", { ascending: true });
   if (error) return safeErrorResponse("brands.collections.products.list", error, "Failed to load products");
@@ -36,6 +36,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ slug:
     name: row.name as string,
     image: row.image as string,
     inThisCollection: row.collection_id === params.id,
+    // Archived products intentionally still show here (not filtered out) —
+    // a brand owner can quietly build a whole collection out of archived
+    // products, then flip them all to Published together later. Flagged
+    // so the picker can make that non-obvious state visible.
+    status: row.status as string,
   }));
 
   return NextResponse.json({ products });

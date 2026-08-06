@@ -196,8 +196,8 @@ export default function MediaGallery({
                 onClick={() => coverInputRef.current?.click()}
                 className="flex h-full w-full flex-col items-center justify-center gap-1 text-ink-soft/50 hover:text-ink"
               >
-                <Upload className="h-4 w-4" strokeWidth={1.8} />
-                <span className="text-[10px]">Upload</span>
+                {uploadingSlot === "cover" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" strokeWidth={1.8} />}
+                <span className="text-[10px]">{uploadingSlot === "cover" ? "Uploading…" : "Upload"}</span>
               </button>
             )}
             <input
