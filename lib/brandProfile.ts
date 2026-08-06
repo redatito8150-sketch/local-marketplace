@@ -27,17 +27,20 @@ export function isActiveOffer(
   return product.inStock && isDiscountActive(product.discountPercent, product.discountEndsAt, now);
 }
 
-export type ProductCardBadge = { label: string; kind: "offer" | "new" };
+export type ProductCardBadge = { label: string; kind: "soldOut" | "offer" | "new" };
 
-// A product card shows at most one badge, never both stacked. An active
-// discount always wins over "New" — once the discount ends, if the
-// product is still inside its New window (see lib/newArrivals.ts), the
-// badge flips back to New on its own, since both are computed live from
-// the same product fields rather than stored.
+// A product card shows at most one badge, never both stacked. Sold Out
+// (every variant at 0 stock) outranks everything — there's no point
+// advertising a discount or "New" on something nobody can actually buy.
+// Below that, an active discount wins over "New" — once the discount
+// ends, if the product is still inside its New window (see
+// lib/newArrivals.ts), the badge flips back to New on its own, since all
+// three are computed live from the same product fields rather than stored.
 export function productCardBadge(
   product: Pick<Product, "discountPercent" | "discountEndsAt" | "inStock" | "isNew">,
   now: Date = new Date()
 ): ProductCardBadge | null {
+  if (!product.inStock) return { label: "Sold Out", kind: "soldOut" };
   if (isActiveOffer(product, now)) {
     return { label: `Offer ${Math.round(product.discountPercent ?? 0)}%`, kind: "offer" };
   }

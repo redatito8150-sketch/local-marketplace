@@ -50,7 +50,11 @@ export default function ProductTile({
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-black/5 opacity-55 transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100" />
 
         {badge && (
-          <span className="absolute left-3 top-3 z-10 rounded-full bg-mahalyred px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream">
+          <span
+            className={`absolute left-3 top-3 z-10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${
+              badge.kind === "soldOut" ? "bg-ink/85" : "bg-mahalyred"
+            }`}
+          >
             {badge.label}
           </span>
         )}
