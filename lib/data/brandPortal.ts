@@ -236,6 +236,7 @@ export interface BrandProductListItem {
   createdAt: string;
   status: string;
   draftStartedAt?: string;
+  publishDate?: string;
   pausedByBrand: boolean;
   hasPendingEdit: boolean;
   reviewNotes?: string;
@@ -254,6 +255,7 @@ interface BrandProductRow {
   created_at: string;
   status: string;
   draft_started_at: string | null;
+  publish_date: string | null;
   paused_by_brand: boolean;
   pending_changes: unknown;
   review_notes: string | null;
@@ -273,7 +275,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, image, price, currency, product_type_id, collection_id, featured, created_at, status, draft_started_at, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_type_id, collection_id, featured, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
@@ -311,6 +313,7 @@ export async function getProductsForBrand(
       createdAt: row.created_at,
       status: row.status,
       draftStartedAt: row.draft_started_at ?? undefined,
+      publishDate: row.publish_date ?? undefined,
       pausedByBrand: row.paused_by_brand,
       hasPendingEdit: row.pending_changes != null,
       reviewNotes: row.review_notes ?? undefined,
