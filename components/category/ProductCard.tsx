@@ -59,7 +59,11 @@ function ProductListRow({ product, eager }: { product: Product; eager?: boolean 
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
         {badge && (
-          <span className="absolute left-2 top-2 rounded-full bg-mahalyred px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream">
+          <span
+            className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-cream ${
+              badge.kind === "soldOut" ? "bg-ink/85" : "bg-mahalyred"
+            }`}
+          >
             {badge.label}
           </span>
         )}
