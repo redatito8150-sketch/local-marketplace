@@ -6,6 +6,7 @@ import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
 import { logAudit } from "@/lib/auditLog";
+import { nextAfterZoneSortOrder } from "@/lib/inventory/sizeOrder";
 
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -37,6 +38,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This option type belongs to a different brand" }, { status: 403 });
   }
 
+  // A brand-new custom value (e.g. a custom Size) always appends at the
+  // very end — moved earlier only if the brand explicitly reorders it
+  // afterward (see lib/inventory/sizeOrder.ts). Harmless for non-Size
+  // option types too — just means "created last" like today, but now
+  // reliably instead of an untouched, tie-prone default of 0.
+  const { data: siblings } = await supabaseAdmin
+    .from("option_values")
+    .select("sort_order")
+    .eq("option_type_id", optionTypeId)
+    .eq("brand_id", owner.brandId);
+  const sortOrder = nextAfterZoneSortOrder((siblings ?? []).map((s) => s.sort_order as number));
+
   const { data, error } = await supabaseAdmin
     .from("option_values")
     .insert({
@@ -45,6 +58,7 @@ export async function POST(request: NextRequest) {
       label,
       key: normalizeOptionKey(label),
       sku_token: deriveSkuToken(label),
+      sort_order: sortOrder,
       swatch_type: body.swatchType || null,
       primary_color: body.primaryColor || null,
       secondary_color: body.secondaryColor || null,

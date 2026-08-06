@@ -2,13 +2,13 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle, Box, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { AlertCircle, Box, ChevronDown, ChevronRight, ChevronUp, Plus, X } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
 import type { OptionValueOption, VariantRow } from "./InventoryVariantsSection";
 import ColorSwatch from "./ColorSwatch";
 import ColorOptionPicker, { type NewColorInput } from "./ColorOptionPicker";
 import SizeValueSelector from "./SizeValueSelector";
-import { sortByLabel } from "@/lib/inventory/sizeOrder";
+import { compareSizeOrderables, isCustomSizeValue } from "@/lib/inventory/sizeOrder";
 
 type RowState = "not_created" | "created" | "zero_stock";
 
@@ -115,6 +115,7 @@ export default function VariantTable({
   onCreateSizeForColor,
   onRemoveVariant,
   onUpdateVariant,
+  onReorderSize,
 }: {
   colorValues: OptionValueOption[];
   availableColorValues: OptionValueOption[];
@@ -139,6 +140,9 @@ export default function VariantTable({
   onCreateSizeForColor: (colorId: string, label: string) => Promise<void>;
   onRemoveVariant: (colorId: string, sizeId: string) => void;
   onUpdateVariant: (colorId: string, sizeId: string, patch: Partial<VariantRow>) => void;
+  // A custom Size's up/down arrow — no-op (and not shown) for a
+  // recognized size, since those are never manually reorderable.
+  onReorderSize: (sizeId: string, direction: "up" | "down") => Promise<void>;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const toggleCollapsed = (colorId: string) =>
@@ -162,8 +166,12 @@ export default function VariantTable({
       map.get(colorId)?.push({ size, variant });
     }
     // Smallest at the top, always — not whatever order sizes happened to
-    // be added in.
-    for (const [colorId, rows] of map) map.set(colorId, sortByLabel(rows, (row) => row.size.label));
+    // be added in. A custom size's position among other custom sizes
+    // comes from its own sort_order (see lib/inventory/sizeOrder.ts) —
+    // never between recognized sizes.
+    for (const [colorId, rows] of map) {
+      map.set(colorId, [...rows].sort((a, b) => compareSizeOrderables(a.size, b.size)));
+    }
     return map;
   }, [colorValues, variants, sizeById]);
 
@@ -352,9 +360,33 @@ export default function VariantTable({
                       return (
                         <tr key={`${color.id}-${size.id}`}>
                           <td className="px-3 py-2">
-                            <span className="flex items-center gap-2 pl-7">
-                              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ROW_STATE_DOT[state]}`} title={ROW_STATE_LABEL[state]} />
-                              {size.label}
+                            <span className="flex items-center gap-1.5 pl-7">
+                              {isCustomSizeValue(size) && (
+                                <span className="flex flex-col" aria-label={`Reorder ${size.label}`}>
+                                  <button
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => onReorderSize(size.id, "up")}
+                                    aria-label={`Move ${size.label} up`}
+                                    className="flex h-3.5 w-3.5 items-center justify-center rounded text-ink-soft/40 hover:bg-stone-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <ChevronUp className="h-3 w-3" strokeWidth={2.5} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={disabled}
+                                    onClick={() => onReorderSize(size.id, "down")}
+                                    aria-label={`Move ${size.label} down`}
+                                    className="flex h-3.5 w-3.5 items-center justify-center rounded text-ink-soft/40 hover:bg-stone-150 hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <ChevronDown className="h-3 w-3" strokeWidth={2.5} />
+                                  </button>
+                                </span>
+                              )}
+                              <span className="flex items-center gap-2">
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ROW_STATE_DOT[state]}`} title={ROW_STATE_LABEL[state]} />
+                                {size.label}
+                              </span>
                             </span>
                           </td>
                           <td className="px-3 py-2">

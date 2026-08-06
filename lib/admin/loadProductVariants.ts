@@ -21,6 +21,8 @@ interface VariantValueRow {
   option_values: {
     label: string;
     option_type_id: string;
+    sort_order: number;
+    brand_id: string | null;
     swatch_type: string | null;
     primary_color: string | null;
     secondary_color: string | null;
@@ -46,7 +48,7 @@ export async function loadProductVariants(
 
   const { data: valueRows, error: valuesError } = await supabaseAdmin
     .from("product_variant_values")
-    .select("variant_id, option_value_id, option_values(label, option_type_id, swatch_type, primary_color, secondary_color, option_types(id, name))")
+    .select("variant_id, option_value_id, option_values(label, option_type_id, sort_order, brand_id, swatch_type, primary_color, secondary_color, option_types(id, name))")
     .in("variant_id", variants.map((v) => v.id));
   if (valuesError) throw new Error(`loadProductVariants(${productId}) values failed: ${valuesError.message}`);
 
@@ -74,6 +76,8 @@ export async function loadProductVariants(
         label: row.option_values!.label,
         optionTypeId: row.option_values!.option_type_id,
         optionTypeName: row.option_values!.option_types?.name ?? "",
+        sortOrder: row.option_values!.sort_order,
+        brandId: row.option_values!.brand_id,
         swatchType: (row.option_values!.swatch_type as ProductVariant["optionValues"][number]["swatchType"]) ?? undefined,
         primaryColor: row.option_values!.primary_color ?? undefined,
         secondaryColor: row.option_values!.secondary_color ?? undefined,

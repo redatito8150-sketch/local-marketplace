@@ -5,6 +5,7 @@ import { deriveSkuToken, normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/reusableDataLifecycle";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { reorderCustomSize } from "@/lib/inventory/sizeOrder";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await requireAdminUser();
@@ -14,6 +15,45 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!value) return NextResponse.json({ error: "Option value not found" }, { status: 404 });
   if (!value.brand_id || (body.brandId && body.brandId !== value.brand_id)) return NextResponse.json({ error: "Global values cannot be managed here" }, { status: 403 });
   const actorLabel = admin.email ?? admin.id;
+  if (body.action === "reorder") {
+    const direction = body.direction === "up" || body.direction === "down" ? body.direction : null;
+    if (!direction) return NextResponse.json({ error: "Invalid direction" }, { status: 400 });
+    const { data: siblings, error: siblingsError } = await supabaseAdmin
+      .from("option_values")
+      .select("id, label, sort_order, brand_id")
+      .eq("option_type_id", value.option_type_id)
+      .or(`brand_id.is.null,brand_id.eq.${value.brand_id}`)
+      .eq("is_archived", false);
+    if (siblingsError) return safeErrorResponse("admin.product-options.values.reorder", siblingsError);
+    const moves = reorderCustomSize(
+      (siblings ?? []).map((s) => ({
+        id: s.id as string,
+        label: s.label as string,
+        sortOrder: s.sort_order as number,
+        brandId: s.brand_id as string | null,
+      })),
+      id,
+      direction
+    );
+    if (!moves) return NextResponse.json({ error: "That can't be moved any further" }, { status: 400 });
+    for (const move of moves) {
+      const { error } = await supabaseAdmin
+        .from("option_values")
+        .update({ sort_order: move.sortOrder, updated_at: new Date().toISOString() })
+        .eq("id", move.id);
+      if (error) return safeErrorResponse("admin.product-options.values.reorder", error);
+    }
+    await logAudit({
+      actorId: admin.id,
+      actorLabel,
+      entityType: "option_value",
+      entityId: id,
+      action: "update",
+      before: value,
+      after: { reordered: moves },
+    });
+    return NextResponse.json({ updated: true });
+  }
   if (body.action === "delete") {
     const references = await optionValueReferences(id);
     if (references.selectedCount || references.variantCount || references.historical) return NextResponse.json({ error: HISTORICAL_DELETE_MESSAGE, references }, { status: 409 });

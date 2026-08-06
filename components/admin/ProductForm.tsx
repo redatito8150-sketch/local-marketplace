@@ -417,6 +417,7 @@ export default function ProductForm({
       id: data.id,
       optionTypeId: data.optionTypeId,
       label: data.label,
+      sortOrder: data.sortOrder,
       swatchType: data.swatchType,
       primaryColor: data.primaryColor,
       secondaryColor: data.secondaryColor,
@@ -424,6 +425,19 @@ export default function ProductForm({
     };
     setOptionValues((prev) => [...prev, created]);
     return created;
+  };
+
+  // A custom Size's up/down arrow in the Matrix (VariantTable) — the
+  // actual zone/never-between-recognized-sizes math (lib/inventory/
+  // sizeOrder.ts's reorderCustomSize) runs server-side; refetching here
+  // rather than recomputing locally keeps this one source of truth.
+  const handleReorderOptionValue = async (optionValueId: string, direction: "up" | "down") => {
+    const res = await fetch(`${optionsApiBase}/product-options/values/${optionValueId}${brandQuery}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reorder", direction }),
+    });
+    if (res.ok) await loadOptions();
   };
 
   const handleTaxonomyChange = (productTypeId: string) => {
@@ -779,6 +793,7 @@ export default function ProductForm({
             availableOptionValues={optionValues}
             onCreateOptionType={handleCreateOptionType}
             onCreateOptionValue={handleCreateOptionValue}
+            onReorderOptionValue={handleReorderOptionValue}
             currency="EGP"
             productSkuPreview={form.sku || "(generated after first save)"}
             productPrice={Number(form.price) || 0}
