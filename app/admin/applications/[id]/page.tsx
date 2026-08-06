@@ -198,7 +198,14 @@ export default async function AdminApplicationDetailPage(
           )}
 
           <Section title="Legal & documents">
-            <Field label="Business registration status" value={legalStatusLabel ?? application.legalStatus ?? "—"} />
+            <Field
+              label="Business registration status"
+              value={
+                application.legalStatus === "other"
+                  ? `Other — ${application.legalStatusOther || "—"}`
+                  : legalStatusLabel ?? application.legalStatus ?? "—"
+              }
+            />
             <Field
               label="Commercial registration #"
               value={application.commercialRegistrationNumber || "—"}

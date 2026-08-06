@@ -850,6 +850,7 @@ export interface BrandApplicationRecord {
   commercialRegistrationNumber?: string;
   taxRegistrationNumber?: string;
   legalBusinessName?: string;
+  legalStatusOther?: string;
 
   productPriceRange?: string;
   productsManufacturedByBrand?: boolean;
