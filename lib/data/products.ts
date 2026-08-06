@@ -6,6 +6,7 @@ import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/aud
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { resolveShippingPolicy } from "@/lib/admin/shippingPolicy";
 import { NEW_ARRIVAL_WINDOW_DAYS, isWithinNewArrivalWindow, isPublishDateLive, publishDateLiveFilter } from "@/lib/newArrivals";
+import { sortByLabel } from "@/lib/inventory/sizeOrder";
 import {
   Audience,
   CategorySlug,
@@ -29,11 +30,14 @@ export function attachVariantDerivedFields<T extends { sizes: string[]; colors: 
   product: T,
   variants: ProductVariant[]
 ): T {
-  const sizeLabels = [
-    ...new Set(
-      variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Size").map((o) => o.label))
-    ),
-  ];
+  const sizeLabels = sortByLabel(
+    [
+      ...new Set(
+        variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Size").map((o) => o.label))
+      ),
+    ],
+    (label) => label
+  );
   const colorMap = new Map<string, ProductColorOption>();
   for (const variant of variants) {
     for (const option of variant.optionValues) {
