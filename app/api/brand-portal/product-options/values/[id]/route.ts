@@ -6,6 +6,7 @@ import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/re
 import { validateOptionValueLabel } from "@/lib/admin/optionValidation";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { reorderCustomSize } from "@/lib/inventory/sizeOrder";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -16,6 +17,46 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!value.brand_id || value.brand_id !== owner.brandId) return NextResponse.json({ error: "Only your brand's custom values can be managed" }, { status: 403 });
   const body = await request.json();
   const actorLabel = owner.user.email ?? owner.user.id;
+  if (body.action === "reorder") {
+    const direction = body.direction === "up" || body.direction === "down" ? body.direction : null;
+    if (!direction) return NextResponse.json({ error: "Invalid direction" }, { status: 400 });
+    const { data: siblings, error: siblingsError } = await supabaseAdmin
+      .from("option_values")
+      .select("id, label, sort_order, brand_id")
+      .eq("option_type_id", value.option_type_id)
+      .or(`brand_id.is.null,brand_id.eq.${owner.brandId}`)
+      .eq("is_archived", false);
+    if (siblingsError) return safeErrorResponse("brand-portal.product-options.values.reorder", siblingsError);
+    const moves = reorderCustomSize(
+      (siblings ?? []).map((s) => ({
+        id: s.id as string,
+        label: s.label as string,
+        sortOrder: s.sort_order as number,
+        brandId: s.brand_id as string | null,
+      })),
+      id,
+      direction
+    );
+    if (!moves) return NextResponse.json({ error: "That can't be moved any further" }, { status: 400 });
+    for (const move of moves) {
+      const { error } = await supabaseAdmin
+        .from("option_values")
+        .update({ sort_order: move.sortOrder, updated_at: new Date().toISOString() })
+        .eq("id", move.id);
+      if (error) return safeErrorResponse("brand-portal.product-options.values.reorder", error);
+    }
+    await logAudit({
+      actorId: owner.user.id,
+      actorLabel,
+      entityType: "option_value",
+      entityId: id,
+      action: "update",
+      before: value,
+      after: { reordered: moves },
+      brandSlug: owner.brandSlug ?? undefined,
+    });
+    return NextResponse.json({ updated: true });
+  }
   if (body.action === "delete") {
     const references = await optionValueReferences(id);
     if (references.selectedCount || references.variantCount || references.historical) {

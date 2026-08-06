@@ -4,7 +4,7 @@ import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
 import { buildComboKey } from "@/lib/inventory/variantCombinations";
-import { sortByLabel } from "@/lib/inventory/sizeOrder";
+import { sortSizeOrderables } from "@/lib/inventory/sizeOrder";
 import type { NewColorInput } from "./ColorOptionPicker";
 
 export interface OptionTypeOption {
@@ -19,6 +19,10 @@ export interface OptionValueOption {
   id: string;
   optionTypeId: string;
   label: string;
+  // Only meaningful for a custom (non-recognized) Size — see
+  // lib/inventory/sizeOrder.ts. Carried through for every option value
+  // regardless of type since it's free from the same row.
+  sortOrder?: number;
   swatchType?: OptionSwatchType;
   primaryColor?: string;
   secondaryColor?: string;
@@ -61,6 +65,7 @@ export default function InventoryVariantsSection({
   availableOptionTypes,
   availableOptionValues,
   onCreateOptionValue,
+  onReorderOptionValue,
   currency,
   productSkuPreview: _productSkuPreview,
   productPrice,
@@ -76,6 +81,10 @@ export default function InventoryVariantsSection({
   availableOptionValues: OptionValueOption[];
   onCreateOptionType: (name: string) => Promise<OptionTypeOption>;
   onCreateOptionValue: (optionTypeId: string, label: string, colorInput?: NewColorInput) => Promise<OptionValueOption>;
+  // A custom Size's up/down arrow in the Matrix — no-op for a recognized
+  // size (see lib/inventory/sizeOrder.ts's reorderCustomSize, which
+  // refuses those server-side too).
+  onReorderOptionValue: (optionValueId: string, direction: "up" | "down") => Promise<void>;
   currency: "USD" | "EGP";
   productSkuPreview: string;
   productPrice: number;
@@ -100,9 +109,8 @@ export default function InventoryVariantsSection({
     ? availableOptionValues.filter((v) => v.optionTypeId === colorType.id && (!v.isArchived || colorValueIds.includes(v.id)))
     : [];
   const availableSizeValues = sizeType
-    ? sortByLabel(
-        availableOptionValues.filter((v) => v.optionTypeId === sizeType.id && (!v.isArchived || sizeValueIds.includes(v.id))),
-        (v) => v.label
+    ? sortSizeOrderables(
+        availableOptionValues.filter((v) => v.optionTypeId === sizeType.id && (!v.isArchived || sizeValueIds.includes(v.id)))
       )
     : [];
 
@@ -280,6 +288,7 @@ export default function InventoryVariantsSection({
           onCreateSizeForColor={createSizeForColor}
           onRemoveVariant={removeVariant}
           onUpdateVariant={updateVariant}
+          onReorderSize={onReorderOptionValue}
         />
       ) : (
         <p className="text-[12.5px] text-red-600">

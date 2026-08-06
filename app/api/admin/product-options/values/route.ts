@@ -5,6 +5,7 @@ import { validateOptionValueLabel, validateColorValueInput } from "@/lib/admin/o
 import { normalizeOptionKey, deriveSkuToken } from "@/lib/inventory/optionKey";
 import { logError } from "@/lib/errorLog";
 import { logAudit } from "@/lib/auditLog";
+import { nextAfterZoneSortOrder } from "@/lib/inventory/sizeOrder";
 
 // Creates a brand-private custom value under any option type (a private
 // custom Size like "Petite", a private custom Color, or a value under a
@@ -42,6 +43,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "This option type belongs to a different brand" }, { status: 403 });
   }
 
+  // A brand-new custom value (e.g. a custom Size) always appends at the
+  // very end — moved earlier only if the brand explicitly reorders it
+  // afterward (see lib/inventory/sizeOrder.ts).
+  const { data: siblings } = await supabaseAdmin
+    .from("option_values")
+    .select("sort_order")
+    .eq("option_type_id", optionTypeId)
+    .eq("brand_id", brandId);
+  const sortOrder = nextAfterZoneSortOrder((siblings ?? []).map((s) => s.sort_order as number));
+
   const { data, error } = await supabaseAdmin
     .from("option_values")
     .insert({
@@ -50,6 +61,7 @@ export async function POST(request: NextRequest) {
       label,
       key: normalizeOptionKey(label),
       sku_token: deriveSkuToken(label),
+      sort_order: sortOrder,
       swatch_type: body.swatchType || null,
       primary_color: body.primaryColor || null,
       secondary_color: body.secondaryColor || null,

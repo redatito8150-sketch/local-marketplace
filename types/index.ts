@@ -206,6 +206,13 @@ export interface VariantOptionSelection {
   optionTypeName: string;
   optionValueId: string;
   label: string;
+  // The selected value's own option_values.sort_order and brand_id — used
+  // together to place a custom (brand-defined) Size correctly relative to
+  // shared/system sizes and other custom sizes (see
+  // lib/inventory/sizeOrder.ts). Meaningless for other option types, but
+  // always carried through since both are free from the same row.
+  sortOrder?: number;
+  brandId?: string | null;
   // Only present when optionTypeName is "Color" — carried here so the
   // storefront/admin never need a second lookup just to render a swatch
   // next to a variant's selected color.

@@ -6,7 +6,7 @@ import { shopCategoryAudiences, primaryShopCategoryForAudience } from "@/lib/aud
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { resolveShippingPolicy } from "@/lib/admin/shippingPolicy";
 import { NEW_ARRIVAL_WINDOW_DAYS, isWithinNewArrivalWindow, isPublishDateLive, publishDateLiveFilter } from "@/lib/newArrivals";
-import { sortByLabel } from "@/lib/inventory/sizeOrder";
+import { sortSizeOrderables } from "@/lib/inventory/sizeOrder";
 import {
   Audience,
   CategorySlug,
@@ -30,14 +30,21 @@ export function attachVariantDerivedFields<T extends { sizes: string[]; colors: 
   product: T,
   variants: ProductVariant[]
 ): T {
-  const sizeLabels = sortByLabel(
-    [
-      ...new Set(
-        variants.flatMap((v) => v.optionValues.filter((o) => o.optionTypeName === "Size").map((o) => o.label))
-      ),
-    ],
-    (label) => label
-  );
+  // A custom (brand-owned) Size's position among other custom sizes comes
+  // from its own option_values.sort_order + brand_id (see
+  // lib/inventory/sizeOrder.ts) — first occurrence across variants wins,
+  // same as the label dedup below.
+  const sizeMetaByLabel = new Map<string, { sortOrder?: number; brandId?: string | null }>();
+  for (const v of variants) {
+    for (const o of v.optionValues) {
+      if (o.optionTypeName === "Size" && !sizeMetaByLabel.has(o.label)) {
+        sizeMetaByLabel.set(o.label, { sortOrder: o.sortOrder, brandId: o.brandId });
+      }
+    }
+  }
+  const sizeLabels = sortSizeOrderables(
+    [...sizeMetaByLabel.entries()].map(([label, meta]) => ({ id: label, label, ...meta }))
+  ).map((entry) => entry.label);
   const colorMap = new Map<string, ProductColorOption>();
   for (const variant of variants) {
     for (const option of variant.optionValues) {
