@@ -35,7 +35,7 @@ export default function WishlistGrid() {
     <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => (
         <div key={item.productId} className="group">
-          <div className="relative aspect-[3/3.9] w-full overflow-hidden rounded-[18px] bg-[var(--account-surface-muted)]">
+          <div className="relative aspect-[0.78] w-full overflow-hidden rounded-[18px] bg-[var(--account-surface-muted)]">
             <Link href={`/product/${item.productId}`}>
               <Image
                 src={item.image}

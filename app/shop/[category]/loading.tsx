@@ -14,7 +14,7 @@ export default function Loading() {
           <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i}>
-                <div className="aspect-[3/3.9] rounded-[16px] bg-stone-100" />
+                <div className="aspect-[0.78] rounded-[16px] bg-stone-100" />
                 <div className="mt-3 h-3 w-2/3 rounded bg-stone-100" />
                 <div className="mt-2 h-3 w-1/2 rounded bg-stone-100" />
               </div>
