@@ -8,8 +8,6 @@ import { z } from "zod";
 import {
   EGYPT_GOVERNORATES,
   INVENTORY_MODEL_VALUES,
-  LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
-  LEGAL_STATUSES_WITH_TAX_CARD,
   SALES_CHANNEL_LINK_CONFIG,
 } from "./constants.ts";
 
@@ -121,31 +119,18 @@ export const legalInfoObjectSchema = z.object({
   legalStatusOther: optionalString(160),
 });
 
-function legalInfoRefinements<
-  T extends {
-    legalStatus: string;
-    commercialRegistrationNumber?: string;
-    taxRegistrationNumber?: string;
-    legalStatusOther?: string;
-  }
->(schema: z.ZodType<T>) {
-  return schema
-    .refine(
-      (data) =>
-        !LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION.includes(data.legalStatus as never) ||
-        Boolean(data.commercialRegistrationNumber),
-      { message: "Commercial registration number is required", path: ["commercialRegistrationNumber"] }
-    )
-    .refine(
-      (data) =>
-        !LEGAL_STATUSES_WITH_TAX_CARD.includes(data.legalStatus as never) ||
-        Boolean(data.taxRegistrationNumber),
-      { message: "Tax registration number is required", path: ["taxRegistrationNumber"] }
-    )
-    .refine(
-      (data) => data.legalStatus !== "other" || Boolean(data.legalStatusOther),
-      { message: "Please specify your registration status", path: ["legalStatusOther"] }
-    );
+// Commercial/tax registration numbers are collected when offered (both_docs
+// still shows both fields, per LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION/
+// LEGAL_STATUSES_WITH_TAX_CARD in ApplyBrandForm) but are never required to
+// submit — legalInfoObjectSchema already declares them optionalString, so
+// the only refinement needed here is legalStatusOther.
+function legalInfoRefinements<T extends { legalStatus: string; legalStatusOther?: string }>(
+  schema: z.ZodType<T>
+) {
+  return schema.refine(
+    (data) => data.legalStatus !== "other" || Boolean(data.legalStatusOther),
+    { message: "Please specify your registration status", path: ["legalStatusOther"] }
+  );
 }
 
 export const legalInfoSchema = legalInfoRefinements(legalInfoObjectSchema);
@@ -165,15 +150,17 @@ export const operationsInfoObjectSchema = z.object({
   // kept optional here only so old drafts/submissions still parse.
   manufacturingModel: z.enum(["own_production", "external_manufacturer", "mixed"]).optional(),
   fulfillmentModel: z.enum(["ready_to_ship", "made_to_order", "both"]).optional(),
-  avgPreparationTimeRange: z
-    .enum(["same_day", "1_2_days", "3_5_days", "6_7_days", "more_than_week"])
-    .optional(),
+  avgPreparationTimeRange: z.enum(
+    ["same_day", "1_2_days", "3_5_days", "6_7_days", "more_than_week"],
+    { errorMap: () => ({ message: "Average preparation time is required" }) }
+  ),
   shippingCoverageOption: z.enum(["all_egypt", "selected_governorates", "international"]).optional(),
   shippingGovernorates: z.array(z.enum(EGYPT_GOVERNORATES)).max(27).default([]),
-  returnsPolicy: z
-    .enum(["returns_and_exchanges", "exchanges_only", "no_returns", "depends_on_product"])
-    .optional(),
-  returnsPolicyDetails: optionalString(500),
+  returnsPolicy: z.enum(
+    ["returns_and_exchanges", "exchanges_only", "no_returns", "depends_on_product"],
+    { errorMap: () => ({ message: "Returns and exchanges is required" }) }
+  ),
+  returnsPolicyDetails: requiredString("Returns & exchanges details", 500),
   inventoryModel: z.array(z.enum(INVENTORY_MODEL_VALUE_LIST)).max(4).default([]),
 });
 
