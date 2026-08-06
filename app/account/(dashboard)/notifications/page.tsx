@@ -40,6 +40,10 @@ export default async function AccountNotificationsPage() {
             const href =
               n.relatedEntityType === "order" ? "/account/orders"
               : n.relatedEntityType === "application" ? "/join-as-a-brand/apply"
+              // Back-in-stock and wishlist price-drop alerts both carry a
+              // real product id — the whole point of the notification is
+              // to get back to that exact product.
+              : n.relatedEntityType === "product" && n.relatedEntityId ? `/product/${n.relatedEntityId}`
               : null;
             const info = (
               <div className="min-w-0">

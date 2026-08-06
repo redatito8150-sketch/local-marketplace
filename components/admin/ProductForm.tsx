@@ -586,6 +586,15 @@ export default function ProductForm({
   // nagged with premature errors — a not-yet-ready section just reads
   // "Incomplete", not an error.
   const publishReadinessIssues = validateProductSections(buildPayload("published"));
+  // Once a product leaves Draft there's no path back to it — no button
+  // anywhere ever re-submits "draft" except Save as Draft itself, which
+  // this hides — so the status it had when this edit session started is
+  // enough to know whether it's ever been published: "draft" means it
+  // hasn't; anything else (published, archived, or a legacy pending
+  // status) means it has, or was archived directly without publishing
+  // first — a rare initial choice treated the same way rather than
+  // reopening Draft for it.
+  const hasLeftDraft = currentMode === "edit" && initial?.status !== "draft";
   const completedSections = new Set<ProductEditorSectionId>(
     PRODUCT_EDITOR_SECTIONS.filter((section) => !publishReadinessIssues.some((issue) => issue.section === section.id)).map((section) => section.id)
   );
@@ -917,6 +926,8 @@ export default function ProductForm({
           onArchive={() => submit("archived")}
           canArchive={publishReadinessIssues.length === 0}
           onPublish={() => submit("published")}
+          showDraft={!hasLeftDraft}
+          publishLabel={hasLeftDraft ? "Update" : "Publish Product"}
         />
       </div>
 

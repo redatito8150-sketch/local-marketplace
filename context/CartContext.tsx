@@ -20,9 +20,14 @@ interface CartContextValue {
   // Changes a line's size/color in place — this recomputes its lineId (the
   // id encodes size+color), merging into an existing line of the new
   // size/color if one's already in the cart, same collapsing behavior as
-  // addItem. Stock/availability of the new size isn't checked here — that
-  // still only happens at checkout, same as quantity today.
-  updateVariant: (lineId: string, next: { size?: string; color?: string }) => void;
+  // addItem. Also used (with no size/color, just price/image/variantId) to
+  // silently sync a line's stored snapshot to live data on the cart page —
+  // stock/availability itself is validated by the caller (app/cart/page.tsx
+  // via lib/cart/liveValidation.ts), never assumed here.
+  updateVariant: (
+    lineId: string,
+    next: { size?: string; color?: string; variantId?: string; price?: number; image?: string }
+  ) => void;
   clearCart: () => void;
   itemCount: number;
   subtotal: { usd: number; egp: number };
@@ -80,15 +85,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateVariant = useCallback(
-    (lineId: string, next: { size?: string; color?: string }) => {
+    (
+      lineId: string,
+      next: { size?: string; color?: string; variantId?: string; price?: number; image?: string }
+    ) => {
       setItems((prev) => {
         const current = prev.find((i) => i.id === lineId);
         if (!current) return prev;
         const size = next.size ?? current.size;
         const color = next.color !== undefined ? next.color : current.color;
+        const patch: Partial<CartLineItem> = { size, color };
+        if (next.variantId !== undefined) patch.variantId = next.variantId;
+        if (next.price !== undefined) patch.price = next.price;
+        if (next.image !== undefined) patch.image = next.image;
+
         const newLineId = `${current.productId}-${size}-${color ?? "default"}`;
         if (newLineId === lineId) {
-          return prev.map((i) => (i.id === lineId ? { ...i, size, color } : i));
+          return prev.map((i) => (i.id === lineId ? { ...i, ...patch } : i));
         }
         const collision = prev.find((i) => i.id === newLineId);
         if (collision) {
@@ -102,7 +115,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             );
         }
         return prev.map((i) =>
-          i.id === lineId ? { ...i, id: newLineId, size, color } : i
+          i.id === lineId ? { ...i, ...patch, id: newLineId } : i
         );
       });
     },

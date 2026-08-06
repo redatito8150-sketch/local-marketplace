@@ -192,6 +192,8 @@ export function ProductEditorBottomBar({
   onArchive,
   canArchive,
   onPublish,
+  showDraft = true,
+  publishLabel = "Publish Product",
 }: {
   dirty: boolean;
   submitting: boolean;
@@ -199,10 +201,17 @@ export function ProductEditorBottomBar({
   onArchive: () => void;
   canArchive: boolean;
   onPublish: () => void;
+  // False once a product has ever left Draft — there's no path back to
+  // it, so re-offering "Save as Draft" on an already-published/archived
+  // product would be a dead end, not a real option.
+  showDraft?: boolean;
+  // "Update" once it's already live — "Publish Product" only makes sense
+  // the first time.
+  publishLabel?: string;
 }) {
   return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex flex-wrap items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
     <span className="mr-auto text-[11.5px] font-medium text-ink-soft/55">{dirty ? "Unsaved changes" : "All changes saved"}</span>
-    <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>
+    {showDraft && <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>}
     <button
       type="button"
       disabled={submitting || !canArchive}
@@ -212,6 +221,6 @@ export function ProductEditorBottomBar({
     >
       Archive
     </button>
-    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">Publish Product</button>
+    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{publishLabel}</button>
   </div>;
 }
