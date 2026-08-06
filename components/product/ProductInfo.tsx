@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Heart, Minus, Plus, Check, Truck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertTriangle, Bell, Heart, Minus, Plus, Check, Truck } from "lucide-react";
 import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
@@ -17,6 +18,8 @@ export default function ProductInfo({
   disableActions = false,
   disabledActionReason,
   onColorImageChange,
+  signedIn = false,
+  subscribedVariantIds = [],
 }: {
   product: ProductDetail;
   // Used by the admin live-preview panel, which reuses this component
@@ -30,7 +33,14 @@ export default function ProductInfo({
   // this is the only way a Color selection is allowed to affect the
   // gallery's primary image (never the reverse).
   onColorImageChange?: (url: string | undefined) => void;
+  // Whether the viewer is signed in, and which of this product's variants
+  // they already have a "notify me" subscription on (resolved server-side
+  // — see app/product/[id]/page.tsx and lib/backInStock.ts) — both feed
+  // the Add to Cart -> Notify Me swap below.
+  signedIn?: boolean;
+  subscribedVariantIds?: string[];
 }) {
+  const router = useRouter();
   const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
@@ -54,6 +64,13 @@ export default function ProductInfo({
   const [quantity, setQuantity] = useState(1);
   const [added, setAdded] = useState(false);
   const [sizeError, setSizeError] = useState(false);
+  const [notifySaving, setNotifySaving] = useState(false);
+  const [notifyError, setNotifyError] = useState("");
+  // Variants subscribed to during THIS visit — merged with the
+  // server-resolved subscribedVariantIds prop so the button flips to "You're
+  // on the list" immediately, without needing a reload, whichever variant
+  // is currently selected.
+  const [justSubscribedIds, setJustSubscribedIds] = useState<Set<string>>(new Set());
 
   const brandHref = product.brandSlug
     ? `/brands/${product.brandSlug}`
@@ -154,6 +171,25 @@ export default function ProductInfo({
   const isLowStock =
     Boolean(resolvedVariant) && calculateStockStatus(resolvedVariant!.quantity, effectiveThreshold) === "low_stock";
 
+  // The primary button becomes "Notify Me When Available" whenever the
+  // resolved purchase intent hits a genuinely *out-of-stock* variant — the
+  // specific Color+Size selected (or, before any selection, the product as
+  // a whole when literally every combination is sold out). It never
+  // applies to a "not offered in this color" combination, since there's
+  // nothing to restock there — that's just not a real product variant.
+  const resolvedVariantOutOfStock =
+    Boolean(resolvedVariant) &&
+    !isVariantPurchasable({
+      sellingStatus: resolvedVariant!.sellingStatus,
+      quantity: resolvedVariant!.quantity,
+      isArchived: resolvedVariant!.isArchived,
+      productStatus: product.status,
+    });
+  const primaryOutOfStock = resolvedVariantOutOfStock || (!resolvedVariant && !product.inStock);
+  const isSubscribedToResolvedVariant = Boolean(
+    resolvedVariant && (subscribedVariantIds.includes(resolvedVariant.id) || justSubscribedIds.has(resolvedVariant.id))
+  );
+
   const handleAddToCart = () => {
     if (disableActions) return;
     // A product with no sizes at all (a single default variant) has
@@ -197,6 +233,42 @@ export default function ProductInfo({
     });
     setAdded(true);
     setTimeout(() => setAdded(false), 2200);
+  };
+
+  const handleNotifyMe = async () => {
+    if (disableActions) return;
+    if (product.sizes.length > 0 && !selectedSize) {
+      setSizeError(true);
+      return;
+    }
+    if (!resolvedVariant) return;
+    if (isSubscribedToResolvedVariant) return;
+    setSizeError(false);
+    setNotifyError("");
+
+    if (!signedIn) {
+      router.push(`/account?next=${encodeURIComponent(`/product/${product.id}`)}`);
+      return;
+    }
+
+    setNotifySaving(true);
+    try {
+      const res = await fetch(`/api/products/${product.id}/notify-restock`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variantId: resolvedVariant.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setNotifyError(data.error ?? "Something went wrong. Please try again.");
+        return;
+      }
+      setJustSubscribedIds((current) => new Set(current).add(resolvedVariant.id));
+    } catch {
+      setNotifyError("Something went wrong. Please try again.");
+    } finally {
+      setNotifySaving(false);
+    }
   };
 
   return (
@@ -311,28 +383,35 @@ export default function ProductInfo({
           <div className="mt-3 flex flex-wrap gap-2.5">
             {product.sizes.map((size) => {
               const availability = sizeAvailability(size);
-              const unavailable = availability !== "available";
+              // Only "not offered in this color" actually blocks selection
+              // — an out-of-stock size is still a real variant, so it stays
+              // clickable specifically so it can be selected and then
+              // subscribed to via "Notify Me When Available" below.
+              const notOffered = availability === "not_offered";
               return (
                 <button
                   key={size}
-                  disabled={unavailable}
+                  disabled={notOffered}
                   title={
                     availability === "not_offered"
                       ? "Not offered in this color"
                       : availability === "out_of_stock"
-                      ? "Out of stock"
+                      ? "Out of stock — select to get notified when it's back"
                       : undefined
                   }
                   onClick={() => {
-                    if (unavailable) return;
+                    if (notOffered) return;
                     setSelectedSize(size);
                     setSizeError(false);
+                    setNotifyError("");
                   }}
                   className={`relative flex h-10 min-w-[2.5rem] items-center justify-center overflow-hidden rounded-md border px-3 text-[13px] font-medium transition-colors ${
                     availability === "not_offered"
                       ? "cursor-not-allowed border-red-200 bg-red-50 text-red-400"
                       : availability === "out_of_stock"
-                      ? "cursor-not-allowed border-stone-200 bg-stone-200 text-ink-soft/40"
+                      ? selectedSize === size
+                        ? "border-ink bg-stone-200 text-ink-soft/70 ring-2 ring-ink/15"
+                        : "border-stone-200 bg-stone-200 text-ink-soft/40 hover:border-ink/30"
                       : selectedSize === size
                       ? "border-ink bg-ink text-cream"
                       : "border-stone-150 text-ink hover:border-ink/40"
@@ -406,13 +485,27 @@ export default function ProductInfo({
         </div>
 
         <button
-          onClick={handleAddToCart}
-          disabled={disableActions}
+          onClick={primaryOutOfStock ? handleNotifyMe : handleAddToCart}
+          disabled={disableActions || notifySaving || (primaryOutOfStock && isSubscribedToResolvedVariant)}
           className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-md text-[14px] font-semibold transition-all ${
-            added ? "bg-green-700 text-white" : "bg-ink text-cream hover:scale-[1.01]"
-          } ${disableActions ? "cursor-not-allowed opacity-50" : ""}`}
+            added || (primaryOutOfStock && isSubscribedToResolvedVariant) ? "bg-green-700 text-white" : "bg-ink text-cream hover:scale-[1.01]"
+          } ${disableActions || notifySaving ? "cursor-not-allowed opacity-50" : ""}`}
         >
-          {added ? (
+          {primaryOutOfStock ? (
+            isSubscribedToResolvedVariant ? (
+              <>
+                <Check className="h-4 w-4" strokeWidth={2.5} />
+                We&apos;ll notify you
+              </>
+            ) : notifySaving ? (
+              "Saving…"
+            ) : (
+              <>
+                <Bell className="h-4 w-4" strokeWidth={2} />
+                Notify Me When Available
+              </>
+            )
+          ) : added ? (
             <>
               <Check className="h-4 w-4" strokeWidth={2.5} />
               Added to Cart
@@ -452,6 +545,14 @@ export default function ProductInfo({
       {disableActions && disabledActionReason && (
         <p role="note" className="mt-2 text-center text-[11.5px] font-medium text-ink-soft/60">
           {disabledActionReason}
+        </p>
+      )}
+      {notifyError && (
+        <p className="mt-2 text-center text-[12px] font-medium text-red-600">{notifyError}</p>
+      )}
+      {primaryOutOfStock && isSubscribedToResolvedVariant && !notifyError && (
+        <p className="mt-2 text-center text-[12px] text-ink-soft/60">
+          We&apos;ll email you and add a notification to your account the moment it&apos;s back.
         </p>
       )}
 

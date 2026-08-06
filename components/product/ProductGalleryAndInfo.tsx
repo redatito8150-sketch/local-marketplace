@@ -13,16 +13,26 @@ import type { ProductDetail } from "@/types";
 export default function ProductGalleryAndInfo({
   product,
   disableActions,
+  signedIn = false,
+  subscribedVariantIds = [],
 }: {
   product: ProductDetail;
   disableActions?: boolean;
+  signedIn?: boolean;
+  subscribedVariantIds?: string[];
 }) {
   const [featuredImage, setFeaturedImage] = useState<string | undefined>(undefined);
 
   return (
     <>
       <ProductGallery images={product.images} alt={product.name} featuredImage={featuredImage} />
-      <ProductInfo product={product} disableActions={disableActions} onColorImageChange={setFeaturedImage} />
+      <ProductInfo
+        product={product}
+        disableActions={disableActions}
+        onColorImageChange={setFeaturedImage}
+        signedIn={signedIn}
+        subscribedVariantIds={subscribedVariantIds}
+      />
     </>
   );
 }
