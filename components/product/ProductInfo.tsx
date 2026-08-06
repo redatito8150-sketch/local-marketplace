@@ -7,8 +7,7 @@ import { ProductDetail } from "@/types";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { formatPrice } from "@/lib/format";
-import { discountSavings, getEffectivePrice, isDiscountActive } from "@/lib/pricing";
-import { effectiveVariantPrice } from "@/lib/inventory/pricing";
+import { getVariantEffectivePrice } from "@/lib/pricing";
 import { calculateStockStatus, effectiveLowStockThreshold, isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import StarRating from "@/components/shared/StarRating";
 import ColorSwatch from "@/components/admin/ColorSwatch";
@@ -76,8 +75,6 @@ export default function ProductInfo({
     });
   }, [hasVariants, variants, selectedColor, selectedSize, selectedCustom, customOptionGroups]);
 
-  const baseDisplayPrice = effectiveVariantPrice(resolvedVariant?.variantPrice, product.price);
-
   // Ticks every second so an active discount's countdown actually counts
   // down, and so the price/badge flip back to the base price the instant
   // it expires — without this the component would only re-evaluate
@@ -90,11 +87,26 @@ export default function ProductInfo({
     return () => clearInterval(id);
   }, [product.discountEndsAt]);
 
-  const onOffer = isDiscountActive(product.discountPercent, product.discountEndsAt, now);
-  const displayPrice = getEffectivePrice(baseDisplayPrice, product.discountPercent, product.discountEndsAt, now);
-  const savings = onOffer ? discountSavings(baseDisplayPrice, product.discountPercent, product.discountEndsAt, now) : 0;
+  // A variant discount (e.g. one color on sale) and the product's own
+  // discount are mutually exclusive — getVariantEffectivePrice picks
+  // whichever one actually applies to the selected variant.
+  const priceResult = getVariantEffectivePrice(
+    product.price,
+    resolvedVariant?.variantPrice,
+    product.discountPercent,
+    product.discountEndsAt,
+    resolvedVariant?.variantDiscountPercent,
+    now
+  );
+  const baseDisplayPrice = resolvedVariant?.variantPrice ?? product.price;
+  const onOffer = priceResult.active;
+  const displayPrice = priceResult.price;
+  const savings = onOffer ? baseDisplayPrice - displayPrice : 0;
+  // The countdown only makes sense for the product-level, time-bound
+  // discount — a variant discount has no end time of its own.
+  const usingProductDiscount = onOffer && !resolvedVariant?.variantDiscountPercent;
   const countdownLabel = (() => {
-    if (!onOffer || !product.discountEndsAt) return null;
+    if (!usingProductDiscount || !product.discountEndsAt) return null;
     const msLeft = new Date(product.discountEndsAt).getTime() - now.getTime();
     if (msLeft <= 0) return null;
     const totalSeconds = Math.floor(msLeft / 1000);
@@ -225,9 +237,9 @@ export default function ProductInfo({
             {formatPrice(baseDisplayPrice, product.currency)}
           </p>
         )}
-        {onOffer && product.discountPercent != null && (
+        {onOffer && priceResult.percent != null && (
           <span className="group/savings relative inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[12px] font-bold text-red-600">
-            -{Math.round(product.discountPercent)}%
+            -{Math.round(priceResult.percent)}%
             <span
               tabIndex={0}
               aria-label={`You save ${formatPrice(savings, product.currency)}`}

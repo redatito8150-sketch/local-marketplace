@@ -32,6 +32,10 @@ export interface VariantRow {
   quantity: number;
   openingStock?: number;
   variantPrice?: number;
+  // Mutually exclusive with the product-level Discount % (ProductForm.tsx)
+  // — locked/disabled in the UI whenever the product has its own discount,
+  // and vice versa, so a variant's effective price never stacks both.
+  variantDiscountPercent?: number;
   lowStockThresholdOverride?: number;
   sellingStatus: SellingStatus;
   updatedAt?: string;
@@ -59,6 +63,7 @@ export default function InventoryVariantsSection({
   currency,
   productSkuPreview: _productSkuPreview,
   productPrice,
+  productDiscountPercent,
   disabled,
   taxonomyNodes,
   productTypeId,
@@ -73,6 +78,7 @@ export default function InventoryVariantsSection({
   currency: "USD" | "EGP";
   productSkuPreview: string;
   productPrice: number;
+  productDiscountPercent?: number;
   disabled?: boolean;
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
@@ -142,7 +148,7 @@ export default function InventoryVariantsSection({
   const quickRemoveColorIfEmpty = (id: string) => {
     if (!colorType) return;
     const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
-    const hasData = affected.some((v) => Boolean(v.id) || v.quantity > 0 || v.variantPrice != null || v.lowStockThresholdOverride != null);
+    const hasData = affected.some((v) => Boolean(v.id) || v.quantity > 0 || v.variantPrice != null || v.variantDiscountPercent != null || v.lowStockThresholdOverride != null);
     if (hasData) return;
     const nextValueIds = colorValueIds.filter((v) => v !== id);
     const nextVariants = value.variants.filter((v) => !v.optionValueIds.includes(id));
@@ -194,7 +200,7 @@ export default function InventoryVariantsSection({
     const comboKey = buildComboKey([colorId, sizeId].sort());
     const existing = value.variants.find((v) => buildComboKey(v.optionValueIds) === comboKey);
     if (!existing) return;
-    const hasData = Boolean(existing.id) || existing.quantity > 0 || existing.variantPrice != null || existing.lowStockThresholdOverride != null;
+    const hasData = Boolean(existing.id) || existing.quantity > 0 || existing.variantPrice != null || existing.variantDiscountPercent != null || existing.lowStockThresholdOverride != null;
     if (hasData) {
       const message = existing.id
         ? "This variant is saved and may have inventory history. It will be archived, not deleted, when you save. Continue?"
@@ -247,6 +253,7 @@ export default function InventoryVariantsSection({
           defaultLowStockThreshold={value.defaultLowStockThreshold}
           basePrice={productPrice}
           currency={currency}
+          productDiscountPercent={productDiscountPercent}
           disabled={disabled}
           taxonomyNodes={taxonomyNodes}
           productTypeId={productTypeId}

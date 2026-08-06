@@ -225,6 +225,10 @@ export interface ProductVariant {
   // product's own base Price" (see effectiveVariantPrice in
   // lib/inventory/pricing.ts). Not a delta/adjustment.
   variantPrice?: number;
+  // Mutually exclusive with the product's own discountPercent — a variant
+  // can be discounted individually (e.g. one color on sale) or the whole
+  // product can be, never both at once. See getEffectivePrice/lib/pricing.ts.
+  variantDiscountPercent?: number;
   sellingStatus: SellingStatus;
   isArchived: boolean;
   optionValues: VariantOptionSelection[];

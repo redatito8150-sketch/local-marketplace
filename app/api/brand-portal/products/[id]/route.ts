@@ -97,6 +97,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Brand is immutable after creation — whatever the client sends is
   // ignored, always the caller's own brand.
   productBody.brandId = owner.brandId;
+  // Brand-portal only ever writes draft or published (never archived —
+  // that stays the separate DELETE action below).
+  productBody.status = productBody.status === "draft" ? "draft" : "published";
 
   const validationError = validateProductInput(productBody);
   if (validationError) {
@@ -119,8 +122,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const existingColorImages = await loadProductColorImages(params.id);
 
   const productPayload = buildProductPersistencePayload(productBody, {
-    status: "published",
-    publishDate: existing.publish_date ?? new Date().toISOString(),
+    previousPublishDate: existing.publish_date,
     submittedBy: owner.user.id,
     clearReviewState: true,
   });
@@ -182,18 +184,24 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     brandSlug: owner.brandSlug ?? undefined,
   });
 
-  await notify(
-    "product_updated",
-    `Product edited: ${productBody.name}`,
-    describeProductUpdate(existing, productBody),
-    {
-      relatedEntityType: "product",
-      relatedEntityId: params.id,
-      auditLogId,
-      actorLabel: owner.user.email ?? owner.user.id,
-      detailLabel: "Before → After",
-    }
-  );
+  // Notify admin whenever this touches something actually live — going
+  // published for the first time, editing while already published, or
+  // un-publishing back to draft. A draft-to-draft save has no live
+  // consequence to review, so it stays quiet.
+  if (existing.status === "published" || productBody.status === "published") {
+    await notify(
+      "product_updated",
+      `Product edited: ${productBody.name}`,
+      describeProductUpdate(existing, productBody),
+      {
+        relatedEntityType: "product",
+        relatedEntityId: params.id,
+        auditLogId,
+        actorLabel: owner.user.email ?? owner.user.id,
+        detailLabel: "Before → After",
+      }
+    );
+  }
 
   return NextResponse.json({ id: params.id, variants });
 }

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Box, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
+import { AlertCircle, Box, ChevronDown, ChevronRight, Plus, X } from "lucide-react";
 import type { TaxonomyNode } from "@/types";
 import type { OptionValueOption, VariantRow } from "./InventoryVariantsSection";
 import ColorSwatch from "./ColorSwatch";
@@ -101,6 +101,7 @@ export default function VariantTable({
   defaultLowStockThreshold,
   basePrice,
   currency,
+  productDiscountPercent,
   disabled,
   taxonomyNodes,
   productTypeId,
@@ -122,6 +123,7 @@ export default function VariantTable({
   defaultLowStockThreshold: number;
   basePrice: number;
   currency: "USD" | "EGP";
+  productDiscountPercent?: number;
   disabled?: boolean;
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
@@ -161,6 +163,11 @@ export default function VariantTable({
     return map;
   }, [colorValues, variants, sizeById]);
 
+  // Mutual exclusion with the product-level Discount % — a variant
+  // discount only makes sense once the product itself isn't already
+  // discounted as a whole (see ProductForm.tsx's Discount % field, which
+  // locks the other way whenever any variant has its own discount set).
+  const productDiscountLocked = productDiscountPercent != null && productDiscountPercent > 0;
   const isMultiColor = colorValues.length >= 2;
   const colorsMissingImages = isMultiColor ? colorValues.filter((c) => !colorImages[c.id]) : [];
   const isEmpty = colorValues.length === 0;
@@ -238,7 +245,9 @@ export default function VariantTable({
                 <th className="px-3 py-2.5">
                   Variant Price ({currency}) <span className="font-normal normal-case text-ink-soft/40">(Leave empty for base price)</span>
                 </th>
-                <th className="px-3 py-2.5">Image <span className="font-normal normal-case text-ink-soft/40">(Color Image)</span></th>
+                <th className="px-3 py-2.5" title="Only one of Product Discount % or Variant Discount % can be set at a time.">
+                  Variant Discount %
+                </th>
                 <th className="px-3 py-2.5" />
               </tr>
             </thead>
@@ -396,7 +405,33 @@ export default function VariantTable({
                               {variant.variantPrice != null ? "Overrides base price" : `Uses base product price (${basePrice} ${currency})`}
                             </p>
                           </td>
-                          <td className="px-3 py-2 text-[11.5px] text-ink-soft/35">—</td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1 rounded border border-stone-150 pr-2 focus-within:border-ink/30 has-[:disabled]:bg-stone-50">
+                              <input
+                                aria-label={`Variant discount for ${color.label} ${size.label}`}
+                                type="number"
+                                min={0}
+                                max={99}
+                                step="1"
+                                disabled={disabled || productDiscountLocked}
+                                placeholder="0"
+                                value={variant.variantDiscountPercent ?? ""}
+                                onChange={(e) =>
+                                  onUpdateVariant(color.id, size.id, {
+                                    variantDiscountPercent: e.target.value ? Math.max(0, Math.min(99, Number(e.target.value))) : undefined,
+                                  })
+                                }
+                                className="w-16 rounded bg-transparent px-2 py-1 text-[12.5px] outline-none disabled:cursor-not-allowed"
+                              />
+                              <span className="text-[11.5px] font-semibold text-ink-soft/50">%</span>
+                            </div>
+                            {productDiscountLocked && (
+                              <p className="mt-0.5 flex items-start gap-1 text-[10px] text-amber-700">
+                                <AlertCircle className="mt-0.5 h-2.5 w-2.5 shrink-0" strokeWidth={2} />
+                                Locked — remove the product Discount % first
+                              </p>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-right">
                             {persisted && inventoryHref ? (
                               <a href={inventoryHref} className="text-[11.5px] font-semibold text-ink underline">Open Inventory</a>

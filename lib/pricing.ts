@@ -33,3 +33,29 @@ export function discountSavings(
 ): number {
   return basePrice - getEffectivePrice(basePrice, discountPercent, discountEndsAt, now);
 }
+
+// A variant's discount and the product's own discount are mutually
+// exclusive (enforced at save time — see lib/admin/productValidation.ts),
+// so a variant only ever needs to check one or the other, never combine
+// them. The variant discount has no separate end-time of its own (it's a
+// simple per-color markdown, not a time-bound promotion like the
+// product-level one) — it's just active for as long as it's set.
+export function getVariantEffectivePrice(
+  productPrice: number,
+  variantPrice: number | null | undefined,
+  productDiscountPercent: number | null | undefined,
+  productDiscountEndsAt: string | null | undefined,
+  variantDiscountPercent: number | null | undefined,
+  now: Date = new Date()
+): { price: number; active: boolean; percent?: number } {
+  const base = variantPrice ?? productPrice;
+  if (variantDiscountPercent && variantDiscountPercent > 0) {
+    return { price: Math.round(base * (1 - variantDiscountPercent / 100) * 100) / 100, active: true, percent: variantDiscountPercent };
+  }
+  const active = isDiscountActive(productDiscountPercent, productDiscountEndsAt, now);
+  return {
+    price: active ? getEffectivePrice(base, productDiscountPercent, productDiscountEndsAt, now) : base,
+    active,
+    percent: productDiscountPercent ?? undefined,
+  };
+}

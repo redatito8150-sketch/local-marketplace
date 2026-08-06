@@ -70,16 +70,6 @@ export function ProductEditorHeader({
     changes_requested: "bg-red-50 text-red-700",
   };
   const saveCopy = saveState === "saving" ? "Saving" : saveState === "failed" ? "Save failed" : saveState === "unsaved" ? "Unsaved changes" : "Saved";
-  // Brand-portal has no Draft/Publish split (Instant-Publish model — a
-  // brand-owner write goes live the moment they click Publish, there's no
-  // draft to save) and the Visibility section that would explain a "Draft"
-  // badge is hidden for them, so a brand-new not-yet-saved product showing
-  // literal "draft" here read as a confusing, unexplained state with no
-  // control to change it. Show the accurate "Not published yet" instead —
-  // once they publish, `status` becomes "published" and this no longer
-  // applies.
-  const displayStatus = isBrandPortal && status === "draft" ? "Not published yet" : status;
-  const displayStatusClass = isBrandPortal && status === "draft" ? "bg-stone-100 text-ink-soft/65" : statusStyles[status];
 
   return (
     <header className="sticky top-[72px] z-30 -mx-4 mb-6 space-y-2.5 border-y border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10">
@@ -90,7 +80,7 @@ export function ProductEditorHeader({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-[18px] font-bold tracking-tight text-ink">{title || "New Product"}</h1>
-            <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold capitalize ${displayStatusClass}`}>{displayStatus}</span>
+            <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold capitalize ${statusStyles[status]}`}>{status}</span>
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft/55" aria-live="polite">
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : saveState === "failed" ? <AlertCircle className="h-3 w-3 text-red-600" /> : saveState === "saved" ? <Check className="h-3 w-3 text-emerald-700" /> : <Clock3 className="h-3 w-3" />}
@@ -102,7 +92,7 @@ export function ProductEditorHeader({
       <div className="flex items-center gap-3">
         <ProductStepper activeSection={activeSection} issues={issues} completed={completed} onNavigate={onNavigateStep} isBrandPortal={isBrandPortal} />
         <div className="flex shrink-0 items-center gap-2">
-          {!isBrandPortal && <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-md border border-stone-150 px-3 text-[12px] font-semibold text-ink hover:bg-stone-50 disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save as Draft</button>}
+          <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-md border border-stone-150 px-3 text-[12px] font-semibold text-ink hover:bg-stone-50 disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save as Draft</button>
           <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">
             Publish Product
           </button>
@@ -183,10 +173,10 @@ export function ProductErrorSummary({ issues, onNavigate }: { issues: ProductVal
   );
 }
 
-export function ProductEditorBottomBar({ dirty, submitting, isBrandPortal, onSaveDraft, onPublish }: { dirty: boolean; submitting: boolean; isBrandPortal: boolean; onSaveDraft: () => void; onPublish: () => void }) {
+export function ProductEditorBottomBar({ dirty, submitting, onSaveDraft, onPublish }: { dirty: boolean; submitting: boolean; onSaveDraft: () => void; onPublish: () => void }) {
   return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
     <span className="mr-auto text-[11.5px] font-medium text-ink-soft/55">{dirty ? "Unsaved changes" : "All changes saved"}</span>
-    {!isBrandPortal && <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>}
+    <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>
     <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">Publish Product</button>
   </div>;
 }
