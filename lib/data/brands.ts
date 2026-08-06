@@ -4,7 +4,7 @@ import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isWithinNewBrandWindow } from "@/lib/brandNewWindow";
 import { publishDateLiveFilter } from "@/lib/newArrivals";
-import { ProductRow, toProductCard, loadDisplayContext } from "@/lib/data/products";
+import { ProductRow, toProductCard, loadDisplayContext, attachVariantDerivedFields } from "@/lib/data/products";
 import {
   BrandPageContent,
   BrandJourneyMilestone,
@@ -111,10 +111,12 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   const displayCtx = await loadDisplayContext(productRowsTyped);
   const productCards = productRowsTyped.map((row) => toProductCard(row, displayCtx));
   const variantsByProduct = await getVariantsForProducts(productCards.map((c) => c.id));
-  const products = productCards.map((c) => ({
-    ...c,
-    variants: variantsByProduct.get(c.id) ?? [],
-  }));
+  // attachVariantDerivedFields, not a plain spread — sizes/colors/inStock
+  // are computed from the live variant set (see its doc comment in
+  // lib/data/products.ts), not carried by toProductCard itself. Spreading
+  // variants on top without it left every brand-page product card with no
+  // colors shown at all.
+  const products = productCards.map((c) => attachVariantDerivedFields(c, variantsByProduct.get(c.id) ?? []));
 
   // brand_follows has no public policy, so the count needs supabaseAdmin —
   // degrades quietly to 0 rather than failing the whole page if it errors.

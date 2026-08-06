@@ -91,7 +91,12 @@ function ProductListRow({ product, eager }: { product: Product; eager?: boolean 
             <Heart className="h-4 w-4" strokeWidth={1.8} fill={wishlisted ? "#161513" : "none"} color="#161513" />
           </button>
         </div>
-        <p className="mt-1.5 text-[14px] font-semibold text-ink">{formatPrice(displayPrice, product.currency)}</p>
+        <p className="mt-1.5 flex items-center gap-2 text-[14px] font-semibold text-ink">
+          {formatPrice(displayPrice, product.currency)}
+          {displayPrice < product.price && (
+            <span className="text-[12px] font-medium text-ink-soft/45 line-through">{formatPrice(product.price, product.currency)}</span>
+          )}
+        </p>
         {product.colors.length > 0 && (
           <div className="mt-2 flex items-center gap-1.5" aria-label="Available colors">
             {product.colors.slice(0, 6).map((color) => (
