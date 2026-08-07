@@ -11,7 +11,6 @@ import {
   Bell,
   Settings,
   LogOut,
-  Palette,
   ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -25,7 +24,6 @@ const NAV_ITEMS = [
   { label: "Notifications", href: "/account/notifications", icon: Bell },
   { label: "Personal Information", href: "/account/settings", icon: Settings },
   { label: "Security", href: "/account/security", icon: ShieldCheck },
-  { label: "Appearance", href: "/account/appearance", icon: Palette },
 ];
 
 export default function AccountSidebar() {

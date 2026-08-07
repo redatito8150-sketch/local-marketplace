@@ -231,7 +231,7 @@ export default function CheckoutPage() {
           <p className="text-lg font-medium text-ink">Your cart is empty</p>
           <Link
             href="/shop/women"
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream"
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-mahalyred px-6 py-3 text-sm font-semibold text-cream"
           >
             Start Shopping
           </Link>
@@ -253,7 +253,7 @@ export default function CheckoutPage() {
               <div
                 className={`flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold transition-colors ${
                   i < stepIndex
-                    ? "bg-ink text-cream"
+                    ? "bg-mahalyred text-cream"
                     : i === stepIndex
                     ? "border-2 border-ink text-ink"
                     : "border border-stone-150 text-ink-soft/40"
@@ -428,7 +428,7 @@ export default function CheckoutPage() {
 
                 <button
                   type="submit"
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-mahalyred py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
                 >
                   Continue to Payment
                 </button>
@@ -467,7 +467,7 @@ export default function CheckoutPage() {
                 <button
                   type="submit"
                   disabled={placing}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-mahalyred py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {placing ? "Placing Order…" : "Place Cash on Delivery Order"}
                 </button>
@@ -476,7 +476,7 @@ export default function CheckoutPage() {
 
             {step === "confirmation" && (
               <div className="flex max-w-lg flex-col items-start py-6">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-ink text-cream">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-mahalyred text-cream">
                   <PartyPopper className="h-6 w-6" strokeWidth={1.8} />
                 </div>
                 <h1 className="mt-6 text-2xl font-bold tracking-tightest text-ink">
@@ -504,7 +504,7 @@ export default function CheckoutPage() {
                 )}
                 <Link
                   href="/"
-                  className="mt-7 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
+                  className="mt-7 inline-flex items-center gap-2 rounded-full bg-mahalyred px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
                 >
                   Continue Shopping
                 </Link>

@@ -7,10 +7,8 @@ import AccountSidebar from "@/components/account/AccountSidebar";
 import AccountDashboardLink from "@/components/account/AccountDashboardLink";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
-import { accountThemeFromPreferences } from "@/lib/account/themes";
 import { resolveAvatarUrl } from "@/lib/account/avatar";
 import { getNotificationsForUser, getUnreadNotificationCountForUser } from "@/lib/data/userNotifications";
-import type { NotificationPreferences } from "@/types";
 
 export default async function AccountDashboardLayout({
   children,
@@ -30,13 +28,10 @@ export default async function AccountDashboardLayout({
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("full_name, email, role, is_admin, notification_preferences, avatar_url, provider_avatar_url")
+    .select("full_name, email, role, is_admin, avatar_url, provider_avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
-  const accountTheme = accountThemeFromPreferences(
-    profile?.notification_preferences as NotificationPreferences | null,
-  );
   const avatarUrl = resolveAvatarUrl(profile?.avatar_url, profile?.provider_avatar_url);
   const [notifications, unreadNotificationCount] = await Promise.all([
     getNotificationsForUser(user.id, 5),
@@ -53,10 +48,7 @@ export default async function AccountDashboardLayout({
   const dashboardLabel = profile?.is_admin ? "Admin Dashboard" : "Brand Portal";
 
   return (
-    <main
-      data-account-theme={accountTheme}
-      className="account-theme flex min-h-screen flex-col bg-[var(--account-bg)] text-[var(--account-text)]"
-    >
+    <main className="account-theme flex min-h-screen flex-col bg-[var(--account-bg)] text-[var(--account-text)]">
       <Header />
       <section className="mx-auto max-w-screen3xl px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-12 xl:px-12">
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[280px_minmax(0,1fr)] xl:gap-10">

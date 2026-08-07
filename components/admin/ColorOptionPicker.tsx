@@ -147,7 +147,7 @@ function CreateColorForm({ onCreate }: { onCreate: (input: NewColorInput) => Pro
       {swatchType === "split" && (
         <input type="color" value={secondaryColor} onChange={(e) => setSecondaryColor(e.target.value)} className="h-8 w-10 rounded border border-stone-150" />
       )}
-      <button type="button" onClick={handleCreate} disabled={busy || !label.trim()} className="rounded-md bg-ink px-3 py-1.5 text-[12px] font-semibold text-cream disabled:opacity-50">
+      <button type="button" onClick={handleCreate} disabled={busy || !label.trim()} className="rounded-md bg-mahalyred px-3 py-1.5 text-[12px] font-semibold text-cream disabled:opacity-50">
         Add
       </button>
       <button type="button" onClick={() => setCreating(false)} className="text-[12px] text-ink-soft/60 hover:underline">

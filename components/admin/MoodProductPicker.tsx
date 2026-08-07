@@ -115,7 +115,7 @@ export default function MoodProductPicker({
           <button
             type="button"
             onClick={() => onSave(Array.from(selected))}
-            className="rounded-md bg-ink px-4 py-2 text-[12.5px] font-semibold text-cream"
+            className="rounded-md bg-mahalyred px-4 py-2 text-[12.5px] font-semibold text-cream"
           >
             Use these products
           </button>

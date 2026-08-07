@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
@@ -8,21 +9,28 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        cream: "#FAFAF8",
+        // Main-site tokens are CSS-var-backed (see app/globals.css's :root
+        // and .dark blocks) so every existing bg-cream/text-ink/etc. class
+        // repaints automatically when <html> gets the "dark" class — no
+        // per-component dark: variants needed for these. The brand-page
+        // template below (navy/accentred/charcoal/muted/hairline) is
+        // deliberately NOT converted — that's a separate, static editorial
+        // palette per CLAUDE.md and out of scope for this toggle.
+        cream: "rgb(var(--color-cream) / <alpha-value>)",
         stone: {
-          25: "#FAFAF9",
-          50: "#F6F5F3",
-          100: "#EFEDE9",
-          150: "#E7E4DE",
+          25: "rgb(var(--color-stone-25) / <alpha-value>)",
+          50: "rgb(var(--color-stone-50) / <alpha-value>)",
+          100: "rgb(var(--color-stone-100) / <alpha-value>)",
+          150: "rgb(var(--color-stone-150) / <alpha-value>)",
         },
         beige: {
-          50: "#F5F1EA",
-          100: "#EDE6D9",
-          200: "#E1D6C2",
+          50: "rgb(var(--color-beige-50) / <alpha-value>)",
+          100: "rgb(var(--color-beige-100) / <alpha-value>)",
+          200: "rgb(var(--color-beige-200) / <alpha-value>)",
         },
         ink: {
-          DEFAULT: "#161513",
-          soft: "#2B2A27",
+          DEFAULT: "rgb(var(--color-ink) / <alpha-value>)",
+          soft: "rgb(var(--color-ink-soft) / <alpha-value>)",
         },
         // Mahaly brand red — the owner's official palette value (supersedes
         // an earlier logo-pixel-sampled guess). Main-site only (Header/
@@ -30,9 +38,9 @@ const config: Config = {
         // below — the brand-page palette is a different design brief and
         // must not be merged with this one.
         mahalyred: {
-          DEFAULT: "#B71F1A", // --color-primary
-          dark: "#941713", // --color-primary-hover
-          soft: "#E8B8B2", // --color-primary-soft
+          DEFAULT: "rgb(var(--color-mahalyred) / <alpha-value>)", // --color-primary
+          dark: "rgb(var(--color-mahalyred-dark) / <alpha-value>)", // --color-primary-hover
+          soft: "rgb(var(--color-mahalyred-soft) / <alpha-value>)", // --color-primary-soft
         },
         // Owner-supplied Mahaly design-system colors not covered by the
         // existing cream/stone/beige/ink group above. Added alongside,
@@ -43,10 +51,11 @@ const config: Config = {
           light: "#DCE6EC", // --color-blue-light
           grey: "#AABBC5", // --color-blue-grey
         },
-        card: "#FFFDF9", // --color-card
-        border: "#DDD6CD", // --color-border
-        textmuted: "#68645F", // --color-text-muted
+        card: "rgb(var(--color-card) / <alpha-value>)", // --color-card
+        border: "rgb(var(--color-border) / <alpha-value>)", // --color-border
+        textmuted: "rgb(var(--color-textmuted) / <alpha-value>)", // --color-text-muted
         // Dedicated palette for the LOCAL brand-page template (navy/red editorial)
+        // — static by design, never dark-mode-aware (see comment above).
         navy: {
           DEFAULT: "#103B5C",
           dark: "#0C2E47",

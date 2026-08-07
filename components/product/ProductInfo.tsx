@@ -531,7 +531,7 @@ export default function ProductInfo({
             (!primaryOutOfStock && atCartLimit)
           }
           className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-md text-[14px] font-semibold transition-all ${
-            added || (primaryOutOfStock && isSubscribedToResolvedVariant) ? "bg-green-700 text-white" : "bg-ink text-cream hover:scale-[1.01]"
+            added || (primaryOutOfStock && isSubscribedToResolvedVariant) ? "bg-green-700 text-white" : "bg-mahalyred text-cream hover:scale-[1.01]"
           } ${disableActions || notifySaving || (!primaryOutOfStock && atCartLimit) ? "cursor-not-allowed opacity-50" : ""}`}
         >
           {primaryOutOfStock ? (

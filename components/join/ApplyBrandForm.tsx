@@ -1093,7 +1093,7 @@ export default function ApplyBrandForm({
             type="button"
             onClick={handleNext}
             disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-ink py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-mahalyred py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Saving…" : "Next"}
           </button>
@@ -1102,7 +1102,7 @@ export default function ApplyBrandForm({
             type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-ink py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-mahalyred py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {saving ? "Submitting…" : "Submit application"}
           </button>

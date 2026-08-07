@@ -30,7 +30,7 @@ export default function FeaturedBrand({
         </p>
         <Link
           href={content.href ?? "/brands"}
-          className={`mt-4 inline-flex w-fit items-center rounded-md px-4 py-2 text-xs font-semibold transition-transform hover:scale-[1.03] active:scale-[0.98] ${compact ? "border border-mahalyred bg-white/60 text-mahalyred" : "bg-ink text-cream"}`}
+          className={`mt-4 inline-flex w-fit items-center rounded-md px-4 py-2 text-xs font-semibold transition-transform hover:scale-[1.03] active:scale-[0.98] ${compact ? "border border-mahalyred bg-white/60 text-mahalyred" : "bg-mahalyred text-cream"}`}
         >
           {content.ctaLabel}
         </Link>

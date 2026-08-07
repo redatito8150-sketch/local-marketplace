@@ -68,7 +68,7 @@ export default function ApplicationStatusView({
     <div className="flex max-w-lg flex-col items-start py-6">
       <div
         className={`flex h-14 w-14 items-center justify-center rounded-full ${
-          isRejected ? "bg-red-50 text-red-600" : "bg-ink text-cream"
+          isRejected ? "bg-red-50 text-red-600" : "bg-mahalyred text-cream"
         }`}
       >
         {iconFor(status)}
@@ -88,7 +88,7 @@ export default function ApplicationStatusView({
       {status === "converted_to_brand" && application.approvedBrandId && (
         <Link
           href={`/brands/${application.approvedBrandId}`}
-          className="mt-7 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
+          className="mt-7 inline-flex items-center gap-2 rounded-full bg-mahalyred px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
         >
           View your brand page
         </Link>
@@ -120,7 +120,7 @@ export default function ApplicationStatusView({
             <button
               type="button"
               onClick={onStartNew}
-              className="mt-7 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
+              className="mt-7 inline-flex items-center gap-2 rounded-full bg-mahalyred px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
             >
               Start a new application
             </button>

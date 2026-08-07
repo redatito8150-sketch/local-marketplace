@@ -20,7 +20,7 @@ export default async function AdminCouponsPage() {
         </h1>
         <Link
           href="/admin/coupons/new"
-          className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02]"
+          className="rounded-md bg-mahalyred px-4 py-2.5 text-[13px] font-semibold text-cream transition-transform hover:scale-[1.02]"
         >
           Add coupon
         </Link>

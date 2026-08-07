@@ -18,20 +18,10 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body: NotificationPreferences = await request.json();
-  const { data: profile, error: readError } = await supabaseAdmin
-    .from("profiles")
-    .select("notification_preferences")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (readError) {
-    return safeErrorResponse("account.notification-preferences.read", readError);
-  }
-  const current = (profile?.notification_preferences ?? {}) as Partial<NotificationPreferences>;
   const preferences: NotificationPreferences = {
     orderUpdates: Boolean(body.orderUpdates),
     promotions: Boolean(body.promotions),
     newsletter: Boolean(body.newsletter),
-    accountTheme: current.accountTheme,
   };
 
   const { error } = await supabaseAdmin
