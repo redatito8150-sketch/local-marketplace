@@ -45,8 +45,14 @@ export async function syncProductVariants(params: {
   submitted: VariantEditInput[];
   actorId: string;
   operationKey: string;
+  // Mahaly Partner brands: a brand-new variant always starts at 0 live
+  // stock regardless of what the editor's Opening Stock field said — that
+  // number only feeds product_variants.brand_stock_quantity (managed from
+  // the Local Warehouse page), never the site-visible `quantity`, which
+  // can only rise through a confirmed warehouse transfer receipt.
+  forceZeroOpeningStock?: boolean;
 }): Promise<SyncVariantsResult> {
-  const { productId, productSku, submitted, actorId, operationKey } = params;
+  const { productId, productSku, submitted, actorId, operationKey, forceZeroOpeningStock } = params;
 
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("product_variants")
@@ -113,7 +119,7 @@ export async function syncProductVariants(params: {
           p_product_id: productId,
           p_sku: sku,
           p_combo_key: comboKey,
-          p_opening_stock: edit.openingStock ?? edit.quantity ?? 0,
+          p_opening_stock: forceZeroOpeningStock ? 0 : (edit.openingStock ?? edit.quantity ?? 0),
           p_variant_price: edit.variantPrice ?? null,
           p_variant_discount_percent: edit.variantDiscountPercent ?? null,
           p_low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,

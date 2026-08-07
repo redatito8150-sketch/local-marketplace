@@ -33,6 +33,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Product not found" }, { status: 404 });
   }
   const previousStatus = existing.status;
+  const { data: brandRow } = await supabaseAdmin.from("brands").select("is_mahaly_partner").eq("id", existing.brand_id).maybeSingle();
 
   const body: ProductInput = await request.json();
   // Brand and SKU are immutable after creation — whatever the client
@@ -81,6 +82,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: body.variants,
     actorId: admin.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
+    forceZeroOpeningStock: Boolean(brandRow?.is_mahaly_partner),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });

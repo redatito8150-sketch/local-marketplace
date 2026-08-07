@@ -33,6 +33,8 @@ export function getEntityAdminPath(entityType: string, entityId: string): string
       return `/admin/products/categories`;
     case "inventory":
       return `/admin/low-stock`;
+    case "warehouse_transfer":
+      return `/admin/warehouse/${entityId}`;
     default:
       return null;
   }

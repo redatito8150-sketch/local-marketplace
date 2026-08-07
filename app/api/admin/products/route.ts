@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   const { data: brandRow } = await supabaseAdmin
     .from("brands")
-    .select("id, name")
+    .select("id, name, is_mahaly_partner")
     .eq("id", body.brandId)
     .maybeSingle();
   if (!brandRow) {
@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
     submitted: body.variants,
     actorId: admin.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
+    forceZeroOpeningStock: Boolean(brandRow.is_mahaly_partner),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product created, but ${variantsResult.error}` }, { status: 500 });

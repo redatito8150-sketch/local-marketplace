@@ -20,6 +20,7 @@ import {
   Store,
   Tag,
   Users,
+  Warehouse,
 } from "lucide-react";
 import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 
@@ -66,6 +67,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
         ],
       },
       { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock" },
+      { label: "Local Warehouse", href: "/admin/warehouse", icon: Warehouse },
       { label: "Review Moderation", href: "/admin/reviews", icon: MessageSquareWarning },
       { label: "Coupons", href: "/admin/coupons", icon: Tag, minRole: "manager" },
     ],

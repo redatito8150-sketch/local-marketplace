@@ -194,6 +194,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: productBody.variants,
     actorId: owner.user.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
+    forceZeroOpeningStock: owner.isMahalyPartner,
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
