@@ -25,12 +25,6 @@ export interface StyleCategoryLink {
   icon: React.ElementType;
 }
 
-export interface DiscoverLink {
-  label: string;
-  description: string;
-  href: string;
-}
-
 export const FEATURED_BRANDS: FeaturedBrandLink[] = [
   {
     name: "MARGA STUDIO",
@@ -100,16 +94,3 @@ export const BRANDS_PROMO = {
 
 export const VIEW_ALL_BRANDS_HREF = "/brands";
 export const VIEW_ALL_STYLES_HREF = "/shop/women";
-
-export const DISCOVER_LINKS: DiscoverLink[] = [
-  {
-    label: "New Arrivals",
-    description: "Fresh drops from local brands",
-    href: "/new-arrivals",
-  },
-  {
-    label: "Offers",
-    description: "Active discounts across every brand",
-    href: "/offers",
-  },
-];

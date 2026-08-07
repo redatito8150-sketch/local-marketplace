@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="flex min-h-screen flex-col bg-cream">
       <Header />
       <LegalHero title="Terms & Conditions" intro={TERMS_INTRO} />
 

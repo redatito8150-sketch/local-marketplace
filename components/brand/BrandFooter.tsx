@@ -40,7 +40,7 @@ const SOCIAL_ICONS = [
 
 export default function BrandFooter() {
   return (
-    <footer className="border-t border-hairline bg-white">
+    <footer className="mt-auto border-t border-hairline bg-white">
       <div className="mx-auto max-w-brand px-6 py-20 lg:px-10">
         <div className="grid grid-cols-2 gap-x-8 gap-y-12 sm:grid-cols-3 lg:grid-cols-6">
           {COLUMNS.map((col) => (

@@ -6,28 +6,27 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { Heart, ShoppingBag, User, Menu, X, LayoutGrid } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
-import DiscoverMenu from "@/components/navigation/DiscoverMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
 import Logo from "@/components/shared/Logo";
-import { DISCOVER_LINKS } from "@/content/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 
 const NAV_LINKS = [
   { label: "Home", href: "/#home" },
-  { label: "Deals", href: "/offers" },
+  { label: "New Arrivals", href: "/new-arrivals" },
+  { label: "Sales", href: "/sales" },
   { label: "About", href: "#about" },
 ];
 
-// Same entries as the desktop nav, but "Brands"/"Discover" are plain links
-// here instead of the hover-driven mega/dropdown menus, which don't
-// translate to a phone screen.
+// Same entries as the desktop nav, but "Brands" is a plain link here
+// instead of the hover-driven mega menu, which doesn't translate to a
+// phone screen.
 const MOBILE_NAV_LINKS = [
   { label: "Home", href: "/#home" },
   { label: "Brands", href: "/brands" },
-  ...DISCOVER_LINKS.map(({ label, href }) => ({ label, href })),
-  { label: "Deals", href: "/offers" },
+  { label: "New Arrivals", href: "/new-arrivals" },
+  { label: "Sales", href: "/sales" },
   { label: "About", href: "#about" },
 ];
 
@@ -116,7 +115,6 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
           ))}
 
           <BrandsMegaMenu />
-          <DiscoverMenu />
 
           {NAV_LINKS.slice(1).map((link) => (
             <Link

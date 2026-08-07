@@ -55,7 +55,7 @@ export default async function CategoryPage(
   ]);
 
   return (
-    <main className="min-h-screen bg-white">
+    <main className="flex min-h-screen flex-col bg-white">
       <Header />
       <CollectionHero products={products} config={COLLECTION_PAGE_CONFIGS[content.slug]} />
       <CategoryShoppingArea

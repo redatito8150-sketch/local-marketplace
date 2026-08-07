@@ -17,7 +17,7 @@ export default async function NewArrivalsPage() {
     : (await getMarketplaceCatalogPage({ pageSize: 24, sort: "newest" })).products;
 
   return (
-    <main className="min-h-screen bg-[#f7f3ee]">
+    <main className="flex min-h-screen flex-col bg-[#f7f3ee]">
       <Header />
       <NewArrivalsExperience products={products} />
       <Footer />

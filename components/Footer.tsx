@@ -37,7 +37,12 @@ export default function Footer({
   return (
     <footer
       id="about"
-      className={`border-t border-stone-150 ${
+      // mt-auto pushes this to the bottom of its flex parent (every page
+      // that renders Footer wraps it in a flex-col <main> — see the
+      // per-page "flex min-h-screen flex-col" wrapper) instead of it
+      // trailing right after a short page's content with a dead gap of
+      // empty space underneath it.
+      className={`mt-auto border-t border-stone-150 ${
         warmTransparent
           ? "border-white/30 bg-[#d8bea3]/55 backdrop-blur-xl"
           : homeGradient
