@@ -16,6 +16,7 @@ export default async function NewProductPage() {
     shippingPolicy: brand.shippingPolicy,
     returnPolicy: brand.returnPolicy,
     returnWindowDays: brand.returnWindowDays,
+    isMahalyPartner: brand.isMahalyPartner,
   }));
 
   return <ProductForm mode="create" brandOptions={brandOptions} taxonomy={taxonomy} taxonomyNodes={taxonomyNodes} />;

@@ -8,7 +8,7 @@ import type { WarehouseTransferItemRow } from "@/lib/data/warehouse";
 
 type Row = { receivedOkQty: number; damagedQty: number; missingQty: number; itemNote: string };
 
-export default function TransferReceiveForm({ transferId, items }: { transferId: string; items: WarehouseTransferItemRow[] }) {
+export default function TransferReceiveForm({ transferId, items, isReturn = false }: { transferId: string; items: WarehouseTransferItemRow[]; isReturn?: boolean }) {
   const router = useRouter();
   const [rows, setRows] = useState<Record<string, Row>>(
     Object.fromEntries(items.map((item) => [item.id, { receivedOkQty: item.requestedQty, damagedQty: 0, missingQty: 0, itemNote: "" }]))
@@ -58,7 +58,7 @@ export default function TransferReceiveForm({ transferId, items }: { transferId:
   }
 
   return (
-    <DashboardPanel title="Reconcile receipt" description="Received + damaged + missing must equal the requested quantity for every item.">
+    <DashboardPanel title={isReturn ? "Reconcile return" : "Reconcile receipt"} description="Received + damaged + missing must equal the requested quantity for every item.">
       {error && (
         <div role="alert" className="mx-5 mt-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12.5px] text-red-800">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /> {error}
@@ -70,7 +70,7 @@ export default function TransferReceiveForm({ transferId, items }: { transferId:
             <tr className="border-b border-slate-100 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               <th className="px-5 py-2.5">Item</th>
               <th className="px-5 py-2.5">Requested</th>
-              <th className="px-5 py-2.5">Received OK</th>
+              <th className="px-5 py-2.5">{isReturn ? "Returned OK" : "Received OK"}</th>
               <th className="px-5 py-2.5">Damaged</th>
               <th className="px-5 py-2.5">Missing</th>
             </tr>
@@ -118,7 +118,7 @@ export default function TransferReceiveForm({ transferId, items }: { transferId:
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => submit("receive")} disabled={submitting !== null} className={dashboardButtonPrimary}>
             {submitting === "receive" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-            Confirm receipt
+            {isReturn ? "Confirm return" : "Confirm receipt"}
           </button>
           <button type="button" onClick={() => submit("reject")} disabled={submitting !== null} className={dashboardButtonSecondary}>
             {submitting === "reject" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}

@@ -4,7 +4,6 @@ import {
   getUnreadNotificationCount,
   getLowStockVariantsForAdmin,
   getAllNotificationsForAdmin,
-  getUnresolvedBrandActivityCount,
 } from "@/lib/data/admin";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminQuickSearch from "@/components/admin/AdminQuickSearch";
@@ -31,19 +30,17 @@ export default async function AdminLayout({
 
   if (!profile?.is_admin) redirect("/account");
 
-  const [unreadNotifications, lowStockVariants, recentNotifications, reviewQueueCount] =
+  const [unreadNotifications, lowStockVariants, recentNotifications] =
     await Promise.all([
       getUnreadNotificationCount(),
       getLowStockVariantsForAdmin(),
       getAllNotificationsForAdmin(5),
-      getUnresolvedBrandActivityCount(),
     ]);
 
   const sidebar = (
     <AdminSidebar
           unreadNotifications={unreadNotifications}
           lowStockCount={lowStockVariants.length}
-          reviewQueueCount={reviewQueueCount}
           role={profile.role}
     />
   );

@@ -19,6 +19,7 @@ export default async function EditProductPage(props: { params: Promise<{ id: str
     shippingPolicy: brand.shippingPolicy,
     returnPolicy: brand.returnPolicy,
     returnWindowDays: brand.returnWindowDays,
+    isMahalyPartner: brand.isMahalyPartner,
   }));
 
   if (!product) notFound();

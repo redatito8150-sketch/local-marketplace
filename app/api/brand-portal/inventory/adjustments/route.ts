@@ -6,6 +6,7 @@ import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidatio
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
 import { checkAndNotifyRestock } from "@/lib/backInStock";
+import { describeInventoryAdjustments } from "@/lib/admin/describeInventoryAdjustment";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   const ids = [...new Set(body.adjustments.map((item) => item.variantId))];
   const { data: owned } = await supabaseAdmin
     .from("product_variants")
-    .select("id, quantity, products!inner(brand_id)")
+    .select("id, sku, quantity, products!inner(brand_id)")
     .in("id", ids)
     .eq("products.brand_id", owner.brandId);
   if ((owned?.length ?? 0) !== ids.length) return NextResponse.json({ error: "A selected variant is not available for this brand" }, { status: 403 });
@@ -58,13 +59,26 @@ export async function POST(request: NextRequest) {
     p_operation_key: operationKey,
   } as never);
   if (error) return safeErrorResponse("brand-portal.inventory.adjustments", error, "Failed to apply the adjustment", 400);
+
+  const skuById = new Map((owned ?? []).map((row) => [row.id as string, row.sku as string]));
+  const results = (data ?? []) as { variant_id: string; previous_quantity: number; new_quantity: number }[];
+  const changeLines = results.map((r) => ({
+    sku: skuById.get(r.variant_id) ?? r.variant_id,
+    previousQuantity: r.previous_quantity,
+    newQuantity: r.new_quantity,
+  }));
+
   await logAudit({
     actorId: owner.user.id,
     actorLabel: owner.user.email ?? owner.user.id,
     entityType: "inventory",
     entityId: owner.brandId,
     action: "restock",
-    after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },
+    after: {
+      Reason: body.reason,
+      Note: body.note || undefined,
+      Changes: describeInventoryAdjustments(changeLines),
+    },
     brandSlug: owner.brandSlug ?? undefined,
   });
   // Re-verifies purchasability itself and no-ops for anything that isn't

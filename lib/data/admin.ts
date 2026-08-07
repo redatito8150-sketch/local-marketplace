@@ -170,19 +170,6 @@ export async function getAllProductsForAdmin(): Promise<ProductRecord[]> {
 // notifications still awaiting an Approve/Revert decision, not a
 // pre-publish queue. notifications has no public read policy, so this
 // needs supabaseAdmin like every other notifications read.
-export async function getUnresolvedBrandActivityCount(): Promise<number> {
-  const { count, error } = await supabaseAdmin
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .eq("related_entity_type", "product")
-    .eq("resolution", "pending");
-
-  if (error) {
-    throw new Error(`getUnresolvedBrandActivityCount failed: ${error.message}`);
-  }
-  return count ?? 0;
-}
-
 // Recent brand-initiated product changes (create/update/archive) for the
 // admin "Brand Activity" page — reuses the exact same rows the
 // notification bell/page already show, just without the "read" framing.

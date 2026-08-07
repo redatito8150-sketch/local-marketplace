@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { diffVariantList } from "@/lib/auditDiff";
 import { describeProductUpdate, describeProductArchive } from "@/lib/admin/describeProductChange";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
@@ -21,6 +22,7 @@ import { loadProductColorImages, loadProductOptionSelections } from "@/lib/admin
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
+import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -112,10 +114,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       before: existing,
       brandSlug: owner.brandSlug ?? undefined,
     });
+    const stockWarning = await getPartnerStockWarning(params.id, owner.brandId);
     await notify(
       "product_archived",
       `Archived: ${existing.name}`,
-      describeProductArchive(existing),
+      [describeProductArchive(existing), stockWarning].filter(Boolean).join("\n\n"),
       {
         relatedEntityType: "product",
         relatedEntityId: params.id,
@@ -124,14 +127,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       }
     );
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, warning: stockWarning ?? undefined });
   }
 
   // Instant-Publish: a full product-form submission applies straight to the
   // live columns — no more staging in pending_changes. The audit log's
-  // `before` snapshot (product row + its variants) is what a later admin
-  // Revert restores, so it's captured in full here rather than relying on
-  // partial diff data.
+  // `before` snapshot (product row + its variants) is kept in full so the
+  // Audit Log page can always show exactly what changed, field by field.
   const productBody = body as ProductInput;
   // Brand is immutable after creation — whatever the client sends is
   // ignored, always the caller's own brand.
@@ -225,19 +227,20 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     }
   );
 
+  // Variants get their own SKU-keyed diff (see diffVariantList) instead of
+  // being blindly blob-compared alongside the product's own fields — the
+  // two sides don't even share a shape (a saved ProductVariant vs. the
+  // form's VariantRowInput), so a raw compare would always "look changed."
+  const variantChanges = diffVariantList(existingVariants, productBody.variants);
+  const { variants: _variants, ...productBodyForDiff } = productBody;
   const auditLogId = await logAudit({
     actorId: owner.user.id,
     actorLabel: owner.user.email ?? owner.user.id,
     entityType: "product",
     entityId: params.id,
     action: "update",
-    before: {
-      ...existing,
-      variants: existingVariants,
-      optionSelections: existingOptionSelections,
-      colorImages: existingColorImages,
-    },
-    after: productBody,
+    before: { ...existing, optionSelections: existingOptionSelections, colorImages: existingColorImages },
+    after: { ...productBodyForDiff, Variants: variantChanges || undefined },
     brandSlug: owner.brandSlug ?? undefined,
   });
 
@@ -246,10 +249,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // un-publishing back to draft. A draft-to-draft save has no live
   // consequence to review, so it stays quiet.
   if (existing.status === "published" || productBody.status === "published") {
+    const stockWarning = productBody.status === "archived" ? await getPartnerStockWarning(params.id, owner.brandId) : null;
     await notify(
       "product_updated",
       `Product edited: ${productBody.name}`,
-      describeProductUpdate(existing, productBody),
+      [describeProductUpdate(existing, productBody), stockWarning].filter(Boolean).join("\n\n"),
       {
         relatedEntityType: "product",
         relatedEntityId: params.id,
@@ -264,10 +268,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 }
 
 // Instant-Publish: removes the product from the storefront immediately
-// (archived, not hard-deleted — a revertible action, unlike the old
-// deletion-request gate). Product ids are reused as URL slugs elsewhere,
-// so archiving instead of deleting also means a later "un-revert" doesn't
-// need to regenerate a fresh id.
+// (archived, not hard-deleted, unlike the old deletion-request gate).
+// Product ids are reused as URL slugs elsewhere, so archiving instead of
+// deleting also keeps the id around if the brand owner republishes it later.
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -303,10 +306,11 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     brandSlug: owner.brandSlug ?? undefined,
   });
 
+  const stockWarning = await getPartnerStockWarning(params.id, owner.brandId);
   await notify(
     "product_archived",
     `Product removed: ${existing.name}`,
-    describeProductArchive(existing),
+    [describeProductArchive(existing), stockWarning].filter(Boolean).join("\n\n"),
     {
       relatedEntityType: "product",
       relatedEntityId: params.id,
@@ -315,5 +319,5 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     }
   );
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, warning: stockWarning ?? undefined });
 }

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
+import { diffVariantList } from "@/lib/auditDiff";
 import { resolveTaxonomyLeaf } from "@/lib/admin/resolveTaxonomyLeaf";
 import { resolveCollectionOwnership } from "@/lib/admin/resolveCollectionOwnership";
 import { buildProductPersistencePayload } from "@/lib/admin/productPersistence";
@@ -16,6 +17,7 @@ import {
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
+import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -76,6 +78,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: `Product updated. However, ${optionsResult.error}` }, { status: 500 });
   }
 
+  const existingVariants = await loadProductVariants(params.id);
+
   const variantsResult = await syncProductVariants({
     productId: params.id,
     productSku: existing.sku as string,
@@ -120,7 +124,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     if (body.status === "published") {
       await notify("product_published", `Product published: ${body.name}`, existing.brand_name, notifyMeta);
     } else if (body.status === "archived") {
-      await notify("product_archived", `Product archived: ${body.name}`, existing.brand_name, notifyMeta);
+      const stockWarning = await getPartnerStockWarning(params.id, existing.brand_id);
+      await notify("product_archived", `Product archived: ${body.name}`, [existing.brand_name, stockWarning].filter(Boolean).join("\n\n"), notifyMeta);
     } else {
       await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
     }
@@ -128,6 +133,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
   }
 
+  const variantChanges = diffVariantList(existingVariants, body.variants);
+  const { variants: _variants, ...bodyForDiff } = body;
   await logAudit({
     actorId: admin.id,
     actorLabel: admin.email ?? admin.id,
@@ -135,7 +142,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     entityId: params.id,
     action: previousStatus !== body.status ? "status_change" : "update",
     before: existing,
-    after: body,
+    after: { ...bodyForDiff, Variants: variantChanges || undefined },
   });
 
   return NextResponse.json({ id: params.id, variants });
