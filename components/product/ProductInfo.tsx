@@ -41,7 +41,7 @@ export default function ProductInfo({
   subscribedVariantIds?: string[];
 }) {
   const router = useRouter();
-  const { addItem } = useCart();
+  const { items: cartItems, addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const wishlisted = isWishlisted(product.id);
 
@@ -171,6 +171,32 @@ export default function ProductInfo({
   const isLowStock =
     Boolean(resolvedVariant) && calculateStockStatus(resolvedVariant!.quantity, effectiveThreshold) === "low_stock";
 
+  // How many of this exact variant are already sitting in the cart from an
+  // earlier visit/add — Add to Cart merges into that same line (see
+  // CartContext's addItem), so the real remaining cap has to subtract it,
+  // not just check the variant's total stock in isolation.
+  const alreadyInCart = useMemo(() => {
+    if (!resolvedVariant) return 0;
+    return cartItems
+      .filter((i) => i.variantId === resolvedVariant.id)
+      .reduce((sum, i) => sum + i.quantity, 0);
+  }, [cartItems, resolvedVariant]);
+
+  // The real cap on how many more of the selected Color+Size can actually
+  // be added right now — undefined (no cap) only for a product with no
+  // variants at all to check against.
+  const maxQuantity = resolvedVariant ? Math.max(0, resolvedVariant.quantity - alreadyInCart) : undefined;
+  const atCartLimit = maxQuantity === 0;
+  useEffect(() => {
+    if (maxQuantity !== undefined && quantity > Math.max(1, maxQuantity)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQuantity(Math.max(1, maxQuantity));
+    }
+    // Only re-clamp when the selected variant/cart cap changes — never
+    // fight the shopper's own +/- clicks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxQuantity]);
+
   // The primary button becomes "Notify Me When Available" whenever the
   // resolved purchase intent hits a genuinely *out-of-stock* variant — the
   // specific Color+Size selected (or, before any selection, the product as
@@ -212,6 +238,10 @@ export default function ProductInfo({
       setSizeError(true);
       return;
     }
+    if (atCartLimit) {
+      setSizeError(true);
+      return;
+    }
     setSizeError(false);
     addItem({
       productId: product.id,
@@ -231,7 +261,10 @@ export default function ProductInfo({
       // this into "One Size" only where it's shown to the shopper.
       size: selectedSize ?? "",
       color: selectedColor,
-      quantity,
+      // Defensive clamp — the stepper itself already can't be pushed past
+      // maxQuantity, but this is the one place that actually writes to
+      // the cart.
+      quantity: maxQuantity !== undefined ? Math.min(quantity, maxQuantity) : quantity,
       availableSizes: product.sizes,
       availableColors: colorLabels,
     });
@@ -481,8 +514,9 @@ export default function ProductInfo({
           </span>
           <button
             aria-label="Increase quantity"
-            onClick={() => setQuantity((q) => q + 1)}
-            className="flex h-11 w-10 items-center justify-center text-ink transition-colors hover:bg-stone-50"
+            disabled={maxQuantity !== undefined && quantity >= maxQuantity}
+            onClick={() => setQuantity((q) => (maxQuantity !== undefined ? Math.min(q + 1, maxQuantity) : q + 1))}
+            className="flex h-11 w-10 items-center justify-center text-ink transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2} />
           </button>
@@ -490,10 +524,15 @@ export default function ProductInfo({
 
         <button
           onClick={primaryOutOfStock ? handleNotifyMe : handleAddToCart}
-          disabled={disableActions || notifySaving || (primaryOutOfStock && isSubscribedToResolvedVariant)}
+          disabled={
+            disableActions ||
+            notifySaving ||
+            (primaryOutOfStock && isSubscribedToResolvedVariant) ||
+            (!primaryOutOfStock && atCartLimit)
+          }
           className={`flex h-11 flex-1 items-center justify-center gap-2 rounded-md text-[14px] font-semibold transition-all ${
             added || (primaryOutOfStock && isSubscribedToResolvedVariant) ? "bg-green-700 text-white" : "bg-ink text-cream hover:scale-[1.01]"
-          } ${disableActions || notifySaving ? "cursor-not-allowed opacity-50" : ""}`}
+          } ${disableActions || notifySaving || (!primaryOutOfStock && atCartLimit) ? "cursor-not-allowed opacity-50" : ""}`}
         >
           {primaryOutOfStock ? (
             isSubscribedToResolvedVariant ? (
@@ -514,6 +553,8 @@ export default function ProductInfo({
               <Check className="h-4 w-4" strokeWidth={2.5} />
               Added to Cart
             </>
+          ) : atCartLimit ? (
+            "All in stock is in your cart"
           ) : (
             "Add to Cart"
           )}
