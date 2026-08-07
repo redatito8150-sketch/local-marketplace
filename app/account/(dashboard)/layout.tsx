@@ -55,7 +55,7 @@ export default async function AccountDashboardLayout({
   return (
     <main
       data-account-theme={accountTheme}
-      className="account-theme min-h-screen bg-[var(--account-bg)] text-[var(--account-text)]"
+      className="account-theme flex min-h-screen flex-col bg-[var(--account-bg)] text-[var(--account-text)]"
     >
       <Header />
       <section className="mx-auto max-w-screen3xl px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-12 xl:px-12">

@@ -5,13 +5,13 @@ import DealsExperience from "@/components/offers/DealsExperience";
 import { getMarketplaceCatalogPage } from "@/lib/data/products";
 
 export const metadata: Metadata = {
-  title: "Deals — Mahaly",
+  title: "Sales — Mahaly",
   description: "Limited-time prices from Mahaly's independent local brands.",
 };
 
 export const revalidate = 60;
 
-export default async function OffersPage() {
+export default async function SalesPage() {
   const result = await getMarketplaceCatalogPage({
     pageSize: 24,
     sort: "newest",
@@ -19,7 +19,7 @@ export default async function OffersPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[#f7f3ee]">
+    <main className="flex min-h-screen flex-col bg-[#f7f3ee]">
       <Header />
       <DealsExperience products={result.products} />
       <Footer />

@@ -18,7 +18,7 @@ export default async function JournalPage() {
   const [feature, ...rest] = articles;
 
   return (
-    <main className="min-h-screen bg-cream">
+    <main className="flex min-h-screen flex-col bg-cream">
       <Header />
 
       <section className="mx-auto max-w-screen2xl px-8 pb-6 pt-14 lg:px-12 lg:pt-20">
