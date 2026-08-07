@@ -46,6 +46,9 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
               const totalRequested = t.items.reduce((sum, i) => sum + i.requestedQty, 0);
               return (
                 <Link key={t.id} href={`/admin/warehouse/${t.id}`} className="flex flex-wrap items-center gap-3 px-5 py-4 hover:bg-slate-50/70">
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                    {t.direction === "to_brand" ? "Return" : "Transfer"}
+                  </span>
                   <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
                     <Icon className="h-3 w-3" /> {badge.label}
                   </span>

@@ -107,6 +107,7 @@ export default function VariantTable({
   taxonomyNodes,
   productTypeId,
   inventoryHref,
+  isPartnerBrand,
   onAddColor,
   onCreateColor,
   onRemoveColor,
@@ -130,6 +131,7 @@ export default function VariantTable({
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
   inventoryHref?: string;
+  isPartnerBrand?: boolean;
   onAddColor: (id: string) => void;
   onCreateColor: (input: NewColorInput) => Promise<void> | void;
   onRemoveColor: (id: string) => void;
@@ -396,6 +398,13 @@ export default function VariantTable({
                             {persisted ? (
                               <span className="text-[13px] font-semibold text-ink" title="Managed from Inventory once a variant is saved.">
                                 {variant.quantity}
+                              </span>
+                            ) : isPartnerBrand ? (
+                              <span
+                                className="text-[12px] font-semibold text-amber-700"
+                                title="This brand is a Mahaly Partner — stock only comes from a confirmed Local Warehouse transfer, never from Opening Stock. This variant will be created with 0 stock."
+                              >
+                                0 — via Local Warehouse
                               </span>
                             ) : (
                               <input

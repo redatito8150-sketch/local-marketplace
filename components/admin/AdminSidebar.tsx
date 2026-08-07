@@ -31,7 +31,7 @@ interface NavItem {
   href: string;
   icon: React.ElementType;
   minRole?: Role;
-  badge?: "notifications" | "lowStock" | "brandActivity";
+  badge?: "notifications" | "lowStock";
 }
 
 interface NavGroupItem {
@@ -77,7 +77,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
     items: [
       { label: "All Brands", href: "/admin/brands", icon: Store },
       { label: "Applications", href: "/admin/applications", icon: FileText },
-      { label: "Brand Activity", href: "/admin/products/review", icon: History, badge: "brandActivity" },
+      { label: "Brand Activity", href: "/admin/products/review", icon: History },
     ],
   },
   {
@@ -100,7 +100,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
 const ROLE_RANK: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
 const canSee = (role: string, minRole: Role = "staff") => (ROLE_RANK[role] ?? 0) >= ROLE_RANK[minRole];
 
-type BadgeCounts = Record<"notifications" | "lowStock" | "brandActivity", number>;
+type BadgeCounts = Record<"notifications" | "lowStock", number>;
 
 function isActiveHref(pathname: string, href: string): boolean {
   return href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`);
@@ -191,17 +191,15 @@ function NavGroupDisclosure({
 export default function AdminSidebar({
   unreadNotifications = 0,
   lowStockCount = 0,
-  reviewQueueCount = 0,
   role = "admin",
 }: {
   unreadNotifications?: number;
   lowStockCount?: number;
-  reviewQueueCount?: number;
   role?: string;
 }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
-  const counts = { notifications: unreadNotifications, lowStock: lowStockCount, brandActivity: reviewQueueCount };
+  const counts = { notifications: unreadNotifications, lowStock: lowStockCount };
 
   return (
     <nav aria-label="Admin navigation" className="space-y-6">

@@ -193,11 +193,16 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   only visible to accounts with the matching role/ownership.
 - **Instant-Publish**: a brand owner/assistant's product
   create/edit/archive applies live immediately, with **no pre-approval
-  gate** — the admin gets a resolvable notification (Approve/Revert,
-  reusing `audit_logs.before_value`/`after_value` as the revert source)
-  via the bell and `/admin/products/review` ("Brand Activity" feed).
-  **Do not reintroduce a pending-review gate for brand-initiated product
-  writes** — this replaced that model on purpose.
+  gate** — the admin gets a plain notification (via the bell and
+  `/admin/products/review`, "Brand Activity") describing exactly what
+  happened, sourced from the same field-level diff (`lib/auditDiff.ts`)
+  the Discord embeds use. There is **no Approve/Revert workflow** — that
+  existed briefly and was removed on purpose (2026-08-07): admin can read
+  what a brand did, not undo it from a notification. `audit_logs.before_value`/
+  `after_value` still exist for the Audit Log page's own history view, just
+  not wired to any revert action. **Do not reintroduce a pending-review
+  gate, nor an Approve/Revert action, for brand-initiated product
+  writes** — both were deliberately removed.
 - **Discord log mirroring** — every `notify()`/`logAudit()` call, plus
   every pre-existing "log it, don't throw" error site, also posts a
   color-coded structured embed (green = added, orange = edited, red =

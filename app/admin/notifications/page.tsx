@@ -3,14 +3,8 @@ import { getAllNotificationsForAdmin } from "@/lib/data/admin";
 import { NOTIFICATION_TYPE_LABELS } from "@/lib/admin/statuses";
 import MarkNotificationReadButton from "@/components/admin/MarkNotificationReadButton";
 import MarkAllNotificationsReadButton from "@/components/admin/MarkAllNotificationsReadButton";
-import NotificationResolveActions from "@/components/admin/NotificationResolveActions";
 import { formatDateTime } from "@/lib/format";
 import { getEntityAdminPath } from "@/lib/admin/entityLinks";
-
-const RESOLUTION_LABELS: Record<string, string> = {
-  approved: "Approved",
-  reverted: "Reverted",
-};
 
 export default async function AdminNotificationsPage() {
   const notifications = await getAllNotificationsForAdmin();
@@ -53,15 +47,7 @@ export default async function AdminNotificationsPage() {
               {!n.read && <span className="mt-1.5 h-2 w-2 flex-none rounded-full bg-ink" />}
               {href ? <Link href={href} className="hover:underline">{info}</Link> : info}
             </div>
-            {n.resolution === "pending" ? (
-              <NotificationResolveActions notificationId={n.id} />
-            ) : n.resolution === "approved" || n.resolution === "reverted" ? (
-              <span className="flex-none rounded-full bg-stone-100 px-3 py-1 text-[11px] font-semibold text-ink-soft/60">
-                {RESOLUTION_LABELS[n.resolution]}
-              </span>
-            ) : (
-              !n.read && <MarkNotificationReadButton id={n.id} />
-            )}
+            {!n.read && <MarkNotificationReadButton id={n.id} />}
           </div>
           );
         })}

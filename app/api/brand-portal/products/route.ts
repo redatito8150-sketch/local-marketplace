@@ -31,11 +31,11 @@ function randomSuffix(): string {
 }
 
 // Instant-Publish: a brand owner/assistant's new product goes live on save,
-// scoped strictly to their own brand — the admin is notified afterward
-// with a full description and can Approve (leave it) or Revert (archive
-// it) directly from the notification, never blocked waiting on a review
-// queue. An admin viewing this brand's portal (isImpersonating) never
-// creates on the brand's behalf — only the real owner/assistant does.
+// scoped strictly to their own brand — the admin is just notified
+// afterward with a full description of what happened, never blocked
+// waiting on a review queue. An admin viewing this brand's portal
+// (isImpersonating) never creates on the brand's behalf — only the real
+// owner/assistant does.
 export async function POST(request: NextRequest) {
   const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {

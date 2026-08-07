@@ -83,6 +83,10 @@ interface ProductFormProps {
   // "Submit for Review", which actively contradicted that and implied a
   // pre-approval gate that was deliberately removed.
   lockedBrand?: { id: string; name: string };
+  // Brand-portal mode: passed directly since there's no brandOptions list
+  // to look it up from (the brand is locked). Admin mode instead derives
+  // this live from brandOptions as the Brand dropdown changes.
+  isPartnerBrand?: boolean;
   // Brand-portal mode has no BrandSelect list to read policy fields from
   // (the brand is locked) — this carries the locked brand's own Shipping &
   // Returns policy fields so the resolved policy can still be computed.
@@ -229,6 +233,7 @@ export default function ProductForm({
   taxonomy = DEFAULT_PRODUCT_TAXONOMY,
   taxonomyNodes,
   lockedBrand,
+  isPartnerBrand: lockedIsPartnerBrand,
   lockedBrandPolicy,
   brandSlug,
   apiBasePath = "/api/admin/products",
@@ -606,6 +611,9 @@ export default function ProductForm({
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
   const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
+  const isPartnerBrand = lockedBrand
+    ? Boolean(lockedIsPartnerBrand)
+    : Boolean(brandOptions.find((b) => b.id === form.brandId)?.isMahalyPartner);
 
   // Recalculates the instant a different Brand is picked (Admin) or once,
   // from the locked Brand's own fields (brand-portal — the brand can't
@@ -811,6 +819,7 @@ export default function ProductForm({
             taxonomyNodes={taxonomyNodes}
             productTypeId={form.productTypeId}
             inventoryHref={inventoryHref}
+            isPartnerBrand={isPartnerBrand}
           /></div>
           <CustomOptionManager optionTypes={optionTypes} optionValues={optionValues} apiBasePath={optionsApiBase} brandId={form.brandId} brandSlug={brandSlug} onChanged={loadOptions} />
         </FormSection>

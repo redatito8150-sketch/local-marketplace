@@ -27,14 +27,19 @@ export default function WarehouseExperience({
   const [stockDrafts, setStockDrafts] = useState<Record<string, number>>({});
   const [requestQty, setRequestQty] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const [returnSelected, setReturnSelected] = useState<Set<string>>(new Set());
   const [savingStock, setSavingStock] = useState(false);
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
+  const [submittingReturn, setSubmittingReturn] = useState(false);
   const [transferNote, setTransferNote] = useState("");
+  const [returnNote, setReturnNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const stockFor = (v: WarehouseVariantRow) => stockDrafts[v.variantId] ?? v.brandStockQuantity;
   const availableToRequest = (v: WarehouseVariantRow) => Math.max(0, stockFor(v) - v.pendingRequestedQty);
+  const availableToReturn = (v: WarehouseVariantRow) => Math.max(0, v.quantity - v.pendingReturnQty);
 
   async function saveStockCounts() {
     const updates = Object.entries(stockDrafts).map(([variantId, brandStockQuantity]) => ({ variantId, brandStockQuantity }));
@@ -56,6 +61,37 @@ export default function WarehouseExperience({
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
       setSavingStock(false);
+    }
+  }
+
+  async function submitReturn() {
+    const items = [...returnSelected]
+      .map((variantId) => ({ variantId, requestedQty: returnQty[variantId] ?? 0 }))
+      .filter((item) => item.requestedQty > 0);
+    if (!items.length) {
+      setError("Enter a quantity for at least one selected variant to return.");
+      return;
+    }
+    setSubmittingReturn(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch(withBrand("/api/brand-portal/warehouse/returns", brandParam), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items, note: returnNote.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to submit return request");
+      setMessage("Return request submitted — Mahaly's warehouse will review it.");
+      setReturnSelected(new Set());
+      setReturnQty({});
+      setReturnNote("");
+      window.location.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to submit return request");
+    } finally {
+      setSubmittingReturn(false);
     }
   }
 
@@ -118,12 +154,16 @@ export default function WarehouseExperience({
                   <th className="px-3 py-2.5">Your warehouse stock</th>
                   <th className="px-3 py-2.5">Pending transfer</th>
                   <th className="px-3 py-2.5">Request qty</th>
+                  <th className="w-10 px-3 py-2.5" />
+                  <th className="px-3 py-2.5">Return qty</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {variants.map((v) => {
                   const isSelected = selected.has(v.variantId);
                   const max = availableToRequest(v);
+                  const isReturnSelected = returnSelected.has(v.variantId);
+                  const returnMax = availableToReturn(v);
                   return (
                     <tr key={v.variantId}>
                       <td className="px-3 py-2.5">
@@ -173,6 +213,34 @@ export default function WarehouseExperience({
                           className="w-20 rounded border border-slate-200 px-2 py-1 text-[12.5px] outline-none focus:border-slate-400 disabled:bg-slate-50"
                         />
                       </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${v.productName} for return`}
+                          checked={isReturnSelected}
+                          disabled={returnMax === 0}
+                          onChange={(e) => {
+                            const next = new Set(returnSelected);
+                            if (e.target.checked) next.add(v.variantId);
+                            else next.delete(v.variantId);
+                            setReturnSelected(next);
+                          }}
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={returnMax}
+                          step={1}
+                          aria-label={`Requested return quantity for ${v.productName}`}
+                          disabled={!isReturnSelected}
+                          value={returnQty[v.variantId] ?? ""}
+                          placeholder={returnMax > 0 ? `up to ${returnMax}` : "0"}
+                          onChange={(e) => setReturnQty((prev) => ({ ...prev, [v.variantId]: Math.max(0, Math.min(returnMax, Math.trunc(Number(e.target.value) || 0))) }))}
+                          className="w-20 rounded border border-slate-200 px-2 py-1 text-[12.5px] outline-none focus:border-slate-400 disabled:bg-slate-50"
+                        />
+                      </td>
                     </tr>
                   );
                 })}
@@ -200,6 +268,24 @@ export default function WarehouseExperience({
         </DashboardPanel>
       )}
 
+      {variants.length > 0 && (
+        <DashboardPanel title="Request a return (رجوع من المخزن المحلي)" description="Ask Mahaly's warehouse to hand back stock it's currently holding for you — checked off in the 'Return qty' column above.">
+          <div className="space-y-3 px-5 py-4">
+            <textarea
+              value={returnNote}
+              onChange={(e) => setReturnNote(e.target.value)}
+              placeholder="Optional note (e.g. reason for the return, pickup preference)"
+              rows={2}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] outline-none focus:border-slate-400"
+            />
+            <button type="button" onClick={submitReturn} disabled={submittingReturn || returnSelected.size === 0} className={dashboardButtonSecondary}>
+              {submittingReturn ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+              Submit return request
+            </button>
+          </div>
+        </DashboardPanel>
+      )}
+
       <DashboardPanel title="Transfer history">
         {transfers.length === 0 ? (
           <DashboardEmptyState title="No transfers yet" description="Requested transfers and their outcomes will show up here." />
@@ -212,6 +298,9 @@ export default function WarehouseExperience({
               return (
                 <div key={t.id} className="px-5 py-4">
                   <div className="flex flex-wrap items-center gap-3">
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                      {t.direction === "to_brand" ? "Return" : "Transfer"}
+                    </span>
                     <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${badge.className}`}>
                       <Icon className="h-3 w-3" /> {badge.label}
                     </span>

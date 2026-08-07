@@ -56,6 +56,7 @@ export default async function EditBrandPortalProductPage(
         taxonomy={taxonomy}
         taxonomyNodes={taxonomyNodes}
         lockedBrand={{ id: owner.brandId, name: owner.brandName ?? owner.brandSlug ?? "" }}
+        isPartnerBrand={owner.isMahalyPartner}
         lockedBrandPolicy={lockedBrandRecord ? {
           shippingPolicy: lockedBrandRecord.shippingPolicy,
           returnPolicy: lockedBrandRecord.returnPolicy,

@@ -52,9 +52,8 @@ export default async function AdminOverviewPage() {
 
   const pendingOrders = orders.filter((order) => order.status === "pending");
   const newApplications = applications.filter((application) => application.status === "new");
-  const pendingBrandActivity = brandActivity.filter((notification) => notification.resolution === "pending");
   const recentOrders = orders.slice(0, 5);
-  const alertCount = pendingOrders.length + newApplications.length + pendingBrandActivity.length + lowStock.length;
+  const alertCount = pendingOrders.length + newApplications.length + lowStock.length;
 
   return (
     <div className="space-y-8">
@@ -75,7 +74,7 @@ export default async function AdminOverviewPage() {
         <DashboardStatCard label="Orders" value={orders.length} detail={`${pendingOrders.length} pending`} icon={ShoppingBag} tone={pendingOrders.length ? "warning" : "neutral"} href="/admin/orders" />
         <DashboardStatCard label="Products" value={products.length} detail={`${lowStock.length} low-stock variants`} icon={Package} tone={lowStock.length ? "warning" : "info"} href="/admin/products" />
         <DashboardStatCard label="Brands" value={brands.length} detail={`${newApplications.length} new applications`} icon={Store} tone="brand" href="/admin/brands" />
-        <DashboardStatCard label="Pending reviews" value={pendingBrandActivity.length + newApplications.length} detail="Applications and brand activity" icon={Clock3} tone="warning" href="/admin/products/review" />
+        <DashboardStatCard label="New applications" value={newApplications.length} detail="Brand applications awaiting a decision" icon={Clock3} tone="warning" href="/admin/applications" />
         <DashboardStatCard label="Alerts" value={alertCount} detail="Across orders, stock and approvals" icon={AlertTriangle} tone={alertCount ? "brand" : "neutral"} />
       </div>
 
@@ -89,7 +88,6 @@ export default async function AdminOverviewPage() {
             <AlertRow label="Pending orders" value={pendingOrders.length} href="/admin/orders?status=pending" tone="warning" />
             <AlertRow label="Low-stock variants" value={lowStock.length} href="/admin/low-stock" tone="danger" />
             <AlertRow label="New brand applications" value={newApplications.length} href="/admin/applications" tone="info" />
-            <AlertRow label="Brand changes to review" value={pendingBrandActivity.length} href="/admin/products/review" tone="warning" />
           </div>
         </DashboardPanel>
       </div>
@@ -143,7 +141,7 @@ export default async function AdminOverviewPage() {
 
       <div className={`grid gap-6 ${canViewAuditLog ? "xl:grid-cols-2" : ""}`}>
         <DashboardPanel title="Recent brand activity" description="Latest owner and assistant product actions" action={<Link href="/admin/products/review" className="text-[12px] font-semibold text-mahalyred hover:underline">Review activity</Link>}>
-          {brandActivity.length ? <div className="divide-y divide-slate-100">{brandActivity.slice(0, 5).map((item) => <div key={item.id} className="px-5 py-4"><div className="flex items-start justify-between gap-3"><div><p className="text-[12.5px] font-semibold text-slate-900">{item.title}</p>{item.body && <p className="mt-1 text-[11.5px] leading-5 text-slate-500">{item.body}</p>}</div><span className={`rounded-full px-2 py-1 text-[10px] font-bold ${item.resolution === "pending" ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"}`}>{item.resolution}</span></div></div>)}</div> : <DashboardEmptyState title="No brand activity" description="Brand product changes will appear here." />}
+          {brandActivity.length ? <div className="divide-y divide-slate-100">{brandActivity.slice(0, 5).map((item) => <div key={item.id} className="px-5 py-4"><p className="text-[12.5px] font-semibold text-slate-900">{item.title}</p>{item.body && <p className="mt-1 whitespace-pre-line text-[11.5px] leading-5 text-slate-500">{item.body}</p>}</div>)}</div> : <DashboardEmptyState title="No brand activity" description="Brand product changes will appear here." />}
         </DashboardPanel>
 
         {canViewAuditLog && <DashboardPanel title="Recent user activity" description="Latest recorded actions across the platform" action={<Link href="/admin/audit-log" className="text-[12px] font-semibold text-mahalyred hover:underline">Open audit log</Link>}>

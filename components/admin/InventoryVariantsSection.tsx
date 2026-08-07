@@ -74,6 +74,7 @@ export default function InventoryVariantsSection({
   taxonomyNodes,
   productTypeId,
   inventoryHref,
+  isPartnerBrand,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -93,6 +94,10 @@ export default function InventoryVariantsSection({
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
   inventoryHref?: string;
+  // Mahaly Partner brand — Opening Stock is locked at 0 server-side no
+  // matter what's typed here (see forceZeroOpeningStock), so the field
+  // itself is locked and relabeled rather than silently ignoring input.
+  isPartnerBrand?: boolean;
 }) {
   const colorType = availableOptionTypes.find((t) => t.key === "color");
   const sizeType = availableOptionTypes.find((t) => t.key === "size");
@@ -280,6 +285,7 @@ export default function InventoryVariantsSection({
           taxonomyNodes={taxonomyNodes}
           productTypeId={productTypeId}
           inventoryHref={inventoryHref}
+          isPartnerBrand={isPartnerBrand}
           onAddColor={addColorValue}
           onCreateColor={createColorValue}
           onRemoveColor={removeColorRow}

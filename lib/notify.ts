@@ -53,12 +53,14 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
 
 export interface NotifyOptions {
   // Also used to build a "go to this thing" link (lib/admin/entityLinks.ts)
-  // wherever the notification is shown. Instant-Publish's Approve/Revert
-  // buttons specifically require `relatedEntityType: "product"` plus
-  // `auditLogId` (that combination marks the row `resolution: "pending"`)
-  // — every other entity type here just gets a plain link, no resolve UI.
+  // wherever the notification is shown.
   relatedEntityType?: AuditEntityType;
   relatedEntityId?: string;
+  // Purely a reference back to the audit_logs row for traceability (so the
+  // admin can look up exactly what changed) — no Approve/Revert workflow
+  // is attached to this anymore. Every notification is plain: the admin
+  // reads what happened and acts elsewhere if they need to, same as any
+  // other notification in the app.
   auditLogId?: string | null;
   // Discord embed formatting only — never affects the stored row.
   actorLabel?: string;
@@ -78,14 +80,7 @@ export async function notify(
   body: string = "",
   options?: NotifyOptions
 ): Promise<void> {
-  // "Resolvable" (Approve/Revert buttons) is specifically the Instant-
-  // Publish flow — it always passes auditLogId alongside the entity ref.
-  // Any other caller can still pass relatedEntityType/relatedEntityId on
-  // their own, purely so the bell/page can link to the entity — that must
-  // NOT also flip resolution to "pending", or an unrelated notification
-  // (e.g. an order update) would incorrectly grow Approve/Revert controls.
   const hasEntityRef = Boolean(options?.relatedEntityType && options?.relatedEntityId);
-  const resolvable = hasEntityRef && options?.auditLogId ? { auditLogId: options.auditLogId } : undefined;
 
   const { error } = await supabaseAdmin.from("notifications").insert({
     type,
@@ -93,8 +88,8 @@ export async function notify(
     body,
     related_entity_type: hasEntityRef ? options!.relatedEntityType : null,
     related_entity_id: hasEntityRef ? options!.relatedEntityId : null,
-    audit_log_id: resolvable?.auditLogId ?? null,
-    resolution: resolvable ? "pending" : "n/a",
+    audit_log_id: options?.auditLogId ?? null,
+    resolution: "n/a",
   });
   if (error) {
     logError(`notify(${type}) failed`, error.message);

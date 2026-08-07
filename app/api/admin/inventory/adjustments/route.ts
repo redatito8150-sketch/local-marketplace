@@ -5,6 +5,7 @@ import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidatio
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
 import { checkAndNotifyRestock } from "@/lib/backInStock";
+import { describeInventoryAdjustments } from "@/lib/admin/describeInventoryAdjustment";
 
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest) {
     if (error) return NextResponse.json({ error }, { status: 400 });
   }
   const ids = [...new Set(body.adjustments.map((item) => item.variantId))];
-  const { data: rows } = await supabaseAdmin.from("product_variants").select("id, quantity, products!inner(brand_id)").in("id", ids);
+  const { data: rows } = await supabaseAdmin.from("product_variants").select("id, sku, quantity, products!inner(brand_id)").in("id", ids);
   const brandIds = [...new Set((rows ?? []).map((row) => (row.products as unknown as { brand_id: string }).brand_id))];
   if ((rows?.length ?? 0) !== ids.length || brandIds.length !== 1) {
     return NextResponse.json({ error: "All selected variants must exist and belong to one brand" }, { status: 400 });
@@ -53,13 +54,26 @@ export async function POST(request: NextRequest) {
     p_operation_key: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
   } as never);
   if (error) return safeErrorResponse("admin.inventory.adjustments", error, "Failed to apply the adjustment", 400);
+
+  const skuById = new Map((rows ?? []).map((row) => [row.id as string, row.sku as string]));
+  const results = (data ?? []) as { variant_id: string; previous_quantity: number; new_quantity: number }[];
+  const changeLines = results.map((r) => ({
+    sku: skuById.get(r.variant_id) ?? r.variant_id,
+    previousQuantity: r.previous_quantity,
+    newQuantity: r.new_quantity,
+  }));
+
   await logAudit({
     actorId: admin.id,
     actorLabel: admin.email ?? admin.id,
     entityType: "inventory",
     entityId: brandIds[0],
     action: "restock",
-    after: { adjustments: body.adjustments, reason: body.reason, note: body.note ?? undefined },
+    after: {
+      Reason: body.reason,
+      Note: body.note || undefined,
+      Changes: describeInventoryAdjustments(changeLines),
+    },
   });
   await checkAndNotifyRestock(ids);
   return NextResponse.json({ adjustments: data });

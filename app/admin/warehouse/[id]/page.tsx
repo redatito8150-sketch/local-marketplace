@@ -12,12 +12,12 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
     <div>
       <DashboardPageHeader
         eyebrow="Local Warehouse"
-        title={`${transfer.brandName} — Transfer request`}
+        title={`${transfer.brandName} — ${transfer.direction === "to_brand" ? "Return" : "Transfer"} request`}
         description={`Requested ${new Date(transfer.requestedAt).toLocaleString()}${transfer.requestedByEmail ? ` by ${transfer.requestedByEmail}` : ""}.${transfer.brandNote ? ` Note: ${transfer.brandNote}` : ""}`}
       />
       <div className="mt-6">
         {transfer.status === "pending" ? (
-          <TransferReceiveForm transferId={transfer.id} items={transfer.items} />
+          <TransferReceiveForm transferId={transfer.id} items={transfer.items} isReturn={transfer.direction === "to_brand"} />
         ) : (
           <DashboardPanel title="Outcome">
             <div className="px-5 py-4 text-[13px] text-slate-700">
