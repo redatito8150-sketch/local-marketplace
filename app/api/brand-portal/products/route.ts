@@ -134,6 +134,7 @@ export async function POST(request: NextRequest) {
     submitted: body.variants,
     actorId: owner.user.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
+    forceZeroOpeningStock: owner.isMahalyPartner,
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product submitted, but ${variantsResult.error}` }, { status: 500 });

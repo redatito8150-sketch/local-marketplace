@@ -18,11 +18,31 @@ export async function POST(request: NextRequest) {
     if (error) return NextResponse.json({ error }, { status: 400 });
   }
   const ids = [...new Set(body.adjustments.map((item) => item.variantId))];
-  const { data: rows } = await supabaseAdmin.from("product_variants").select("id, products!inner(brand_id)").in("id", ids);
+  const { data: rows } = await supabaseAdmin.from("product_variants").select("id, quantity, products!inner(brand_id)").in("id", ids);
   const brandIds = [...new Set((rows ?? []).map((row) => (row.products as unknown as { brand_id: string }).brand_id))];
   if ((rows?.length ?? 0) !== ids.length || brandIds.length !== 1) {
     return NextResponse.json({ error: "All selected variants must exist and belong to one brand" }, { status: 400 });
   }
+
+  // Same rule as the brand-portal route: a Mahaly Partner brand's stock can
+  // only increase through a confirmed Local Warehouse transfer, even from
+  // the admin panel's general adjustment tool — otherwise the transfer
+  // ledger's discrepancy tracking could always be silently bypassed here.
+  const { data: brandRow } = await supabaseAdmin.from("brands").select("is_mahaly_partner").eq("id", brandIds[0]).maybeSingle();
+  if (brandRow?.is_mahaly_partner) {
+    const quantityById = new Map((rows ?? []).map((row) => [row.id as string, row.quantity as number]));
+    for (const adjustment of body.adjustments) {
+      const currentQty = quantityById.get(adjustment.variantId) ?? 0;
+      const wouldIncrease = adjustment.type === "add" || (adjustment.type === "set" && adjustment.amount > currentQty);
+      if (wouldIncrease) {
+        return NextResponse.json(
+          { error: "This brand's stock can only increase through a Local Warehouse transfer receipt." },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
   const { data, error } = await supabaseAdmin.rpc("apply_inventory_adjustments", {
     p_brand_id: brandIds[0],
     p_actor_id: admin.id,

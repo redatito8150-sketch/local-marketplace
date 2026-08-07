@@ -24,6 +24,11 @@ export interface BrandOwnerContext {
   accessLevel: BrandAccessLevel;
   setupStatus: "setup_required" | "in_progress" | "ready_for_review" | "complete" | null;
   isActive: boolean;
+  // Reuses brands.is_mahaly_partner (order-splitting/shipping-pool flag) —
+  // a partner brand's stock physically lives in Mahaly's own warehouse, so
+  // this also gates the Local Warehouse nav/API surface (see
+  // supabase/migrations/20260809000004_local_warehouse_transfers.sql).
+  isMahalyPartner: boolean;
   availableBrands: Array<{
     id: string;
     slug: string;
@@ -31,6 +36,7 @@ export interface BrandOwnerContext {
     accessLevel: BrandAccessLevel;
     setupStatus: BrandOwnerContext["setupStatus"];
     isActive: boolean;
+    isMahalyPartner: boolean;
   }>;
 }
 
@@ -58,7 +64,7 @@ export async function requireBrandOwner(
 
   const { data: ownedBrands } = await supabase
     .from("brands")
-    .select("id, slug, name, setup_status, is_active")
+    .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
     .eq("owner_user_id", user.id)
     .order("name");
 
@@ -81,7 +87,7 @@ export async function requireBrandOwner(
   const { data: staffBrands } = staffBrandIds.length
     ? await supabase
       .from("brands")
-      .select("id, slug, name, setup_status, is_active")
+      .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
       .in("id", staffBrandIds)
       .order("name")
     : { data: [] };
@@ -95,6 +101,7 @@ export async function requireBrandOwner(
       accessLevel: "owner",
       setupStatus: brand.setup_status,
       isActive: brand.is_active,
+      isMahalyPartner: Boolean(brand.is_mahaly_partner),
     });
   }
   for (const brand of staffBrands ?? []) {
@@ -106,6 +113,7 @@ export async function requireBrandOwner(
         accessLevel: staffAccessByBrandId.get(brand.id) ?? "assistant",
         setupStatus: brand.setup_status,
         isActive: brand.is_active,
+        isMahalyPartner: Boolean(brand.is_mahaly_partner),
       });
     }
   }
@@ -129,7 +137,7 @@ export async function requireBrandOwner(
       ].filter(Boolean).join(",");
       const { data: legacyBrands } = await supabase
         .from("brands")
-        .select("id, slug, name, setup_status, is_active")
+        .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
         .or(filters);
       availableBrands = (legacyBrands ?? []).map((brand) => ({
         id: brand.id,
@@ -138,6 +146,7 @@ export async function requireBrandOwner(
         accessLevel: "owner" as const,
         setupStatus: brand.setup_status,
         isActive: brand.is_active,
+        isMahalyPartner: Boolean(brand.is_mahaly_partner),
       }));
     }
   }
@@ -156,6 +165,7 @@ export async function requireBrandOwner(
       accessLevel: selectedMembership.accessLevel,
       setupStatus: selectedMembership.setupStatus,
       isActive: selectedMembership.isActive,
+      isMahalyPartner: selectedMembership.isMahalyPartner,
       availableBrands,
     };
   }
@@ -173,6 +183,7 @@ export async function requireBrandOwner(
       accessLevel: "owner",
       setupStatus: null,
       isActive: true,
+      isMahalyPartner: false,
       availableBrands: [],
     };
   }
@@ -182,7 +193,7 @@ export async function requireBrandOwner(
   // resolve the name.
   const { data: targetBrand } = await supabase
     .from("brands")
-    .select("id, slug, name, setup_status, is_active")
+    .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
     .eq("slug", overrideSlug)
     .maybeSingle();
 
@@ -197,6 +208,7 @@ export async function requireBrandOwner(
     accessLevel: "owner",
     setupStatus: targetBrand.setup_status,
     isActive: targetBrand.is_active,
+    isMahalyPartner: Boolean(targetBrand.is_mahaly_partner),
     availableBrands: [],
   };
 }

@@ -44,6 +44,7 @@ export default async function AccountNotificationsPage() {
               // real product id — the whole point of the notification is
               // to get back to that exact product.
               : n.relatedEntityType === "product" && n.relatedEntityId ? `/product/${n.relatedEntityId}`
+              : n.relatedEntityType === "warehouse_transfer" ? "/brand-portal/warehouse"
               : null;
             const info = (
               <div className="min-w-0">

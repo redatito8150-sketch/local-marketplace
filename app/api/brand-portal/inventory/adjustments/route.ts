@@ -24,10 +24,28 @@ export async function POST(request: NextRequest) {
   const ids = [...new Set(body.adjustments.map((item) => item.variantId))];
   const { data: owned } = await supabaseAdmin
     .from("product_variants")
-    .select("id, products!inner(brand_id)")
+    .select("id, quantity, products!inner(brand_id)")
     .in("id", ids)
     .eq("products.brand_id", owner.brandId);
   if ((owned?.length ?? 0) !== ids.length) return NextResponse.json({ error: "A selected variant is not available for this brand" }, { status: 403 });
+
+  // Mahaly Partner brands keep their site-visible stock in Mahaly's own
+  // warehouse — it can only ever go up via a confirmed Local Warehouse
+  // transfer receipt, never a direct adjustment here. "remove"
+  // (correction/damage/loss going down) still passes through untouched.
+  if (owner.isMahalyPartner) {
+    const quantityById = new Map((owned ?? []).map((row) => [row.id as string, row.quantity as number]));
+    for (const adjustment of body.adjustments) {
+      const currentQty = quantityById.get(adjustment.variantId) ?? 0;
+      const wouldIncrease = adjustment.type === "add" || (adjustment.type === "set" && adjustment.amount > currentQty);
+      if (wouldIncrease) {
+        return NextResponse.json(
+          { error: "This brand's stock can only increase through a Local Warehouse transfer — request one instead." },
+          { status: 400 }
+        );
+      }
+    }
+  }
 
   const operationKey = request.headers.get("idempotency-key") ?? crypto.randomUUID();
   const { data, error } = await supabaseAdmin.rpc("apply_inventory_adjustments", {

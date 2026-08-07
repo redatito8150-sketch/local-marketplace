@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ArrowLeft, FileEdit, FolderKanban, History, LayoutDashboard, MessageSquare, Package, ShoppingBag, ShoppingCart } from "lucide-react";
+import { ArrowLeft, FileEdit, FolderKanban, History, LayoutDashboard, MessageSquare, Package, ShoppingBag, ShoppingCart, Warehouse } from "lucide-react";
 import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 
 const GROUPS = [
@@ -18,17 +18,27 @@ const GROUPS = [
   { label: "Sales", items: [{ label: "Orders", href: "/brand-portal/orders", icon: ShoppingBag }, { label: "Reviews", href: "/brand-portal/reviews", icon: MessageSquare }] },
 ];
 
-export default function BrandPortalNav({ showPageContent = true }: { showPageContent?: boolean }) {
+export default function BrandPortalNav({ showPageContent = true, showWarehouse = false }: { showPageContent?: boolean; showWarehouse?: boolean }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const brand = useSearchParams().get("brand");
   const withBrand = (href: string) => (brand ? `${href}?brand=${brand}` : href);
-  const groups = showPageContent
-    ? [...GROUPS, { label: "Brand", items: [
+  // Local Warehouse only exists for Mahaly Partner brands — everyone else's
+  // catalog stock is entirely self-managed, so the nav link (and the page
+  // itself) would just be dead weight for them.
+  let groups = showWarehouse
+    ? GROUPS.map((group) =>
+        group.label === "Catalog"
+          ? { ...group, items: [...group.items, { label: "Local Warehouse", href: "/brand-portal/warehouse", icon: Warehouse }] }
+          : group
+      )
+    : GROUPS;
+  groups = showPageContent
+    ? [...groups, { label: "Brand", items: [
         { label: "Brand Profile", href: "/brand-portal/page-content", icon: FileEdit },
         { label: "Activity", href: "/brand-portal/logs", icon: History },
       ] }]
-    : GROUPS;
+    : groups;
   const allItems = groups.flatMap((group) => group.items);
   const activeHref = allItems
     .filter((item) => item.href === "/brand-portal" ? pathname === "/brand-portal" : pathname === item.href || pathname.startsWith(`${item.href}/`))

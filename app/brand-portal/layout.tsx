@@ -21,7 +21,7 @@ export default async function BrandPortalLayout({
       variant="brand"
       title={owner.brandName ?? "Mahaly Brand Portal"}
       subtitle={owner.isAdmin && !owner.brandSlug ? "Admin brand workspace" : "Brand owner workspace"}
-      sidebar={<BrandPortalNav showPageContent={owner.accessLevel === "owner"} />}
+      sidebar={<BrandPortalNav showPageContent={owner.accessLevel === "owner"} showWarehouse={owner.isMahalyPartner} />}
       headerTools={<>
         {owner.brandSlug && <BrandSwitcher brands={owner.availableBrands.map((brand) => ({ slug: brand.slug, name: brand.name }))} activeSlug={owner.brandSlug} />}
         <span className="hidden rounded-full border border-[#e3dcd3] bg-[#fffdf9] px-3 py-1.5 text-[11px] font-semibold text-[#6f6259] sm:inline-flex">{owner.accessLevel === "owner" ? "Owner access" : "Assistant access"}</span>
