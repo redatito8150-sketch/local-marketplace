@@ -358,7 +358,7 @@ export default function BrandForm({
       <button
         type="submit"
         disabled={submitting}
-        className="rounded-md bg-ink px-6 py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+        className="rounded-md bg-mahalyred px-6 py-3 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? "Saving…" : mode === "create" ? "Create brand" : "Save changes"}
       </button>

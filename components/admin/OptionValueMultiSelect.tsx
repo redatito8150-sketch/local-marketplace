@@ -134,7 +134,7 @@ export default function OptionValueMultiSelect({
                 type="button"
                 onClick={handleCreate}
                 disabled={busy || !newLabel.trim()}
-                className="rounded-md bg-ink px-3 py-1.5 text-[12px] font-semibold text-cream disabled:opacity-50"
+                className="rounded-md bg-mahalyred px-3 py-1.5 text-[12px] font-semibold text-cream disabled:opacity-50"
               >
                 Add
               </button>

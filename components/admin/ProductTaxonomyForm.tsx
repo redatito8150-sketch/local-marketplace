@@ -109,7 +109,7 @@ export default function ProductTaxonomyForm({ initial }: { initial: ProductTaxon
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-ink px-5 py-2.5 text-[13px] font-semibold text-cream disabled:opacity-60"
+          className="rounded-md bg-mahalyred px-5 py-2.5 text-[13px] font-semibold text-cream disabled:opacity-60"
         >
           {submitting ? "Saving…" : "Save changes"}
         </button>

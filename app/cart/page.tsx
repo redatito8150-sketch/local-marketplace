@@ -122,7 +122,7 @@ export default function CartPage() {
             </p>
             <Link
               href="/shop/women"
-              className="mt-7 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
+              className="mt-7 inline-flex items-center gap-2 rounded-full bg-mahalyred px-6 py-3 text-sm font-semibold text-cream transition-transform hover:scale-[1.03]"
             >
               Start Shopping
               <ArrowRight className="h-4 w-4" strokeWidth={2} />
@@ -216,7 +216,7 @@ export default function CartPage() {
               {checkingAvailability ? (
                 <button
                   disabled
-                  className="mt-7 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-ink/50 py-3.5 text-[14px] font-semibold text-cream"
+                  className="mt-7 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-mahalyred/50 py-3.5 text-[14px] font-semibold text-cream"
                 >
                   Checking availability…
                 </button>
@@ -224,7 +224,7 @@ export default function CartPage() {
                 <>
                   <button
                     disabled
-                    className="mt-7 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-ink/50 py-3.5 text-[14px] font-semibold text-cream"
+                    className="mt-7 flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-md bg-mahalyred/50 py-3.5 text-[14px] font-semibold text-cream"
                   >
                     Proceed to Checkout
                   </button>
@@ -236,7 +236,7 @@ export default function CartPage() {
               ) : (
                 <Link
                   href="/checkout"
-                  className="mt-7 flex w-full items-center justify-center gap-2 rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
+                  className="mt-7 flex w-full items-center justify-center gap-2 rounded-md bg-mahalyred py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
                 >
                   Proceed to Checkout
                   <ArrowRight className="h-4 w-4" strokeWidth={2} />

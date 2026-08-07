@@ -231,16 +231,40 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
   `home_new_arrivals`'s `source` field is exactly how the owner swaps
   "New Arrivals" for "Trending"/"Best Sellers" without touching code.
 
+- **Sitewide `mahalyred` sweep + dark mode (2026-08-07)** — every primary
+  CTA button across `/shop/[category]`, `/product/[id]`, `/cart`,
+  `/checkout`, `/account`, `/join-as-a-brand`, and `/admin` now uses
+  `bg-mahalyred` instead of the old `bg-ink`. Selection-state indicators
+  (chosen size/color swatches, checked filters, active tabs, sold-out
+  badges, tooltips) were deliberately left `ink`/black on purpose — the red
+  is reserved for actual primary actions, not every dark-colored element.
+  Alongside this, the whole site (main storefront + `/account` +
+  `/brand-portal` + `/admin`) got a real light/dark toggle
+  (`components/shared/ThemeToggle.tsx`, in the Header and every
+  `DashboardShell` header) backed by CSS custom properties in
+  `app/globals.css` (`:root` + `.dark` block) — every `bg-cream`/`text-ink`/
+  `bg-mahalyred`/etc. utility class repaints automatically via
+  `rgb(var(--color-x) / <alpha-value>)` in `tailwind.config.ts`, no
+  per-component `dark:` classes needed for the core palette. Admin and
+  Brand Portal each have their own catch-all dark override block
+  (`.dark .admin-theme` / `.dark .brand-portal-theme` in `globals.css`)
+  that force-repaints their raw `slate-*`/`white` Tailwind utility classes,
+  mirroring the pre-existing `.admin-theme` light-mode pattern.
+  `components/shared/ThemeScript.tsx` runs inline in `<head>` before first
+  paint (reads `localStorage`, falls back to OS preference) so there's no
+  flash of the wrong theme. **The brand-page template (navy/accentred/
+  charcoal/muted/hairline) is deliberately NOT dark-mode-aware** — it's a
+  separate, static editorial palette per the palette note above; extending
+  dark mode there is a distinct future decision, not an oversight.
+  The old customer "Appearance" page (3 light color-scheme picker:
+  warm_sand/soft_rose/olive_stone, `profiles.notification_preferences.
+  accountTheme`) was removed entirely and replaced by this sitewide
+  toggle — don't reintroduce a separate per-user color picker.
+
 **Not done yet:**
 1. **Payment gateway** — Paymob or Fawry (Egypt-first) or Stripe. Checkout
    UI and real order persistence already exist; no actual payment
    processing is wired in yet (orders are created without a live charge).
-2. **Sitewide `mahalyred` sweep** — Round 5 only re-themed the shared
-   Header/Footer/homepage to the new red; other pages' primary buttons
-   (`/shop/[category]`, `/product/[id]`, `/cart`, `/checkout`, `/account`,
-   `/admin`) still use the original `bg-ink` primary-button styling.
-   Intentionally deferred to whichever round redesigns those pages next,
-   not an oversight.
 
 ## Conventions to keep following
 

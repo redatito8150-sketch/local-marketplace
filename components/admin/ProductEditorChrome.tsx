@@ -107,7 +107,7 @@ export function ProductEditorHeader({
           >
             <Archive className="h-3.5 w-3.5" /> Archive
           </button>
-          <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">
+          <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-mahalyred px-4 text-[12px] font-semibold text-cream disabled:opacity-50">
             Publish Product
           </button>
         </div>
@@ -221,6 +221,6 @@ export function ProductEditorBottomBar({
     >
       Archive
     </button>
-    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-ink px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{publishLabel}</button>
+    <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-mahalyred px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{publishLabel}</button>
   </div>;
 }

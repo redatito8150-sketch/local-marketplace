@@ -14,7 +14,7 @@ export default function ApplyBrandCTA({
     <Link
       href="/join-as-a-brand/apply"
       className={`inline-flex items-center gap-2.5 rounded-full px-7 py-4 text-[15px] font-semibold shadow-soft transition-transform hover:scale-[1.02] hover:shadow-card ${
-        variant === "dark" ? "bg-ink text-cream" : "bg-cream text-ink"
+        variant === "dark" ? "bg-mahalyred text-cream" : "bg-cream text-ink"
       } ${className}`}
     >
       {label}

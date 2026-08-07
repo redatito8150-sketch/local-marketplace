@@ -3,6 +3,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import Providers from "./providers";
+import ThemeScript from "@/components/shared/ThemeScript";
 
 export const metadata: Metadata = {
   title: "Mahaly — Local brands. Real stories. All in one place.",
@@ -17,6 +18,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <ThemeScript />
+      </head>
       <body>
         <Providers>{children}</Providers>
         <Analytics />

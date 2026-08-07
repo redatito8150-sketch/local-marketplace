@@ -344,7 +344,7 @@ export default function UserAccessControl({
               <button
                 type="button"
                 onClick={confirmConflict}
-                className="rounded-md bg-ink px-4 py-2.5 text-[13px] font-semibold text-cream"
+                className="rounded-md bg-mahalyred px-4 py-2.5 text-[13px] font-semibold text-cream"
               >
                 Confirm
               </button>

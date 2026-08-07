@@ -46,7 +46,7 @@ export default function OnboardingAddAddressPage() {
             type="button"
             disabled={busy}
             onClick={() => complete("/account/addresses/new")}
-            className="w-full rounded-md bg-ink py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-md bg-mahalyred py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Add delivery address
           </button>
