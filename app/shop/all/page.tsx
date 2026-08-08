@@ -54,5 +54,5 @@ export default async function ShopAllPage(props: { searchParams: Promise<Record<
   if (page > totalPages) result = await getMarketplaceCatalogPage({ search, sort, page: totalPages, pageSize: 24, filters });
 
   const stateKey = JSON.stringify({ filters, sort, search, page: result.page });
-  return <main className="flex min-h-screen flex-col bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ mainCategory, productType }) => ({ mainCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} priceBounds={priceBounds} /><Footer /></main>;
+  return <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream"><Header /><AllProductsShoppingArea key={stateKey} products={result.products} filterGroups={filterGroups} productTypeRelations={facets.map(({ mainCategory, productType }) => ({ mainCategory, productType }))} selected={filters as Record<string, string[]>} sort={sort} search={search} total={result.total} page={result.page} totalPages={totalPages} priceBounds={priceBounds} /><Footer /></main>;
 }

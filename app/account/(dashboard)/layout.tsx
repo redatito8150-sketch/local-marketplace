@@ -48,7 +48,7 @@ export default async function AccountDashboardLayout({
   const dashboardLabel = profile?.is_admin ? "Admin Dashboard" : "Brand Portal";
 
   return (
-    <main className="account-theme flex min-h-screen flex-col bg-[var(--account-bg)] text-[var(--account-text)]">
+    <main className="account-theme flex min-h-screen flex-col [&>*]:w-full bg-[var(--account-bg)] text-[var(--account-text)]">
       <Header />
       <section className="mx-auto max-w-screen3xl px-4 py-7 sm:px-6 sm:py-10 lg:px-10 lg:py-12 xl:px-12">
         <div className="grid grid-cols-1 gap-7 lg:grid-cols-[280px_minmax(0,1fr)] xl:gap-10">

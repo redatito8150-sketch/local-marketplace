@@ -25,7 +25,7 @@ export default function OnboardingAddAddressPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
 
       <section className="mx-auto flex max-w-screen2xl flex-col items-center px-8 py-16 text-center lg:px-12 lg:py-24">

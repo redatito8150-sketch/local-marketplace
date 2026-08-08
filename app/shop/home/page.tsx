@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function ShopHomePage() {
   return (
-    <main className="flex min-h-screen flex-col bg-[#e9e1d5]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#e9e1d5]">
       <Header />
       <section className="relative isolate flex min-h-[calc(100vh-220px)] overflow-hidden px-6 py-20 sm:px-10 lg:min-h-[680px] lg:px-16">
         <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_50%_38%,rgba(255,255,255,.8),transparent_30%),linear-gradient(135deg,#f5efe5_0%,#ded1bf_48%,#c4b29a_100%)]" />

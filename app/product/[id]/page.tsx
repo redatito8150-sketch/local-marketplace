@@ -53,7 +53,7 @@ export default async function ProductPage(props: { params: Promise<{ id: string 
   const subscribedVariantIds = user ? await getSubscribedVariantIds(user.id, product.id) : [];
 
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <RecentlyViewedTracker productId={product.id} />
       <Header />
 

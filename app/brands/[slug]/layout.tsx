@@ -13,7 +13,7 @@ export default async function BrandProfileLayout({ children, params }: { childre
   if (!brand) notFound();
   return (
     <BrandEditProvider brandSlug={slug}>
-      <main className="flex min-h-screen flex-col bg-[#fbf7f1]"><Header /><BrandProfileHeader brand={brand} />{children}<BrandFooter /></main>
+      <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#fbf7f1]"><Header /><BrandProfileHeader brand={brand} />{children}<BrandFooter /></main>
     </BrandEditProvider>
   );
 }

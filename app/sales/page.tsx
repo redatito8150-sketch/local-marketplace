@@ -19,7 +19,7 @@ export default async function SalesPage() {
   });
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#f7f3ee]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#f7f3ee]">
       <Header />
       <DealsExperience products={result.products} />
       <Footer />

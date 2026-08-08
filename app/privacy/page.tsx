@@ -57,7 +57,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicyPage() {
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <LegalHero title="Privacy Policy" intro={PRIVACY_INTRO} />
 

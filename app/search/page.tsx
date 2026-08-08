@@ -28,7 +28,7 @@ export default async function SearchPage(
   const results = await searchProductCards(query);
 
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
 
       <section className="mx-auto max-w-screen2xl px-8 py-12 lg:px-12 lg:py-16">
