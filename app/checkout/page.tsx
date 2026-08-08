@@ -225,7 +225,7 @@ export default function CheckoutPage() {
 
   if (items.length === 0 && step !== "confirmation") {
     return (
-      <main className="flex min-h-screen flex-col bg-cream">
+      <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
         <Header />
         <section className="mx-auto max-w-screen2xl px-8 py-20 text-center lg:px-12">
           <p className="text-lg font-medium text-ink">Your cart is empty</p>
@@ -242,7 +242,7 @@ export default function CheckoutPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
 
       <section className="mx-auto max-w-screen2xl px-8 py-12 lg:px-12 lg:py-16">

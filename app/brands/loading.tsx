@@ -5,7 +5,7 @@ import { BrandCardSkeletonGrid } from "@/components/shared/BrandCardSkeleton";
 
 export default function Loading() {
   return (
-    <main className="flex min-h-screen flex-col overflow-hidden bg-[#f7f1e9] text-[#211b17]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full overflow-hidden bg-[#f7f1e9] text-[#211b17]">
       <Header warmTransparent />
       <section className="mx-auto max-w-screen2xl px-4 pb-8 pt-8 sm:px-6 lg:px-12 lg:pb-10 lg:pt-10">
         <div className="grid gap-6 lg:grid-cols-[0.78fr_1.42fr] lg:items-stretch">

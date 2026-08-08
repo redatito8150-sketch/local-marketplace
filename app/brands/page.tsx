@@ -21,7 +21,7 @@ export default async function BrandsDirectoryPage() {
   const cityCount = new Set(brands.map((brand) => brand.city)).size;
 
   return (
-    <main className="flex min-h-screen flex-col overflow-hidden bg-[#f7f1e9] text-[#211b17]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full overflow-hidden bg-[#f7f1e9] text-[#211b17]">
       <Header warmTransparent />
 
       <section className="mx-auto max-w-screen2xl px-4 pb-8 pt-8 sm:px-6 lg:px-12 lg:pb-10 lg:pt-10">

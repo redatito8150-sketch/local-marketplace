@@ -61,7 +61,7 @@ export default function AllProductsShoppingArea({ products, filterGroups, produc
 
       <CatalogControls groups={filterGroups} products={products} productTypeRelations={productTypeRelations} selected={selected} onToggle={toggleFilter} onClear={clearFilters} productCount={total} viewMode={viewMode} onViewModeChange={setViewMode} sort={sort} onSortChange={changeSort} priceBounds={priceBounds} onPriceChange={setPriceRange} />
 
-      <div className="mt-6">{products.length ? <ProductGrid products={products} viewMode={viewMode} compact /> : <CatalogEmptyState onClear={() => { setSearch(""); selectedRef.current = {}; setSelected({}); navigate({}, sort, ""); }} />}</div>
+      <div className="mt-6">{products.length ? <ProductGrid products={products} viewMode={viewMode} /> : <CatalogEmptyState onClear={() => { setSearch(""); selectedRef.current = {}; setSelected({}); navigate({}, sort, ""); }} />}</div>
 
       {totalPages > 1 && <nav aria-label="Catalog pages" className="mt-10 flex flex-wrap items-center justify-center gap-2">
         <button type="button" disabled={page <= 1} onClick={() => navigate(selected, sort, initialSearch, page - 1)} className="min-h-10 rounded-full border border-stone-150 bg-white px-4 text-[12px] font-semibold disabled:opacity-35">Previous</button>

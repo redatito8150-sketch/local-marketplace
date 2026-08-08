@@ -24,7 +24,7 @@ export default async function ApplyBrandPage() {
   const cooldownActive = application ? isWithinReapplicationCooldown(application) : false;
 
   return (
-    <main className="flex min-h-screen flex-col bg-[#f3f2ef]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#f3f2ef]">
       <Header />
       <section className="mx-auto max-w-[1120px] px-5 py-10 sm:px-8 lg:py-14">
         <div className="mb-8 text-center">

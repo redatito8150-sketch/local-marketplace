@@ -26,7 +26,7 @@ export default function JoinAsABrandPage() {
   };
 
   return (
-    <main className="join-showcase-background flex min-h-screen flex-col">
+    <main className="join-showcase-background flex min-h-screen flex-col [&>*]:w-full">
       <Header />
       <JoinHero content={heroContent} />
       <JoinBenefits />

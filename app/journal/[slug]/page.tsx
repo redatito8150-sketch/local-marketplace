@@ -32,7 +32,7 @@ export default async function JournalArticlePage(
   if (!article) notFound();
 
   return (
-    <main className="flex min-h-screen flex-col bg-cream">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
 
       <article className="mx-auto max-w-3xl px-8 py-14 lg:px-0 lg:py-20">
