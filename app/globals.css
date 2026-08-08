@@ -8,58 +8,11 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Main-site color tokens as RGB triplets (space-separated, no commas — the
- * format Tailwind's `rgb(var(--x) / <alpha-value>)` pattern needs) so every
- * bg-cream/text-ink/bg-mahalyred/etc. utility class already used across the
- * site repaints the instant <html> gets the "dark" class below — no
- * per-component dark: variants required. Set by components/ThemeScript.tsx
- * before first paint (reads localStorage) and toggled by ThemeToggle.tsx. */
-:root {
-  --color-cream: 250 250 248;
-  --color-stone-25: 250 250 249;
-  --color-stone-50: 246 245 243;
-  --color-stone-100: 239 237 233;
-  --color-stone-150: 231 228 222;
-  --color-beige-50: 245 241 234;
-  --color-beige-100: 237 230 217;
-  --color-beige-200: 225 214 194;
-  --color-ink: 22 21 19;
-  --color-ink-soft: 43 42 39;
-  --color-mahalyred: 183 31 26;
-  --color-mahalyred-dark: 148 23 19;
-  --color-mahalyred-soft: 232 184 178;
-  --color-card: 255 253 249;
-  --color-border: 221 214 205;
-  --color-textmuted: 104 100 95;
-  color-scheme: light;
-}
-
-.dark {
-  --color-cream: 30 27 24;
-  --color-stone-25: 38 35 32;
-  --color-stone-50: 44 40 36;
-  --color-stone-100: 53 48 41;
-  --color-stone-150: 63 56 48;
-  --color-beige-50: 48 43 36;
-  --color-beige-100: 59 52 42;
-  --color-beige-200: 74 64 50;
-  --color-ink: 242 236 227;
-  --color-ink-soft: 207 198 184;
-  --color-mahalyred: 211 58 50;
-  --color-mahalyred-dark: 183 31 26;
-  --color-mahalyred-soft: 74 36 32;
-  --color-card: 38 35 32;
-  --color-border: 74 66 56;
-  --color-textmuted: 168 158 143;
-  color-scheme: dark;
-}
-
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-  background-color: rgb(var(--color-cream));
-  color: rgb(var(--color-ink));
+  background-color: #fafaf8;
+  color: #161513;
   -webkit-font-smoothing: antialiased;
-  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .home-nile-background {
@@ -163,8 +116,8 @@ body {
 }
 
 ::selection {
-  background-color: rgb(var(--color-ink));
-  color: rgb(var(--color-cream));
+  background-color: #161513;
+  color: #fafaf8;
 }
 
 /* thin custom scrollbar for horizontal galleries */
@@ -214,10 +167,7 @@ body {
   .brand-stars { background-image: none; }
 }
 
-/* Customer account chrome is intentionally scoped to /account only. Used to
- * offer 3 light color-scheme choices (see git history); replaced by the
- * sitewide light/dark toggle (2026-08-07) — one warm-sand light palette,
- * one dark override, no per-user color picker anymore. */
+/* Customer account themes are intentionally scoped to /account only. */
 .account-theme {
   --account-bg: #f7f0e5;
   --account-surface: #fffaf2;
@@ -237,23 +187,40 @@ body {
   color-scheme: light;
 }
 
-.dark .account-theme {
-  --account-bg: #201a16;
-  --account-surface: #2a221c;
-  --account-surface-muted: #362c24;
-  --account-text: #f0e4d8;
-  --account-text-muted: #b8a999;
-  --account-border: #4a3c30;
-  --account-accent: #d97a5f;
-  --account-accent-hover: #c96a50;
-  --account-accent-soft: #4a2e22;
-  --account-accent-foreground: #fffaf5;
-  --account-selected: #3d3226;
-  --account-success: #7ea187;
-  --account-warning: #d9a662;
-  --account-danger: #d97a6e;
-  --account-shadow: 0 12px 34px rgba(0, 0, 0, 0.3);
-  color-scheme: dark;
+.account-theme[data-account-theme="soft_rose"] {
+  --account-bg: #f9eeed;
+  --account-surface: #fff9f7;
+  --account-surface-muted: #f1dedd;
+  --account-text: #452d31;
+  --account-text-muted: #80676b;
+  --account-border: #e3c9c7;
+  --account-accent: #8d4650;
+  --account-accent-hover: #743842;
+  --account-accent-soft: #ebcfd2;
+  --account-accent-foreground: #fff9f8;
+  --account-selected: #efdadd;
+  --account-success: #5c7562;
+  --account-warning: #a66c34;
+  --account-danger: #9d4148;
+  --account-shadow: 0 12px 34px rgba(91, 48, 57, 0.065);
+}
+
+.account-theme[data-account-theme="olive_stone"] {
+  --account-bg: #efeee7;
+  --account-surface: #faf9f3;
+  --account-surface-muted: #e3e2d6;
+  --account-text: #31362e;
+  --account-text-muted: #6c7165;
+  --account-border: #d1d1c3;
+  --account-accent: #5d6652;
+  --account-accent-hover: #4b5442;
+  --account-accent-soft: #d6d9c9;
+  --account-accent-foreground: #fbfaf5;
+  --account-selected: #dde0d2;
+  --account-success: #526c59;
+  --account-warning: #9b6e32;
+  --account-danger: #984941;
+  --account-shadow: 0 12px 34px rgba(54, 61, 48, 0.065);
 }
 
 @media (max-width: 479px) {
@@ -286,25 +253,6 @@ body {
   color-scheme: light;
 }
 
-.dark .admin-theme {
-  --admin-bg: #1c1815;
-  --admin-surface: #252019;
-  --admin-surface-muted: #302a22;
-  --admin-sidebar: #201b17;
-  --admin-border: #443a2f;
-  --admin-text: #f0e6da;
-  --admin-text-muted: #ab9d8c;
-  --admin-primary: #d9695c;
-  --admin-primary-hover: #c85a4d;
-  --admin-primary-soft: #4a2b26;
-  --admin-selected: #3a2e24;
-  --admin-success: #83a892;
-  --admin-warning: #d9a468;
-  --admin-danger: #cf6a5e;
-  --admin-info: #82a3b3;
-  color-scheme: dark;
-}
-
 .admin-theme .bg-white,
 .admin-theme .bg-white\/95 {
   background-color: var(--admin-surface) !important;
@@ -322,13 +270,9 @@ body {
 .admin-theme .bg-slate-200 {
   background-color: #ded2c3 !important;
 }
-.dark .admin-theme .bg-slate-200 {
-  background-color: #3a3226 !important;
-}
 
 .admin-theme .bg-slate-900,
-.admin-theme .bg-mahalyred,
-.admin-theme .bg-ink {
+.admin-theme .bg-mahalyred {
   background-color: var(--admin-primary) !important;
 }
 
@@ -415,11 +359,6 @@ body {
 .admin-theme .hover\:bg-slate-100:hover {
   background-color: #eadbc9 !important;
 }
-.dark .admin-theme .hover\:bg-slate-50:hover,
-.dark .admin-theme .hover\:bg-slate-50\/70:hover,
-.dark .admin-theme .hover\:bg-slate-100:hover {
-  background-color: #362c24 !important;
-}
 
 .admin-theme .hover\:bg-slate-800:hover,
 .admin-theme .hover\:bg-mahalyred-dark:hover {
@@ -433,102 +372,6 @@ body {
 
 .admin-theme .hover\:text-mahalyred:hover {
   color: var(--admin-primary-hover) !important;
-}
-
-/*
- * Brand Portal shares DashboardShell/DashboardPanel with admin but has no
- * light-mode override system of its own (its hardcoded white/slate-*
- * utility classes already look right in light mode) — this block only
- * exists to force those same classes dark under .dark, mirroring
- * .admin-theme's catch-all approach one-for-one.
- */
-.dark .brand-portal-theme {
-  --bp-bg: #1c1815;
-  --bp-surface: #221d18;
-  --bp-surface-muted: #2a241d;
-  --bp-border: #3a322a;
-  --bp-text: #eee5d8;
-  --bp-text-muted: #a99a86;
-}
-
-.dark .brand-portal-theme .bg-white,
-.dark .brand-portal-theme .bg-white\/95,
-.dark .brand-portal-theme .bg-white\/45,
-.dark .brand-portal-theme .bg-white\/90 {
-  background-color: var(--bp-surface) !important;
-}
-
-.dark .brand-portal-theme .bg-slate-50,
-.dark .brand-portal-theme .bg-slate-50\/60,
-.dark .brand-portal-theme .bg-slate-50\/70,
-.dark .brand-portal-theme .bg-slate-50\/80,
-.dark .brand-portal-theme .bg-slate-50\/95,
-.dark .brand-portal-theme .bg-slate-100 {
-  background-color: var(--bp-surface-muted) !important;
-}
-
-.dark .brand-portal-theme .bg-slate-900 {
-  background-color: var(--bp-text) !important;
-  color: var(--bp-bg) !important;
-}
-
-.dark .brand-portal-theme .text-slate-950,
-.dark .brand-portal-theme .text-slate-900,
-.dark .brand-portal-theme .text-slate-800 {
-  color: var(--bp-text) !important;
-}
-
-.dark .brand-portal-theme .text-slate-700,
-.dark .brand-portal-theme .text-slate-600,
-.dark .brand-portal-theme .text-slate-500,
-.dark .brand-portal-theme .text-slate-400 {
-  color: var(--bp-text-muted) !important;
-}
-
-.dark .brand-portal-theme .border-slate-100,
-.dark .brand-portal-theme .border-slate-200,
-.dark .brand-portal-theme .border-slate-200\/80,
-.dark .brand-portal-theme .border-slate-200\/90,
-.dark .brand-portal-theme .border-slate-300 {
-  border-color: var(--bp-border) !important;
-}
-
-.dark .brand-portal-theme .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
-.dark .brand-portal-theme .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
-  border-color: var(--bp-border) !important;
-}
-
-.dark .brand-portal-theme .bg-emerald-50 { background-color: color-mix(in srgb, #83a892 14%, transparent) !important; }
-.dark .brand-portal-theme .text-emerald-700 { color: #83a892 !important; }
-.dark .brand-portal-theme .bg-amber-50 { background-color: color-mix(in srgb, #d9a468 14%, transparent) !important; }
-.dark .brand-portal-theme .text-amber-700 { color: #d9a468 !important; }
-.dark .brand-portal-theme .bg-red-50,
-.dark .brand-portal-theme .bg-red-50\/60 { background-color: color-mix(in srgb, #cf6a5e 14%, transparent) !important; }
-.dark .brand-portal-theme .text-red-700,
-.dark .brand-portal-theme .text-red-600,
-.dark .brand-portal-theme .text-red-800 { color: #cf6a5e !important; }
-.dark .brand-portal-theme .border-red-100,
-.dark .brand-portal-theme .border-red-200 { border-color: color-mix(in srgb, #cf6a5e 28%, var(--bp-border)) !important; }
-.dark .brand-portal-theme .bg-sky-50 { background-color: color-mix(in srgb, #82a3b3 14%, transparent) !important; }
-.dark .brand-portal-theme .text-sky-700 { color: #82a3b3 !important; }
-
-.dark .brand-portal-theme input,
-.dark .brand-portal-theme select,
-.dark .brand-portal-theme textarea {
-  border-color: var(--bp-border) !important;
-  background-color: var(--bp-surface) !important;
-  color: var(--bp-text) !important;
-}
-
-.dark .brand-portal-theme input::placeholder,
-.dark .brand-portal-theme textarea::placeholder {
-  color: color-mix(in srgb, var(--bp-text-muted) 72%, transparent);
-}
-
-.dark .brand-portal-theme .hover\:bg-slate-50:hover,
-.dark .brand-portal-theme .hover\:bg-slate-50\/70:hover,
-.dark .brand-portal-theme .hover\:bg-slate-100:hover {
-  background-color: var(--bp-surface-muted) !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Menu, X } from "lucide-react";
 import { DashboardSidebarProvider } from "./DashboardSidebarContext";
-import ThemeToggle from "@/components/shared/ThemeToggle";
 
 export default function DashboardShell({
   variant,
@@ -77,29 +76,26 @@ export default function DashboardShell({
   }, [mobileOpen]);
 
   return (
-    <div className={`min-h-screen ${isAdmin ? "admin-theme bg-[var(--admin-bg)] text-[var(--admin-text)]" : "brand-portal-theme bg-[#f8f5ef] dark:bg-[var(--bp-bg)] dark:text-[var(--bp-text)]"}`}>
-      <header className={`sticky top-0 z-40 border-b backdrop-blur ${isAdmin ? "border-[var(--admin-border)] bg-[color-mix(in_srgb,var(--admin-surface)_94%,transparent)]" : "border-slate-200/80 bg-white/95 dark:border-[#3a322a] dark:bg-[#221d18]/95"}`}>
+    <div className={`min-h-screen ${isAdmin ? "admin-theme bg-[var(--admin-bg)] text-[var(--admin-text)]" : "bg-[#f8f5ef]"}`}>
+      <header className={`sticky top-0 z-40 border-b backdrop-blur ${isAdmin ? "border-[var(--admin-border)] bg-[color-mix(in_srgb,var(--admin-surface)_94%,transparent)]" : "border-slate-200/80 bg-white/95"}`}>
         <div className="flex h-[72px] w-full items-center gap-3 px-4 sm:px-6 lg:px-8 xl:px-10">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 lg:hidden ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] focus-visible:ring-[var(--admin-primary)]/25" : "border-slate-200 text-slate-700 hover:bg-slate-50 focus-visible:ring-mahalyred/30 dark:border-[#3a322a] dark:text-[#c9bcaa] dark:hover:bg-[#2a241d]"}`}
+            className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 lg:hidden ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] focus-visible:ring-[var(--admin-primary)]/25" : "border-slate-200 text-slate-700 hover:bg-slate-50 focus-visible:ring-mahalyred/30"}`}
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
           <Link href={isAdmin ? "/admin" : "/brand-portal"} className="min-w-0">
-            <p className={`truncate text-[17px] font-bold tracking-[-0.025em] ${isAdmin ? "text-[var(--admin-text)]" : "text-[#302b27] dark:text-[#eee5d8]"}`}>
+            <p className={`truncate text-[17px] font-bold tracking-[-0.025em] ${isAdmin ? "text-[var(--admin-text)]" : "text-[#302b27]"}`}>
               {title}
             </p>
-            <p className={`truncate text-[11px] font-medium ${isAdmin ? "text-[var(--admin-text-muted)]" : "text-[#7b6f66] dark:text-[#a99a86]"}`}>
+            <p className={`truncate text-[11px] font-medium ${isAdmin ? "text-[var(--admin-text-muted)]" : "text-[#7b6f66]"}`}>
               {subtitle}
             </p>
           </Link>
-          <div className="ml-auto flex min-w-0 items-center gap-3">
-            {headerTools}
-            <ThemeToggle className={isAdmin ? "text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)]" : "text-[#7b6f66] hover:bg-slate-50 dark:text-[#a99a86] dark:hover:bg-[#2a241d]"} />
-          </div>
+          <div className="ml-auto flex min-w-0 items-center gap-3">{headerTools}</div>
         </div>
       </header>
 
@@ -107,14 +103,14 @@ export default function DashboardShell({
         className={`grid w-full grid-cols-1 transition-[grid-template-columns] duration-200 lg:grid-cols-[var(--dashboard-sidebar-width)_minmax(0,1fr)] ${collapsed ? "[--dashboard-sidebar-width:76px]" : "[--dashboard-sidebar-width:260px]"}`}
         data-sidebar-collapsed={collapsed}
       >
-        <aside className={`relative hidden border-r px-3 py-6 transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-x-visible lg:overflow-y-auto ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9] dark:border-[#3a322a] dark:bg-[#201b17]"}`}>
+        <aside className={`relative hidden border-r px-3 py-6 transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-x-visible lg:overflow-y-auto ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             title={collapsed ? "Expand navigation" : "Collapse navigation"}
-            className={`absolute right-0 top-4 z-10 inline-flex h-8 w-8 translate-x-1/2 items-center justify-center rounded-full border bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] focus-visible:ring-[var(--admin-primary)]/30" : "border-[#e3dcd3] text-[#75685f] focus-visible:ring-mahalyred/30 dark:border-[#3a322a] dark:bg-[#221d18] dark:text-[#a99a86]"}`}
+            className={`absolute right-0 top-4 z-10 inline-flex h-8 w-8 translate-x-1/2 items-center justify-center rounded-full border bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] focus-visible:ring-[var(--admin-primary)]/30" : "border-[#e3dcd3] text-[#75685f] focus-visible:ring-mahalyred/30"}`}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
