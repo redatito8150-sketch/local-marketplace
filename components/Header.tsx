@@ -8,7 +8,6 @@ import { Heart, ShoppingBag, User, Menu, X, LayoutGrid } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
 import Logo from "@/components/shared/Logo";
-import ThemeToggle from "@/components/shared/ThemeToggle";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
@@ -137,7 +136,6 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
         {/* Right actions */}
         <div className="flex shrink-0 items-center gap-0 sm:gap-4">
           <SearchAutocomplete />
-          <ThemeToggle className="text-ink hover:bg-stone-100 sm:h-9 sm:w-9" />
 
           {dashboardHref && (
             <Link
