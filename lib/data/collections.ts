@@ -10,7 +10,7 @@
 import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Product } from "@/types";
-import { ProductRow, toProductCard, loadDisplayContext } from "./products";
+import { PRODUCT_PUBLIC_SELECT, ProductRow, toProductCard, loadDisplayContext } from "./products";
 import { publishDateLiveFilter } from "../newArrivals";
 
 // Ranks product ids by total quantity sold, optionally restricted to orders
@@ -55,7 +55,7 @@ async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
 
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .in("id", ids)
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -148,7 +148,7 @@ export async function getBestSellingProductsForBrand(
 
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
     .eq("paused_by_brand", false)

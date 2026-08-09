@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notifyUser } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
 import { getOrderForAdmin } from "@/lib/data/admin";
-import { safeErrorResponse } from "@/lib/apiError";
 
 // A brand only ever advances its OWN 'brand_direct' shipment through the
 // self-fulfillment handoff — Mahaly still does the actual delivery, but the
@@ -28,7 +27,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  const owner = await requireBrandOwner(body?.brandSlug);
+  const owner = await requireActiveBrandOwner(body?.brandSlug);
   if (!owner || !owner.brandSlug) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
@@ -54,16 +53,26 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
-  const { error } = await supabaseAdmin.from("orders").update({ status }).eq("id", params.id);
-  if (error) {
-    return safeErrorResponse("brand-portal.orders.status", error, "Failed to update order status");
-  }
-
-  await supabaseAdmin.from("order_status_history").insert({
-    order_id: params.id,
-    status,
-    created_by: owner.user.id,
+  const { error } = await supabaseAdmin.rpc("transition_order_status", {
+    p_order_id: params.id,
+    p_expected_status: order.status,
+    p_new_status: status,
+    p_actor_id: owner.user.id,
+    p_note: null,
   });
+  if (error) {
+    const code = error.message.split(":")[0]?.trim();
+    if (code === "ORDER_STATUS_CONFLICT") {
+      return NextResponse.json(
+        { error: "The order changed while you were editing it. Refresh and try again." },
+        { status: 409 }
+      );
+    }
+    if (code === "ORDER_NOT_FOUND") {
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Failed to update order status" }, { status: 400 });
+  }
 
   await logAudit({
     actorId: owner.user.id,

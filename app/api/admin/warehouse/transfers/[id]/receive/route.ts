@@ -36,10 +36,36 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   const body = await request.json().catch(() => null) as { items?: ReceiveItemInput[]; note?: string } | null;
   if (!body?.items?.length) return NextResponse.json({ error: "Reconcile at least one item" }, { status: 400 });
+  const submittedIds = body.items.map((item) => item.itemId);
+  if (new Set(submittedIds).size !== submittedIds.length) {
+    return NextResponse.json({ error: "Each transfer item must appear exactly once" }, { status: 400 });
+  }
   for (const item of body.items) {
     if (![item.receivedOkQty, item.damagedQty, item.missingQty].every((n) => Number.isInteger(n) && n >= 0)) {
       return NextResponse.json({ error: "Received, damaged, and missing counts must be whole, non-negative numbers" }, { status: 400 });
     }
+  }
+
+  const { data: expectedItems, error: expectedItemsError } = await supabaseAdmin
+    .from("warehouse_transfer_items")
+    .select("id")
+    .eq("transfer_id", params.id);
+  if (expectedItemsError) {
+    return safeErrorResponse(
+      "admin.warehouse.transfers.receive-items",
+      expectedItemsError,
+      "Failed to load transfer items"
+    );
+  }
+  const expectedIds = new Set((expectedItems ?? []).map((item) => item.id));
+  if (
+    expectedIds.size !== submittedIds.length ||
+    submittedIds.some((itemId) => !expectedIds.has(itemId))
+  ) {
+    return NextResponse.json(
+      { error: "Every transfer item must be reconciled exactly once" },
+      { status: 400 }
+    );
   }
 
   const { data: results, error } = await supabaseAdmin.rpc(isReturn ? "receive_warehouse_return" : "receive_warehouse_transfer", {
@@ -61,6 +87,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const { data: itemRows } = await supabaseAdmin
     .from("warehouse_transfer_items")
     .select("id, variant_id, product_variants(sku)")
+    .eq("transfer_id", params.id)
     .in("id", body.items.map((item) => item.itemId));
   const skuByVariantId = new Map(
     (itemRows ?? []).map((row) => [row.variant_id as string, (row.product_variants as unknown as { sku: string } | null)?.sku ?? row.variant_id])

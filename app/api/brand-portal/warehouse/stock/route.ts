@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -11,7 +11,7 @@ type Update = { variantId: string; brandStockQuantity: number };
 // audited/notified like a real inventory change; it's closer to editing a
 // draft field than a consequential write.
 export async function PATCH(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Mahaly Partner" }, { status: 403 });
   if (!checkRateLimit(`warehouse-stock:${owner.user.id}`, 60, 10 * 60 * 1000)) {
@@ -26,22 +26,25 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const ids = [...new Set(body.updates.map((u) => u.variantId))];
-  const { data: owned } = await supabaseAdmin
-    .from("product_variants")
-    .select("id, products!inner(brand_id)")
-    .in("id", ids)
-    .eq("products.brand_id", owner.brandId);
-  if ((owned?.length ?? 0) !== ids.length) {
-    return NextResponse.json({ error: "A selected variant is not available for this brand" }, { status: 403 });
+  if (new Set(body.updates.map((update) => update.variantId)).size !== body.updates.length) {
+    return NextResponse.json({ error: "Each variant can appear only once" }, { status: 400 });
   }
 
-  for (const update of body.updates) {
-    const { error } = await supabaseAdmin
-      .from("product_variants")
-      .update({ brand_stock_quantity: update.brandStockQuantity, updated_at: new Date().toISOString() })
-      .eq("id", update.variantId);
-    if (error) return safeErrorResponse("brand-portal.warehouse.stock", error, "Failed to save your warehouse stock");
+  const { error } = await supabaseAdmin.rpc("set_warehouse_brand_stock", {
+    p_brand_id: owner.brandId,
+    p_actor_id: owner.user.id,
+    p_updates: body.updates.map((update) => ({
+      variant_id: update.variantId,
+      brand_stock_quantity: update.brandStockQuantity,
+    })),
+  });
+  if (error) {
+    return safeErrorResponse(
+      "brand-portal.warehouse.stock",
+      error,
+      "Failed to save your warehouse stock",
+      400
+    );
   }
 
   return NextResponse.json({ ok: true });

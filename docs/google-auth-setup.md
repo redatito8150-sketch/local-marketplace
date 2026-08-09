@@ -51,7 +51,7 @@ Supabase Dashboard and your own `.env.local`/Vercel project settings.
    | Environment | Exact URL to add |
    |---|---|
    | Local dev | `http://localhost:3000/auth/callback` |
-   | Vercel Preview | `https://*.vercel.app/auth/callback` (wildcard — Vercel Preview URLs are unique per deployment) |
+   | Vercel Preview | `https://YOUR-EXACT-PREVIEW-DOMAIN.vercel.app/auth/callback` (use an exact project-owned hostname; never a broad `*.vercel.app` wildcard) |
    | Production | `https://mahaly.eg/auth/callback` |
    | Production (www, optional) | `https://www.mahaly.eg/auth/callback` |
 
@@ -177,7 +177,7 @@ Supabase Dashboard is the only place that value goes.
 
 1. Set `NEXT_PUBLIC_AUTH_GOOGLE_ENABLED=true` for the **Preview**
    environment in Vercel (step C).
-2. Make sure `https://*.vercel.app/auth/callback` (or your exact preview
+2. Make sure your exact project-owned preview callback (for example `https://YOUR-EXACT-PREVIEW-DOMAIN.vercel.app/auth/callback`) and never a broad wildcard
    domain) is in Supabase's Redirect URL allow list, and the matching
    origin is in Google's Authorized JavaScript origins.
 3. Open the branch's Preview URL, test the same flow as local dev. If the

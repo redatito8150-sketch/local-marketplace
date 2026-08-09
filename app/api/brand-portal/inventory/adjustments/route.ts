@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { validateInventoryAdjustment } from "@/lib/inventory/adjustmentValidation";
@@ -11,7 +11,7 @@ import { describeInventoryAdjustments } from "@/lib/admin/describeInventoryAdjus
 type Adjustment = { variantId: string; type: "add" | "remove" | "set"; amount: number; currentQuantity: number };
 
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   if (!checkRateLimit(`inventory-adjustment:${owner.user.id}`, 60, 10 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });

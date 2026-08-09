@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { toCollectionRecord } from "@/lib/data/brandCollections";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -20,7 +20,7 @@ function slugify(value: string): string {
 // query param here the way admin routes do — this is always the caller's
 // own brand only.
 export async function GET(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

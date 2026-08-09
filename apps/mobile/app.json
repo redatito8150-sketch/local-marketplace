@@ -32,10 +32,30 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mahaly.mobile"
+      "bundleIdentifier": "com.mahaly.mobile",
+      "associatedDomains": [
+        "applinks:mahalyapp.com"
+      ]
     },
     "android": {
       "package": "com.mahaly.mobile",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "mahalyapp.com",
+              "pathPrefix": "/auth/mobile-callback"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#F7F1E8"
       }

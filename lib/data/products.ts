@@ -80,8 +80,6 @@ export interface ProductRow {
   images: string[];
   rating: number;
   review_count: number;
-  colors: ProductColorOption[];
-  sizes: string[];
   description: string;
   details: string[];
   care_instructions: string[];
@@ -96,6 +94,12 @@ export interface ProductRow {
   publish_date: string | null;
   paused_by_brand: boolean;
 }
+
+// Keep public catalog reads aligned with the database's column grants. New
+// workflow/moderation columns must be added deliberately instead of leaking
+// automatically through select("*") when the schema evolves.
+export const PRODUCT_PUBLIC_SELECT =
+  "id, name, brand_name, brand_slug, brand_id, category, product_category, product_type, product_type_id, audience, collection, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, is_unisex, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at" as const;
 
 // Per-request lookup context for the display-only fields resolved from
 // product_type_id/collection_id — loaded once and reused across a batch
@@ -233,7 +237,7 @@ export async function getProductsByCategory(
 ): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -276,7 +280,7 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   const windowStart = new Date(now.getTime() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .not("publish_date", "is", null)
@@ -311,7 +315,7 @@ export async function getAllActiveProducts(
   // since "in stock" can only be known from the live variant set.
   let query = supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
@@ -337,7 +341,7 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
   if (!selected.length) return [];
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .in("id", selected)
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -582,7 +586,7 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
 export async function getProductById(id: string): Promise<ProductDetail | null> {
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .eq("id", id)
     .maybeSingle();
 
@@ -716,7 +720,7 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
   const [byName, byBrand] = await Promise.all([
     supabase
       .from("products")
-      .select("*")
+      .select(PRODUCT_PUBLIC_SELECT)
       .ilike("name", pattern)
       .eq("status", "published")
       .eq("paused_by_brand", false)
@@ -724,7 +728,7 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
       .limit(limit),
     supabase
       .from("products")
-      .select("*")
+      .select(PRODUCT_PUBLIC_SELECT)
       .ilike("brand_name", pattern)
       .eq("status", "published")
       .eq("paused_by_brand", false)

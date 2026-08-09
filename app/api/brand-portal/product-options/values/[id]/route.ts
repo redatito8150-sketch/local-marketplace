@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { deriveSkuToken, normalizeOptionKey } from "@/lib/inventory/optionKey";
 import { HISTORICAL_DELETE_MESSAGE, optionValueReferences } from "@/lib/admin/reusableDataLifecycle";
@@ -9,7 +9,7 @@ import { logAudit } from "@/lib/auditLog";
 import { reorderCustomSize } from "@/lib/inventory/sizeOrder";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   const { id } = await params;
   const { data: value } = await supabaseAdmin.from("option_values").select("*").eq("id", id).maybeSingle();

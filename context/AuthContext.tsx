@@ -5,12 +5,17 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getDeviceId } from "@/lib/deviceId";
 import { normalizeAuthError } from "@/lib/errors/authMessages";
+import {
+  resolvePendingMfaChallenge,
+  type PendingMfaChallenge,
+} from "@/lib/supabase/mfaAuth";
 
 interface AuthResult {
   error?: string;
@@ -18,9 +23,10 @@ interface AuthResult {
   mfaRequired?: boolean;
 }
 
-export interface MfaChallenge {
-  factorId: string;
-}
+export type MfaChallenge = PendingMfaChallenge;
+
+const MFA_CHECK_ERROR =
+  "We couldn't verify your multi-factor session. Refresh and try again, or sign out.";
 
 // Just enough to decide what the header's "Dashboard" link should point
 // at (Round 3, Phase 7) — the full role/permission picture lives in each
@@ -37,6 +43,7 @@ interface AuthContextValue {
   profile: AuthProfile | null;
   loading: boolean;
   mfaChallenge: MfaChallenge | null;
+  mfaError: string | null;
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (
     fullName: string,
@@ -81,33 +88,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
+  const [mfaError, setMfaError] = useState<string | null>(null);
+  const sessionSyncVersion = useRef(0);
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data }) => {
-      const sessionUser = data.session?.user ?? null;
+    let disposed = false;
+
+    const synchronizeSession = (
+      sessionUser: User | null,
+      shouldTouchSession: boolean,
+      defer = false
+    ) => {
+      const version = ++sessionSyncVersion.current;
       setUser(sessionUser);
-      setProfile(sessionUser ? await fetchProfile(sessionUser.id) : null);
-      setLoading(false);
-      if (sessionUser) touchSession();
+
+      if (!sessionUser) {
+        setProfile(null);
+        setMfaChallenge(null);
+        setMfaError(null);
+        setLoading(false);
+        return;
+      }
+
+      // Keep navigation blocked until both the role hint and the AAL check
+      // finish. Otherwise a restored aal1 session can redirect away from the
+      // challenge during the brief gap before getAuthenticatorAssuranceLevel.
+      setLoading(true);
+      const finish = async () => {
+        const [nextProfile, mfaResolution] = await Promise.all([
+          fetchProfile(sessionUser.id),
+          resolvePendingMfaChallenge(supabase),
+        ]);
+        if (disposed || version !== sessionSyncVersion.current) return;
+
+        setProfile(nextProfile);
+        setMfaChallenge(
+          mfaResolution.status === "required" ? mfaResolution.challenge : null
+        );
+        setMfaError(
+          mfaResolution.status === "unavailable" ? MFA_CHECK_ERROR : null
+        );
+        setLoading(false);
+
+        if (mfaResolution.status === "satisfied" && shouldTouchSession) {
+          touchSession();
+        }
+      };
+
+      // Supabase recommends keeping async Auth calls outside the synchronous
+      // onAuthStateChange callback to avoid client-lock deadlocks.
+      if (defer) {
+        window.setTimeout(() => void finish(), 0);
+      } else {
+        void finish();
+      }
+    };
+
+    void supabase.auth.getSession().then(({ data }) => {
+      synchronizeSession(data.session?.user ?? null, true);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       const sessionUser = session?.user ?? null;
-      setUser(sessionUser);
-      if (sessionUser) {
-        fetchProfile(sessionUser.id).then(setProfile);
-        if (event === "SIGNED_IN") touchSession();
-      } else {
-        setProfile(null);
-      }
+      synchronizeSession(sessionUser, event === "SIGNED_IN" || event === "MFA_CHALLENGE_VERIFIED", true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      disposed = true;
+      sessionSyncVersion.current += 1;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
+    setMfaError(null);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: normalizeAuthError("auth.signIn", error).userMessage };
 
@@ -116,15 +172,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Supabase session as-is (it already exists at aal1) but surface a
     // pending challenge so the UI can block on a code before treating the
     // user as authenticated for anything sensitive.
-    const { data: level } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (level && level.nextLevel === "aal2" && level.currentLevel !== "aal2") {
-      const { data: factors } = await supabase.auth.mfa.listFactors();
-      const factorId = factors?.totp?.find((f) => f.status === "verified")?.id;
-      if (factorId) {
-        setMfaChallenge({ factorId });
-        return { mfaRequired: true };
-      }
+    const mfaResolution = await resolvePendingMfaChallenge(supabase);
+    if (mfaResolution.status === "required") {
+      setMfaChallenge(mfaResolution.challenge);
+      return { mfaRequired: true };
     }
+    if (mfaResolution.status === "unavailable") {
+      setMfaError(MFA_CHECK_ERROR);
+      return { error: MFA_CHECK_ERROR };
+    }
+    setMfaChallenge(null);
     return {};
   }, []);
 
@@ -150,6 +207,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { error: /invalid|incorrect/i.test(verifyError.message) ? "That code is incorrect. Check your authenticator app and try again." : normalizeAuthError("auth.mfa.verify", verifyError).userMessage };
       }
 
+      const mfaResolution = await resolvePendingMfaChallenge(supabase);
+      if (mfaResolution.status !== "satisfied") {
+        if (mfaResolution.status === "unavailable") setMfaError(MFA_CHECK_ERROR);
+        return { error: "Verification did not complete. Please try again." };
+      }
+
+      setMfaError(null);
       setMfaChallenge(null);
       return {};
     },
@@ -186,11 +250,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setMfaChallenge(null);
+    setMfaError(null);
   }, []);
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, loading, mfaChallenge, signIn, signUp, verifyMfaChallenge, signOut }}
+      value={{ user, profile, loading, mfaChallenge, mfaError, signIn, signUp, verifyMfaChallenge, signOut }}
     >
       {children}
     </AuthContext.Provider>

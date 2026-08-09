@@ -5,7 +5,7 @@ import { Pencil, Plus } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
-import { deleteExpiredDrafts, draftDaysRemaining } from "@/lib/admin/expireDrafts";
+import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
 import { isPublishDateLive } from "@/lib/newArrivals";
 import { formatPrice } from "@/lib/format";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
@@ -29,7 +29,6 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
   if (!owner.brandId) { const brands = await getAllBrandsForAdmin(); return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />; }
-  await deleteExpiredDrafts(owner.brandId);
   const allProducts = await getProductsForBrand(owner.brandId, owner.isImpersonating);
   const query = params.q?.trim().toLowerCase();
   const products = allProducts.filter((product) => {

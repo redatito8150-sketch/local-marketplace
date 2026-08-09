@@ -57,8 +57,8 @@ export async function POST(request: NextRequest) {
     await notify(
       "brand_application_submitted",
       `New brand application: ${application.brandName}`,
-      application.brandStory,
-      { actorLabel: `${application.founderName} (${application.email})`, detailLabel: "Brand Story" }
+      "A new application is ready for review in the admin portal.",
+      { actorLabel: `applicant:${user.id}`, detailLabel: "Status" }
     );
     await logAudit({
       action: "status_change",

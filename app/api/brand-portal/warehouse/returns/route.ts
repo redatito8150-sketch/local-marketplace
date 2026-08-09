@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
+import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
 
 type ReturnItemInput = { variantId: string; requestedQty: number; itemNote?: string };
 
@@ -14,7 +15,7 @@ type ReturnItemInput = { variantId: string; requestedQty: number; itemNote?: str
 // as the forward transfer, just against warehouse_transfers.direction =
 // 'to_brand' (see request_warehouse_return in the migration).
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Mahaly Partner" }, { status: 403 });
   if (!checkRateLimit(`warehouse-return-request:${owner.user.id}`, 20, 10 * 60 * 1000)) {
@@ -23,6 +24,9 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null) as { items?: ReturnItemInput[]; note?: string } | null;
   if (!body?.items?.length) return NextResponse.json({ error: "Select at least one variant to return" }, { status: 400 });
+  if (new Set(body.items.map((item) => item.variantId)).size !== body.items.length) {
+    return NextResponse.json({ error: "Each variant can appear only once" }, { status: 400 });
+  }
   for (const item of body.items) {
     if (!Number.isInteger(item.requestedQty) || item.requestedQty <= 0) {
       return NextResponse.json({ error: "Quantity must be a whole, positive number" }, { status: 400 });
@@ -35,7 +39,10 @@ export async function POST(request: NextRequest) {
     .in("id", body.items.map((item) => item.variantId));
   const skuByVariantId = new Map((variantRows ?? []).map((row) => [row.id as string, row.sku as string]));
 
-  const operationKey = request.headers.get("idempotency-key") ?? crypto.randomUUID();
+  const operationKey = parseOrderIdempotencyKey(request.headers.get("idempotency-key"));
+  if (!operationKey) {
+    return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 });
+  }
   const { data: transferId, error } = await supabaseAdmin.rpc("request_warehouse_return", {
     p_brand_id: owner.brandId,
     p_actor_id: owner.user.id,

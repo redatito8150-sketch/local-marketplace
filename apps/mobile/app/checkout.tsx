@@ -36,12 +36,12 @@ export default function CheckoutRoute() {
     if (validationError) { setError(validationError); return; }
     setPlacing(true); setError("");
     try {
-      const result = await apiRequest<{ orderNumber: string }>("/api/orders", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({
+      const result = await apiRequest<{ orderNumbers: string[] }>("/api/orders", { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({
         items: cart.items.map((item) => ({ productId: item.productId, size: item.size, color: item.color, quantity: item.quantity })),
         shipping, addressId: selected ?? undefined
       }) });
       cart.clearCart();
-      router.replace({ pathname: "/order-success", params: { orderNumber: result.orderNumber } } as never);
+      router.replace({ pathname: "/order-success", params: { orderNumber: result.orderNumbers[0] ?? "" } } as never);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "We couldn't place your order.");
     } finally { setPlacing(false); }

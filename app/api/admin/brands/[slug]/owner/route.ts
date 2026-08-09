@@ -30,10 +30,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
     );
   }
 
-  const { error } = await supabaseAdmin
-    .from("brands")
-    .update({ owner_user_id: profile.id })
-    .eq("slug", params.slug);
+  const { error } = await supabaseAdmin.rpc("set_brand_primary_owner", {
+    p_brand_slug: params.slug,
+    p_new_owner_id: profile.id,
+  });
 
   if (error) {
     if (error.code === "23505" /* unique_violation on the partial index */) {
@@ -42,8 +42,6 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
     logError("admin.brands.owner.link", error.message);
     return NextResponse.json({ error: "Failed to link owner" }, { status: 500 });
   }
-
-  await supabaseAdmin.from("profiles").update({ role: "brand_owner" }).eq("id", profile.id);
 
   await logAudit({
     actorId: staff.user.id,
@@ -64,10 +62,10 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ s
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  const { error } = await supabaseAdmin
-    .from("brands")
-    .update({ owner_user_id: null })
-    .eq("slug", params.slug);
+  const { error } = await supabaseAdmin.rpc("set_brand_primary_owner", {
+    p_brand_slug: params.slug,
+    p_new_owner_id: null,
+  });
 
   if (error) {
     return safeErrorResponse("admin.brands.owner.unlink", error, "Failed to unlink owner");

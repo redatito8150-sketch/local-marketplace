@@ -23,16 +23,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   const body = await request.json().catch(() => ({})) as { note?: string };
 
-  const { error } = await supabaseAdmin
-    .from("warehouse_transfers")
-    .update({
-      status: "rejected",
-      decided_by: receiver.id,
-      decided_at: new Date().toISOString(),
-      receiving_note: body.note?.trim() || null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", params.id);
+  const { error } = await supabaseAdmin.rpc("reject_warehouse_transfer", {
+    p_transfer_id: params.id,
+    p_actor_id: receiver.id,
+    p_note: body.note?.trim() || null,
+  });
   if (error) return safeErrorResponse("admin.warehouse.transfers.reject", error, "Failed to reject the transfer");
 
   const { data: brand } = await supabaseAdmin.from("brands").select("slug, name, owner_user_id").eq("id", transfer.brand_id).maybeSingle();

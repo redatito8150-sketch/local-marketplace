@@ -23,6 +23,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
+import type { PermissionKey } from "@/lib/supabase/permissions";
 
 type Role = "staff" | "manager" | "admin";
 
@@ -32,12 +33,14 @@ interface NavItem {
   icon: React.ElementType;
   minRole?: Role;
   badge?: "notifications" | "lowStock";
+  permission: PermissionKey;
 }
 
 interface NavGroupItem {
   label: string;
   icon: React.ElementType;
   minRole?: Role;
+  permission?: PermissionKey;
   children: NavItem[];
 }
 
@@ -48,51 +51,52 @@ function isNavGroupItem(item: NavItem | NavGroupItem): item is NavGroupItem {
 const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
   {
     items: [
-      { label: "Overview", href: "/admin", icon: LayoutDashboard },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { label: "Overview", href: "/admin", icon: LayoutDashboard, permission: "view_analytics" },
+      { label: "Analytics", href: "/admin/analytics", icon: BarChart3, permission: "view_analytics" },
     ],
   },
   {
     label: "Commerce",
     items: [
-      { label: "Orders", href: "/admin/orders", icon: ShoppingBag },
-      { label: "Products", href: "/admin/products", icon: Package },
+      { label: "Orders", href: "/admin/orders", icon: ShoppingBag, permission: "manage_orders" },
+      { label: "Products", href: "/admin/products", icon: Package, permission: "manage_products" },
       {
         label: "Categories",
         icon: LayoutTemplate,
         minRole: "manager",
+        permission: "manage_products",
         children: [
-          { label: "Product Taxonomy", href: "/admin/products/categories", icon: LayoutTemplate, minRole: "manager" },
-          { label: "Category Heroes", href: "/admin/content/categories", icon: LayoutTemplate, minRole: "manager" },
+          { label: "Product Taxonomy", href: "/admin/products/categories", icon: LayoutTemplate, minRole: "manager", permission: "manage_products" },
+          { label: "Category Heroes", href: "/admin/content/categories", icon: LayoutTemplate, minRole: "manager", permission: "manage_site_content" },
         ],
       },
-      { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock" },
-      { label: "Local Warehouse", href: "/admin/warehouse", icon: Warehouse },
-      { label: "Review Moderation", href: "/admin/reviews", icon: MessageSquareWarning },
-      { label: "Coupons", href: "/admin/coupons", icon: Tag, minRole: "manager" },
+      { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock", permission: "manage_inventory" },
+      { label: "Local Warehouse", href: "/admin/warehouse", icon: Warehouse, permission: "manage_inventory" },
+      { label: "Review Moderation", href: "/admin/reviews", icon: MessageSquareWarning, permission: "moderate_reviews" },
+      { label: "Coupons", href: "/admin/coupons", icon: Tag, minRole: "manager", permission: "manage_coupons" },
     ],
   },
   {
     label: "Brands",
     items: [
-      { label: "All Brands", href: "/admin/brands", icon: Store },
-      { label: "Applications", href: "/admin/applications", icon: FileText },
-      { label: "Brand Activity", href: "/admin/products/review", icon: History },
+      { label: "All Brands", href: "/admin/brands", icon: Store, permission: "manage_brands" },
+      { label: "Applications", href: "/admin/applications", icon: FileText, permission: "manage_applications" },
+      { label: "Brand Activity", href: "/admin/products/review", icon: History, permission: "manage_products" },
     ],
   },
   {
     label: "People & Content",
     items: [
-      { label: "Customers & Permissions", href: "/admin/users", icon: Users },
-      { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, minRole: "manager" },
-      { label: "Notifications", href: "/admin/notifications", icon: Bell, badge: "notifications" },
+      { label: "Customers & Permissions", href: "/admin/users", icon: Users, permission: "manage_users" },
+      { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, minRole: "manager", permission: "manage_page_studio" },
+      { label: "Notifications", href: "/admin/notifications", icon: Bell, badge: "notifications", permission: "view_admin_notifications" },
     ],
   },
   {
     label: "Operations",
     items: [
-      { label: "Audit Log", href: "/admin/audit-log", icon: History, minRole: "admin" },
-      { label: "Settings", href: "/admin/settings", icon: Settings, minRole: "manager" },
+      { label: "Audit Log", href: "/admin/audit-log", icon: History, minRole: "admin", permission: "view_audit_log" },
+      { label: "Settings", href: "/admin/settings", icon: Settings, minRole: "manager", permission: "manage_settings" },
     ],
   },
 ];
@@ -138,14 +142,18 @@ function NavGroupDisclosure({
   pathname,
   role,
   counts,
+  permissions,
 }: {
   group: NavGroupItem;
   pathname: string;
   role: string;
   counts: BadgeCounts;
+  permissions: Set<PermissionKey>;
 }) {
   const { collapsed } = useDashboardSidebar();
-  const visibleChildren = group.children.filter((child) => canSee(role, child.minRole));
+  const visibleChildren = group.children.filter(
+    (child) => canSee(role, child.minRole) && permissions.has(child.permission)
+  );
   const containsActiveRoute = visibleChildren.some((child) => isActiveHref(pathname, child.href));
   const [open, setOpen] = useState(containsActiveRoute);
 
@@ -192,19 +200,28 @@ export default function AdminSidebar({
   unreadNotifications = 0,
   lowStockCount = 0,
   role = "admin",
+  permissions = [],
 }: {
   unreadNotifications?: number;
   lowStockCount?: number;
   role?: string;
+  permissions?: PermissionKey[];
 }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const counts = { notifications: unreadNotifications, lowStock: lowStockCount };
+  const permissionSet = new Set(permissions);
 
   return (
     <nav aria-label="Admin navigation" className="space-y-6">
       {NAV_GROUPS.map((group, index) => {
-        const items = group.items.filter((item) => canSee(role, item.minRole));
+        const items = group.items.filter(
+          (item) =>
+            canSee(role, item.minRole) &&
+            (isNavGroupItem(item)
+              ? item.children.some((child) => permissionSet.has(child.permission))
+              : permissionSet.has(item.permission))
+        );
         if (!items.length) return null;
         return (
           <div key={group.label ?? index}>
@@ -212,7 +229,7 @@ export default function AdminSidebar({
             <div className="space-y-1">
               {items.map((item) =>
                 isNavGroupItem(item) ? (
-                  <NavGroupDisclosure key={item.label} group={item} pathname={pathname} role={role} counts={counts} />
+                  <NavGroupDisclosure key={item.label} group={item} pathname={pathname} role={role} counts={counts} permissions={permissionSet} />
                 ) : (
                   <NavLink key={item.href} item={item} active={isActiveHref(pathname, item.href)} count={item.badge ? counts[item.badge] : 0} />
                 )

@@ -1,22 +1,23 @@
-// Phone-verification SMS delivery. Real providers (Twilio, Vonage,
-// MessageBird...) all need their own account + credentials, which this
-// project doesn't have configured — so this stays a single, clearly-marked
-// integration point rather than guessing at one provider's SDK.
-//
-// SMS_VERIFICATION_ENABLED=false (or unset, the default) means the whole
-// phone-verification feature is off: send-otp/verify-otp both respond with
-// a clear "not configured" error and the security page hides the OTP form
-// entirely, same "no-op if unset" convention as lib/discord.ts. Flipping it
-// to "true" without wiring a real provider here just logs the OTP to the
-// server console instead of sending it — fine for local testing, not for
-// production.
-export const SMS_VERIFICATION_ENABLED = process.env.SMS_VERIFICATION_ENABLED === "true";
+// Provider-neutral server-to-server SMS adapter. Production stays disabled
+// unless every required setting is present; OTPs are never written to logs.
+const endpoint = process.env.SMS_PROVIDER_ENDPOINT;
+const token = process.env.SMS_PROVIDER_TOKEN;
+const requested = process.env.SMS_VERIFICATION_ENABLED === "true";
+
+export const SMS_VERIFICATION_ENABLED = Boolean(
+  requested && endpoint?.startsWith("https://") && token && process.env.PHONE_OTP_PEPPER
+);
 
 export async function sendSms(phone: string, message: string): Promise<void> {
-  if (!SMS_VERIFICATION_ENABLED) return;
+  if (!SMS_VERIFICATION_ENABLED || !endpoint || !token) {
+    throw new Error("SMS verification provider is not configured");
+  }
 
-  // TODO: call a real SMS provider here (Twilio/Vonage/MessageBird) once
-  // one is configured for this project. Until then, log instead of sending
-  // so phone verification is still testable locally.
-  console.warn(`[sms] No SMS provider configured — would send to ${phone}: ${message}`);
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ to: phone, message }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) throw new Error(`SMS provider rejected request (${response.status})`);
 }

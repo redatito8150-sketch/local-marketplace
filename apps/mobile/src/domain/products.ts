@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
-export { findProductVariant, resolveProductPrice } from "./product-selection";
-export { calculateDiscountPercent, formatPrice } from "./pricing";
+export { findProductVariant, resolveProductPrice, resolveProductPricing } from "./product-selection";
+export { formatPrice, getEffectivePrice, isDiscountActive } from "./pricing";
 
 export type ProductColor = { name: string; hex?: string };
 export type VariantOptionValue = {
@@ -14,6 +14,7 @@ export type ProductVariant = {
   product_id: string;
   quantity: number;
   variant_price: number | null;
+  variant_discount_percent: number | null;
   selling_status: string;
   optionValues: VariantOptionValue[];
 };
@@ -31,7 +32,8 @@ export type Product = {
   // the way the web app does; it's kept as an opaque id for filtering.
   product_type_id: string | null;
   price: number;
-  compare_at_price: number | null;
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   currency: "EGP" | "USD";
   image: string;
   images: string[];
@@ -51,7 +53,7 @@ export type Product = {
 };
 
 const productSelect =
-  "id,name,brand_name,brand_slug,audience,product_type_id,price,compare_at_price,currency,image,images,rating,review_count,description,details,care_instructions,shipping_returns";
+  "id,name,brand_name,brand_slug,audience,product_type_id,price,discount_percent,discount_ends_at,currency,image,images,rating,review_count,description,details,care_instructions,shipping_returns";
 
 export type ProductSort = "newest" | "price-asc" | "price-desc" | "top-rated";
 export type ProductQueryOptions = {
@@ -98,7 +100,8 @@ function normalize(row: Record<string, unknown>): Product {
   return {
     ...(row as unknown as Product),
     price: Number(row.price),
-    compare_at_price: row.compare_at_price == null ? null : Number(row.compare_at_price),
+    discount_percent: row.discount_percent == null ? null : Number(row.discount_percent),
+    discount_ends_at: typeof row.discount_ends_at === "string" ? row.discount_ends_at : null,
     rating: Number(row.rating ?? 0),
     review_count: Number(row.review_count ?? 0),
     image,
@@ -133,7 +136,7 @@ async function attachVariantDerivedFields(products: Product[]): Promise<Product[
 
   const { data: variantRows, error: variantsError } = await supabase
     .from("product_variants")
-    .select("id, product_id, quantity, variant_price, selling_status")
+    .select("id, product_id, quantity, variant_price, variant_discount_percent, selling_status")
     .in("product_id", productIds)
     .eq("is_archived", false);
   if (variantsError) throw new Error("We couldn't load product availability.");
@@ -168,6 +171,7 @@ async function attachVariantDerivedFields(products: Product[]): Promise<Product[
       product_id: row.product_id as string,
       quantity: row.quantity as number,
       variant_price: row.variant_price == null ? null : Number(row.variant_price),
+      variant_discount_percent: row.variant_discount_percent == null ? null : Number(row.variant_discount_percent),
       selling_status: row.selling_status as string,
       optionValues,
     };
@@ -220,7 +224,11 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   if (options.audience) request = request.eq("audience", options.audience);
   if (options.productTypeId) request = request.eq("product_type_id", options.productTypeId);
   if (options.brand) request = request.eq("brand_name", options.brand);
-  if (options.discounted) request = request.not("compare_at_price", "is", null);
+  if (options.discounted) {
+    const discountedIds = await getDiscountedProductIds();
+    if (discountedIds.length === 0) return { products: [], total: 0 };
+    request = request.in("id", discountedIds);
+  }
   if (options.minimumRating) request = request.gte("rating", options.minimumRating);
   if (options.minPrice != null) request = request.gte("price", options.minPrice);
   if (options.maxPrice != null) request = request.lte("price", options.maxPrice);
@@ -241,6 +249,30 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   if (options.size) products = products.filter((p) => p.sizes.includes(options.size!));
   if (options.inStock) products = products.filter((p) => p.in_stock);
   return { products, total: count ?? 0 };
+}
+
+async function getDiscountedProductIds(now: Date = new Date()) {
+  const [productResult, variantResult] = await Promise.all([
+    supabase
+      .from("products")
+      .select("id")
+      .gt("discount_percent", 0)
+      .or(`discount_ends_at.is.null,discount_ends_at.gt.${now.toISOString()}`),
+    supabase
+      .from("product_variants")
+      .select("product_id")
+      .gt("variant_discount_percent", 0)
+      .eq("is_archived", false),
+  ]);
+  if (productResult.error || variantResult.error) {
+    throw new Error("We couldn't load discounted products.");
+  }
+  return [
+    ...new Set([
+      ...(productResult.data ?? []).map((row) => row.id as string),
+      ...(variantResult.data ?? []).map((row) => row.product_id as string),
+    ]),
+  ];
 }
 
 export async function getProducts(options: ProductQueryOptions = {}) {

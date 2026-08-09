@@ -45,6 +45,15 @@ export const DISCORD_COLORS = {
 // Discord's own hard limit on an embed's description field.
 const MAX_DESCRIPTION_LENGTH = 4096;
 
+export function sanitizeDiscordText(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/https?:\/\/\S+/gi, "[link removed]")
+    .replace(/([\\`*_{}\[\]()<>#+\-.!|~])/g, "\\$1")
+    .replace(/\s{3,}/g, "  ")
+    .trim();
+}
+
 export interface DiscordEmbed {
   description: string;
   color: number;
@@ -67,16 +76,17 @@ export function buildDiscordDescription(params: {
   // making the reader go search for it themselves.
   link?: { label: string; url: string };
 }): string {
-  const lines = [`**\`${params.headline}\`**`];
-  if (params.subline) lines.push(`**${params.subline}**`);
+  const lines = [`**\`${sanitizeDiscordText(params.headline)}\`**`];
+  if (params.subline) lines.push(`**${sanitizeDiscordText(params.subline)}**`);
   for (const m of params.meta ?? []) {
-    if (m.value) lines.push(`> ${m.label}: ${m.value}`);
+    if (m.value) lines.push(`> ${sanitizeDiscordText(m.label)}: ${sanitizeDiscordText(m.value)}`);
   }
   if (params.detailBody) {
-    lines.push("", `**\`${params.detailLabel ?? "Details"}\`**`, params.detailBody);
+    lines.push("", `**\`${sanitizeDiscordText(params.detailLabel ?? "Details")}\`**`, sanitizeDiscordText(params.detailBody));
   }
   if (params.link) {
-    lines.push("", `[${params.link.label}](${params.link.url})`);
+    const safeUrl = /^https:\/\/[a-z0-9.-]+(?::\d+)?\//i.test(params.link.url) ? params.link.url : null;
+    if (safeUrl) lines.push("", `[${sanitizeDiscordText(params.link.label)}](${safeUrl})`);
   }
   return lines.join("\n");
 }

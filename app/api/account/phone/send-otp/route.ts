@@ -5,12 +5,9 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { SMS_VERIFICATION_ENABLED, sendSms } from "@/lib/sms";
 import { safeErrorResponse } from "@/lib/apiError";
+import { hashPhoneOtp, normalizeE164Phone } from "@/lib/account/phoneVerification";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
-
-function hashOtp(code: string): string {
-  return crypto.createHash("sha256").update(code).digest("hex");
-}
 
 export async function POST(request: NextRequest) {
   if (!SMS_VERIFICATION_ENABLED) {
@@ -30,23 +27,28 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const phone = typeof body.phone === "string" ? normalizeE164Phone(body.phone) : null;
   if (!phone) {
-    return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+    return NextResponse.json({ error: "Use a valid international phone number, for example +201001234567" }, { status: 400 });
   }
 
   const code = String(crypto.randomInt(100000, 1000000));
-  const { error } = await supabaseAdmin.from("phone_verifications").insert({
+  const { data: verification, error } = await supabaseAdmin.from("phone_verifications").insert({
     user_id: user.id,
     phone,
-    otp_hash: hashOtp(code),
+    otp_hash: hashPhoneOtp(code),
     expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
-  });
+  }).select("id").single();
 
   if (error) {
     return safeErrorResponse("account.phone.send-otp", error);
   }
 
-  await sendSms(phone, `Your Mahaly verification code is ${code}. It expires in 10 minutes.`);
+  try {
+    await sendSms(phone, `Your Mahaly verification code is ${code}. It expires in 10 minutes.`);
+  } catch (sendError) {
+    await supabaseAdmin.from("phone_verifications").delete().eq("id", verification.id);
+    return safeErrorResponse("account.phone.send-otp.provider", sendError as Error, "Phone verification is temporarily unavailable");
+  }
   return NextResponse.json({ ok: true });
 }

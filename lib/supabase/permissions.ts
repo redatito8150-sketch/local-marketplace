@@ -1,5 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMfaUserState } from "@/lib/supabase/mfaAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { LEGACY_TIER_RANK, canActorManage } from "@/lib/roleHierarchy";
 
@@ -27,7 +28,11 @@ export type PermissionKey =
   | "manage_page_studio"
   | "manage_site_content"
   | "manage_users"
-  | "manage_roles";
+  | "manage_roles"
+  | "view_analytics"
+  | "view_audit_log"
+  | "view_admin_notifications"
+  | "manage_settings";
 
 // A legacy role='admin' account always has every permission, regardless of
 // whether it's been assigned a custom role yet — same "server owner always
@@ -65,10 +70,9 @@ export async function requirePermission(
   key: PermissionKey
 ): Promise<{ user: User; permissions: Set<PermissionKey> } | null> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const authState = await getMfaUserState(supabase);
+  if (authState.status !== "authenticated") return null;
+  const { user } = authState;
 
   const permissions = await getUserPermissions(user.id);
   if (!permissions.has(key)) return null;

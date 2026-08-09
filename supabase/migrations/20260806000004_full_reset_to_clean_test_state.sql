@@ -1,3 +1,16 @@
+/*
+MIGRATION SAFETY NOTICE (2026-08-09)
+
+This historical full-reset migration is permanently disabled. Versioned
+migrations must be safe to replay against production, staging, recovery, and
+fresh environments; account and marketplace data resets therefore cannot be
+part of this chain. Any future test reset must target an explicitly disposable
+local/development database and be protected by a separate operator workflow.
+No executable reset script is kept in this repository on purpose.
+
+The original body is retained below only as inert historical documentation.
+Nothing inside this block is executable SQL.
+
 -- ============================================================================
 -- FULL RESET to a clean testing state (dev/staging only)
 --
@@ -138,3 +151,10 @@ commit;
 --     where role <> 'customer' or is_admin = true;         -- expect only redatito8150@gmail.com
 --   select count(*) from user_roles;                        -- expect 1 (the primary account's Admin row)
 -- ============================================================================
+*/
+
+do $disabled_historical_full_reset$
+begin
+  raise notice 'Historical full reset migration is disabled; no data was changed.';
+end
+$disabled_historical_full_reset$;

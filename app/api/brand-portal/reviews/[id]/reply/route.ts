@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { replySchema } from "@/lib/reviews/validation";
 import { logAudit } from "@/lib/auditLog";
 import { safeErrorResponse } from "@/lib/apiError";
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const context = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const context = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!context?.brandSlug) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const parsed = replySchema.safeParse(await request.json());
@@ -42,7 +42,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const context = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const context = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!context?.brandSlug) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const supabase = await createSupabaseServerClient();

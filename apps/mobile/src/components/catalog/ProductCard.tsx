@@ -4,7 +4,7 @@ import { Href, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppText } from "@/components/ui/AppText";
-import { Product, formatPrice } from "@/domain/products";
+import { Product, formatPrice, resolveProductPricing } from "@/domain/products";
 import { useAppTheme } from "@/theme/ThemeProvider";
 import { getWishlist, toggleWishlist, toggleWishlistState, WishlistItem } from "@/domain/wishlist";
 import { useAuth } from "@/providers/AuthProvider";
@@ -18,6 +18,7 @@ export function ProductCard({ product }: { product: Product }) {
   const glassBorder = isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.78)";
   const wishlist = useQuery({ queryKey: ["wishlist"], queryFn: getWishlist, enabled: auth.isAuthenticated, staleTime: 60_000 });
   const wishlisted = wishlist.data?.some((item) => item.productId === product.id) ?? false;
+  const pricing = resolveProductPricing(product);
   const toggle = useMutation({
     mutationFn: () => toggleWishlist(product.id),
     onMutate: async () => {
@@ -33,7 +34,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${product.name} by ${product.brand_name}, ${formatPrice(product.price, product.currency)}`}
+      accessibilityLabel={`${product.name} by ${product.brand_name}, ${formatPrice(pricing.price, product.currency)}`}
       onPress={() => router.push(`/products/${encodeURIComponent(product.id)}` as Href)}
       style={({ pressed }) => [
         styles.card,
@@ -72,7 +73,7 @@ export function ProductCard({ product }: { product: Product }) {
       >
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.xs }}><AppText variant="caption" style={{ color: colors.textMuted, flex: 1 }} numberOfLines={1}>{product.brand_name}</AppText>{product.colors.length ? <View style={{ flexDirection: "row" }}>{product.colors.slice(0, 3).map((color, index) => <View key={`${color.name}-${index}`} accessibilityLabel={color.name} style={{ width: 10, height: 10, borderRadius: 99, marginLeft: index ? -2 : 0, borderWidth: 1, borderColor: colors.surfaceRaised, backgroundColor: color.hex || colors.border }} />)}</View> : null}</View>
         <AppText variant="label" numberOfLines={2}>{product.name}</AppText>
-        <View style={{ flexDirection: "row", gap: spacing.xs, alignItems: "center", flexWrap: "wrap" }}><AppText variant="label">{formatPrice(product.price, product.currency)}</AppText>{product.compare_at_price && product.compare_at_price > product.price ? <AppText variant="caption" style={{ color: colors.textMuted, textDecorationLine: "line-through" }}>{formatPrice(product.compare_at_price, product.currency)}</AppText> : null}</View>
+        <View style={{ flexDirection: "row", gap: spacing.xs, alignItems: "center", flexWrap: "wrap" }}><AppText variant="label">{formatPrice(pricing.price, product.currency)}</AppText>{pricing.active ? <AppText variant="caption" style={{ color: colors.textMuted, textDecorationLine: "line-through" }}>{formatPrice(pricing.basePrice, product.currency)}</AppText> : null}</View>
         {product.review_count ? <AppText variant="caption" style={{ color: colors.textMuted }}>★ {product.rating.toFixed(1)} ({product.review_count})</AppText> : null}
       </View>
     </Pressable>

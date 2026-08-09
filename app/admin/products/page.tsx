@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Download, Plus } from "lucide-react";
 import { getAllProductsForAdmin } from "@/lib/data/admin";
-import { deleteExpiredDrafts } from "@/lib/admin/expireDrafts";
 import BulkProductActions from "@/components/admin/BulkProductActions";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardPageHeader, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
@@ -13,7 +12,6 @@ type ProductSearchParams = {
 
 export default async function AdminProductsPage(props: { searchParams: Promise<ProductSearchParams> }) {
   const params = await props.searchParams;
-  await deleteExpiredDrafts();
   const allProducts = await getAllProductsForAdmin();
   const normalizedQuery = params.q?.trim().toLowerCase();
   const minPrice = params.minPrice ? Number(params.minPrice) : undefined;

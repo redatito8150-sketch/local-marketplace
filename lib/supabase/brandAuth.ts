@@ -1,5 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getMfaUserState } from "@/lib/supabase/mfaAuth";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export type BrandAccessLevel = "owner" | "assistant";
 
@@ -50,10 +52,9 @@ export async function requireBrandOwner(
   overrideSlug?: string
 ): Promise<BrandOwnerContext | null> {
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  const authState = await getMfaUserState(supabase);
+  if (authState.status !== "authenticated") return null;
+  const { user } = authState;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -62,7 +63,7 @@ export async function requireBrandOwner(
     .maybeSingle();
   const isAdmin = Boolean(profile?.is_admin);
 
-  const { data: ownedBrands } = await supabase
+  const { data: ownedBrands } = await supabaseAdmin
     .from("brands")
     .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
     .eq("owner_user_id", user.id)
@@ -76,7 +77,7 @@ export async function requireBrandOwner(
   // insert below; this is what gives every *other* co-owner the same
   // "owner" accessLevel (and therefore identical brand-portal permissions)
   // without needing their own owner_user_id slot.
-  const { data: staffRows } = await supabase
+  const { data: staffRows } = await supabaseAdmin
     .from("brand_staff")
     .select("brand_id, access_level")
     .eq("user_id", user.id);
@@ -85,7 +86,7 @@ export async function requireBrandOwner(
   );
   const staffBrandIds = [...staffAccessByBrandId.keys()];
   const { data: staffBrands } = staffBrandIds.length
-    ? await supabase
+    ? await supabaseAdmin
       .from("brands")
       .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
       .in("id", staffBrandIds)
@@ -123,7 +124,7 @@ export async function requireBrandOwner(
   // authoritative relation. Only the authenticated user's converted
   // application and its stored brand id/slug can be used.
   if (!availableBrands.length) {
-    const { data: legacyApplications } = await supabase
+    const { data: legacyApplications } = await supabaseAdmin
       .from("brand_applications")
       .select("converted_brand_id, approved_brand_id")
       .eq("applicant_user_id", user.id)
@@ -135,7 +136,7 @@ export async function requireBrandOwner(
         legacyIds.length ? `id.in.(${legacyIds.join(",")})` : "",
         legacySlugs.length ? `slug.in.(${legacySlugs.join(",")})` : "",
       ].filter(Boolean).join(",");
-      const { data: legacyBrands } = await supabase
+      const { data: legacyBrands } = await supabaseAdmin
         .from("brands")
         .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
         .or(filters);
@@ -191,7 +192,7 @@ export async function requireBrandOwner(
   // brands has a public-read policy already (brand pages are public), so
   // the cookie client is enough here — no need for supabaseAdmin just to
   // resolve the name.
-  const { data: targetBrand } = await supabase
+  const { data: targetBrand } = await supabaseAdmin
     .from("brands")
     .select("id, slug, name, setup_status, is_active, is_mahaly_partner")
     .eq("slug", overrideSlug)
@@ -211,4 +212,13 @@ export async function requireBrandOwner(
     isMahalyPartner: Boolean(targetBrand.is_mahaly_partner),
     availableBrands: [],
   };
+}
+
+// Portal APIs use this stricter guard. A suspended brand may still render its
+// read-only dashboard, but its members cannot mutate catalog, stock, orders or
+// customer-facing content. Administrators retain recovery access.
+export async function requireActiveBrandOwner(overrideSlug?: string): Promise<BrandOwnerContext | null> {
+  const context = await requireBrandOwner(overrideSlug);
+  if (!context || (!context.isActive && !context.isAdmin)) return null;
+  return context;
 }

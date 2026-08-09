@@ -6,7 +6,7 @@ import { AppButton } from "@/components/ui/AppButton";
 import { AppText } from "@/components/ui/AppText";
 import { Badge, BottomActionBar, Divider, FilterChip, QuantitySelector } from "@/components/ui/Primitives";
 import { ErrorState, LoadingState } from "@/components/system/States";
-import { calculateDiscountPercent, findProductVariant, formatPrice, getProduct, getProducts, resolveProductPrice } from "@/domain/products";
+import { findProductVariant, formatPrice, getProduct, getProducts, resolveProductPricing } from "@/domain/products";
 import { isProductSelectionUnavailable } from "@/domain/product-selection";
 import { useAppTheme } from "@/theme/ThemeProvider";
 import { useCart } from "@/providers/CartProvider";
@@ -38,8 +38,8 @@ export default function ProductDetailsRoute() {
   const selectedVariant = findProductVariant(product.variants, size, color);
   const hasVariants = Boolean(product.variants?.length);
   const selectedUnavailable = isProductSelectionUnavailable({ hasVariants, selectedVariant, selectedSize: size, unavailableSizes: product.unavailable_sizes });
-  const activePrice = resolveProductPrice(product, selectedVariant);
-  const discount = calculateDiscountPercent(activePrice, product.compare_at_price);
+  const pricing = resolveProductPricing(product, selectedVariant);
+  const activePrice = pricing.price;
   const availableQuantity = selectedVariant ? Math.max(selectedVariant.quantity, 1) : 10;
   const addToCart = () => cart.addItem({ productId: product.id, name: product.name, brand: product.brand_name, image: product.image, price: activePrice, currency: product.currency, size: size || "One size", color: color || undefined, quantity });
   const purchaseDisabled = !product.in_stock || selectedUnavailable || (product.sizes.length > 0 && !size) || (product.colors.length > 0 && !color);
@@ -51,7 +51,7 @@ export default function ProductDetailsRoute() {
         <View style={{ padding: spacing.md, gap: spacing.sm }}>
           <AppText accessibilityRole="link" variant="caption" style={{ color: colors.primary }} onPress={() => product.brand_slug && router.push(`/brands/${product.brand_slug}` as never)}>{product.brand_name}</AppText>
           <AppText variant="title">{product.name}</AppText>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, flexWrap: "wrap" }}><AppText variant="title">{formatPrice(activePrice, product.currency)}</AppText>{discount ? <><AppText style={{ color: colors.textMuted, textDecorationLine: "line-through" }}>{formatPrice(product.compare_at_price!, product.currency)}</AppText><Badge tone="warning">-{discount}%</Badge></> : null}</View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, flexWrap: "wrap" }}><AppText variant="title">{formatPrice(activePrice, product.currency)}</AppText>{pricing.active ? <><AppText style={{ color: colors.textMuted, textDecorationLine: "line-through" }}>{formatPrice(pricing.basePrice, product.currency)}</AppText><Badge tone="warning">-{pricing.percent}%</Badge></> : null}</View>
           {product.review_count ? <AppText variant="caption" style={{ color: colors.textMuted }}>★ {product.rating.toFixed(1)} · {product.review_count} reviews</AppText> : null}
           {!product.in_stock ? <Badge tone="warning">Out of stock</Badge> : null}
           {product.colors.length ? <><AppText variant="label">Color</AppText><View style={{ flexDirection: "row", gap: spacing.xs, flexWrap: "wrap" }}>{product.colors.map((item) => <FilterChip key={item.name} label={item.name} selected={color === item.name} onPress={() => setColor(item.name)} />)}</View></> : null}

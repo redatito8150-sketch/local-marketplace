@@ -39,7 +39,7 @@ export default function AccountPage() {
 }
 
 function AccountPageContent() {
-  const { user, profile, loading, mfaChallenge, signIn, signUp, verifyMfaChallenge } = useAuth();
+  const { user, profile, loading, mfaChallenge, mfaError, signIn, signUp, verifyMfaChallenge, signOut } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
@@ -57,9 +57,9 @@ function AccountPageContent() {
   const [mfaCode, setMfaCode] = useState("");
 
   useEffect(() => {
-    if (!user || loading || mfaChallenge || !profile) return;
+    if (!user || loading || mfaChallenge || mfaError || !profile) return;
     router.replace(decidePostAuthDestination(profile.onboardingCompletedAt, nextParam));
-  }, [user, profile, loading, mfaChallenge, router, nextParam]);
+  }, [user, profile, loading, mfaChallenge, mfaError, router, nextParam]);
 
   const switchMode = (value: "sign-in" | "create") => {
     setMode(value);
@@ -94,6 +94,24 @@ function AccountPageContent() {
     if (result.error) setError(result.error);
     setSubmitting(false);
   };
+
+  if (loading) {
+    return <AuthPageSkeleton />;
+  }
+
+  if (user && mfaError) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-[#f4eee7] p-6">
+        <section className="w-full max-w-md rounded-[30px] border border-white/70 bg-white/75 p-8 shadow-card backdrop-blur-xl">
+          <ShieldCheck className="h-9 w-9 text-mahalyred" />
+          <h1 className="mt-6 font-serif text-3xl font-semibold">Verification is temporarily unavailable</h1>
+          <p role="alert" className="mt-3 text-sm leading-6 text-ink-soft/70">{mfaError}</p>
+          <button type="button" onClick={() => window.location.reload()} className="mt-7 w-full rounded-2xl bg-mahalyred py-4 text-sm font-semibold text-white transition hover:bg-mahalyred-dark">Retry verification</button>
+          <button type="button" onClick={() => void signOut()} className="mt-3 w-full rounded-2xl border border-[#d9cfc4] bg-white py-4 text-sm font-semibold text-ink transition hover:border-mahalyred/30">Sign out</button>
+        </section>
+      </main>
+    );
+  }
 
   if (user && !mfaChallenge) {
     return <main className="grid min-h-screen place-items-center bg-[#f4eee7]"><div className="flex items-center gap-3 text-sm text-ink/55"><span className="h-2 w-2 animate-pulse rounded-full bg-mahalyred" />Preparing your space…</div></main>;

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateBrandInput, type BrandInput } from "@/lib/admin/brandValidation";
 import { notify } from "@/lib/notify";
@@ -15,7 +15,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 // this page but never writes on the brand's behalf, same rule as every
 // other brand-portal write path.
 export async function PATCH(request: NextRequest) {
-  const owner = await requireBrandOwner();
+  const owner = await requireActiveBrandOwner();
   if (!owner || owner.isImpersonating || !owner.brandSlug || owner.accessLevel !== "owner") {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

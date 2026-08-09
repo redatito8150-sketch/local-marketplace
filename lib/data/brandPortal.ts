@@ -70,10 +70,9 @@ interface OrderItemRow {
 // orders keep a null brand_slug and are correctly invisible here.
 export async function getOrdersForBrand(
   brandSlug: string,
-  impersonating = false
+  _impersonating = false
 ): Promise<BrandOrder[]> {
-  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("order_items")
     .select(
       "id, name, size, color, price, currency, quantity, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp)"
@@ -269,10 +268,9 @@ interface BrandProductRow {
 // brand_id; nothing extra needed to include unreviewed submissions.
 export async function getProductsForBrand(
   brandId: string,
-  impersonating = false
+  _impersonating = false
 ): Promise<BrandProductListItem[]> {
-  const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("products")
     .select(
       "id, name, image, price, currency, product_type_id, collection_id, featured, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
@@ -289,10 +287,10 @@ export async function getProductsForBrand(
   const [taxonomyTree, collectionNamesById, variantsByProduct] = await Promise.all([
     getFullTaxonomyTree(),
     collectionIds.length
-      ? supabase.from("collections").select("id, name").in("id", collectionIds)
+      ? supabaseAdmin.from("collections").select("id, name").in("id", collectionIds)
         .then(({ data }) => new Map((data ?? []).map((r) => [r.id as string, r.name as string])))
       : Promise.resolve(new Map<string, string>()),
-    getVariantsForProducts(rows.map((row) => row.id), supabase),
+    getVariantsForProducts(rows.map((row) => row.id), supabaseAdmin),
   ]);
 
   return rows.map((row) => {

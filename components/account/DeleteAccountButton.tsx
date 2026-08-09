@@ -24,7 +24,11 @@ export default function DeleteAccountButton() {
       const res = await fetch("/api/account/delete", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Something went wrong");
+        setError(
+          data.code === "RECENT_AUTH_REQUIRED"
+            ? "For your security, sign out and sign in again, then retry account deletion within 15 minutes."
+            : data.error ?? "Something went wrong"
+        );
         setBusy(false);
         return;
       }
@@ -39,8 +43,10 @@ export default function DeleteAccountButton() {
   return (
     <div>
       <p className="max-w-lg text-[13px] text-[var(--account-text-muted)]">
-        Permanently deletes your account, wishlist, addresses, and saved
-        preferences. This cannot be undone.
+        Permanently deletes your sign-in, profile, reviews, application files,
+        wishlist, addresses, and saved preferences. Past orders are retained
+        only after their contact and delivery details are redacted. This cannot
+        be undone, and requires a sign-in from the last 15 minutes.
       </p>
       {error && (
         <p role="alert" className="mt-3 max-w-lg rounded-xl bg-[color-mix(in_srgb,var(--account-danger)_12%,transparent)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--account-danger)]">

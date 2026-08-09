@@ -11,6 +11,8 @@ import PasswordInput from "@/components/shared/PasswordInput";
 import InlineError from "@/components/shared/InlineError";
 import { normalizeAuthError } from "@/lib/errors/authMessages";
 
+const RECOVERY_MARKER = "mahaly-password-recovery";
+
 export default function ResetPasswordPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -28,12 +30,21 @@ export default function ResetPasswordPage() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setReady(true);
+      if (event === "PASSWORD_RECOVERY") {
+        sessionStorage.setItem(RECOVERY_MARKER, "ready");
+        setReady(true);
+      }
     });
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setReady(true);
-    });
-    return () => subscription.unsubscribe();
+    // A normal signed-in session must never unlock this form. This tab-local
+    // marker is created only by Supabase's PASSWORD_RECOVERY event and keeps a
+    // legitimate recovery usable across a reload in the same tab.
+    const restoreTimer = window.setTimeout(() => {
+      setReady(sessionStorage.getItem(RECOVERY_MARKER) === "ready");
+    }, 0);
+    return () => {
+      window.clearTimeout(restoreTimer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,6 +68,7 @@ export default function ResetPasswordPage() {
       setError(normalizeAuthError("auth.resetPassword", error).userMessage);
       return;
     }
+    sessionStorage.removeItem(RECOVERY_MARKER);
     setDone(true);
     setTimeout(() => router.replace("/account"), 1500);
   };

@@ -18,7 +18,7 @@ function StatusCell({ product }: { product: ProductRecord }) {
         className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
           daysLeft != null && daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
         }`}
-        title={daysLeft != null ? "Auto-deleted if left incomplete" : undefined}
+        title={daysLeft != null ? "Archived by daily maintenance if left incomplete; it can be restored" : undefined}
       >
         Draft{daysLeft != null ? ` — ${Math.max(daysLeft, 0)}d left` : ""}
       </span>

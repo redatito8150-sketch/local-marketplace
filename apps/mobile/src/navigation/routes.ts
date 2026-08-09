@@ -6,6 +6,7 @@ export const routes = {
   profile: "/(tabs)/profile",
   signIn: "/sign-in",
   signUp: "/sign-up",
+  mfa: "/mfa",
   passwordRecovery: "/password-recovery",
   resetPassword: "/reset-password",
   search: "/search",

@@ -25,7 +25,7 @@ export default function CategoriesRoute() {
   const query = useQuery({ queryKey: ["products", "facets"], queryFn: getCatalogFacets, staleTime: 5 * 60_000 });
   if (query.isLoading) return <LoadingState label="Loading categories…" />;
   if (query.isError) return <ErrorState message="We couldn't load categories." onRetry={() => query.refetch()} />;
-  const categories = (query.data?.categories ?? []).map((slug) => ({
+  const categories = (query.data?.audiences ?? []).map((slug) => ({
     slug,
     label: slug.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
     icon: categoryIcons[slug.toLowerCase()] ?? "grid-outline",
@@ -43,7 +43,7 @@ export default function CategoriesRoute() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${item.label} category`}
-            onPress={() => router.push(`/products?category=${item.slug}&title=${encodeURIComponent(item.label)}` as Href)}
+            onPress={() => router.push(`/products?audience=${item.slug}&title=${encodeURIComponent(item.label)}` as Href)}
             style={{ flex: 1, minHeight: 150, backgroundColor: colors.surfaceRaised, borderRadius: radius.lg, padding: spacing.md, justifyContent: "space-between" }}
           >
             <Ionicons name={item.icon} size={30} color={colors.primary} />

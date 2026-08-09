@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Check, Banknote, Truck, PartyPopper, ArrowLeft } from "lucide-react";
 import Header from "@/components/Header";
@@ -75,6 +75,7 @@ export default function CheckoutPage() {
   const [shipping, setShipping] = useState<ShippingForm>(EMPTY_SHIPPING);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
+  const orderIdempotencyKeyRef = useRef<string | null>(null);
 
   // Saved addresses for a signed-in shopper — lets checkout offer a real
   // selector instead of just prefilling the default into a flat form.
@@ -191,9 +192,15 @@ export default function CheckoutPage() {
       if (saveResult.ok) addressId = saveResult.data.id;
     }
 
+    const idempotencyKey =
+      orderIdempotencyKeyRef.current ?? crypto.randomUUID();
+    orderIdempotencyKeyRef.current = idempotencyKey;
     const orderResult = await fetchWithAppError<{ orderNumbers: string[] }>("/api/orders", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       body: JSON.stringify({
         items: items.map((item) => ({
           productId: item.productId,
@@ -214,6 +221,7 @@ export default function CheckoutPage() {
     }
 
     setOrderNumbers(orderResult.data.orderNumbers ?? []);
+    orderIdempotencyKeyRef.current = null;
     clearCart();
     setStep("confirmation");
   };

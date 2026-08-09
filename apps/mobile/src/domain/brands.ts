@@ -1,5 +1,6 @@
 import { apiRequest } from "@/lib/api";
 import type { Product } from "@/domain/products";
+import { isDiscountActive } from "@/domain/pricing";
 
 export type ReviewSummary = { average: number; total: number; distribution: Record<1 | 2 | 3 | 4 | 5, number>; verifiedPercent: number; withPhotos: number };
 export type Review = { id: string; productId: string; productName: string; productImage: string; authorName: string; rating: number; title?: string; body: string; createdAt: string; verifiedPurchase: true; images: { id: string; url: string; order: number }[]; helpfulCount: number; viewerFoundHelpful: boolean; isOwn: boolean; reply?: { id: string; body: string; brandName: string; createdAt: string } };
@@ -10,7 +11,7 @@ export type Brand = {
   storyImage: string; storyBody: string; followerCount: number; storeRating: number;
   values: { title: string; description: string }[];
   shopTheLook: { title: string; image: string; href: string }[];
-  products: { id: string; name: string; brand: string; price: number; compareAtPrice?: number; currency: "EGP" | "USD"; image: string; inStock: boolean }[];
+  products: { id: string; name: string; brand: string; price: number; discountPercent?: number; discountEndsAt?: string; currency: "EGP" | "USD"; image: string; inStock: boolean }[];
 };
 type BrandResponse = { brand: Brand; reviews: { reviews: Review[]; summary: ReviewSummary; total: number }; isFollowing: boolean };
 export async function getBrand(slug: string) { return apiRequest<BrandResponse>(`/api/brands/${encodeURIComponent(slug)}`); }
@@ -27,5 +28,9 @@ export async function deleteReview(id: string) { return apiRequest<{ ok: true }>
 export async function getOwnReview(id: string) { return (await apiRequest<{ review: { id: string; rating: number; title?: string; body: string } }>(`/api/reviews/${id}`)).review; }
 export async function updateReview(id: string, input: { rating: number; title?: string; body: string }) { return apiRequest<{ ok: true }>(`/api/reviews/${id}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export function brandProductToProduct(item: Brand["products"][number]): Product {
-  return { id: item.id, name: item.name, brand_name: item.brand, brand_slug: null, audience: null, product_type_id: null, price: item.price, compare_at_price: item.compareAtPrice ?? null, currency: item.currency, image: item.image, images: [item.image], rating: 0, review_count: 0, colors: [], sizes: [], unavailable_sizes: [], description: "", details: [], care_instructions: [], shipping_returns: "", in_stock: item.inStock };
+  return { id: item.id, name: item.name, brand_name: item.brand, brand_slug: null, audience: null, product_type_id: null, price: item.price, discount_percent: item.discountPercent ?? null, discount_ends_at: item.discountEndsAt ?? null, currency: item.currency, image: item.image, images: [item.image], rating: 0, review_count: 0, colors: [], sizes: [], unavailable_sizes: [], description: "", details: [], care_instructions: [], shipping_returns: "", in_stock: item.inStock };
+}
+
+export function isBrandProductDiscounted(item: Brand["products"][number], now: Date = new Date()) {
+  return isDiscountActive(item.discountPercent, item.discountEndsAt, now);
 }

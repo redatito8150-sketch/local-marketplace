@@ -9,7 +9,7 @@ export interface WarehouseVariantRow {
   quantity: number; // live, storefront-visible stock
   brandStockQuantity: number; // the brand's own declared count, not storefront-visible
   pendingRequestedQty: number; // already tied up in an open (pending) forward transfer request
-  pendingReturnQty: number; // already tied up in an open (pending) return request
+  pendingReturnQty: number; // legacy pending returns not yet deducted from live stock
 }
 
 export interface WarehouseTransferItemRow {
@@ -69,7 +69,7 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
       .in("variant_id", variantIds),
     supabaseAdmin
       .from("warehouse_transfer_items")
-      .select("variant_id, requested_qty, warehouse_transfers!inner(status, direction)")
+      .select("variant_id, requested_qty, warehouse_transfers!inner(status, direction, stock_reserved_at)")
       .in("variant_id", variantIds)
       .eq("warehouse_transfers.status", "pending"),
   ]);
@@ -86,7 +86,13 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
   const pendingReturnByVariant = new Map<string, number>();
   for (const row of pendingRows ?? []) {
     const key = row.variant_id as string;
-    const transfer = row.warehouse_transfers as unknown as { direction: "to_local" | "to_brand" };
+    const transfer = row.warehouse_transfers as unknown as {
+      direction: "to_local" | "to_brand";
+      stock_reserved_at: string | null;
+    };
+    // Reserved returns have already been deducted from sellable quantity.
+    // Only legacy unreserved returns still need subtracting in the UI.
+    if (transfer.direction === "to_brand" && transfer.stock_reserved_at) continue;
     const map = transfer.direction === "to_brand" ? pendingReturnByVariant : pendingByVariant;
     map.set(key, (map.get(key) ?? 0) + (row.requested_qty as number));
   }

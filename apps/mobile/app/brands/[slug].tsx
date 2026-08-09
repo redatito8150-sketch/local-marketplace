@@ -9,7 +9,7 @@ import { ErrorState, LoadingState } from "@/components/system/States";
 import { AppButton } from "@/components/ui/AppButton";
 import { AppText } from "@/components/ui/AppText";
 import { Card, EmptyState, FilterChip } from "@/components/ui/Primitives";
-import { brandProductToProduct, getBrand, toggleBrandFollow } from "@/domain/brands";
+import { brandProductToProduct, getBrand, isBrandProductDiscounted, toggleBrandFollow } from "@/domain/brands";
 import type { Brand, Review } from "@/domain/brands";
 import type { Product } from "@/domain/products";
 import { useAuth } from "@/providers/AuthProvider";
@@ -26,7 +26,7 @@ export default function BrandRoute() {
   if (query.isError || !query.data) return <ErrorState message="This brand is unavailable." onRetry={() => query.refetch()} />;
   const { brand, reviews, isFollowing } = query.data;
   const productData = brand.products.map(brandProductToProduct);
-  const offers = brand.products.filter((item) => item.compareAtPrice && item.compareAtPrice > item.price).map(brandProductToProduct);
+  const offers = brand.products.filter((item) => isBrandProductDiscounted(item)).map(brandProductToProduct);
   const data: BrandListItem[] = tab === "Products" ? productData : tab === "Offers" ? offers : tab === "Reviews" ? reviews.reviews : tab === "Collections" ? brand.shopTheLook : brand.values;
   return <><Stack.Screen options={{ headerShown: true, title: brand.name }} /><FlatList
     style={{ backgroundColor: colors.background }} data={data} key={tab} numColumns={tab === "Products" || tab === "Offers" ? 2 : 1}

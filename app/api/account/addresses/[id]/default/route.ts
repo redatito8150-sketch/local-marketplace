@@ -19,6 +19,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   });
 
   if (error) {
+    if (error.message.includes("ADDRESS_NOT_FOUND_OR_FORBIDDEN") || error.code === "P0002") {
+      return NextResponse.json({ error: "Address not found" }, { status: 404 });
+    }
     return safeErrorResponse("account.addresses.set-default", error);
   }
   return NextResponse.json({ ok: true });

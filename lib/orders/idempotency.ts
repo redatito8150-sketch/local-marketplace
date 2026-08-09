@@ -1,31 +1,38 @@
-export interface OrderIdempotencyPayload {
-  orderNumbers: string[];
-  orderGroupId: string;
+import { createHash } from "node:crypto";
+
+const IDEMPOTENCY_KEY_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseOrderIdempotencyKey(key: string | null): string | null {
+  if (!key || !IDEMPOTENCY_KEY_PATTERN.test(key)) return null;
+  return key.toLowerCase();
 }
 
-type CachedOrder = { payload: OrderIdempotencyPayload; expiresAt: number };
-const cache = new Map<string, CachedOrder>();
-const KEY_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TTL_MS = 15 * 60 * 1000;
-
-export function readOrderIdempotency(key: string | null): OrderIdempotencyPayload | null {
-  if (!key || !KEY_PATTERN.test(key)) return null;
-  const entry = cache.get(key);
-  if (!entry) return null;
-  if (entry.expiresAt <= Date.now()) {
-    cache.delete(key);
-    return null;
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)])
+    );
   }
-  return entry.payload;
+  return value;
 }
 
-export function storeOrderIdempotency(key: string | null, payload: OrderIdempotencyPayload) {
-  if (!key || !KEY_PATTERN.test(key)) return;
-  cache.set(key, { payload, expiresAt: Date.now() + TTL_MS });
-  if (cache.size > 500) {
-    const now = Date.now();
-    for (const [candidate, entry] of cache) {
-      if (entry.expiresAt <= now) cache.delete(candidate);
-    }
-  }
+export function hashOrderRequest(value: unknown): string {
+  const serialized = JSON.stringify(canonicalize(value));
+  if (serialized === undefined) throw new TypeError("Order request is not serializable");
+  return createHash("sha256").update(serialized).digest("hex");
+}
+
+export function buildOrderIdempotencyActor(
+  userId: string | null,
+  guestEmail: string
+): string {
+  if (userId) return `user:${userId}`;
+  const guestDigest = createHash("sha256")
+    .update(guestEmail.trim().toLowerCase())
+    .digest("hex");
+  return `guest:${guestDigest}`;
 }

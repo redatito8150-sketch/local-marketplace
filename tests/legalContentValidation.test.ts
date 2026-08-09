@@ -88,11 +88,8 @@ test("assertLegalContentIsProductionReady throws against the current (unresolved
   assert.throws(() => assertLegalContentIsProductionReady(), UnresolvedLegalPlaceholdersError);
 });
 
-// Integration coverage for scripts/validate-legal-content.mjs itself — the
-// site is still under development, so local/Preview/Production builds must
-// all succeed by default despite unresolved placeholders; only the
-// documented LEGAL_CONTENT_STRICT=true opt-in (for enabling before public
-// launch) may fail the build.
+// Integration coverage for scripts/validate-legal-content.mjs itself. Local
+// and Preview builds stay usable, while Production fails closed.
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const scriptPath = path.join(rootDir, "scripts/validate-legal-content.mjs");
 
@@ -110,12 +107,13 @@ test("validate-legal-content.mjs succeeds by default despite unresolved placehol
   assert.match(result.stderr + result.stdout, /not blocking this build/i);
 });
 
-test("validate-legal-content.mjs succeeds even for a simulated Production build (VERCEL_ENV=production)", () => {
+test("validate-legal-content.mjs blocks a simulated Production build", () => {
   const result = runValidateScript({ VERCEL_ENV: "production", LEGAL_CONTENT_STRICT: "" });
-  assert.equal(result.status, 0, "a real production build must not be blocked while the site is still under development");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /BUILD BLOCKED/);
 });
 
-test("validate-legal-content.mjs fails when LEGAL_CONTENT_STRICT=true (the documented future launch gate)", () => {
+test("validate-legal-content.mjs can enforce the gate outside Production", () => {
   const result = runValidateScript({ LEGAL_CONTENT_STRICT: "true" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /BUILD BLOCKED/);

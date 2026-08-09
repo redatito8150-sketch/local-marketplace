@@ -23,5 +23,22 @@ test("authentication restores sessions and clears them through Supabase", () => 
   const provider = read("../src/providers/AuthProvider.tsx");
   assert.match(provider, /auth\.getSession\(\)/);
   assert.match(provider, /auth\.onAuthStateChange/);
+  assert.match(provider, /getAuthenticatorAssuranceLevel/);
+  assert.match(provider, /auth\.mfa\.challenge/);
+  assert.match(provider, /auth\.mfa\.verify/);
   assert.match(provider, /auth\.signOut\(\)/);
+  assert.doesNotMatch(provider, /auth\.setSession/);
+});
+
+test("AAL1 sessions with enrolled MFA are redirected to the challenge route", () => {
+  const guard = read("../src/components/auth/AuthGuard.tsx");
+  assert.match(guard, /mfaStatus === "required"/);
+  assert.match(guard, /routes\.mfa/);
+});
+
+test("password changes require a verified recovery callback in mobile UI", () => {
+  const resetRoute = read("../app/reset-password.tsx");
+  assert.match(resetRoute, /auth\.recoveryReady/);
+  assert.match(resetRoute, /auth\.completePasswordRecovery/);
+  assert.doesNotMatch(resetRoute, /supabase\.auth\.updateUser/);
 });

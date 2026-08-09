@@ -4,7 +4,7 @@ import { getFollowerCountForBrand } from "@/lib/data/follows";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isWithinNewBrandWindow } from "@/lib/brandNewWindow";
 import { publishDateLiveFilter } from "@/lib/newArrivals";
-import { ProductRow, toProductCard, loadDisplayContext, attachVariantDerivedFields } from "@/lib/data/products";
+import { PRODUCT_PUBLIC_SELECT, ProductRow, toProductCard, loadDisplayContext, attachVariantDerivedFields } from "@/lib/data/products";
 import {
   BrandPageContent,
   BrandJourneyMilestone,
@@ -30,14 +30,15 @@ interface BrandRow {
   created_at: string;
   founders: BrandFounder[] | null;
   journey_milestones: BrandJourneyMilestone[] | null;
-  deleted_image_backups: Partial<Record<BrandImageField, string>> | null;
   about_headline: string | null;
   about_quote: string | null;
-  source_application_id: string | null;
   collections_page_title: string | null;
   collections_detail_eyebrow: string | null;
   collections_detail_heading: string | null;
 }
+
+const BRAND_PUBLIC_SELECT =
+  "id, slug, name, tagline, category, additional_categories, founded_year, city, hero_image, logo_image, about_description, about_image, story_body, is_mahaly_partner, created_at, founders, journey_milestones, about_headline, about_quote, collections_page_title, collections_detail_eyebrow, collections_detail_heading" as const;
 
 // No per-brand rating aggregate column exists — weight each product's own
 // rating by its review count so a product with 1 five-star review doesn't
@@ -66,7 +67,7 @@ function computeStoreRating(products: ProductRow[]): number {
 export async function getBrandContent(slug: string): Promise<BrandPageContent | null> {
   const { data: brandRow, error } = await supabase
     .from("brands")
-    .select("*")
+    .select(BRAND_PUBLIC_SELECT)
     .eq("slug", slug)
     .maybeSingle();
 
@@ -76,9 +77,18 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   if (!brandRow) return null;
   const brand = brandRow as BrandRow;
 
+  const { data: editMetadataRows } = await supabase.rpc(
+    "get_my_brand_edit_metadata",
+    { p_brand_slug: slug }
+  );
+  const editMetadata = (editMetadataRows?.[0] ?? null) as {
+    deleted_image_backups: Partial<Record<BrandImageField, string>> | null;
+    source_application_id: string | null;
+  } | null;
+
   const { data: productRows, error: productsError } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", slug)
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -147,10 +157,10 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     isMahalyPartner: Boolean(brand.is_mahaly_partner),
     founders: brand.founders ?? [],
     journeyMilestones: brand.journey_milestones ?? [],
-    deletedImageBackups: brand.deleted_image_backups ?? {},
+    deletedImageBackups: editMetadata?.deleted_image_backups ?? {},
     aboutHeadline: brand.about_headline ?? undefined,
     aboutQuote: brand.about_quote ?? undefined,
-    hasSourceApplication: Boolean(brand.source_application_id),
+    hasSourceApplication: Boolean(editMetadata?.source_application_id),
     collectionsPageTitle: brand.collections_page_title ?? undefined,
     collectionsDetailEyebrow: brand.collections_detail_eyebrow ?? undefined,
     collectionsDetailHeading: brand.collections_detail_heading ?? undefined,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
 import { DashboardEmptyState, DashboardPanel, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
@@ -28,6 +28,8 @@ export default function WarehouseExperience({
   const [requestQty, setRequestQty] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const returnOperationKey = useRef(crypto.randomUUID());
+  const transferOperationKey = useRef(crypto.randomUUID());
   const [returnSelected, setReturnSelected] = useState<Set<string>>(new Set());
   const [savingStock, setSavingStock] = useState(false);
   const [submittingTransfer, setSubmittingTransfer] = useState(false);
@@ -78,7 +80,10 @@ export default function WarehouseExperience({
     try {
       const res = await fetch(withBrand("/api/brand-portal/warehouse/returns", brandParam), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": returnOperationKey.current,
+        },
         body: JSON.stringify({ items, note: returnNote.trim() || undefined }),
       });
       const data = await res.json();
@@ -87,6 +92,7 @@ export default function WarehouseExperience({
       setReturnSelected(new Set());
       setReturnQty({});
       setReturnNote("");
+      returnOperationKey.current = crypto.randomUUID();
       window.location.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit return request");
@@ -109,7 +115,10 @@ export default function WarehouseExperience({
     try {
       const res = await fetch(withBrand("/api/brand-portal/warehouse/transfers", brandParam), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": transferOperationKey.current,
+        },
         body: JSON.stringify({ items, note: transferNote.trim() || undefined }),
       });
       const data = await res.json();
@@ -118,6 +127,7 @@ export default function WarehouseExperience({
       setSelected(new Set());
       setRequestQty({});
       setTransferNote("");
+      transferOperationKey.current = crypto.randomUUID();
       window.location.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit transfer");

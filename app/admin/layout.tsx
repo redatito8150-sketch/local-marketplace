@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { requireAdminUser } from "@/lib/supabase/adminAuth";
+import { getUserPermissions } from "@/lib/supabase/permissions";
 import {
   getUnreadNotificationCount,
   getLowStockVariantsForAdmin,
@@ -15,13 +17,10 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const user = await requireAdminUser();
+  if (!user) redirect("/account?next=%2Fadmin");
+
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) redirect("/account");
-
   const { data: profile } = await supabase
     .from("profiles")
     .select("is_admin, role")
@@ -30,11 +29,15 @@ export default async function AdminLayout({
 
   if (!profile?.is_admin) redirect("/account");
 
+  const permissions = await getUserPermissions(user.id);
+  const canViewNotifications = permissions.has("view_admin_notifications");
+  const canViewInventory = permissions.has("manage_inventory");
+
   const [unreadNotifications, lowStockVariants, recentNotifications] =
     await Promise.all([
-      getUnreadNotificationCount(),
-      getLowStockVariantsForAdmin(),
-      getAllNotificationsForAdmin(5),
+      canViewNotifications ? getUnreadNotificationCount() : Promise.resolve(0),
+      canViewInventory ? getLowStockVariantsForAdmin() : Promise.resolve([]),
+      canViewNotifications ? getAllNotificationsForAdmin(5) : Promise.resolve([]),
     ]);
 
   const sidebar = (
@@ -42,6 +45,7 @@ export default async function AdminLayout({
           unreadNotifications={unreadNotifications}
           lowStockCount={lowStockVariants.length}
           role={profile.role}
+          permissions={[...permissions]}
     />
   );
 
@@ -53,8 +57,12 @@ export default async function AdminLayout({
       sidebar={sidebar}
       headerTools={
         <>
-          <div className="hidden w-[min(34vw,420px)] sm:block"><AdminQuickSearch /></div>
-          <AdminNotificationBell notifications={recentNotifications} unreadCount={unreadNotifications} />
+          {permissions.has("manage_users") && (
+            <div className="hidden w-[min(34vw,420px)] sm:block"><AdminQuickSearch /></div>
+          )}
+          {canViewNotifications && (
+            <AdminNotificationBell notifications={recentNotifications} unreadCount={unreadNotifications} />
+          )}
         </>
       }
     >

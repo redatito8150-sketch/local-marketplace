@@ -7,14 +7,19 @@ import { getOrderForAdmin } from "@/lib/data/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
 import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
-import { getRequestUser } from "@/lib/supabase/requestUser";
-import { readOrderIdempotency, storeOrderIdempotency } from "@/lib/orders/idempotency";
+import { getRequestIdentity, getRequestUser } from "@/lib/supabase/requestUser";
+import {
+  buildOrderIdempotencyActor,
+  hashOrderRequest,
+  parseOrderIdempotencyKey,
+} from "@/lib/orders/idempotency";
 import { getOrdersForUser } from "@/lib/data/orders";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isVariantPurchasable, calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getVariantEffectivePrice } from "@/lib/pricing";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
+import { isPublishDateLive } from "@/lib/newArrivals";
 import type { ShippingSettingsContent } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -38,15 +43,29 @@ interface RpcOrderItem {
   image: string;
 }
 
+interface PlaceOrderResult {
+  order_group_id: string;
+  orders: { order_id: string; order_number: string }[];
+  replayed?: boolean;
+}
+
+function orderApiResponse(result: PlaceOrderResult, replayed = false) {
+  return {
+    orderNumbers: result.orders.map((order) => order.order_number),
+    orderGroupId: result.order_group_id,
+    ...(replayed || result.replayed ? { replayed: true } : {}),
+  };
+}
+
 export async function POST(request: NextRequest) {
-  const idempotencyKey = request.headers.get("idempotency-key");
-  const previousResult = readOrderIdempotency(idempotencyKey);
-  if (previousResult) {
-    return NextResponse.json({
-      orderNumbers: previousResult.orderNumbers,
-      orderGroupId: previousResult.orderGroupId,
-      replayed: true,
-    });
+  const idempotencyKey = parseOrderIdempotencyKey(
+    request.headers.get("idempotency-key")
+  );
+  if (!idempotencyKey) {
+    return NextResponse.json(
+      { error: "A valid Idempotency-Key header is required" },
+      { status: 400 }
+    );
   }
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_ORDER_BODY_BYTES) {
@@ -68,6 +87,44 @@ export async function POST(request: NextRequest) {
   }
   const { items, shipping, couponCode, addressId } = validation.value;
 
+  const identity = await getRequestIdentity(request);
+  if (identity.status === "invalid_credentials") {
+    return NextResponse.json(
+      { error: "Your session has expired. Sign in again before placing the order." },
+      { status: 401 }
+    );
+  }
+  const user = identity.status === "authenticated" ? identity.user : null;
+  const idempotencyActor = buildOrderIdempotencyActor(user?.id ?? null, shipping.email);
+  const requestHash = hashOrderRequest(validation.value);
+
+  const { data: replayedResult, error: replayLookupError } = await supabaseAdmin.rpc(
+    "get_order_idempotency_result",
+    {
+      p_actor_key: idempotencyActor,
+      p_idempotency_key: idempotencyKey,
+      p_request_hash: requestHash,
+    }
+  );
+  if (replayLookupError) {
+    if (replayLookupError.message.startsWith("IDEMPOTENCY_CONFLICT")) {
+      return NextResponse.json(
+        { error: "This checkout key was already used with different order details." },
+        { status: 409 }
+      );
+    }
+    logError("Order idempotency lookup failed", replayLookupError.message);
+    return NextResponse.json(
+      { error: "We couldn't verify this checkout attempt. Please try again." },
+      { status: 500 }
+    );
+  }
+  if (replayedResult) {
+    return NextResponse.json(
+      orderApiResponse(replayedResult as PlaceOrderResult, true)
+    );
+  }
+
   // Re-fetch prices/details/variants from the DB rather than trusting
   // client-submitted values — the client only sends product id +
   // size/color/quantity, never a price or variant id we'd act on directly.
@@ -75,7 +132,7 @@ export async function POST(request: NextRequest) {
   const [{ data: products, error: productsError }, variantsByProduct] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, image, status, paused_by_brand, default_low_stock_threshold")
+      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, brands!inner(is_active)")
       .in("id", productIds),
     getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
       logError("Order variant lookup failed", error.message);
@@ -101,7 +158,14 @@ export async function POST(request: NextRequest) {
 
   for (const item of items) {
     const product = productById.get(item.productId);
-    if (!product || product.status !== "published" || product.paused_by_brand) {
+    const brand = product?.brands as unknown as { is_active: boolean } | null;
+    if (
+      !product ||
+      product.status !== "published" ||
+      product.paused_by_brand ||
+      !isPublishDateLive(product.publish_date) ||
+      !brand?.is_active
+    ) {
       return NextResponse.json(
         { error: "An item in your cart is no longer available" },
         { status: 400 }
@@ -174,10 +238,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: publicMessage }, { status });
   }
 
-  // Look up the signed-in user (if any) via the cookie-backed server client;
-  // guest checkout stays supported with a null user_id.
-  const user = await getRequestUser(request);
-
   // A client-supplied addressId is only ever a traceability hint — never
   // trust it blindly. Confirm it actually belongs to the signed-in user
   // before passing it through, otherwise silently drop it (order still
@@ -217,6 +277,9 @@ export async function POST(request: NextRequest) {
     p_shipping_governorate: shipping.governorate,
     p_user_id: user?.id ?? null,
     p_items: rpcItems,
+    p_idempotency_key: idempotencyKey,
+    p_idempotency_actor: idempotencyActor,
+    p_request_hash: requestHash,
     p_coupon_code: couponCode?.trim() || null,
     p_address_id: verifiedAddressId,
     p_flat_shipping_fee_egp: shippingSettings.flatDeliveryFeeEgp,
@@ -238,6 +301,12 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (message.startsWith("IDEMPOTENCY_CONFLICT")) {
+      return NextResponse.json(
+        { error: "This checkout key was already used with different order details." },
+        { status: 409 }
+      );
+    }
     logError("Order placement failed", message || "Unknown database error");
     return NextResponse.json(
       { error: "We couldn't place your order. Please try again." },
@@ -245,7 +314,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const createdOrders: { order_id: string; order_number: string }[] = result?.orders ?? [];
+  const placeOrderResult = result as PlaceOrderResult | null;
+  if (placeOrderResult?.replayed) {
+    return NextResponse.json(orderApiResponse(placeOrderResult, true));
+  }
+
+  const createdOrders = placeOrderResult?.orders ?? [];
 
   await notify(
     "order_created",
@@ -254,7 +328,7 @@ export async function POST(request: NextRequest) {
     {
       entityId: createdOrders[0]?.order_number,
       entityIdLabel: "Order ID",
-      actorLabel: `${shipping.firstName} ${shipping.lastName} (${shipping.email})`,
+      actorLabel: user ? `customer:${user.id}` : "guest customer",
       detailLabel: "Items",
     }
   );
@@ -297,9 +371,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const orderNumbers = createdOrders.map((o) => o.order_number);
-  if (orderNumbers.length > 0 && result?.order_group_id) {
-    storeOrderIdempotency(idempotencyKey, { orderNumbers, orderGroupId: result.order_group_id });
-  }
-  return NextResponse.json({ orderNumbers, orderGroupId: result?.order_group_id });
+  return NextResponse.json(orderApiResponse(placeOrderResult!));
 }

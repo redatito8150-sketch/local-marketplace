@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logError } from "@/lib/errorLog";
 
 export async function GET(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }

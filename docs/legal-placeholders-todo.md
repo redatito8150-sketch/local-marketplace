@@ -14,7 +14,7 @@ one-off items at the bottom, directly in `content/legal/privacy.ts` /
 `content/legal/terms.ts`) and the fix applies everywhere that token is used
 — no other file needs to change.
 
-## Build-time placeholder check (currently non-blocking — the site is still under development)
+## Build-time placeholder check (Production is fail-closed)
 
 `npm run build` (exactly what Vercel runs) runs
 `scripts/validate-legal-content.mjs` first. That script scans the actual
@@ -24,32 +24,21 @@ for every `[BRACKET_TOKEN]` placeholder still present, **not** just the
 ones registered in `config/legal.ts` — so a stray placeholder added later
 directly in `content/legal/*.ts` is caught too.
 
-**By default this never fails the build** — local builds, Vercel Preview,
-and real Vercel Production builds all succeed regardless of how many
-placeholders remain. It only prints a clear, itemized warning listing
-every unresolved token, every time. Nothing is silently skipped and
-nothing is invented to make the warning go away.
+Local and Vercel Preview builds print a clear itemized warning so development
+can continue. A Vercel Production build fails automatically while any token
+remains; no environment opt-in is required. `LEGAL_CONTENT_STRICT=true` can
+also enable the same failure in a non-Production CI or staging build.
 
-### Future strict mode — enable before the official public launch
-
-Set the environment variable **`LEGAL_CONTENT_STRICT=true`** wherever the
-build runs (e.g. add it as a Vercel *Production-only* environment
-variable once the site is ready to go live) to switch this from a warning
-into a hard failure: the build exits non-zero with a message listing
-every unresolved token, and nothing partial gets deployed. No code change
-is needed to enable it — the check itself already exists and is already
-covered by tests.
-
-- **Every field currently in this document would block that strict-mode
-  gate once enabled** — all 12 tokens in the table below,
+- **Every field currently in this document blocks the Production gate** —
+  all 12 tokens in the table below,
   `EFFECTIVE_DATE`/`LAST_UPDATED_DATE`, and the two one-off review-flag
   tokens. As of this writing that's 16 unresolved tokens.
 - Covered by `tests/legalContentValidation.test.ts`: the pure scanner
   (synthetic fixtures), an assertion that the real, current content is
   correctly detected as not-yet-production-ready, and integration tests
   that actually spawn `scripts/validate-legal-content.mjs` to confirm it
-  exits `0` by default (including when simulating a real Production
-  build) and exits non-zero only under `LEGAL_CONTENT_STRICT=true`.
+  exits `0` for local/Preview builds and exits non-zero for a simulated
+  Production build or when `LEGAL_CONTENT_STRICT=true` is set.
 
 ## Registered in config/legal.ts
 

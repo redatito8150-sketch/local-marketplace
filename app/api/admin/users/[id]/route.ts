@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
+import {
+  canActorManage,
+  getUserMaxRank,
+  requirePermission,
+} from "@/lib/supabase/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -17,10 +21,11 @@ type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const admin = await requireAdminUser();
-  if (!admin) {
+  const auth = await requirePermission("manage_roles");
+  if (!auth) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
+  const admin = auth.user;
 
   // Defense-in-depth against a compromised admin session scripting rapid
   // role changes across many accounts — this is the route that grants/
@@ -41,11 +46,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: "access is required" }, { status: 400 });
   }
 
-  const staffCheck = await requireStaffRole("admin");
-  if (!staffCheck) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
-
   const access = body.access as AccessLevel;
   if (!ACCESS_LEVELS.includes(access)) {
     return NextResponse.json({ error: "Invalid access level" }, { status: 400 });
@@ -55,6 +55,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json(
       { error: "You can't remove your own admin access" },
       { status: 400 }
+    );
+  }
+
+  const [actorRank, targetRank] = await Promise.all([
+    getUserMaxRank(admin.id),
+    getUserMaxRank(params.id),
+  ]);
+  if (!canActorManage(actorRank, targetRank)) {
+    return NextResponse.json(
+      { error: "You cannot change access for an equal or higher-ranked account" },
+      { status: 403 }
     );
   }
 

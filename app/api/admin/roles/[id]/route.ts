@@ -19,6 +19,10 @@ const VALID_PERMISSION_KEYS: PermissionKey[] = [
   "manage_site_content",
   "manage_users",
   "manage_roles",
+  "view_analytics",
+  "view_audit_log",
+  "view_admin_notifications",
+  "manage_settings",
 ];
 
 // Editing a role's own name/description/color is always allowed (even for

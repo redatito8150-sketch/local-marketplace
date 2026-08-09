@@ -171,7 +171,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           "Your Google profile photo is used only as a fallback: if you've manually uploaded a photo in Mahaly, that photo is always shown instead, and is never replaced by your Google photo — including on later Google sign-ins.",
           "We never receive your Google password.",
           "Google-derived information is not used for advertising unrelated to Mahaly, and won't be, unless we disclose that clearly and obtain any consent required beforehand.",
-          "You can disconnect Google sign-in or request deletion of your account information at any time — see \"Account Deletion\" below.",
+          "A self-service Google identity disconnect is not currently available. You can stop using Google to sign in, or request deletion of your Mahaly account information at any time — see \"Account Deletion\" below.",
         ],
       },
     ],

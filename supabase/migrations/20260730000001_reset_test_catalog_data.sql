@@ -1,3 +1,16 @@
+/*
+MIGRATION SAFETY NOTICE (2026-08-09)
+
+This historical data-reset migration is permanently disabled. A versioned
+migration must be safe to replay against every environment, so catalog/data
+resets do not belong in the migration chain. If test data needs to be reset,
+do it only in an explicitly disposable local/development database through a
+separately guarded operator workflow. No executable reset script is kept in
+this repository on purpose.
+
+The original body is retained below only as inert historical documentation.
+Nothing inside this block is executable SQL.
+
 -- ============================================================================
 -- Reset test catalog data (dev/staging only)
 --
@@ -134,3 +147,10 @@ commit;
 --   select count(*) from order_items where product_id is not null; -- expect 0
 --                                                        -- (their products were just deleted, set null via FK)
 -- ============================================================================
+*/
+
+do $disabled_historical_catalog_reset$
+begin
+  raise notice 'Historical catalog reset migration is disabled; no data was changed.';
+end
+$disabled_historical_catalog_reset$;

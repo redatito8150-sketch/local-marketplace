@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AccessibilityInfo,
   Animated,
@@ -48,10 +48,12 @@ function startLoop(
 export function LivingBackground() {
   const { width, height } = useWindowDimensions();
   const [reduceMotion, setReduceMotion] = useState(false);
-  const drift = useRef(new Animated.Value(0)).current;
-  const boat = useRef(new Animated.Value(0)).current;
-  const breeze = useRef(new Animated.Value(0)).current;
-  const ripple = useRef(new Animated.Value(0)).current;
+  // Lazy state creates each native-driver value exactly once without reading a
+  // ref during render (which React Compiler correctly rejects).
+  const [drift] = useState(() => new Animated.Value(0));
+  const [boat] = useState(() => new Animated.Value(0));
+  const [breeze] = useState(() => new Animated.Value(0));
+  const [ripple] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     let mounted = true;

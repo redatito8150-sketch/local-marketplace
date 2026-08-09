@@ -156,6 +156,19 @@ function extractEntityName(before: unknown, after: unknown): string | null {
   return null;
 }
 
+const SENSITIVE_AUDIT_KEY = /(password|secret|token|otp|email|phone|address|document|shipping|billing|internal_notes)/i;
+
+function redactAuditSnapshot(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactAuditSnapshot);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+      key,
+      SENSITIVE_AUDIT_KEY.test(key) ? "[redacted]" : redactAuditSnapshot(nested),
+    ])
+  );
+}
+
 // Mirrors notify()'s fire-and-forget contract in spirit — recording an
 // audit entry is supplementary to the real write it's attached to, so a
 // failure here is logged, never thrown, and never blocks that write. Still
@@ -175,6 +188,8 @@ export async function logAudit(entry: {
   // that knows which brand it's touching. Never backfilled onto history.
   brandSlug?: string;
 }): Promise<string | null> {
+  const safeBefore = redactAuditSnapshot(entry.before);
+  const safeAfter = redactAuditSnapshot(entry.after);
   const { data, error } = await supabaseAdmin
     .from("audit_logs")
     .insert({
@@ -183,8 +198,8 @@ export async function logAudit(entry: {
       entity_type: entry.entityType,
       entity_id: entry.entityId,
       action: entry.action,
-      before_value: entry.before ?? null,
-      after_value: entry.after ?? null,
+      before_value: safeBefore ?? null,
+      after_value: safeAfter ?? null,
       brand_slug: entry.brandSlug ?? null,
     })
     .select("id")
@@ -197,8 +212,8 @@ export async function logAudit(entry: {
   // Real field-level detail (what changed, from what, to what) instead of
   // just a headline — same diff the website's Audit Log page renders, so
   // Discord and the site never disagree about what actually happened.
-  const entityName = extractEntityName(entry.before, entry.after);
-  const diff = diffEntitySnapshots(entry.before, entry.after);
+  const entityName = extractEntityName(safeBefore, safeAfter);
+  const diff = diffEntitySnapshots(safeBefore, safeAfter);
   const entityUrl = getEntityAdminUrl(entry.entityType, entry.entityId);
   await sendToDiscord(CHANNEL_BY_ENTITY[entry.entityType], {
     description: buildDiscordDescription({
@@ -206,7 +221,7 @@ export async function logAudit(entry: {
       subline: entityName ?? undefined,
       meta: [
         { label: `${capitalize(entry.entityType)} ID`, value: entry.entityId },
-        { label: "User", value: entry.actorLabel },
+        { label: "Actor ID", value: entry.actorId ?? "system" },
         { label: "Brand", value: entry.brandSlug ?? "" },
       ],
       detailLabel: "What changed",

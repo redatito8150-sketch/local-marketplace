@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { validateProductInput, type ProductInput } from "@/lib/admin/productValidation";
 import { notify } from "@/lib/notify";
@@ -37,7 +37,7 @@ function randomSuffix(): string {
 // (isImpersonating) never creates on the brand's behalf — only the real
 // owner/assistant does.
 export async function POST(request: NextRequest) {
-  const owner = await requireBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
+  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner || owner.isImpersonating || !owner.brandId) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
