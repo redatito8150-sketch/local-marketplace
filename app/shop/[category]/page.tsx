@@ -56,7 +56,7 @@ export default async function CategoryPage(
 
   return (
     <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
-      <Header />
+      <Header overlayHero />
       <CollectionHero products={products} config={COLLECTION_PAGE_CONFIGS[content.slug]} />
       <CategoryShoppingArea
         filterGroups={buildDynamicFilterGroups(products)}

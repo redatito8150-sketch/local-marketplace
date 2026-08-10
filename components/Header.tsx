@@ -29,7 +29,7 @@ const MOBILE_NAV_LINKS = [
   { label: "About", href: "#about" },
 ];
 
-export default function Header({ warmTransparent = false }: { warmTransparent?: boolean }) {
+export default function Header({ overlayHero = false }: { overlayHero?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
   const [headerVisible, setHeaderVisible] = useState(true);
   const [activeAnchor, setActiveAnchor] = useState("");
@@ -77,8 +77,8 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
       lastScrollY.current = currentScrollY;
     };
 
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    document.addEventListener("scroll", onScroll, { passive: true });
+    return () => document.removeEventListener("scroll", onScroll);
   }, []);
 
   // Escape and click-outside close the mobile menu, same as BrandsMegaMenu.
@@ -104,13 +104,15 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
     <header
       ref={mobileMenuRef}
       className={`sticky top-0 z-50 border-b transform-gpu transition-[transform,background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out ${
+        overlayHero ? "-mb-[68px]" : ""
+      } ${
         headerVisible ? "translate-y-0" : "-translate-y-full"
       } ${
         !scrolled
-          ? "border-transparent bg-transparent"
-          : warmTransparent
-            ? "border-white/25 bg-[#d9c7b4]/82 shadow-soft backdrop-blur-xl"
-            : "border-black/5 bg-[#FAFAF7]/88 shadow-soft backdrop-blur-xl"
+          ? overlayHero
+            ? "border-white/35 bg-white/30 shadow-[0_8px_28px_rgba(36,36,36,0.06)] backdrop-blur-xl"
+            : "border-transparent bg-transparent"
+          : "border-black/5 bg-[#FAFAF7]/88 shadow-soft backdrop-blur-xl"
       }`}
     >
       <div className="mx-auto flex h-[68px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">

@@ -22,7 +22,7 @@ export default async function BrandsDirectoryPage() {
 
   return (
     <main className="flex min-h-screen flex-col [&>*]:w-full overflow-hidden bg-cream text-ink">
-      <Header warmTransparent />
+      <Header />
 
       <section className="mx-auto max-w-screen2xl px-4 pb-8 pt-8 sm:px-6 lg:px-12 lg:pb-10 lg:pt-10">
         <div className="grid gap-6 lg:grid-cols-[0.78fr_1.42fr] lg:items-stretch">
