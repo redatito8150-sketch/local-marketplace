@@ -101,20 +101,40 @@ function runValidateScript(env: Record<string, string>) {
 }
 
 test("validate-legal-content.mjs succeeds by default despite unresolved placeholders", () => {
-  const result = runValidateScript({ VERCEL_ENV: "", LEGAL_CONTENT_STRICT: "" });
+  const result = runValidateScript({ VERCEL_ENV: "", LEGAL_CONTENT_STRICT: "", LEGAL_CONTENT_ALLOW_UNRESOLVED: "" });
   assert.equal(result.status, 0);
   assert.match(result.stderr + result.stdout, /unresolved legal placeholder/i);
   assert.match(result.stderr + result.stdout, /not blocking this build/i);
 });
 
 test("validate-legal-content.mjs blocks a simulated Production build", () => {
-  const result = runValidateScript({ VERCEL_ENV: "production", LEGAL_CONTENT_STRICT: "" });
+  const result = runValidateScript({ VERCEL_ENV: "production", LEGAL_CONTENT_STRICT: "", LEGAL_CONTENT_ALLOW_UNRESOLVED: "" });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /BUILD BLOCKED/);
 });
 
 test("validate-legal-content.mjs can enforce the gate outside Production", () => {
-  const result = runValidateScript({ LEGAL_CONTENT_STRICT: "true" });
+  const result = runValidateScript({ LEGAL_CONTENT_STRICT: "true", LEGAL_CONTENT_ALLOW_UNRESOLVED: "" });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /BUILD BLOCKED/);
+});
+
+test("validate-legal-content.mjs allows an explicit development-only Production override", () => {
+  const result = runValidateScript({
+    VERCEL_ENV: "production",
+    LEGAL_CONTENT_STRICT: "",
+    LEGAL_CONTENT_ALLOW_UNRESOLVED: "true",
+  });
+  assert.equal(result.status, 0);
+  assert.match(result.stderr + result.stdout, /EXPLICIT DEVELOPMENT OVERRIDE ACTIVE/i);
+});
+
+test("LEGAL_CONTENT_STRICT still blocks when the development override is present", () => {
+  const result = runValidateScript({
+    VERCEL_ENV: "production",
+    LEGAL_CONTENT_STRICT: "true",
+    LEGAL_CONTENT_ALLOW_UNRESOLVED: "true",
+  });
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /BUILD BLOCKED/);
 });

@@ -40,6 +40,13 @@ also enable the same failure in a non-Production CI or staging build.
   exits `0` for local/Preview builds and exits non-zero for a simulated
   Production build or when `LEGAL_CONTENT_STRICT=true` is set.
 
+For a temporary development deployment only, set
+`LEGAL_CONTENT_ALLOW_UNRESOLVED=true` in that Vercel environment. This keeps
+the placeholders visibly marked and prints a prominent build warning; it is
+not legal launch approval. Remove the override before the real public launch.
+`LEGAL_CONTENT_STRICT=true` always wins and still blocks the build even if the
+development override is present.
+
 ## Registered in config/legal.ts
 
 | Token | Used in | What's needed |
