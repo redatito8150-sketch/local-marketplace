@@ -57,8 +57,8 @@ export default function ReviewFilters({
         <div className="absolute left-0 top-[calc(100%+8px)] z-20 w-48 space-y-3 rounded-xl border border-[#e1d7ce] bg-white p-4 shadow-xl">
           <label className="flex items-center gap-2 text-xs text-[#5f554f]"><input type="checkbox" name="photos" value="1" defaultChecked={values.photos === "1"} />With photos</label>
           <label className="flex items-center gap-2 text-xs text-[#5f554f]"><input type="checkbox" name="replied" value="1" defaultChecked={values.replied === "1"} />Brand replied</label>
-          <button className="min-h-9 w-full rounded-lg bg-[#8f2634] px-3 text-xs font-bold text-white">Apply</button>
-          <Link href={basePath} className="block text-center text-xs font-semibold text-[#8f2634]">Reset filters</Link>
+          <button className="min-h-9 w-full rounded-lg bg-[#AC3935] px-3 text-xs font-bold text-white">Apply</button>
+          <Link href={basePath} className="block text-center text-xs font-semibold text-[#AC3935]">Reset filters</Link>
         </div>
       </details>
 

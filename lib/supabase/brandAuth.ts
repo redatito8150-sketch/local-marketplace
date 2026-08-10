@@ -27,7 +27,7 @@ export interface BrandOwnerContext {
   setupStatus: "setup_required" | "in_progress" | "ready_for_review" | "complete" | null;
   isActive: boolean;
   // Reuses brands.is_mahaly_partner (order-splitting/shipping-pool flag) —
-  // a partner brand's stock physically lives in Mahaly's own warehouse, so
+  // a partner brand's stock physically lives in Zakhnook's own warehouse, so
   // this also gates the Local Warehouse nav/API surface (see
   // supabase/migrations/20260809000004_local_warehouse_transfers.sql).
   isMahalyPartner: boolean;

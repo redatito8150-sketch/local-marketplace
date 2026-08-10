@@ -10,8 +10,8 @@ html {
 
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-  background-color: #fafaf8;
-  color: #161513;
+  background-color: #fafaf7;
+  color: #242424;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -116,8 +116,8 @@ body {
 }
 
 ::selection {
-  background-color: #161513;
-  color: #fafaf8;
+  background-color: #242424;
+  color: #FAFAF7;
 }
 
 /* thin custom scrollbar for horizontal galleries */
@@ -151,7 +151,7 @@ body {
   50% { transform: translate3d(-12px, 16px, 0) rotate(8deg); }
 }
 
-/* A slow glint on the Mahaly Partner badge (components/shared/PartnerBadge.tsx) */
+/* A slow glint on the Zakhnook Partner badge (components/shared/PartnerBadge.tsx) */
 @keyframes partner-shine {
   0%, 100% { filter: drop-shadow(0 0 0 rgba(127, 29, 29, 0)); transform: scale(1); }
   50% { filter: drop-shadow(0 0 3px rgba(127, 29, 29, 0.65)); transform: scale(1.08); }
@@ -169,17 +169,17 @@ body {
 
 /* Customer account themes are intentionally scoped to /account only. */
 .account-theme {
-  --account-bg: #f7f0e5;
-  --account-surface: #fffaf2;
-  --account-surface-muted: #efe3d3;
-  --account-text: #3b2d27;
-  --account-text-muted: #75665d;
-  --account-border: #dfd0bd;
-  --account-accent: #a65346;
-  --account-accent-hover: #8f443a;
-  --account-accent-soft: #ead2c8;
-  --account-accent-foreground: #fffaf5;
-  --account-selected: #eadac8;
+  --account-bg: #fafaf7;
+  --account-surface: #ffffff;
+  --account-surface-muted: #efede9;
+  --account-text: #242424;
+  --account-text-muted: #686866;
+  --account-border: #deddd8;
+  --account-accent: #ac3935;
+  --account-accent-hover: #8b2e2b;
+  --account-accent-soft: #f0d8d7;
+  --account-accent-foreground: #fafaf7;
+  --account-selected: #f2e4e3;
   --account-success: #56715f;
   --account-warning: #a66f2f;
   --account-danger: #a3483e;
@@ -188,14 +188,14 @@ body {
 }
 
 .account-theme[data-account-theme="soft_rose"] {
-  --account-bg: #f9eeed;
+  --account-bg: #fafaf7;
   --account-surface: #fff9f7;
   --account-surface-muted: #f1dedd;
-  --account-text: #452d31;
+  --account-text: #242424;
   --account-text-muted: #80676b;
   --account-border: #e3c9c7;
-  --account-accent: #8d4650;
-  --account-accent-hover: #743842;
+  --account-accent: #ac3935;
+  --account-accent-hover: #8b2e2b;
   --account-accent-soft: #ebcfd2;
   --account-accent-foreground: #fff9f8;
   --account-selected: #efdadd;
@@ -206,14 +206,14 @@ body {
 }
 
 .account-theme[data-account-theme="olive_stone"] {
-  --account-bg: #efeee7;
+  --account-bg: #fafaf7;
   --account-surface: #faf9f3;
   --account-surface-muted: #e3e2d6;
-  --account-text: #31362e;
+  --account-text: #242424;
   --account-text-muted: #6c7165;
   --account-border: #d1d1c3;
-  --account-accent: #5d6652;
-  --account-accent-hover: #4b5442;
+  --account-accent: #ac3935;
+  --account-accent-hover: #8b2e2b;
   --account-accent-soft: #d6d9c9;
   --account-accent-foreground: #fbfaf5;
   --account-selected: #dde0d2;
@@ -235,17 +235,17 @@ body {
  * storefront keep their own visual systems.
  */
 .admin-theme {
-  --admin-bg: #f5efe6;
-  --admin-surface: #fffaf3;
-  --admin-surface-muted: #eee4d7;
-  --admin-sidebar: #fbf5ec;
-  --admin-border: #ddd0bf;
-  --admin-text: #332c27;
-  --admin-text-muted: #766b62;
-  --admin-primary: #9d4036;
-  --admin-primary-hover: #83342d;
-  --admin-primary-soft: #efd8d2;
-  --admin-selected: #eadac9;
+  --admin-bg: #fafaf7;
+  --admin-surface: #ffffff;
+  --admin-surface-muted: #efede9;
+  --admin-sidebar: #fafaf7;
+  --admin-border: #deddd8;
+  --admin-text: #242424;
+  --admin-text-muted: #686866;
+  --admin-primary: #ac3935;
+  --admin-primary-hover: #8b2e2b;
+  --admin-primary-soft: #f0d8d7;
+  --admin-selected: #f2e4e3;
   --admin-success: #607765;
   --admin-warning: #ac7535;
   --admin-danger: #a44b41;

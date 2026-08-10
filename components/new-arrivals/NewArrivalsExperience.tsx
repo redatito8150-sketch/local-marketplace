@@ -283,7 +283,7 @@ export default function NewArrivalsExperience({ products }: { products: Product[
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-32 bg-gradient-to-b from-transparent to-[#f7f3ee]" />
         <div className="relative mx-auto max-w-[1600px]">
           <div className="relative z-30 flex flex-col items-center px-7 pb-1 pt-11 text-center sm:px-12 sm:pt-12 lg:pt-14">
-            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#cf1014] sm:text-[11px]">New on Mahaly</motion.p>
+            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#cf1014] sm:text-[11px]">New on Zakhnook</motion.p>
             <motion.h1 id="new-arrivals-title" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65, delay: 0.06, ease: [0.22, 1, 0.36, 1] }} className="font-serif text-[39px] font-semibold leading-[1.06] tracking-[-0.04em] text-[#12100f] sm:text-[48px] lg:text-[54px]">Just landed, locally made.</motion.h1>
             <p className="mt-3 max-w-[660px] text-[13px] leading-6 text-[#5f5a56] sm:text-[14px]">Fresh drops from Egypt&apos;s most exciting independent brands — updated every week.</p>
             <Link href="#more-to-explore" className="group mt-3 inline-flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.04em] text-[#cc1115]">The everyday edit <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" strokeWidth={1.8} /></Link>
@@ -294,7 +294,7 @@ export default function NewArrivalsExperience({ products }: { products: Product[
             ) : (
               <div className="flex min-h-[320px] flex-col items-center justify-center gap-2 px-6 py-16 text-center sm:min-h-[420px]">
                 <p className="font-serif text-2xl text-[#12100f]">New drops are on the way.</p>
-                <p className="max-w-sm text-[13px] text-[#5f5a56]">Check back soon — this space will feature the newest pieces from Mahaly&apos;s independent brands.</p>
+                <p className="max-w-sm text-[13px] text-[#5f5a56]">Check back soon — this space will feature the newest pieces from Zakhnook&apos;s independent brands.</p>
               </div>
             )}
           </div>

@@ -29,7 +29,7 @@ export default function StarRating({
           key={i}
           className={SIZE_CLASSES[size]}
           strokeWidth={0}
-          fill={i < filled ? "#161513" : "#E7E4DE"}
+          fill={i < filled ? "#242424" : "#E7E4DE"}
         />
       ))}
     </div>

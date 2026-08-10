@@ -25,7 +25,7 @@ test("saved variant quantity is never written by product persistence", async () 
   const existingUpdate = source.slice(source.indexOf("if (existingId)"), source.indexOf("variantIds.push(existingId)"));
   assert.doesNotMatch(existingUpdate, /quantity:\s*edit\.quantity/);
   assert.match(source, /create_variant_with_opening_stock/);
-  // Mahaly Partner brands force this to 0 (see forceZeroOpeningStock) —
+  // Zakhnook Partner brands force this to 0 (see forceZeroOpeningStock) —
   // everyone else still passes the editor's own Opening Stock value.
   assert.match(source, /p_opening_stock:.*edit\.openingStock/);
 });

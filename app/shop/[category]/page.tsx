@@ -35,7 +35,7 @@ export async function generateMetadata(
   if (!content) return {};
   const hero = await getHero(content);
   return {
-    title: `${hero.title} — Mahaly`,
+    title: `${hero.title} — Zakhnook`,
     description: hero.description,
   };
 }
@@ -55,7 +55,7 @@ export default async function CategoryPage(
   ]);
 
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full bg-white">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <CollectionHero products={products} config={COLLECTION_PAGE_CONFIGS[content.slug]} />
       <CategoryShoppingArea

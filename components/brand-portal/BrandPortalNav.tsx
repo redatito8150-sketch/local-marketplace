@@ -23,7 +23,7 @@ export default function BrandPortalNav({ showPageContent = true, showWarehouse =
   const pathname = usePathname();
   const brand = useSearchParams().get("brand");
   const withBrand = (href: string) => (brand ? `${href}?brand=${brand}` : href);
-  // Local Warehouse only exists for Mahaly Partner brands — everyone else's
+  // Local Warehouse only exists for Zakhnook Partner brands — everyone else's
   // catalog stock is entirely self-managed, so the nav link (and the page
   // itself) would just be dead weight for them.
   let groups = showWarehouse
@@ -59,7 +59,7 @@ export default function BrandPortalNav({ showPageContent = true, showWarehouse =
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
                   title={collapsed ? item.label : undefined}
-                  className={`group flex min-h-10 items-center rounded-xl py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${collapsed ? "justify-center px-2" : "gap-3 px-3"} ${active ? "bg-[#3b332d] text-white shadow-sm" : "text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27]"}`}
+                  className={`group flex min-h-10 items-center rounded-xl py-2.5 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${collapsed ? "justify-center px-2" : "gap-3 px-3"} ${active ? "bg-[#3b332d] text-white shadow-sm" : "text-[#75685f] hover:bg-[#f1eae2] hover:text-[#242424]"}`}
                 >
                   <item.icon className={`h-[17px] w-[17px] ${active ? "text-white" : "text-[#a29489] group-hover:text-[#574b43]"}`} strokeWidth={1.8} />
                   {!collapsed && item.label}
@@ -70,7 +70,7 @@ export default function BrandPortalNav({ showPageContent = true, showWarehouse =
         </div>
       ))}
       <div className="border-t border-[#e3dcd3] pt-4">
-        <Link href="/" aria-label="Storefront" title={collapsed ? "Storefront" : undefined} className={`flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[#75685f] hover:bg-[#f1eae2] hover:text-[#302b27] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
+        <Link href="/" aria-label="Storefront" title={collapsed ? "Storefront" : undefined} className={`flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[#75685f] hover:bg-[#f1eae2] hover:text-[#242424] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
           <ArrowLeft className="h-[17px] w-[17px] text-[#a29489]" /> {!collapsed && "Storefront"}
         </Link>
       </div>

@@ -5,7 +5,7 @@ import Image from "next/image";
 // audit: public/images only has product/category photography), and the
 // task calls for a CSS composition rather than an external image
 // dependency. Built from the existing cream/beige/mahalyred-soft palette
-// plus the real logo mark, so it still reads as "Mahaly" rather than a
+// plus the real logo mark, so it still reads as "Zakhnook" rather than a
 // generic gradient block.
 export default function LegalArtwork() {
   return (
@@ -19,7 +19,7 @@ export default function LegalArtwork() {
       <div className="absolute inset-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 rounded-xl2 bg-card/90 px-10 py-8 shadow-soft">
           <Image src="/logo.png" alt="" width={40} height={40} className="opacity-90" />
-          <span className="font-serif text-[15px] tracking-tightest text-ink/70">Mahaly</span>
+          <span className="font-serif text-[15px] tracking-tightest text-ink/70">Zakhnook</span>
         </div>
       </div>
     </div>

@@ -174,7 +174,7 @@ export default function FoundersEditor({ initial }: { initial: BrandFounder[] })
           <button
             type="button"
             onClick={() => startEdit(-1)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#c9b6a6] px-3 py-1.5 text-[11px] font-semibold text-[#8f2634]"
+            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#c9b6a6] px-3 py-1.5 text-[11px] font-semibold text-[#AC3935]"
           >
             <Plus className="h-3 w-3" strokeWidth={2} /> Add founder
           </button>
@@ -200,7 +200,7 @@ function FounderRowEditor({
   error: string;
 }) {
   return (
-    <div className="rounded-lg border-2 border-[#8f2634]/40 bg-white p-2.5">
+    <div className="rounded-lg border-2 border-[#AC3935]/40 bg-white p-2.5">
       <div className="flex flex-wrap gap-1.5">
         <input
           value={draft.name}
@@ -209,7 +209,7 @@ function FounderRowEditor({
           maxLength={80}
           disabled={saving}
           autoFocus
-          className="min-w-0 flex-1 rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#8f2634]"
+          className="min-w-0 flex-1 rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#AC3935]"
         />
         <input
           value={draft.title}
@@ -217,7 +217,7 @@ function FounderRowEditor({
           placeholder="Title (e.g. Founder)"
           maxLength={40}
           disabled={saving}
-          className="w-32 rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#8f2634]"
+          className="w-32 rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#AC3935]"
         />
       </div>
       <div className="mt-1.5 flex items-center gap-2">

@@ -8,7 +8,7 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        cream: "#FAFAF8",
+        cream: "#FAFAF7",
         stone: {
           25: "#FAFAF9",
           50: "#F6F5F3",
@@ -21,20 +21,18 @@ const config: Config = {
           200: "#E1D6C2",
         },
         ink: {
-          DEFAULT: "#161513",
-          soft: "#2B2A27",
+          DEFAULT: "#242424",
+          soft: "#4A4A48",
         },
-        // Mahaly brand red — the owner's official palette value (supersedes
-        // an earlier logo-pixel-sampled guess). Main-site only (Header/
-        // Footer/homepage). Deliberately a separate token from accentred
-        // below — the brand-page palette is a different design brief and
-        // must not be merged with this one.
+        // Zakhnook's primary identity color. The legacy token name is kept
+        // internally so existing components inherit the new palette without
+        // a risky class-name migration.
         mahalyred: {
-          DEFAULT: "#B71F1A", // --color-primary
-          dark: "#941713", // --color-primary-hover
-          soft: "#E8B8B2", // --color-primary-soft
+          DEFAULT: "#AC3935", // --color-primary
+          dark: "#8B2E2B", // --color-primary-hover
+          soft: "#E5B8B6", // --color-primary-soft
         },
-        // Owner-supplied Mahaly design-system colors not covered by the
+        // Owner-supplied Zakhnook design-system colors not covered by the
         // existing cream/stone/beige/ink group above. Added alongside,
         // not replacing those — a full sitewide migration to these is a
         // separate, bigger visual decision, not done as part of this add.
@@ -51,7 +49,7 @@ const config: Config = {
           DEFAULT: "#103B5C",
           dark: "#0C2E47",
         },
-        accentred: "#D7262E",
+        accentred: "#AC3935",
         charcoal: "#111111",
         muted: "#6B6B6B",
         hairline: "#E8E8E8",

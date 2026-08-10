@@ -51,7 +51,7 @@ test("Privacy Policy ids do not collide with Terms & Conditions ids", () => {
 test("isUnresolvedPlaceholder recognizes bracketed tokens and rejects normal text", () => {
   assert.equal(isUnresolvedPlaceholder("[LEGAL_ENTITY_NAME]"), true);
   assert.equal(isUnresolvedPlaceholder("[DATA_SALE_POLICY_PENDING_CONFIRMATION]"), true);
-  assert.equal(isUnresolvedPlaceholder("Mahaly"), false);
+  assert.equal(isUnresolvedPlaceholder("Zakhnook"), false);
   assert.equal(isUnresolvedPlaceholder("contact us at support@example.com"), false);
   assert.equal(isUnresolvedPlaceholder(""), false);
 });

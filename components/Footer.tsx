@@ -82,7 +82,7 @@ export default function Footer({
             <span className="flex items-center gap-2"><LayoutGrid className="h-5 w-5" />Support<br />local</span>
           </div>
         </div>
-        <p className="mt-2 text-right text-[9px] text-ink-soft/55">© 2024 Mahaly Marketplace. All rights reserved.</p>
+        <p className="mt-2 text-right text-[9px] text-ink-soft/55">© 2024 Zakhnook Marketplace. All rights reserved.</p>
       </div>
     </footer>
   );

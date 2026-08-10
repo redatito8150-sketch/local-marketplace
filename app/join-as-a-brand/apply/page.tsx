@@ -7,9 +7,9 @@ import { requireUser } from "@/lib/supabase/accountAuth";
 import { getMyApplication, isWithinReapplicationCooldown } from "@/lib/join/applicationService";
 
 export const metadata: Metadata = {
-  title: "Apply to Sell on Mahaly | Join Mahaly",
+  title: "Apply to Sell on Zakhnook | Join Zakhnook",
   description:
-    "Submit your brand application to start selling on Mahaly, Egypt's marketplace for independent local brands.",
+    "Submit your brand application to start selling on Zakhnook, Egypt's marketplace for independent local brands.",
 };
 
 // Starting/resuming an application requires an account — same gate as
@@ -24,15 +24,15 @@ export default async function ApplyBrandPage() {
   const cooldownActive = application ? isWithinReapplicationCooldown(application) : false;
 
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#f3f2ef]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <section className="mx-auto max-w-[1120px] px-5 py-10 sm:px-8 lg:py-14">
         <div className="mb-8 text-center">
         <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-mahalyred">
-          Join Mahaly
+          Join Zakhnook
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-ink lg:text-[42px]">
-          Apply to sell on Mahaly
+          Apply to sell on Zakhnook
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-[14px] leading-relaxed text-ink-soft/65">
           Tell us about your brand — we review every application personally.

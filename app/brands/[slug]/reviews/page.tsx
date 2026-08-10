@@ -20,8 +20,8 @@ export async function generateMetadata({
   const brand = await getBrandContent(slug);
   return brand
     ? {
-        title: `${brand.name} Reviews | Mahaly`,
-        description: `Verified customer reviews for ${brand.name} products on Mahaly.`,
+        title: `${brand.name} Reviews | Zakhnook`,
+        description: `Verified customer reviews for ${brand.name} products on Zakhnook.`,
         openGraph: { images: brand.heroImage ? [brand.heroImage] : [] },
       }
     : {};
@@ -84,7 +84,7 @@ export default async function ReviewsPage({
             </p>
             <Link
               href={hasFilters ? `/brands/${slug}/reviews` : `/brands/${slug}/products`}
-              className="mt-5 inline-flex min-h-10 items-center rounded-full border border-[#8f2634] px-5 text-xs font-bold text-[#8f2634]"
+              className="mt-5 inline-flex min-h-10 items-center rounded-full border border-[#AC3935] px-5 text-xs font-bold text-[#AC3935]"
             >
               {hasFilters ? "Reset filters" : "Explore products"}
             </Link>

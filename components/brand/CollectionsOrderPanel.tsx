@@ -72,7 +72,7 @@ export default function CollectionsOrderPanel({ brandSlug }: { brandSlug: string
 
   return (
     <div className="mb-8 rounded-[20px] border border-[#e5d8cd] bg-[#fffaf5] p-5 sm:p-6">
-      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#9b3440]">Owner tools</p>
+      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#AC3935]">Owner tools</p>
       <h2 className="mt-1 font-serif text-lg text-[#2f2824]">Drag to reorder — the first is your featured collection</h2>
       <p className="mt-1 text-[11px] text-[#8b8078]">
         To create, edit, or delete a collection, use{" "}
@@ -101,7 +101,7 @@ export default function CollectionsOrderPanel({ brandSlug }: { brandSlug: string
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12px] font-semibold text-[#332b27]">{collection.name}</p>
+              <p className="truncate text-[12px] font-semibold text-[#242424]">{collection.name}</p>
               <p className="text-[10px] text-[#8b8078]">{index === 0 ? "Featured" : collection.isActive ? "Live" : "Paused"}</p>
             </div>
           </div>

@@ -22,7 +22,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
       <DashboardPageHeader
         eyebrow="Commerce"
         title={`Local Warehouse (${transfers.length})`}
-        description="Transfer requests from Mahaly Partner brands (اذن صرف مخزن). Confirm receipt to move stock onto the storefront, or reject a request that never shipped."
+        description="Transfer requests from Zakhnook Partner brands (اذن صرف مخزن). Confirm receipt to move stock onto the storefront, or reject a request that never shipped."
       />
       <DashboardFilters action="/admin/warehouse" clearHref="/admin/warehouse" activeCount={status ? 1 : 0}>
         <DashboardFilterField label="Status">

@@ -74,7 +74,7 @@ export default async function AdminOrderDetailPage(
           <div className="mt-3 space-y-1.5 text-[13px] text-ink-soft/75">
             <p>
               <span className="font-medium text-ink">
-                {order.fulfillmentType === "mahaly_pool" ? "Mahaly pool" : "Brand direct"}
+                {order.fulfillmentType === "mahaly_pool" ? "Zakhnook pool" : "Brand direct"}
               </span>
               {order.brandSlug && ` — ${order.brandSlug}`}
             </p>

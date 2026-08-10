@@ -8,10 +8,10 @@ export interface JoinBenefit {
 }
 
 export const JOIN_HERO = {
-  label: "JOIN MAHALY",
+  label: "JOIN ZAKHNOOK",
   headingLines: ["Join Egypt's", "next generation", "of brands."],
-  subheading: "Build your brand. Reach more customers. Grow with Mahaly.",
-  ctaLabel: "Apply to Mahaly",
+  subheading: "Build your brand. Reach more customers. Grow with Zakhnook.",
+  ctaLabel: "Apply to Zakhnook",
   images: {
     left: [
       {
@@ -124,7 +124,7 @@ export interface Testimonial {
 
 export const SUCCESS_STORY: Testimonial = {
   quote:
-    "Joining Mahaly doubled our online visibility. The platform is beautiful, intuitive and the team truly supports local brands.",
+    "Joining Zakhnook doubled our online visibility. The platform is beautiful, intuitive and the team truly supports local brands.",
   name: "Salma E.",
   role: "Founder of NOLA",
   initial: "S",
@@ -137,7 +137,7 @@ export interface FAQItem {
 
 export const JOIN_FAQ: FAQItem[] = [
   {
-    question: "How much does it cost to sell on Mahaly?",
+    question: "How much does it cost to sell on Zakhnook?",
     answer:
       "There's no monthly subscription. Listing your products and setting up your brand page is free — we only take a small commission on completed sales.",
   },

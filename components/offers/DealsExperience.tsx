@@ -159,7 +159,7 @@ export default function DealsExperience({ products }: { products: Product[] }) {
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:repeating-linear-gradient(115deg,transparent_0,transparent_3px,#fff_4px,transparent_5px)]" />
         <div className="relative flex flex-col justify-center overflow-hidden px-7 py-12 sm:px-12 lg:px-[clamp(48px,6vw,100px)] lg:py-14">
           <div className="relative z-10 max-w-[520px]">
-            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#e5bd78]">The Mahaly offer</motion.p>
+            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="text-[10px] font-bold uppercase tracking-[0.24em] text-[#e5bd78]">The Zakhnook offer</motion.p>
             <motion.h1 id="deals-title" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65 }} className="mt-3 font-serif text-[44px] font-semibold leading-[0.98] tracking-[-0.04em] sm:text-[56px] lg:text-[clamp(48px,4vw,68px)]">The pieces you saved.<br />Now within reach.</motion.h1>
             <p className="mt-5 max-w-sm text-[13px] leading-6 text-white/70">Limited-time prices from independent local brands — selected from the offers ending first.</p>
             {heroProducts.length ? (

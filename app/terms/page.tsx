@@ -7,9 +7,9 @@ import LegalAccordion from "@/components/legal/LegalAccordion";
 import { TERMS_INTRO, TERMS_SECTIONS } from "@/content/legal/terms";
 import { absoluteUrl } from "@/lib/seo";
 
-const TITLE = "Terms & Conditions — Mahaly";
+const TITLE = "Terms & Conditions — Zakhnook";
 const DESCRIPTION =
-  "The terms that govern using Mahaly's website, mobile app, accounts, and marketplace purchases.";
+  "The terms that govern using Zakhnook's website, mobile app, accounts, and marketplace purchases.";
 
 export const metadata: Metadata = {
   title: TITLE,

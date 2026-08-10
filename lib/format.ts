@@ -39,7 +39,7 @@ export function formatCompactNumber(value: number): string {
   return `${(value / 1000).toLocaleString("en-US", { maximumFractionDigits: 1 })}K`;
 }
 
-// Mahaly is an Egypt-only marketplace — every timestamp shown to an admin
+// Zakhnook is an Egypt-only marketplace — every timestamp shown to an admin
 // or brand owner should read as Cairo local time, not whatever timezone
 // happens to run the process. Most timestamp displays in this app are
 // server components (Next.js renders `new Date(...).toLocaleString()` on

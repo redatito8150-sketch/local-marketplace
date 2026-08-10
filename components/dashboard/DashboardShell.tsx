@@ -76,7 +76,7 @@ export default function DashboardShell({
   }, [mobileOpen]);
 
   return (
-    <div className={`min-h-screen ${isAdmin ? "admin-theme bg-[var(--admin-bg)] text-[var(--admin-text)]" : "bg-[#f8f5ef]"}`}>
+    <div className={`min-h-screen ${isAdmin ? "admin-theme bg-[var(--admin-bg)] text-[var(--admin-text)]" : "bg-[#FAFAF7]"}`}>
       <header className={`sticky top-0 z-40 border-b backdrop-blur ${isAdmin ? "border-[var(--admin-border)] bg-[color-mix(in_srgb,var(--admin-surface)_94%,transparent)]" : "border-slate-200/80 bg-white/95"}`}>
         <div className="flex h-[72px] w-full items-center gap-3 px-4 sm:px-6 lg:px-8 xl:px-10">
           <button
@@ -88,7 +88,7 @@ export default function DashboardShell({
             <Menu className="h-5 w-5" />
           </button>
           <Link href={isAdmin ? "/admin" : "/brand-portal"} className="min-w-0">
-            <p className={`truncate text-[17px] font-bold tracking-[-0.025em] ${isAdmin ? "text-[var(--admin-text)]" : "text-[#302b27]"}`}>
+            <p className={`truncate text-[17px] font-bold tracking-[-0.025em] ${isAdmin ? "text-[var(--admin-text)]" : "text-[#242424]"}`}>
               {title}
             </p>
             <p className={`truncate text-[11px] font-medium ${isAdmin ? "text-[var(--admin-text-muted)]" : "text-[#7b6f66]"}`}>

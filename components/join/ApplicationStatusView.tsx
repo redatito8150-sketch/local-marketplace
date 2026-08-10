@@ -8,7 +8,7 @@ import { formatDateOnly } from "@/lib/format";
 const STATUS_COPY: Partial<Record<BrandApplicationRecord["status"], { title: string; body: string }>> = {
   submitted: {
     title: "Application received",
-    body: "Thank you for applying to sell on Mahaly. Our team reviews every application and will reach out by email within a few business days.",
+    body: "Thank you for applying to sell on Zakhnook. Our team reviews every application and will reach out by email within a few business days.",
   },
   under_review: {
     title: "Your application is under review",
@@ -132,7 +132,7 @@ export default function ApplicationStatusView({
         href="/"
         className="mt-4 text-[13px] font-medium text-ink-soft/60 underline-offset-2 hover:underline"
       >
-        Back to Mahaly
+        Back to Zakhnook
       </Link>
     </div>
   );

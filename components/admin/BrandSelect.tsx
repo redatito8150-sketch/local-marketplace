@@ -14,7 +14,7 @@ export interface BrandOption {
   returnPolicy?: string;
   returnWindowDays?: number;
   // Local Warehouse gate — the Product Editor uses this to lock the
-  // Variants (Matrix)'s Opening Stock field for a Mahaly Partner brand
+  // Variants (Matrix)'s Opening Stock field for a Zakhnook Partner brand
   // (see VariantTable.tsx). BrandSelect itself never reads it.
   isMahalyPartner?: boolean;
 }

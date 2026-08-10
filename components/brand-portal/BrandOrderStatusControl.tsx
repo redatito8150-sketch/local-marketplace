@@ -48,7 +48,7 @@ export default function BrandOrderStatusControl({
         type="button"
         onClick={handleClick}
         disabled={submitting}
-        className="rounded-full border border-[#302b27]/15 bg-white px-3 py-1.5 text-[10.5px] font-bold text-[#302b27] transition-colors hover:bg-[#302b27]/5 disabled:opacity-60"
+        className="rounded-full border border-[#242424]/15 bg-white px-3 py-1.5 text-[10.5px] font-bold text-[#242424] transition-colors hover:bg-[#242424]/5 disabled:opacity-60"
       >
         {submitting ? "…" : next.label}
       </button>

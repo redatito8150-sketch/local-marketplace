@@ -7,7 +7,7 @@ import { buildMarketplaceFilterGroups, derivePriceBounds, encodePriceRangeValue,
 import type { SortOption } from "@/types";
 import { CATALOG_FILTER_QUERY_KEYS, parseCatalogFilterValues } from "@/lib/catalogQuery";
 
-export const metadata: Metadata = { title: "Shop All Products — Mahaly", description: "Browse active products from independent local brands across the Mahaly marketplace." };
+export const metadata: Metadata = { title: "Shop All Products — Zakhnook", description: "Browse active products from independent local brands across the Zakhnook marketplace." };
 export const revalidate = 60;
 
 const SORTS = new Set<SortOption>(["newest", "price-asc", "price-desc", "top-rated"]);

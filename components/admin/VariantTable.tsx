@@ -402,7 +402,7 @@ export default function VariantTable({
                             ) : isPartnerBrand ? (
                               <span
                                 className="text-[12px] font-semibold text-amber-700"
-                                title="This brand is a Mahaly Partner — stock only comes from a confirmed Local Warehouse transfer, never from Opening Stock. This variant will be created with 0 stock."
+                                title="This brand is a Zakhnook Partner — stock only comes from a confirmed Local Warehouse transfer, never from Opening Stock. This variant will be created with 0 stock."
                               >
                                 0 — via Local Warehouse
                               </span>

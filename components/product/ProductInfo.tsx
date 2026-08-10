@@ -582,8 +582,8 @@ export default function ProductInfo({
           <Heart
             className="h-[18px] w-[18px]"
             strokeWidth={1.8}
-            fill={wishlisted ? "#161513" : "none"}
-            color="#161513"
+            fill={wishlisted ? "#242424" : "none"}
+            color="#242424"
           />
         </button>
       </div>

@@ -9,7 +9,7 @@ import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
 
 type TransferItemInput = { variantId: string; requestedQty: number; unitCost?: number; itemNote?: string };
 
-// "اذن صرف مخزن" — a Mahaly Partner brand asking Mahaly's warehouse to
+// "اذن صرف مخزن" — a Zakhnook Partner brand asking Zakhnook's warehouse to
 // take physical custody of some of its own declared stock. Nothing on the
 // storefront changes yet (product_variants.quantity is untouched) — this
 // only creates the pending record + notifies the admin bell, exactly like
@@ -20,7 +20,7 @@ type TransferItemInput = { variantId: string; requestedQty: number; unitCost?: n
 export async function POST(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Mahaly Partner" }, { status: 403 });
+  if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Zakhnook Partner" }, { status: 403 });
   if (!checkRateLimit(`warehouse-transfer-request:${owner.user.id}`, 20, 10 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }

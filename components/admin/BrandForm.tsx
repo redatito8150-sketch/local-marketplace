@@ -248,9 +248,9 @@ export default function BrandForm({
       {!isBrandPortal && (
         <label className="flex items-center justify-between rounded-md border border-stone-150 px-3.5 py-2.5">
           <span>
-            <span className="block text-[13.5px] font-medium text-ink">Mahaly Partner</span>
+            <span className="block text-[13.5px] font-medium text-ink">Zakhnook Partner</span>
             <span className="block text-[11.5px] text-ink-soft/50">
-              Stock lives in Mahaly&apos;s own warehouse — this brand&apos;s orders pool with other
+              Stock lives in Zakhnook&apos;s own warehouse — this brand&apos;s orders pool with other
               partner brands into one shared shipment/delivery fee, instead of shipping separately.
             </span>
           </span>
@@ -323,7 +323,7 @@ export default function BrandForm({
       <div className="rounded-md border border-stone-150 p-4">
         <span className="text-[12.5px] font-medium text-ink-soft/70">Shipping &amp; Returns policy</span>
         <p className="mt-0.5 text-[11.5px] text-ink-soft/50">
-          Shown on every product from this brand. Leave blank to use Mahaly&apos;s marketplace default (7-day returns).
+          Shown on every product from this brand. Leave blank to use Zakhnook&apos;s marketplace default (7-day returns).
         </p>
         <div className="mt-3 space-y-3">
           <TextArea

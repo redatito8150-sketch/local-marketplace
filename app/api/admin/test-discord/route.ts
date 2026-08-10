@@ -13,7 +13,7 @@ export async function POST() {
 
   logError(
     "admin.test-discord",
-    `Test message triggered from the Mahaly admin dashboard by ${staff.user.email ?? staff.user.id} — if you're reading this in #errors, the DISCORD_WEBHOOK_ERRORS webhook is configured correctly.`
+    `Test message triggered from the Zakhnook admin dashboard by ${staff.user.email ?? staff.user.id} — if you're reading this in #errors, the DISCORD_WEBHOOK_ERRORS webhook is configured correctly.`
   );
 
   return NextResponse.json({ ok: true });

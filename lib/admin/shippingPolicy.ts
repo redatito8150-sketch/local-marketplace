@@ -5,7 +5,7 @@
 
 export const MARKETPLACE_DEFAULT_RETURN_WINDOW_DAYS = 7;
 export const MARKETPLACE_DEFAULT_POLICY_TEXT =
-  "Returns are accepted within 7 days, subject to Mahaly's return policy.";
+  "Returns are accepted within 7 days, subject to Zakhnook's return policy.";
 
 export interface BrandPolicyFields {
   shippingPolicy?: string | null;

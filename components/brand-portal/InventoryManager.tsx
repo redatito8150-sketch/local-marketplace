@@ -53,7 +53,7 @@ export default function InventoryManager({ variants, history, brandSlug }: { var
           <label className="text-xs font-semibold">Quantity<input type="number" min={0} step={1} value={amount} onChange={(event) => setAmount(Math.max(0, Math.trunc(Number(event.target.value) || 0)))} className="mt-1 block w-28 rounded-lg border px-3 py-2" /></label>
           <label className="text-xs font-semibold">Reason<select value={reason} onChange={(event) => setReason(event.target.value)} className="mt-1 block rounded-lg border px-3 py-2"><option value="">Select reason</option>{INVENTORY_REASONS.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label className="min-w-48 flex-1 text-xs font-semibold">Note (optional)<input value={note} onChange={(event) => setNote(event.target.value)} className="mt-1 block w-full rounded-lg border px-3 py-2" /></label>
-          <button type="button" disabled={busy || !selected.length} onClick={apply} className="rounded-lg bg-[#302b27] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Apply to {selected.length || 0}</button>
+          <button type="button" disabled={busy || !selected.length} onClick={apply} className="rounded-lg bg-[#242424] px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">Apply to {selected.length || 0}</button>
         </div>
         {selectedRows.length > 0 && <p className="mt-3 text-xs text-[#75685f]">Preview: {selectedRows.slice(0, 3).map((row) => `${row.sku}: ${row.quantity} → ${resultingQuantity(row.quantity)}`).join(" · ")}</p>}
         {error && <p role="alert" className="mt-2 text-xs font-semibold text-red-700">{error}</p>}

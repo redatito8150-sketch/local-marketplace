@@ -18,7 +18,7 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
         <div className="mt-6">
           <DashboardEmptyState
             title="Not available for this brand"
-            description="Local Warehouse is only available to Mahaly Partner brands, whose stock is held and fulfilled from Mahaly's own warehouse. Contact an admin if you believe this should be enabled."
+            description="Local Warehouse is only available to Zakhnook Partner brands, whose stock is held and fulfilled from Zakhnook's own warehouse. Contact an admin if you believe this should be enabled."
           />
         </div>
       </div>
@@ -36,7 +36,7 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
       <DashboardPageHeader
         eyebrow="Catalog"
         title="Local Warehouse"
-        description="Declare how much of each variant you actually hold, then request a transfer (اذن صرف مخزن) to hand it to Mahaly's warehouse. Your storefront stock only rises once Mahaly confirms receipt — it can never exceed what's actually been received."
+        description="Declare how much of each variant you actually hold, then request a transfer (اذن صرف مخزن) to hand it to Zakhnook's warehouse. Your storefront stock only rises once Zakhnook confirms receipt — it can never exceed what's actually been received."
       />
       <div className="mt-6">
         <WarehouseExperience variants={variants} transfers={transfers} brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined} />

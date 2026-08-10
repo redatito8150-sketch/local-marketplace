@@ -45,7 +45,7 @@ export async function syncProductVariants(params: {
   submitted: VariantEditInput[];
   actorId: string;
   operationKey: string;
-  // Mahaly Partner brands: a brand-new variant always starts at 0 live
+  // Zakhnook Partner brands: a brand-new variant always starts at 0 live
   // stock regardless of what the editor's Opening Stock field said — that
   // number only feeds product_variants.brand_stock_quantity (managed from
   // the Local Warehouse page), never the site-visible `quantity`, which

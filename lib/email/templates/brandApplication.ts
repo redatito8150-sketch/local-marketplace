@@ -12,7 +12,7 @@ export function applicationSubmittedEmail(app: BrandApplicationRecord) {
     html: emailShell(`
       <h1 style="font-size: 18px; margin: 0 0 8px;">Application received</h1>
       <p style="font-size: 14px; color: #4a463c; margin: 0 0 20px;">
-        Thanks for applying to sell ${app.brandName} on Mahaly. Our team reviews every
+        Thanks for applying to sell ${app.brandName} on Zakhnook. Our team reviews every
         application and will follow up by email within a few business days.
       </p>
     `),
@@ -89,7 +89,7 @@ export function applicationBrandCreatedEmail(app: BrandApplicationRecord) {
     html: emailShell(`
       <h1 style="font-size: 18px; margin: 0 0 8px;">Your brand page is live</h1>
       <p style="font-size: 14px; color: #4a463c; margin: 0;">
-        ${app.brandName} is now live on Mahaly. Sign in to your account to start managing your
+        ${app.brandName} is now live on Zakhnook. Sign in to your account to start managing your
         products and orders from the Brand Portal.
       </p>
     `),

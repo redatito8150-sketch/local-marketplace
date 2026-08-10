@@ -17,7 +17,7 @@ export function backInStockEmail(product: {
         Stock moves fast on restocks, so don't wait too long.
       </p>
       <img src="${product.image}" alt="${product.productName}" style="width: 100%; max-width: 280px; border-radius: 12px; display: block; margin: 0 0 20px;" />
-      <a href="${url}" style="display: inline-block; background: #B71F1A; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 8px; font-size: 14px; font-weight: 600;">
+      <a href="${url}" style="display: inline-block; background: #AC3935; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 8px; font-size: 14px; font-weight: 600;">
         Shop it now
       </a>
     `),

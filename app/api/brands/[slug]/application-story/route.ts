@@ -6,7 +6,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 
 // Backs the About page's "Import from your application" button — lets an
 // owner/admin pull the story text they originally wrote when applying to
-// join Mahaly (brand_applications.brand_story) into the editable
+// join Zakhnook (brand_applications.brand_story) into the editable
 // aboutDescription field as a starting point, instead of writing it from
 // scratch. Read-only and on-demand (never eagerly fetched, never shown to
 // a public visitor) — brands.source_application_id is the real link,

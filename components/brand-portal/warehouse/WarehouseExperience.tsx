@@ -88,7 +88,7 @@ export default function WarehouseExperience({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to submit return request");
-      setMessage("Return request submitted — Mahaly's warehouse will review it.");
+      setMessage("Return request submitted — Zakhnook's warehouse will review it.");
       setReturnSelected(new Set());
       setReturnQty({});
       setReturnNote("");
@@ -123,7 +123,7 @@ export default function WarehouseExperience({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to submit transfer");
-      setMessage("Transfer request submitted — Mahaly's warehouse will review it.");
+      setMessage("Transfer request submitted — Zakhnook's warehouse will review it.");
       setSelected(new Set());
       setRequestQty({});
       setTransferNote("");
@@ -143,7 +143,7 @@ export default function WarehouseExperience({
 
       <DashboardPanel
         title="Your variants"
-        description="Declare what you physically hold, then select what to include in a transfer request. Live site stock only changes once Mahaly confirms receipt."
+        description="Declare what you physically hold, then select what to include in a transfer request. Live site stock only changes once Zakhnook confirms receipt."
         action={
           <button type="button" onClick={saveStockCounts} disabled={savingStock || Object.keys(stockDrafts).length === 0} className={dashboardButtonSecondary}>
             {savingStock ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
@@ -266,7 +266,7 @@ export default function WarehouseExperience({
             <textarea
               value={transferNote}
               onChange={(e) => setTransferNote(e.target.value)}
-              placeholder="Optional note for Mahaly's warehouse team (e.g. delivery date, packaging notes)"
+              placeholder="Optional note for Zakhnook's warehouse team (e.g. delivery date, packaging notes)"
               rows={2}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-[13px] outline-none focus:border-slate-400"
             />
@@ -279,7 +279,7 @@ export default function WarehouseExperience({
       )}
 
       {variants.length > 0 && (
-        <DashboardPanel title="Request a return (رجوع من المخزن المحلي)" description="Ask Mahaly's warehouse to hand back stock it's currently holding for you — checked off in the 'Return qty' column above.">
+        <DashboardPanel title="Request a return (رجوع من المخزن المحلي)" description="Ask Zakhnook's warehouse to hand back stock it's currently holding for you — checked off in the 'Return qty' column above.">
           <div className="space-y-3 px-5 py-4">
             <textarea
               value={returnNote}
@@ -336,7 +336,7 @@ export default function WarehouseExperience({
                       </li>
                     ))}
                   </ul>
-                  {t.receivingNote && <p className="mt-2 text-[12px] italic text-slate-500">Note from Mahaly: {t.receivingNote}</p>}
+                  {t.receivingNote && <p className="mt-2 text-[12px] italic text-slate-500">Note from Zakhnook: {t.receivingNote}</p>}
                 </div>
               );
             })}

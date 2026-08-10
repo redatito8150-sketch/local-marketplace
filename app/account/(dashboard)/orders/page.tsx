@@ -12,7 +12,7 @@ export default async function AccountOrdersPage() {
 
   return (
     <div className="space-y-7">
-      <AccountPageHeader eyebrow="Your purchases" title="Orders" description="Track current purchases and revisit everything you have ordered from Mahaly." />
+      <AccountPageHeader eyebrow="Your purchases" title="Orders" description="Track current purchases and revisit everything you have ordered from Zakhnook." />
       <div>
         <OrdersTabs orders={orders} />
       </div>

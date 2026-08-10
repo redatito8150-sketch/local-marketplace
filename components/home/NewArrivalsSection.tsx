@@ -14,7 +14,7 @@ export default function NewArrivalsSection({ title, products, viewAllHref }: { t
   return (
     <MotionConfig reducedMotion="never">
     <section className="mx-auto max-w-[1920px] border-b border-white/20 bg-cream/20 px-6 py-9 md:px-10 xl:px-16">
-      <motion.div initial={{ opacity: 0, y: 18 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ duration: 0.55 }} className="mb-5 flex items-center justify-between">
+      <motion.div initial={false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ duration: 0.55 }} className="mb-5 flex items-center justify-between">
         <h2 className="font-serif text-[25px] font-semibold tracking-tight text-ink">{title}</h2>
         <div className="flex items-center gap-2">
           <button onClick={() => move(-1)} aria-label="Previous arrivals" className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-150 bg-white text-ink"><ChevronLeft className="h-4 w-4" /></button>
@@ -26,7 +26,7 @@ export default function NewArrivalsSection({ title, products, viewAllHref }: { t
         {products.map((product, index) => (
           <motion.div
             key={product.id}
-            initial={{ opacity: 0, x: 70, scale: 0.94 }}
+            initial={false}
             whileInView={{ opacity: 1, x: 0, scale: 1 }}
             viewport={{ once: true, amount: 0.22 }}
             transition={{ type: "spring", stiffness: 100, damping: 18, delay: Math.min(index, 5) * 0.08 }}

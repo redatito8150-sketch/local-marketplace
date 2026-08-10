@@ -533,8 +533,8 @@ export default function CheckoutPage() {
                     <p className="text-[11.5px] font-semibold uppercase tracking-wide text-ink-soft/50">
                       {group.isPool
                         ? group.brandNames.length > 1
-                          ? `${group.brandNames.join(", ")} · Mahaly shipment`
-                          : `${group.brandNames[0] ?? "Mahaly"} · Mahaly shipment`
+                          ? `${group.brandNames.join(", ")} · Zakhnook shipment`
+                          : `${group.brandNames[0] ?? "Zakhnook"} · Zakhnook shipment`
                         : `${group.brandNames[0] ?? "Brand"} · separate shipment`}
                     </p>
                     <div className="mt-2 space-y-3 divide-y divide-stone-150">

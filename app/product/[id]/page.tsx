@@ -35,7 +35,7 @@ export async function generateMetadata(props: { params: Promise<{ id: string }> 
   const product = await getProductById(params.id);
   if (!product) return {};
   return {
-    title: `${product.name} — ${product.brandName} — Mahaly`,
+    title: `${product.name} — ${product.brandName} — Zakhnook`,
     description: product.description,
   };
 }

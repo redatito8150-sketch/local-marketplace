@@ -9,7 +9,7 @@ import { getFeaturedBrands } from "@/lib/data/brands";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "Local Brands — Mahaly",
+  title: "Local Brands — Zakhnook",
   description: "Discover independent Egyptian brands, makers, and the stories behind what they create.",
 };
 
@@ -21,7 +21,7 @@ export default async function BrandsDirectoryPage() {
   const cityCount = new Set(brands.map((brand) => brand.city)).size;
 
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full overflow-hidden bg-[#f7f1e9] text-[#211b17]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full overflow-hidden bg-cream text-ink">
       <Header warmTransparent />
 
       <section className="mx-auto max-w-screen2xl px-4 pb-8 pt-8 sm:px-6 lg:px-12 lg:pb-10 lg:pt-10">
@@ -66,7 +66,7 @@ export default async function BrandsDirectoryPage() {
             <div className="absolute inset-0 bg-gradient-to-r from-[#1c0d08]/70 via-[#1c0d08]/15 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-[#1d0d08]/65 to-transparent px-6 pb-7 pt-28 sm:px-8 sm:pb-8">
               <p className="max-w-sm text-[clamp(1.35rem,3vw,2.15rem)] font-semibold leading-tight tracking-[-0.035em] text-white">
-                You can now join us to sell on “Mahaly”
+                You can now join us to sell on “Zakhnook”
               </p>
               <Link href="/join-as-a-brand/apply" className="mt-5 inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-xs font-bold text-[#4a1e1a] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#fff7ef]">
                 Apply Now <ArrowUpRight className="h-4 w-4" />

@@ -52,7 +52,7 @@ export default async function AdminLayout({
   return (
     <DashboardShell
       variant="admin"
-      title="Mahaly Admin"
+      title="Zakhnook Admin"
       subtitle={`${profile.role.charAt(0).toUpperCase()}${profile.role.slice(1)} workspace`}
       sidebar={sidebar}
       headerTools={

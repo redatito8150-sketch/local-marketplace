@@ -18,7 +18,7 @@ export async function generateMetadata({
 
   return brand
     ? {
-        title: `About ${brand.name} | Mahaly`,
+        title: `About ${brand.name} | Zakhnook`,
         description: stripRichText(brand.aboutDescription) || brand.tagline,
       }
     : {};
@@ -47,7 +47,7 @@ export default async function AboutPage({
 
   // Only real, verifiable milestones — no invented founding story, no made-up
   // product counts. A brand with no recorded founding year just shows the
-  // one milestone we can always vouch for (it did, in fact, join Mahaly).
+  // one milestone we can always vouch for (it did, in fact, join Zakhnook).
   // An owner/admin can add their own via BrandJourneyTimeline.
   const founded = brand.foundedYear
     ? {
@@ -58,7 +58,7 @@ export default async function AboutPage({
     : null;
   const joinedMahaly = {
     year: new Date(brand.createdAt).getFullYear().toString(),
-    title: "Joined Mahaly",
+    title: "Joined Zakhnook",
     description: `A new chapter for ${brand.name} to reach more people, everywhere.`,
   };
 
@@ -67,7 +67,7 @@ export default async function AboutPage({
       <div className="mx-auto max-w-brand px-5 pb-14 pt-10 sm:px-6 lg:px-10 lg:pb-20 lg:pt-12">
         <div className="grid items-center gap-9 lg:grid-cols-[0.86fr_1.14fr] lg:gap-16">
           <div className="max-w-[500px]">
-            <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#9b3440]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#AC3935]">
               The story behind {brand.name}
             </p>
             <InlineEditableText
@@ -102,7 +102,7 @@ export default async function AboutPage({
 
         <div className="mt-9 grid items-center gap-7 rounded-[16px] bg-[linear-gradient(105deg,#f6eee7_0%,#faf6f1_56%,#f2e8de_100%)] px-7 py-8 sm:px-10 lg:grid-cols-[1fr_240px] lg:px-11 lg:py-9">
           <blockquote className="flex gap-5">
-            <span className="font-serif text-[64px] leading-[0.72] text-[#8f2634]" aria-hidden="true">
+            <span className="font-serif text-[64px] leading-[0.72] text-[#AC3935]" aria-hidden="true">
               “
             </span>
             <InlineEditableText

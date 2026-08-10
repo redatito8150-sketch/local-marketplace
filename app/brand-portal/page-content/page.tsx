@@ -17,7 +17,7 @@ export default async function BrandPortalPageContentPage(props: { searchParams: 
   return (
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
-      <DashboardPageHeader eyebrow="Brand" title="Brand profile" description="Manage the public story, imagery, and identity customers see on your Mahaly brand page. The existing live-publish and admin notification workflow remains unchanged." />
+      <DashboardPageHeader eyebrow="Brand" title="Brand profile" description="Manage the public story, imagery, and identity customers see on your Zakhnook brand page. The existing live-publish and admin notification workflow remains unchanged." />
       <DashboardPanel className="mt-6"><div className="p-5 sm:p-6"><BrandForm mode="edit" initial={brand} scope="brand-portal" apiPath="/api/brand-portal/brand-content" redirectPath={`/brand-portal/page-content${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`} /></div></DashboardPanel>
     </div>
   );

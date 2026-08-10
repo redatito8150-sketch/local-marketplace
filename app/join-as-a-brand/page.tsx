@@ -10,9 +10,9 @@ import JoinJourney from "@/components/join/JoinJourney";
 import { JOIN_HERO } from "@/content/join";
 
 export const metadata: Metadata = {
-  title: "Join Mahaly | Sell Your Brand on Mahaly",
+  title: "Join Zakhnook | Sell Your Brand on Zakhnook",
   description:
-    "Apply to sell your brand on Mahaly — Egypt's marketplace for independent local brands. Reach more customers, keep your identity, and manage everything from one dashboard.",
+    "Apply to sell your brand on Zakhnook — Egypt's marketplace for independent local brands. Reach more customers, keep your identity, and manage everything from one dashboard.",
 };
 
 export const dynamic = "force-static";

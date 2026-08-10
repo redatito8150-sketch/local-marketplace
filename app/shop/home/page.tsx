@@ -5,13 +5,13 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Home Collection — Mahaly",
-  description: "Mahaly's premium Home collection is coming soon.",
+  title: "Home Collection — Zakhnook",
+  description: "Zakhnook's premium Home collection is coming soon.",
 };
 
 export default function ShopHomePage() {
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#e9e1d5]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <section className="relative isolate flex min-h-[calc(100vh-220px)] overflow-hidden px-6 py-20 sm:px-10 lg:min-h-[680px] lg:px-16">
         <div className="absolute inset-0 -z-20 bg-[radial-gradient(circle_at_50%_38%,rgba(255,255,255,.8),transparent_30%),linear-gradient(135deg,#f5efe5_0%,#ded1bf_48%,#c4b29a_100%)]" />
@@ -22,13 +22,13 @@ export default function ShopHomePage() {
         <Sofa aria-hidden="true" className="absolute bottom-[10%] right-[10%] hidden h-40 w-40 text-[#806f59]/25 lg:block" strokeWidth={0.7} />
 
         <div className="mx-auto flex max-w-2xl flex-1 flex-col items-center justify-center text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-[.32em] text-[#756652]">Mahaly Living</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[.32em] text-[#756652]">Zakhnook Living</p>
           <h1 className="mt-6 font-serif text-[52px] font-medium leading-[.95] tracking-[-.045em] text-ink sm:text-[72px] lg:text-[88px]">Home Collection</h1>
           <div className="my-7 h-px w-14 bg-mahalyred" />
           <p className="font-serif text-2xl text-[#655746] sm:text-3xl">Coming Soon</p>
           <p className="mt-5 max-w-lg text-[15px] leading-7 text-ink-soft/65">Thoughtful objects, natural textures, and locally crafted pieces for rooms that feel distinctly yours.</p>
           <div className="mt-9 flex flex-col items-center gap-3 sm:flex-row">
-            <Link href="/" className="inline-flex h-11 items-center gap-6 rounded-full bg-mahalyred px-6 text-[12px] font-semibold text-white transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-mahalyred/40">Back to Mahaly <ArrowRight className="h-4 w-4" /></Link>
+            <Link href="/" className="inline-flex h-11 items-center gap-6 rounded-full bg-mahalyred px-6 text-[12px] font-semibold text-white transition-transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-mahalyred/40">Back to Zakhnook <ArrowRight className="h-4 w-4" /></Link>
             <Link href="/shop/women" className="inline-flex h-11 items-center rounded-full border border-[#7f705e]/25 bg-white/35 px-6 text-[12px] font-semibold text-ink backdrop-blur transition-colors hover:bg-white/60 focus:outline-none focus:ring-2 focus:ring-mahalyred/30">Explore available collections</Link>
           </div>
         </div>
