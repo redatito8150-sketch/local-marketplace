@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await sendSms(phone, `Your Mahaly verification code is ${code}. It expires in 10 minutes.`);
+    await sendSms(phone, `Your Zakhnook verification code is ${code}. It expires in 10 minutes.`);
   } catch (sendError) {
     await supabaseAdmin.from("phone_verifications").delete().eq("id", verification.id);
     return safeErrorResponse("account.phone.send-otp.provider", sendError as Error, "Phone verification is temporarily unavailable");

@@ -19,7 +19,7 @@ export default async function BrandPortalLayout({
   return (
     <DashboardShell
       variant="brand"
-      title={owner.brandName ?? "Mahaly Brand Portal"}
+      title={owner.brandName ?? "Zakhnook Brand Portal"}
       subtitle={owner.isAdmin && !owner.brandSlug ? "Admin brand workspace" : "Brand owner workspace"}
       sidebar={<BrandPortalNav showPageContent={owner.accessLevel === "owner"} showWarehouse={owner.isMahalyPartner} />}
       headerTools={<>

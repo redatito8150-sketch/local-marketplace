@@ -81,7 +81,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     sourceApplicationId: application.id,
     slug,
     name: application.brandName,
-    tagline: "New on Mahaly",
+    tagline: "New on Zakhnook",
     category: application.productCategory || "General",
     skuPrefix,
     isActive: false,

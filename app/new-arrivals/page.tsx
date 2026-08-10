@@ -6,8 +6,8 @@ import { getMarketplaceCatalogPage, getNewArrivals } from "@/lib/data/products";
 export const revalidate = 60;
 
 export const metadata = {
-  title: "New Arrivals — Mahaly",
-  description: "The newest pieces from Mahaly's independent Egyptian brands.",
+  title: "New Arrivals — Zakhnook",
+  description: "The newest pieces from Zakhnook's independent Egyptian brands.",
 };
 
 export default async function NewArrivalsPage() {
@@ -17,7 +17,7 @@ export default async function NewArrivalsPage() {
     : (await getMarketplaceCatalogPage({ pageSize: 24, sort: "newest" })).products;
 
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#f7f3ee]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <NewArrivalsExperience products={products} />
       <Footer />

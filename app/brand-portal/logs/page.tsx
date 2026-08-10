@@ -29,7 +29,7 @@ export default async function BrandPortalLogsPage(props: { searchParams: Promise
   return (
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
-      <DashboardPageHeader eyebrow="Brand" title={`Activity (${logs.length})`} description={`A read-only record of changes made for ${owner.brandName} by owners, assistants, and Mahaly staff.`} />
+      <DashboardPageHeader eyebrow="Brand" title={`Activity (${logs.length})`} description={`A read-only record of changes made for ${owner.brandName} by owners, assistants, and Zakhnook staff.`} />
       <DashboardFilters action="/brand-portal/logs" clearHref={`/brand-portal/logs${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`} activeCount={activeCount}>
         {owner.isImpersonating && <input type="hidden" name="brand" value={owner.brandSlug} />}
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Search activity" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>

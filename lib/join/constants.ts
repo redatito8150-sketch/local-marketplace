@@ -171,7 +171,7 @@ export const SHIPPING_COVERAGE_OPTIONS: { value: ShippingCoverageOption; label: 
 ];
 
 // The single most important operational question on the application —
-// whether the brand handles its own packaging/fulfillment, or wants Mahaly
+// whether the brand handles its own packaging/fulfillment, or wants Zakhnook
 // to take on packaging, shipping, and storage while the brand just manages
 // its page and product listings. Rendered as a prominent, highlighted
 // choice in the Products & operations step, not a plain dropdown.
@@ -184,13 +184,13 @@ export const FULFILLMENT_RESPONSIBILITY_OPTIONS: {
     value: "brand_handles",
     title: "I'll handle packaging & fulfillment myself",
     description:
-      "You pack, store, and ship every order yourself. Mahaly only lists your products and sends you the orders.",
+      "You pack, store, and ship every order yourself. Zakhnook only lists your products and sends you the orders.",
   },
   {
     value: "mahaly_handles",
-    title: "I'd like to partner with Mahaly for fulfillment",
+    title: "I'd like to partner with Zakhnook for fulfillment",
     description:
-      "Mahaly handles packaging, storage, and shipping for you — you just manage your brand page and product listings.",
+      "Zakhnook handles packaging, storage, and shipping for you — you just manage your brand page and product listings.",
   },
 ];
 

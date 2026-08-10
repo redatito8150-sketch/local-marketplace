@@ -94,7 +94,7 @@ export default function InventoryVariantsSection({
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
   inventoryHref?: string;
-  // Mahaly Partner brand — Opening Stock is locked at 0 server-side no
+  // Zakhnook Partner brand — Opening Stock is locked at 0 server-side no
   // matter what's typed here (see forceZeroOpeningStock), so the field
   // itself is locked and relabeled rather than silently ignoring input.
   isPartnerBrand?: boolean;

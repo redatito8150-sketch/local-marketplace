@@ -78,7 +78,7 @@ export default function ProductTile({
           }}
           className="absolute right-3 top-3 flex h-9 w-9 translate-y-[-8px] items-center justify-center rounded-full bg-white/90 opacity-0 shadow-soft backdrop-blur-sm transition-all duration-300 hover:scale-105 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100"
         >
-          <Heart className="h-4 w-4" strokeWidth={1.6} fill={wishlisted ? "#161513" : "none"} color="#161513" />
+          <Heart className="h-4 w-4" strokeWidth={1.6} fill={wishlisted ? "#242424" : "none"} color="#242424" />
         </button>
       </div>
 

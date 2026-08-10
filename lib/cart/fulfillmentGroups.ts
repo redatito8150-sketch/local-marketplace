@@ -2,7 +2,7 @@ import type { CartLineItem } from "@/types";
 
 // Mirrors the bucketing rule inside the place_order() Postgres function
 // (supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql):
-// every Mahaly-partner brand's items pool into one shared shipment; a
+// every Zakhnook-partner brand's items pool into one shared shipment; a
 // missing brand attribution also falls into that pool as the delivery
 // fallback of last resort; every distinct non-partner brand gets its own
 // shipment. This is display-only — used to preview the cart/checkout split

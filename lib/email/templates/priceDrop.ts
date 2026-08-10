@@ -26,7 +26,7 @@ export function priceDropEmail(product: {
         <span style="font-size: 20px; font-weight: 700;">${formatPrice(product.discountedPrice, product.currency)}</span>
         <span style="font-size: 14px; font-weight: 400; color: #8a8578; text-decoration: line-through; margin-left: 8px;">${formatPrice(product.originalPrice, product.currency)}</span>
       </p>
-      <a href="${url}" style="display: inline-block; margin-top: 16px; background: #B71F1A; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 8px; font-size: 14px; font-weight: 600;">
+      <a href="${url}" style="display: inline-block; margin-top: 16px; background: #AC3935; color: #ffffff; text-decoration: none; padding: 12px 22px; border-radius: 8px; font-size: 14px; font-weight: 600;">
         Grab it before it's gone
       </a>
     `),

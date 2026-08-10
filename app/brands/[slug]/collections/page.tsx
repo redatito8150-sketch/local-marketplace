@@ -33,7 +33,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const brand = await getBrandContent(slug);
   return brand
-    ? { title: `${brand.name} Collections | Mahaly`, description: `Explore complete looks by ${brand.name}.` }
+    ? { title: `${brand.name} Collections | Zakhnook`, description: `Explore complete looks by ${brand.name}.` }
     : {};
 }
 

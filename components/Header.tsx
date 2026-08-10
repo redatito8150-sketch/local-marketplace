@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "framer-motion";
 import { Heart, ShoppingBag, User, Menu, X, LayoutGrid } from "lucide-react";
 import BrandsMegaMenu from "@/components/navigation/BrandsMegaMenu";
 import SearchAutocomplete from "@/components/navigation/SearchAutocomplete";
@@ -32,9 +31,11 @@ const MOBILE_NAV_LINKS = [
 
 export default function Header({ warmTransparent = false }: { warmTransparent?: boolean }) {
   const [scrolled, setScrolled] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
   const [activeAnchor, setActiveAnchor] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+  const lastScrollY = useRef(0);
   const pathname = usePathname();
   const { itemCount } = useCart();
   const { count: wishlistCount } = useWishlist();
@@ -55,8 +56,28 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
   };
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
-    window.addEventListener("scroll", onScroll);
+    lastScrollY.current = Math.max(window.scrollY, 0);
+    setScrolled(lastScrollY.current > 12);
+
+    const onScroll = () => {
+      const currentScrollY = Math.max(window.scrollY, 0);
+      const previousScrollY = lastScrollY.current;
+
+      setScrolled(currentScrollY > 12);
+
+      if (currentScrollY <= 12) {
+        setHeaderVisible(true);
+      } else if (currentScrollY < previousScrollY) {
+        setHeaderVisible(true);
+      } else if (currentScrollY > previousScrollY && currentScrollY > 96) {
+        setHeaderVisible(false);
+        setMobileMenuOpen(false);
+      }
+
+      lastScrollY.current = currentScrollY;
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
@@ -80,16 +101,16 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
   }, [mobileMenuOpen]);
 
   return (
-    <motion.header
+    <header
       ref={mobileMenuRef}
-      className={`sticky top-0 z-50 border-b border-white/30 transition-all duration-300 ${
-        warmTransparent
-          ? scrolled
-            ? "bg-[#c8ad91]/55 backdrop-blur-xl shadow-soft"
-            : "bg-[#ddc9b2]/42 backdrop-blur-lg"
-          : scrolled
-            ? "bg-neutral-600/30 backdrop-blur-xl shadow-soft"
-            : "bg-neutral-500/20 backdrop-blur-lg"
+      className={`sticky top-0 z-50 border-b transform-gpu transition-[transform,background-color,border-color,box-shadow,backdrop-filter] duration-300 ease-out ${
+        headerVisible ? "translate-y-0" : "-translate-y-full"
+      } ${
+        !scrolled
+          ? "border-transparent bg-transparent"
+          : warmTransparent
+            ? "border-white/25 bg-[#d9c7b4]/82 shadow-soft backdrop-blur-xl"
+            : "border-black/5 bg-[#FAFAF7]/88 shadow-soft backdrop-blur-xl"
       }`}
     >
       <div className="mx-auto flex h-[68px] max-w-[1920px] items-center justify-between gap-4 px-4 sm:px-6 md:px-10 xl:px-12">
@@ -233,6 +254,6 @@ export default function Header({ warmTransparent = false }: { warmTransparent?: 
           </ul>
         </nav>
       )}
-    </motion.header>
+    </header>
   );
 }

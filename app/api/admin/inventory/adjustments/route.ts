@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "All selected variants must exist and belong to one brand" }, { status: 400 });
   }
 
-  // Same rule as the brand-portal route: a Mahaly Partner brand's stock can
+  // Same rule as the brand-portal route: a Zakhnook Partner brand's stock can
   // only increase through a confirmed Local Warehouse transfer, even from
   // the admin panel's general adjustment tool — otherwise the transfer
   // ledger's discrepancy tracking could always be silently bypassed here.

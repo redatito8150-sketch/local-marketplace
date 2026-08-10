@@ -15,7 +15,7 @@ type ReceiveItemInput = {
   itemNote?: string;
 };
 
-// Mahaly's own warehouse staff (or an admin) confirming a physical
+// Zakhnook's own warehouse staff (or an admin) confirming a physical
 // delivery against its transfer request — every line must be fully
 // reconciled (received + damaged + missing === requested, enforced in the
 // RPC itself) before product_variants.quantity, the one column the

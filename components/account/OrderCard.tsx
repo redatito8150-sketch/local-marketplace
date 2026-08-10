@@ -31,9 +31,9 @@ export default function OrderCard({
   const fulfillmentLabel =
     order.fulfillmentType === "mahaly_pool"
       ? brandNames.length > 1
-        ? `${brandNames.join(", ")} · Fulfilled by Mahaly`
-        : `${brandNames[0] ?? "Mahaly"} · Fulfilled by Mahaly`
-      : `${brandNames[0] ?? "Brand"} · packed by the brand, delivered by Mahaly`;
+        ? `${brandNames.join(", ")} · Fulfilled by Zakhnook`
+        : `${brandNames[0] ?? "Zakhnook"} · Fulfilled by Zakhnook`
+      : `${brandNames[0] ?? "Brand"} · packed by the brand, delivered by Zakhnook`;
 
   const activeIndex = timelineIndexForStatus(order.status);
   const showTimeline = order.status !== "cancelled";

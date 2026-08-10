@@ -48,7 +48,7 @@ function BrandCard({ brand, view, partnerIntroActive }: { brand: FeaturedBrandSu
             className={`brand-partner-badge ${partnerIntroActive ? "brand-partner-badge-intro" : ""} absolute top-3 inline-flex h-8 items-center gap-1.5 overflow-hidden rounded-full border border-white/60 bg-white/90 px-[7px] text-[10px] font-bold uppercase tracking-[0.1em] text-[#6f2d27] shadow-sm backdrop-blur ${isList ? "right-3 sm:left-3 sm:right-auto sm:[transform-origin:left_center]" : "right-3"}`}
           >
             <BadgeCheck className="brand-partner-badge-icon h-4 w-4 shrink-0" />
-            <span className="brand-partner-badge-label whitespace-nowrap">Mahaly partner</span>
+            <span className="brand-partner-badge-label whitespace-nowrap">Zakhnook partner</span>
           </span>
         )}
       </div>
@@ -64,7 +64,7 @@ function BrandCard({ brand, view, partnerIntroActive }: { brand: FeaturedBrandSu
 
         <div className={`flex items-start justify-between gap-3 ${isList ? "ml-[72px] sm:ml-0" : "ml-[72px]"}`}>
           <div className="min-w-0">
-            <h2 className="flex items-center gap-1.5 text-[16px] font-bold tracking-[-0.02em] text-[#211b17]">
+            <h2 className="flex items-center gap-1.5 text-[16px] font-bold tracking-[-0.02em] text-[#242424]">
               {brand.name}
               {brand.isMahalyPartner && <PartnerBadge className="h-4 w-4" />}
             </h2>
@@ -75,7 +75,7 @@ function BrandCard({ brand, view, partnerIntroActive }: { brand: FeaturedBrandSu
                   <span className="inline-flex cursor-default rounded-full bg-[#f0e4d8] px-1.5 py-0.5 text-[10px] font-bold text-[#74332d]">
                     +{brand.additionalCategories.length}
                   </span>
-                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-[#211d1a] px-3 py-2 text-[11px] leading-5 text-white opacity-0 shadow-xl transition-opacity group-hover/categories:opacity-100">
+                  <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-[#242424] px-3 py-2 text-[11px] leading-5 text-white opacity-0 shadow-xl transition-opacity group-hover/categories:opacity-100">
                     {brand.additionalCategories.join(", ")}
                   </span>
                 </span>
@@ -143,7 +143,7 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
           <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
             <label className="relative">
               <span className="sr-only">Filter by category</span>
-              <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#332a24] outline-none transition focus:border-[#7d3730] focus:ring-2 focus:ring-[#7d3730]/10">
+              <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
                 {categories.map((item) => <option key={item} value={item}>{item === ALL ? "All categories" : item}</option>)}
               </select>
               <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-[#776a61]" />
@@ -151,17 +151,17 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
 
             <label className="relative">
               <span className="sr-only">Filter by location</span>
-              <select value={city} onChange={(event) => setCity(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#332a24] outline-none transition focus:border-[#7d3730] focus:ring-2 focus:ring-[#7d3730]/10">
+              <select value={city} onChange={(event) => setCity(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
                 {cities.map((item) => <option key={item} value={item}>{item === ALL ? "All locations" : item}</option>)}
               </select>
               <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-[#776a61]" />
             </label>
 
             <label className="relative">
-              <span className="sr-only">Filter by Mahaly partnership</span>
-              <select value={partner} onChange={(event) => setPartner(event.target.value as PartnerFilter)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#332a24] outline-none transition focus:border-[#7d3730] focus:ring-2 focus:ring-[#7d3730]/10">
+              <span className="sr-only">Filter by Zakhnook partnership</span>
+              <select value={partner} onChange={(event) => setPartner(event.target.value as PartnerFilter)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
                 <option value="all">All brands</option>
-                <option value="partner">Mahaly partners</option>
+                <option value="partner">Zakhnook partners</option>
                 <option value="independent">Independent brands</option>
               </select>
               <SlidersHorizontal className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-[#776a61]" />
@@ -169,11 +169,11 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
           </div>
 
           <div className="flex items-center justify-between gap-3 xl:justify-end">
-            <p className="whitespace-nowrap text-xs text-[#766b61]"><span className="font-bold text-[#2b231e]">{visibleBrands.length}</span> brands</p>
+            <p className="whitespace-nowrap text-xs text-[#766b61]"><span className="font-bold text-[#242424]">{visibleBrands.length}</span> brands</p>
             {hasFilters && <button type="button" onClick={() => { setCategory(ALL); setCity(ALL); setPartner("all"); }} className="text-xs font-bold text-[#8a3a32] hover:text-[#612620]">Clear filters</button>}
             <label className="relative hidden sm:block">
               <span className="sr-only">Sort brands</span>
-              <select value={sort} onChange={(event) => setSort(event.target.value as SortOption)} className="h-10 appearance-none bg-transparent pl-3 pr-8 text-xs font-semibold text-[#332a24] outline-none">
+              <select value={sort} onChange={(event) => setSort(event.target.value as SortOption)} className="h-10 appearance-none bg-transparent pl-3 pr-8 text-xs font-semibold text-[#242424] outline-none">
                 <option value="featured">Featured first</option>
                 <option value="newest">Newest</option>
                 <option value="name">Name A–Z</option>
@@ -197,7 +197,7 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
       ) : (
         <div className="mt-5 flex min-h-72 flex-col items-center justify-center rounded-[24px] border border-dashed border-[#d8cabc] bg-[#fffdf9] px-6 text-center">
           <Store className="h-9 w-9 text-[#8a5148]" />
-          <h2 className="mt-4 text-xl font-bold text-[#2b231e]">No brands match these filters</h2>
+          <h2 className="mt-4 text-xl font-bold text-[#242424]">No brands match these filters</h2>
           <p className="mt-2 text-sm text-[#766b61]">Try another location, category, or partnership type.</p>
           <button type="button" onClick={() => { setCategory(ALL); setCity(ALL); setPartner("all"); }} className="mt-5 rounded-full bg-[#57221e] px-5 py-2.5 text-xs font-bold text-white">Show all brands</button>
         </div>

@@ -37,7 +37,7 @@ export interface BrandOrder {
   items: BrandOrderItem[];
   // 'brand_direct' orders are this brand's own shipment (this brand can
   // advance its status); 'mahaly_pool' orders pool this brand's items with
-  // other partner brands' — Mahaly's own warehouse fulfills those, so the
+  // other partner brands' — Zakhnook's own warehouse fulfills those, so the
   // brand-portal view stays read-only for them (see BrandOrdersTable).
   fulfillmentType: "mahaly_pool" | "brand_direct";
   shippingFeeEgp: number;

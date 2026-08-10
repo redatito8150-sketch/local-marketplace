@@ -6,7 +6,7 @@ import { ARTICLES } from "@/content/journal";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 
 export const metadata = {
-  title: "Journal — Mahaly",
+  title: "Journal — Zakhnook",
   description:
     "Stories from the makers, studios, and ateliers behind Local's brands.",
 };

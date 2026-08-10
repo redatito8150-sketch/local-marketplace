@@ -79,7 +79,7 @@ function ProductListRow({ product, eager }: { product: Product; eager?: boolean 
             }}
             className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-white shadow-soft transition-transform hover:scale-105"
           >
-            <Heart className="h-4 w-4" strokeWidth={1.8} fill={wishlisted ? "#161513" : "none"} color="#161513" />
+            <Heart className="h-4 w-4" strokeWidth={1.8} fill={wishlisted ? "#242424" : "none"} color="#242424" />
           </button>
         </div>
         <p className="mt-1.5 flex items-center gap-2 text-[14px] font-semibold text-ink">

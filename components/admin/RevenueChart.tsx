@@ -35,12 +35,12 @@ export default function RevenueChart({ points }: { points: DailyRevenuePoint[] }
       >
         <defs>
           <linearGradient id="adminRevenueGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--admin-primary, #161513)" stopOpacity="0.18" />
-            <stop offset="100%" stopColor="var(--admin-primary, #161513)" stopOpacity="0" />
+            <stop offset="0%" stopColor="var(--admin-primary, #242424)" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="var(--admin-primary, #242424)" stopOpacity="0" />
           </linearGradient>
         </defs>
         {areaPath && <path d={areaPath} fill="url(#adminRevenueGradient)" />}
-        {linePath && <path d={linePath} fill="none" stroke="var(--admin-primary, #161513)" strokeWidth="2" />}
+        {linePath && <path d={linePath} fill="none" stroke="var(--admin-primary, #242424)" strokeWidth="2" />}
       </svg>
       <div className="mt-1 flex justify-between text-[10px] font-medium text-[var(--admin-text-muted,#68645f)]">
         {points

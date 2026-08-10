@@ -13,7 +13,7 @@ export async function generateMetadata(
   const searchParams = await props.searchParams;
   const q = searchParams.q ?? "";
   return {
-    title: q ? `"${q}" — Search — Mahaly` : "Search — Mahaly",
+    title: q ? `"${q}" — Search — Zakhnook` : "Search — Zakhnook",
     description: "Search Local's marketplace of independent local brands.",
   };
 }

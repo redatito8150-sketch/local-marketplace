@@ -21,11 +21,11 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "This Privacy Policy is operated by [LEGAL_ENTITY_NAME], trading as Mahaly (\"Mahaly\", \"we\", \"us\", or \"our\"). It applies to our website, mobile application, customer accounts, purchases, customer-support interactions, and any other service that links to this policy.",
+        text: "This Privacy Policy is operated by [LEGAL_ENTITY_NAME], trading as Zakhnook (\"Zakhnook\", \"we\", \"us\", or \"our\"). It applies to our website, mobile application, customer accounts, purchases, customer-support interactions, and any other service that links to this policy.",
       },
       {
         type: "paragraph",
-        text: "Mahaly is a marketplace: independent brands and sellers list and fulfill their own products through our platform. Where a brand, seller, delivery partner, or other third party processes your information under its own privacy notice, that notice — not this one — governs that specific processing. We'll identify those cases where practical throughout this policy.",
+        text: "Zakhnook is a marketplace: independent brands and sellers list and fulfill their own products through our platform. Where a brand, seller, delivery partner, or other third party processes your information under its own privacy notice, that notice — not this one — governs that specific processing. We'll identify those cases where practical throughout this policy.",
       },
     ],
   },
@@ -49,7 +49,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
           "Wishlist and cart activity",
           "Reviews, ratings, reports, and other content you submit",
           "Customer-support communications",
-          "Brand or seller application information, if you apply to sell on Mahaly",
+          "Brand or seller application information, if you apply to sell on Zakhnook",
         ],
       },
       { type: "subheading", text: "B. Information received through social login" },
@@ -70,7 +70,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       },
       {
         type: "paragraph",
-        text: "Mahaly does not store complete payment card numbers. Where card or other electronic payment methods are offered, the payment provider processes your payment credentials under its own privacy notice, and shares with us only what's needed to confirm and reconcile your order.",
+        text: "Zakhnook does not store complete payment card numbers. Where card or other electronic payment methods are offered, the payment provider processes your payment credentials under its own privacy notice, and shares with us only what's needed to confirm and reconcile your order.",
       },
       { type: "subheading", text: "D. Technical and usage information" },
       {
@@ -133,7 +133,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "Because Mahaly is a marketplace, fulfilling your order and operating the platform requires sharing certain information with the parties involved in that order and the services that run the platform. We share only what's reasonably necessary for each recipient's role:",
+        text: "Because Zakhnook is a marketplace, fulfilling your order and operating the platform requires sharing certain information with the parties involved in that order and the services that run the platform. We share only what's reasonably necessary for each recipient's role:",
       },
       {
         type: "list",
@@ -161,17 +161,17 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "Mahaly supports signing in with Google. This section explains specifically what that involves, since Google's own policies require us to.",
+        text: "Zakhnook supports signing in with Google. This section explains specifically what that involves, since Google's own policies require us to.",
       },
       {
         type: "list",
         items: [
           "We access your Google account identifier, verified email address, name, and profile image — the minimum Google provides for the \"openid\", \"email\", and \"profile\" sign-in scopes. We do not request access to Gmail, Drive, Calendar, or any other Google data.",
           "This data is used to authenticate you and to initialize your account (name and, where applicable, a fallback profile photo) the first time you sign in with Google.",
-          "Your Google profile photo is used only as a fallback: if you've manually uploaded a photo in Mahaly, that photo is always shown instead, and is never replaced by your Google photo — including on later Google sign-ins.",
+          "Your Google profile photo is used only as a fallback: if you've manually uploaded a photo in Zakhnook, that photo is always shown instead, and is never replaced by your Google photo — including on later Google sign-ins.",
           "We never receive your Google password.",
-          "Google-derived information is not used for advertising unrelated to Mahaly, and won't be, unless we disclose that clearly and obtain any consent required beforehand.",
-          "A self-service Google identity disconnect is not currently available. You can stop using Google to sign in, or request deletion of your Mahaly account information at any time — see \"Account Deletion\" below.",
+          "Google-derived information is not used for advertising unrelated to Zakhnook, and won't be, unless we disclose that clearly and obtain any consent required beforehand.",
+          "A self-service Google identity disconnect is not currently available. You can stop using Google to sign in, or request deletion of your Zakhnook account information at any time — see \"Account Deletion\" below.",
         ],
       },
     ],
@@ -254,7 +254,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       },
       {
         type: "paragraph",
-        text: "Uninstalling the Mahaly app from your device does not delete your account. You must use the account-deletion option above, or contact us at [PRIVACY_EMAIL], to actually delete your account.",
+        text: "Uninstalling the Zakhnook app from your device does not delete your account. You must use the account-deletion option above, or contact us at [PRIVACY_EMAIL], to actually delete your account.",
       },
     ],
   },
@@ -264,7 +264,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "Mahaly is not intended for children under [MINIMUM_AGE], and we don't knowingly collect personal information from children under that age. If you believe a child has provided us with personal information, contact us at [PRIVACY_EMAIL] so we can address it.",
+        text: "Zakhnook is not intended for children under [MINIMUM_AGE], and we don't knowingly collect personal information from children under that age. If you believe a child has provided us with personal information, contact us at [PRIVACY_EMAIL] so we can address it.",
       },
     ],
   },

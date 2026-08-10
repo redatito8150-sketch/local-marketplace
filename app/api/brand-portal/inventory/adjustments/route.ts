@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     .eq("products.brand_id", owner.brandId);
   if ((owned?.length ?? 0) !== ids.length) return NextResponse.json({ error: "A selected variant is not available for this brand" }, { status: 403 });
 
-  // Mahaly Partner brands keep their site-visible stock in Mahaly's own
+  // Zakhnook Partner brands keep their site-visible stock in Zakhnook's own
   // warehouse — it can only ever go up via a confirmed Local Warehouse
   // transfer receipt, never a direct adjustment here. "remove"
   // (correction/damage/loss going down) still passes through untouched.

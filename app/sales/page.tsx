@@ -5,8 +5,8 @@ import DealsExperience from "@/components/offers/DealsExperience";
 import { getMarketplaceCatalogPage } from "@/lib/data/products";
 
 export const metadata: Metadata = {
-  title: "Sales — Mahaly",
-  description: "Limited-time prices from Mahaly's independent local brands.",
+  title: "Sales — Zakhnook",
+  description: "Limited-time prices from Zakhnook's independent local brands.",
 };
 
 export const revalidate = 60;
@@ -19,7 +19,7 @@ export default async function SalesPage() {
   });
 
   return (
-    <main className="flex min-h-screen flex-col [&>*]:w-full bg-[#f7f3ee]">
+    <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
       <Header />
       <DealsExperience products={result.products} />
       <Footer />

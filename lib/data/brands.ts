@@ -308,7 +308,7 @@ interface FeaturedMenuRow {
 //     newest first. A brand keeps its slot after the window passes (just
 //     loses the badge) — it's only displaced by (1)/(2) ranking above it
 //     or the slot cap below.
-//  3. Whatever slots remain: every other active brand, Mahaly-partner
+//  3. Whatever slots remain: every other active brand, Zakhnook-partner
 //     brands ranked first within this tier, then a daily-rotating offset
 //     into the (stably sorted) remaining pool — so which brands show up
 //     here shifts by one each day and, over enough days, every brand in

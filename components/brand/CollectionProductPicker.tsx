@@ -107,13 +107,13 @@ export default function CollectionProductPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search your products"
-            className="w-full rounded-full border border-[#ddd2c8] px-4 py-2 text-sm outline-none focus:border-[#8f2634]"
+            className="w-full rounded-full border border-[#ddd2c8] px-4 py-2 text-sm outline-none focus:border-[#AC3935]"
           />
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {!products ? (
-            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#8f2634]" /></div>
+            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#AC3935]" /></div>
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-[#8b8078]">No products match.</p>
           ) : (
@@ -126,13 +126,13 @@ export default function CollectionProductPicker({
                       type="button"
                       onClick={() => toggle(product.id)}
                       className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                        checked ? "border-[#8f2634] bg-[#fff2f2]" : "border-transparent hover:bg-[#f8f2ec]"
+                        checked ? "border-[#AC3935] bg-[#fff2f2]" : "border-transparent hover:bg-[#f8f2ec]"
                       }`}
                     >
                       <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#f1e9e1]">
                         <Image src={product.image} alt="" fill sizes="44px" className="object-cover" />
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-[#332b27]">
+                      <span className="min-w-0 flex-1 truncate text-sm text-[#242424]">
                         {product.name}
                         {product.status === "archived" && (
                           <span className="ml-1.5 rounded-full bg-[#f1eae2] px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-[#8a7d73]">
@@ -142,7 +142,7 @@ export default function CollectionProductPicker({
                       </span>
                       <span
                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                          checked ? "border-[#8f2634] bg-[#8f2634] text-white" : "border-[#ddd2c8]"
+                          checked ? "border-[#AC3935] bg-[#AC3935] text-white" : "border-[#ddd2c8]"
                         }`}
                       >
                         {checked && <Check className="h-3 w-3" strokeWidth={3} />}

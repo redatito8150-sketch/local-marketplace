@@ -8,11 +8,11 @@ import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
 import { getOrderForAdmin } from "@/lib/data/admin";
 
 // A brand only ever advances its OWN 'brand_direct' shipment through the
-// self-fulfillment handoff — Mahaly still does the actual delivery, but the
+// self-fulfillment handoff — Zakhnook still does the actual delivery, but the
 // brand is the one packing the order, so it marks "I'm packing it" and
 // "I've handed it to the courier" itself rather than waiting on an admin.
 // 'mahaly_pool' orders (this brand's items pooled with other partner
-// brands', fulfilled straight from Mahaly's own warehouse) are never
+// brands', fulfilled straight from Zakhnook's own warehouse) are never
 // editable here — only admin/staff touch those, same as before.
 const ALLOWED_TRANSITIONS: Record<string, string> = {
   paid: "preparing",

@@ -145,14 +145,14 @@ export default function CartPage() {
                         <p className="text-[13.5px] font-semibold text-ink">
                           {group.isPool
                             ? group.brandNames.length > 1
-                              ? `${group.brandNames.join(", ")} — Mahaly Partners`
-                              : `${group.brandNames[0] ?? "Mahaly"} — Mahaly Partner`
+                              ? `${group.brandNames.join(", ")} — Zakhnook Partners`
+                              : `${group.brandNames[0] ?? "Zakhnook"} — Zakhnook Partner`
                             : group.brandNames[0] ?? "Brand"}
                         </p>
                         <p className="text-[11.5px] text-ink-soft/55">
                           {group.isPool
-                            ? "Fulfilled from Mahaly's warehouse — ships as one shipment."
-                            : "Packed by the brand — ships as its own shipment. Delivered by Mahaly."}
+                            ? "Fulfilled from Zakhnook's warehouse — ships as one shipment."
+                            : "Packed by the brand — ships as its own shipment. Delivered by Zakhnook."}
                         </p>
                       </div>
                     </div>

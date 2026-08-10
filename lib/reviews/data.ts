@@ -51,12 +51,12 @@ export async function getPublicReviews(args: { brandSlug?: string; productId?: s
   }
   const userIds = [...new Set((data ?? []).map((row) => row.user_id))];
   const { data: profiles } = userIds.length ? await supabaseAdmin.from("profiles").select("id,full_name").in("id", userIds) : { data: [] };
-  const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name || "Mahaly customer"]));
+  const names = new Map((profiles ?? []).map((profile) => [profile.id, profile.full_name || "Zakhnook customer"]));
   const client = await createSupabaseServerClient();
   const { data: { user } } = await client.auth.getUser();
   let reviews: PublicReview[] = (data ?? []).map((row: any) => ({
     id: row.id, productId: row.product_id, productName: row.products.name, productImage: row.products.image,
-    brandSlug: row.products.brand_slug, authorName: names.get(row.user_id) ?? "Mahaly customer",
+    brandSlug: row.products.brand_slug, authorName: names.get(row.user_id) ?? "Zakhnook customer",
     rating: row.rating, title: row.title ?? undefined, body: row.body, createdAt: row.created_at, updatedAt: row.updated_at,
     verifiedPurchase: true,
     images: (row.review_images ?? []).sort((a: any,b: any)=>a.display_order-b.display_order).map((image: any) => ({

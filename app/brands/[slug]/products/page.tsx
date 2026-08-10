@@ -10,7 +10,7 @@ import { buildDynamicFilterGroups } from "@/lib/filters";
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const brand = await getBrandContent(slug);
-  return brand ? { title: `${brand.name} Products | Mahaly`, description: `Shop all ${brand.name} products on Mahaly.` } : {};
+  return brand ? { title: `${brand.name} Products | Zakhnook`, description: `Shop all ${brand.name} products on Zakhnook.` } : {};
 }
 
 export default async function BrandProductsPage({ params }: { params: Promise<{ slug: string }> }) {

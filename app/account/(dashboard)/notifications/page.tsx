@@ -29,7 +29,7 @@ export default async function AccountNotificationsPage() {
 
   return (
     <div className="space-y-7">
-      <AccountPageHeader eyebrow="Stay in the loop" title="Notifications" description="Everything Mahaly needs to tell you, and the emails you want to hear from us." />
+      <AccountPageHeader eyebrow="Stay in the loop" title="Notifications" description="Everything Zakhnook needs to tell you, and the emails you want to hear from us." />
       <AccountPanel
         title="Recent activity"
         description="Order updates, application decisions, and other account activity."

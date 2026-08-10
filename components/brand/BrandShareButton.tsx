@@ -6,7 +6,7 @@ import { useState } from "react";
 export default function BrandShareButton({ brandName }: { brandName: string }) {
   const [copied, setCopied] = useState(false);
   async function share() {
-    if (navigator.share) return navigator.share({ title: `${brandName} on Mahaly`, url: window.location.href });
+    if (navigator.share) return navigator.share({ title: `${brandName} on Zakhnook`, url: window.location.href });
     await navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);

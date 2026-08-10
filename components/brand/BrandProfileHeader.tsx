@@ -19,7 +19,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
     { icon: Layers3, value: brand.collectionsCount, label: "Collections" },
   ];
   return (
-    <header className="bg-[#f5eee5] pt-3">
+    <header className="bg-[#FAFAF7] pt-3">
       <div className="mx-auto max-w-brand px-4 sm:px-6 lg:px-10">
         <div className="relative min-h-[280px] overflow-hidden rounded-[28px] sm:min-h-[350px]">
           <InlineEditableImage
@@ -43,7 +43,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
           <div className="absolute inset-x-0 bottom-0 z-30 flex items-end p-5 sm:p-8 lg:p-10">
             <div className="flex w-full flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
-                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#fffaf4] font-serif text-xl text-[#7f1d2d] shadow-xl sm:h-24 sm:w-24">
+                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#fffaf4] font-serif text-xl text-[#AC3935] shadow-xl sm:h-24 sm:w-24">
                   <InlineEditableImage
                     field="logo"
                     src={brand.logoImage}
@@ -74,7 +74,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
                           <span className="cursor-default rounded-full bg-white/15 px-1.5 py-0.5 text-[10px] font-semibold">
                             +{brand.additionalCategories.length}
                           </span>
-                          <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-[#211d1a] px-3 py-2 text-[11px] leading-5 text-white opacity-0 shadow-xl transition-opacity group-hover/categories:opacity-100">
+                          <span className="pointer-events-none absolute left-1/2 top-full z-10 mt-2 w-max max-w-[220px] -translate-x-1/2 rounded-lg bg-[#242424] px-3 py-2 text-[11px] leading-5 text-white opacity-0 shadow-xl transition-opacity group-hover/categories:opacity-100">
                             {brand.additionalCategories.join(", ")}
                           </span>
                         </span>
@@ -100,7 +100,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 py-5 sm:flex sm:gap-8">
-          {stats.map(({ icon: Icon, value, label }) => <div key={label} className="flex items-center justify-center gap-2 rounded-2xl bg-white/60 px-3 py-3 sm:justify-start sm:bg-transparent sm:px-0"><Icon className="hidden h-4 w-4 text-[#8f2335] sm:block" /><p className="text-center sm:text-left"><strong className="block text-sm text-[#211d1a] sm:inline">{value}</strong>{" "}<span className="text-[11px] text-[#786e65] sm:text-xs">{label}</span></p></div>)}
+          {stats.map(({ icon: Icon, value, label }) => <div key={label} className="flex items-center justify-center gap-2 rounded-2xl bg-white/60 px-3 py-3 sm:justify-start sm:bg-transparent sm:px-0"><Icon className="hidden h-4 w-4 text-[#AC3935] sm:block" /><p className="text-center sm:text-left"><strong className="block text-sm text-[#242424] sm:inline">{value}</strong>{" "}<span className="text-[11px] text-[#786e65] sm:text-xs">{label}</span></p></div>)}
         </div>
       </div>
       <BrandProfileNav slug={brand.slug} />

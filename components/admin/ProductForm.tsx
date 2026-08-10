@@ -888,7 +888,7 @@ export default function ProductForm({
             </div>
             <p className="mt-2 text-[13px] text-ink-soft/75">{resolvedShippingPolicy.text}</p>
             <p className="mt-1.5 text-[11px] text-ink-soft/45">
-              Resolved automatically from the selected Brand&apos;s policy, falling back to Mahaly&apos;s marketplace default. Set a Brand&apos;s own policy from its Brand settings.
+              Resolved automatically from the selected Brand&apos;s policy, falling back to Zakhnook&apos;s marketplace default. Set a Brand&apos;s own policy from its Brand settings.
             </p>
           </div>
         </FormSection>

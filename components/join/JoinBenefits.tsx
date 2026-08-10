@@ -12,7 +12,7 @@ export default function JoinBenefits() {
     <section className="mx-auto max-w-[1500px] px-6 py-20 md:px-10 xl:px-12">
       <p className="text-center text-[10px] font-bold uppercase tracking-[0.24em] text-mahalyred">Built for local growth</p>
       <h2 className="mt-2 text-center text-3xl font-semibold tracking-[-0.04em] text-ink lg:text-4xl">
-        Why join Mahaly?
+        Why join Zakhnook?
       </h2>
 
       <div className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

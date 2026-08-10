@@ -71,7 +71,7 @@ export default function BrandDashboardPreview() {
           <div className="grid min-w-[640px] grid-cols-[160px_minmax(0,1fr)] lg:min-w-0">
             {/* Sidebar */}
             <div className="border-r border-stone-150 p-5">
-              <p className="mb-6 text-lg font-bold tracking-tightest text-ink">Mahaly</p>
+              <p className="mb-6 text-lg font-bold tracking-tightest text-ink">Zakhnook</p>
               <ul className="space-y-1">
                 {SIDEBAR_ITEMS.map((item) => (
                   <li key={item.label}>
@@ -132,17 +132,17 @@ export default function BrandDashboardPreview() {
                     >
                       <defs>
                         <linearGradient id="joinRevenueGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#161513" stopOpacity="0.14" />
-                          <stop offset="100%" stopColor="#161513" stopOpacity="0" />
+                          <stop offset="0%" stopColor="#242424" stopOpacity="0.14" />
+                          <stop offset="100%" stopColor="#242424" stopOpacity="0" />
                         </linearGradient>
                       </defs>
                       <path d={areaPath} fill="url(#joinRevenueGradient)" />
-                      <path d={linePath} fill="none" stroke="#161513" strokeWidth="2" />
+                      <path d={linePath} fill="none" stroke="#242424" strokeWidth="2" />
                       <circle
                         cx={highlightPoint.x}
                         cy={highlightPoint.y}
                         r="4"
-                        fill="#161513"
+                        fill="#242424"
                       />
                     </svg>
                     <div

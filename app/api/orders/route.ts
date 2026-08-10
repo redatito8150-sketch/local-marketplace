@@ -263,7 +263,7 @@ export async function POST(request: NextRequest) {
 
   // One RPC call does the whole checkout atomically: it fans out into one
   // order per fulfillment bucket (a single pooled order for every
-  // Mahaly-partner brand's items, plus one order per distinct independent
+  // Zakhnook-partner brand's items, plus one order per distinct independent
   // brand), each with its own unique order number, stock check/decrement,
   // and order_items — all in a single transaction, so two concurrent
   // purchases of the last unit can't both succeed and a multi-item order

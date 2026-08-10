@@ -107,7 +107,7 @@ function AccountPageContent() {
 
   if (user && mfaError) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#f4eee7] p-6">
+      <main className="grid min-h-screen place-items-center bg-[#FAFAF7] p-6">
         <section className="w-full max-w-md rounded-[30px] border border-white/70 bg-white/75 p-8 shadow-card backdrop-blur-xl">
           <ShieldCheck className="h-9 w-9 text-mahalyred" />
           <h1 className="mt-6 font-serif text-3xl font-semibold">Verification is temporarily unavailable</h1>
@@ -120,12 +120,12 @@ function AccountPageContent() {
   }
 
   if (user && !mfaChallenge) {
-    return <main className="grid min-h-screen place-items-center bg-[#f4eee7]"><div className="flex items-center gap-3 text-sm text-ink/55"><span className="h-2 w-2 animate-pulse rounded-full bg-mahalyred" />Preparing your space…</div></main>;
+    return <main className="grid min-h-screen place-items-center bg-[#FAFAF7]"><div className="flex items-center gap-3 text-sm text-ink/55"><span className="h-2 w-2 animate-pulse rounded-full bg-mahalyred" />Preparing your space…</div></main>;
   }
 
   if (user && mfaChallenge) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#f4eee7] p-6">
+      <main className="grid min-h-screen place-items-center bg-[#FAFAF7] p-6">
         <form onSubmit={handleMfaSubmit} className="w-full max-w-md rounded-[30px] border border-white/70 bg-white/75 p-8 shadow-card backdrop-blur-xl">
           <ShieldCheck className="h-9 w-9 text-mahalyred" />
           <h1 className="mt-6 font-serif text-3xl font-semibold">One more step</h1>
@@ -169,7 +169,7 @@ function AccountPageContent() {
           <div className="mt-5 lg:hidden"><AuthOrbitStage compact /></div>
 
           <div className="mx-auto flex w-full max-w-[500px] flex-1 flex-col justify-center py-10 lg:py-8">
-            <Link href="/" className="mb-7 inline-flex w-fit items-center gap-2 text-[11px] font-semibold text-white/38 transition hover:text-white"><ArrowLeft className="h-3.5 w-3.5" /> Back to Mahaly</Link>
+            <Link href="/" className="mb-7 inline-flex w-fit items-center gap-2 text-[11px] font-semibold text-white/38 transition hover:text-white"><ArrowLeft className="h-3.5 w-3.5" /> Back to Zakhnook</Link>
 
             <div className="mb-7 flex rounded-2xl border border-white/5 bg-black/25 p-1.5">
               <button type="button" onClick={() => switchMode("sign-in")} className={`flex-1 rounded-xl py-2.5 text-[12px] font-semibold transition ${mode === "sign-in" ? "bg-white/12 text-white shadow-sm" : "text-white/35"}`}>Sign in</button>
@@ -204,7 +204,7 @@ function AccountPageContent() {
               {confirmationMessage && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-800">{confirmationMessage}</p>}
 
               <button type="submit" disabled={submitting} className="group flex w-full items-center justify-between rounded-2xl bg-mahalyred px-5 py-4 text-[13px] font-semibold text-white shadow-[0_14px_30px_rgba(183,31,26,.22)] transition hover:-translate-y-0.5 hover:bg-mahalyred-dark disabled:cursor-not-allowed disabled:opacity-60">
-                <span>{submitting ? "Please wait…" : mode === "sign-in" ? "Enter Mahaly" : "Create my account"}</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <span>{submitting ? "Please wait…" : mode === "sign-in" ? "Enter Zakhnook" : "Create my account"}</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
             </form>
           </div>

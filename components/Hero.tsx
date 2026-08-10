@@ -15,7 +15,7 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
       <div className="home-hero-vignette" aria-hidden />
       <div className="relative z-10 mx-auto flex min-h-[650px] max-w-[1560px] flex-col px-5 pb-12 pt-9 sm:px-8 lg:min-h-[700px] lg:px-12 lg:pt-11">
         <motion.div
-          initial={{ opacity: 0, y: 24, filter: "blur(10px)" }}
+          initial={false}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-3xl text-center"
@@ -28,7 +28,7 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 38 }}
+          initial={false}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ delay: 0.28, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
           className="mx-auto mt-6"
@@ -43,7 +43,7 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
         </motion.div>
 
         <motion.div
-          initial="hidden"
+          initial={false}
           animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: 0.55 } } }}
           className="mt-20 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-24 lg:grid-cols-4"

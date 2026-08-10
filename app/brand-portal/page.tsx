@@ -87,7 +87,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
 
         {owner.accessLevel === "owner" && <DashboardPanel title="Profile completeness" description="A complete profile helps customers trust your brand">
           <div className="p-5">
-            <div className="flex items-end justify-between gap-3"><p className="text-3xl font-bold tracking-[-0.04em] text-[#302b27]">{profileCompleteness}%</p><p className="text-[11px] font-semibold text-[#7b6f66]">{profileFields.filter(Boolean).length} of {profileFields.length} fields</p></div>
+            <div className="flex items-end justify-between gap-3"><p className="text-3xl font-bold tracking-[-0.04em] text-[#242424]">{profileCompleteness}%</p><p className="text-[11px] font-semibold text-[#7b6f66]">{profileFields.filter(Boolean).length} of {profileFields.length} fields</p></div>
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#eee7de]"><div className="h-full rounded-full bg-mahalyred" style={{ width: `${profileCompleteness}%` }} /></div>
             <Link href={`/brand-portal/page-content${brandParam}`} className="mt-5 inline-flex text-[12px] font-bold text-mahalyred hover:underline">Complete brand profile</Link>
           </div>
@@ -97,11 +97,11 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
       <div className="grid gap-6 xl:grid-cols-2">
         <DashboardPanel title="Best-selling products" description="Ranked from real order quantities">
           {bestSellers.length ? <div className="grid gap-3 p-5 sm:grid-cols-2">{bestSellers.map((product, index) => (
-            <div key={product.id} className="flex items-center gap-3 rounded-xl border border-[#e8e0d7] bg-[#fffdf9] p-3"><span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[#f1eae2] text-[11px] font-bold text-[#75685f]">{index + 1}</span><div className="min-w-0"><p className="truncate text-[12.5px] font-bold text-[#302b27]">{product.name}</p><p className="mt-0.5 text-[11px] text-[#8a7d73]">{formatPrice(product.price, product.currency)}</p></div></div>
+            <div key={product.id} className="flex items-center gap-3 rounded-xl border border-[#e8e0d7] bg-[#fffdf9] p-3"><span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[#f1eae2] text-[11px] font-bold text-[#75685f]">{index + 1}</span><div className="min-w-0"><p className="truncate text-[12.5px] font-bold text-[#242424]">{product.name}</p><p className="mt-0.5 text-[11px] text-[#8a7d73]">{formatPrice(product.price, product.currency)}</p></div></div>
           ))}</div> : <DashboardEmptyState title="No sales ranking yet" description="Published products will appear here until sales data becomes available." />}
         </DashboardPanel>
 
-        <DashboardPanel title="Recent product activity" description="Changes made by your team and Mahaly staff" action={owner.accessLevel === "owner" ? <Link href={`/brand-portal/logs${brandParam}`} className="text-[12px] font-semibold text-mahalyred hover:underline">View activity</Link> : undefined}>
+        <DashboardPanel title="Recent product activity" description="Changes made by your team and Zakhnook staff" action={owner.accessLevel === "owner" ? <Link href={`/brand-portal/logs${brandParam}`} className="text-[12px] font-semibold text-mahalyred hover:underline">View activity</Link> : undefined}>
           {activity.length ? <div className="divide-y divide-[#eee7de]">{activity.slice(0, 5).map((log) => <div key={log.id} className="px-5 py-4"><p className="text-[12.5px] leading-5 text-[#51473f]">{describeAuditLog(log)}</p><p className="mt-1 text-[10.5px] text-[#9b8e84]">{formatDateTime(log.createdAt)}</p></div>)}</div> : <DashboardEmptyState title={owner.accessLevel === "owner" ? "No activity recorded yet" : "Activity is owner-only"} description={owner.accessLevel === "owner" ? "Product and brand changes will appear here." : "Your brand owner can review the complete activity log."} />}
         </DashboardPanel>
       </div>

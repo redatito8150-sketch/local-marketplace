@@ -25,7 +25,7 @@ export interface BrandInput {
   // supabase/migrations/20260730000005_collections_and_sku_by_brand_id.sql.
   skuPrefix: string;
   isActive?: boolean;
-  // Mahaly-partner brands keep their stock in Mahaly's own warehouse, so
+  // Zakhnook-partner brands keep their stock in Zakhnook's own warehouse, so
   // their orders pool into one shared shipment/delivery fee with every
   // other partner brand in the same cart — see
   // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql.

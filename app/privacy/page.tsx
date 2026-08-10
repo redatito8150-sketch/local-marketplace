@@ -44,9 +44,9 @@ const SECTION_ICONS: Record<string, LucideIcon> = {
   "contact-us": Mail,
 };
 
-const TITLE = "Privacy Policy — Mahaly";
+const TITLE = "Privacy Policy — Zakhnook";
 const DESCRIPTION =
-  "How Mahaly collects, uses, shares, and protects your information across our website, mobile app, and marketplace services.";
+  "How Zakhnook collects, uses, shares, and protects your information across our website, mobile app, and marketplace services.";
 
 export const metadata: Metadata = {
   title: TITLE,

@@ -153,7 +153,7 @@ function emptyForm(): FormState {
     productCategoryCustomTags: [],
     brandStory: "",
     foundingYear: "",
-    // Fixed — Mahaly is Egypt-only for now, see the locked Country field below.
+    // Fixed — Zakhnook is Egypt-only for now, see the locked Country field below.
     country: "Egypt",
     city: "",
     salesChannelsList: [],
@@ -734,11 +734,11 @@ export default function ApplyBrandForm({
               Most important question
             </span>
             <p className="mt-2.5 text-[14.5px] font-semibold text-ink">
-              Will you handle packaging & fulfillment yourself, or do you want to partner with Mahaly?
+              Will you handle packaging & fulfillment yourself, or do you want to partner with Zakhnook?
               <RequiredDot />
             </p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-ink-soft/60">
-              If you partner with Mahaly, we take care of packaging, storage, and shipping — you only manage your brand page and product listings.
+              If you partner with Zakhnook, we take care of packaging, storage, and shipping — you only manage your brand page and product listings.
             </p>
             <div className="mt-3.5 space-y-2.5">
               {FULFILLMENT_RESPONSIBILITY_OPTIONS.map((option) => {
@@ -1042,7 +1042,7 @@ export default function ApplyBrandForm({
             <ul className="mt-2 list-disc space-y-1 pl-4 text-[13px] leading-relaxed text-ink-soft/70">
               <li>Our team will review your application.</li>
               <li>We may contact you if we need more information.</li>
-              <li>You will receive updates through your Mahaly account.</li>
+              <li>You will receive updates through your Zakhnook account.</li>
             </ul>
           </div>
 
@@ -1067,7 +1067,7 @@ export default function ApplyBrandForm({
               onChange={(e) => set("consentTerms", e.target.checked)}
               className="mt-0.5"
             />
-            I agree to Mahaly&apos;s review process and privacy terms.
+            I agree to Zakhnook&apos;s review process and privacy terms.
             <RequiredDot />
           </label>
           {fieldErrors.consentTerms && (

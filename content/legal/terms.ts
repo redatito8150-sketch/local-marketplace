@@ -14,7 +14,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "Mahaly is a multi-brand marketplace. Independent brands and sellers own and supply the products listed on Mahaly — we don't manufacture or hold inventory of most products ourselves. Mahaly facilitates product discovery, ordering, payment coordination, delivery coordination, customer support, and related services that connect you with those brands.",
+        text: "Zakhnook is a multi-brand marketplace. Independent brands and sellers own and supply the products listed on Zakhnook — we don't manufacture or hold inventory of most products ourselves. Zakhnook facilitates product discovery, ordering, payment coordination, delivery coordination, customer support, and related services that connect you with those brands.",
       },
       {
         type: "paragraph",
@@ -50,7 +50,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
       },
       {
         type: "paragraph",
-        text: "You're responsible for maintaining access to whichever email address or provider account (e.g., your Google account) is linked to your Mahaly account, since either can be used to sign in. We may require additional verification before allowing certain actions, for security reasons.",
+        text: "You're responsible for maintaining access to whichever email address or provider account (e.g., your Google account) is linked to your Zakhnook account, since either can be used to sign in. We may require additional verification before allowing certain actions, for security reasons.",
       },
     ],
   },
@@ -61,7 +61,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
       {
         type: "list",
         items: [
-          "Products on Mahaly may be offered by independent brands and sellers.",
+          "Products on Zakhnook may be offered by independent brands and sellers.",
           "Sellers are responsible for the accuracy of their product descriptions, for offering only lawful products, for stock availability, and for fulfilling accepted orders.",
           "Product colors and appearance may vary depending on your screen.",
           "We may correct listing errors or remove listings, including after an order is placed, where necessary.",
@@ -76,7 +76,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "A single checkout on Mahaly may include products from multiple brands. From your side, this is one purchase — a single master order. Behind the scenes, we may divide it into separate brand or vendor orders, since each brand fulfills its own portion independently.",
+        text: "A single checkout on Zakhnook may include products from multiple brands. From your side, this is one purchase — a single master order. Behind the scenes, we may divide it into separate brand or vendor orders, since each brand fulfills its own portion independently.",
       },
       {
         type: "list",
@@ -114,7 +114,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
         items: [
           "Supported payment methods are shown at checkout and may include cash on delivery, where available.",
           "By placing an order, you authorize us (or our payment processor) to process payment using your selected method.",
-          "Where electronic payment methods are supported, a third-party payment processor handles your payment credentials under its own terms and privacy notice — Mahaly does not store complete card numbers.",
+          "Where electronic payment methods are supported, a third-party payment processor handles your payment credentials under its own terms and privacy notice — Zakhnook does not store complete card numbers.",
           "We may use fraud-prevention checks before confirming payment.",
           "If a payment fails or is reversed, we may cancel the associated order.",
           "Refunds, where due, are issued to the original payment method where applicable.",
@@ -213,7 +213,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "The Mahaly platform — including its code, design, branding, text, graphics, and databases — is owned by us or our licensors and is protected by intellectual property laws. Brand names, logos, and product trademarks shown on the platform may belong to their respective owners and are used to identify their products.",
+        text: "The Zakhnook platform — including its code, design, branding, text, graphics, and databases — is owned by us or our licensors and is protected by intellectual property laws. Brand names, logos, and product trademarks shown on the platform may belong to their respective owners and are used to identify their products.",
       },
     ],
   },
@@ -275,7 +275,7 @@ export const TERMS_SECTIONS: LegalSection[] = [
     body: [
       {
         type: "paragraph",
-        text: "To the maximum extent permitted by applicable law, Mahaly is not liable for indirect, incidental, or consequential damages arising from your use of the platform. Nothing in these terms excludes or limits liability that cannot lawfully be excluded or limited, and mandatory consumer protections under applicable law remain unaffected.",
+        text: "To the maximum extent permitted by applicable law, Zakhnook is not liable for indirect, incidental, or consequential damages arising from your use of the platform. Nothing in these terms excludes or limits liability that cannot lawfully be excluded or limited, and mandatory consumer protections under applicable law remain unaffected.",
       },
     ],
   },

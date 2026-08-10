@@ -70,7 +70,7 @@ export default async function AccountOverviewPage() {
   return (
     <div className="space-y-7">
       <AccountPageHeader
-        eyebrow="Your Mahaly"
+        eyebrow="Your Zakhnook"
         title={`Welcome back, ${firstName}`}
         description="Everything important about your orders, saved pieces, and personal details in one calm place."
         action={<Link href="/account/settings" className={accountSecondaryButton}>Edit profile</Link>}

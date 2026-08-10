@@ -16,7 +16,7 @@ export default function ShopByMood({ tiles }: { tiles: ResolvedMoodTile[] }) {
     <MotionConfig reducedMotion="never">
     <section className="mx-auto max-w-[1920px] border-b border-white/20 bg-cream/16 px-6 py-6 md:px-10 xl:px-16">
       <motion.div
-        initial={{ opacity: 0, y: 18 }}
+        initial={false}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, amount: 0.7 }}
         transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
@@ -28,7 +28,7 @@ export default function ShopByMood({ tiles }: { tiles: ResolvedMoodTile[] }) {
         {tiles.map((tile, index) => (
           <motion.div
             key={tile.id}
-            initial={{ opacity: 0, y: 38, scale: 0.96 }}
+            initial={false}
             whileInView={{ opacity: 1, y: 0, scale: 1 }}
             viewport={{ once: true, amount: 0.3 }}
             transition={{ type: "spring", stiffness: 95, damping: 18, delay: index * 0.08 }}
