@@ -49,7 +49,7 @@ test("public catalog queries do not use wildcard selects", () => {
     "lib/data/collections.ts",
   ]) {
     const source = readFileSync(join(root, file), "utf8");
-    assert.doesNotMatch(source, /\.from\("(?:products|brands)"\)[\s\S]{0,100}\.select\("\*"\)/);
+    assert.doesNotMatch(source, /\.from\("(?:products|brands)"\)[\s\S]{0,2000}?\.select\("\*"\)/);
   }
 });
 
@@ -65,9 +65,9 @@ test("privacy migration revokes broad grants and excludes sensitive catalog fiel
   assert.match(source, /public\.brand_staff membership/i);
   assert.match(source, /publish_date is null or publish_date <= now\(\)/i);
 
-  const brandGrant = source.match(/grant select \(([\s\S]*?)\) on public\.brands/i)?.[1] ?? "";
-  const productGrant = source.match(/grant select \(([\s\S]*?)\) on public\.products/i)?.[1] ?? "";
-  const orderGrant = source.match(/grant select \(([\s\S]*?)\) on public\.orders/i)?.[1] ?? "";
+  const brandGrant = source.match(/from unnest\(array\[([\s\S]*?)\]::text\[\]\)[\s\S]*?'public\.brands'::regclass/i)?.[1] ?? "";
+  const productGrant = source.match(/revoke select on public\.products[\s\S]*?from unnest\(array\[([\s\S]*?)\]::text\[\]\)[\s\S]*?'public\.products'::regclass/i)?.[1] ?? "";
+  const orderGrant = source.match(/revoke select on public\.orders[\s\S]*?from unnest\(array\[([\s\S]*?)\]::text\[\]\)[\s\S]*?'public\.orders'::regclass/i)?.[1] ?? "";
 
   for (const field of ["owner_user_id", "source_application_id", "onboarding_defaults", "deleted_image_backups"]) {
     assert.doesNotMatch(brandGrant, new RegExp(`\\b${field}\\b`, "i"));

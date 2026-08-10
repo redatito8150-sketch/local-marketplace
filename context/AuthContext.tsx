@@ -16,6 +16,7 @@ import {
   resolvePendingMfaChallenge,
   type PendingMfaChallenge,
 } from "@/lib/supabase/mfaAuth";
+import { isCompleteTotpCode, normalizeTotpCode } from "@/lib/auth/oneTimeCode";
 
 interface AuthResult {
   error?: string;
@@ -188,6 +189,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyMfaChallenge = useCallback(
     async (code: string) => {
       if (!mfaChallenge) return { error: "No pending verification" };
+      const normalizedCode = normalizeTotpCode(code);
+      if (!isCompleteTotpCode(normalizedCode)) return { error: "Enter all 6 digits from your authenticator app." };
       const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({
         factorId: mfaChallenge.factorId,
       });
@@ -196,7 +199,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error: verifyError } = await supabase.auth.mfa.verify({
         factorId: mfaChallenge.factorId,
         challengeId: challenge.id,
-        code,
+        code: normalizedCode,
       });
       if (verifyError) {
         // The one auth failure mode with a genuinely more useful specific

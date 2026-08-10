@@ -104,6 +104,11 @@ export default function SearchAutocomplete() {
       <form onSubmit={handleSubmit} role="search">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft/60" />
         <input
+          // Browser autofill/password-manager extensions can inject attributes
+          // (for example `fdprocessedid`) before React hydrates the shared
+          // header. Keep this suppression scoped to the affected form control
+          // so genuine hydration errors elsewhere remain visible.
+          suppressHydrationWarning
           type="text"
           value={query}
           onChange={(e) => {

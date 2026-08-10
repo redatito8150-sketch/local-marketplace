@@ -11,7 +11,9 @@ import PasswordInput from "@/components/shared/PasswordInput";
 import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import AuthOrbitStage from "@/components/auth/AuthOrbitStage";
 import AuthPageSkeleton from "@/components/auth/AuthPageSkeleton";
+import TotpCodeInput from "@/components/auth/TotpCodeInput";
 import { decidePostAuthDestination } from "@/lib/auth/postAuthDestination";
+import { isCompleteTotpCode } from "@/lib/auth/oneTimeCode";
 
 const inputClass =
   "w-full rounded-2xl border border-[#d9cfc4] bg-white/75 py-3.5 pl-11 pr-4 text-[14px] text-ink outline-none transition focus:border-mahalyred/50 focus:bg-white focus:ring-4 focus:ring-mahalyred/5";
@@ -88,6 +90,10 @@ function AccountPageContent() {
 
   const handleMfaSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!isCompleteTotpCode(mfaCode)) {
+      setError("Enter all 6 digits from your authenticator app.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     const result = await verifyMfaChallenge(mfaCode);
@@ -124,9 +130,17 @@ function AccountPageContent() {
           <ShieldCheck className="h-9 w-9 text-mahalyred" />
           <h1 className="mt-6 font-serif text-3xl font-semibold">One more step</h1>
           <p className="mt-2 text-sm leading-6 text-ink-soft/60">Enter the 6-digit code from your authenticator app.</p>
-          <input type="text" inputMode="numeric" placeholder="123456" required value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} className="mt-7 w-full rounded-2xl border border-[#d9cfc4] bg-white py-4 text-center text-lg tracking-[0.35em] outline-none focus:border-mahalyred/50" />
+          <TotpCodeInput
+            value={mfaCode}
+            onChange={(value) => {
+              setMfaCode(value);
+              if (error) setError("");
+            }}
+            disabled={submitting}
+            invalid={Boolean(error)}
+          />
           {error && <p className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-[12px] font-medium text-red-700">{error}</p>}
-          <button type="submit" disabled={submitting} className="mt-4 w-full rounded-2xl bg-mahalyred py-4 text-sm font-semibold text-white transition hover:bg-mahalyred-dark disabled:opacity-60">{submitting ? "Verifying…" : "Verify & continue"}</button>
+          <button type="submit" disabled={submitting || !isCompleteTotpCode(mfaCode)} className="mt-4 w-full rounded-2xl bg-mahalyred py-4 text-sm font-semibold text-white transition hover:bg-mahalyred-dark disabled:cursor-not-allowed disabled:opacity-60">{submitting ? "Verifying…" : "Verify & continue"}</button>
         </form>
       </main>
     );

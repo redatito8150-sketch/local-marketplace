@@ -99,7 +99,7 @@ export interface ProductRow {
 // workflow/moderation columns must be added deliberately instead of leaking
 // automatically through select("*") when the schema evolves.
 export const PRODUCT_PUBLIC_SELECT =
-  "id, name, brand_name, brand_slug, brand_id, category, product_category, product_type, product_type_id, audience, collection, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, is_unisex, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at" as const;
+  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at" as const;
 
 // Per-request lookup context for the display-only fields resolved from
 // product_type_id/collection_id — loaded once and reused across a batch
@@ -439,7 +439,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   let query = supabase
     .from("products")
-    .select("*", { count: "exact" })
+    .select(PRODUCT_PUBLIC_SELECT, { count: "exact" })
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());

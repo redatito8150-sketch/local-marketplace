@@ -27,17 +27,42 @@ create policy "Brand members can read managed brands"
   );
 
 revoke select on public.brands from anon, authenticated;
-grant select (
-  id, slug, name, tagline, category, additional_categories, founded_year,
-  city, hero_image, logo_image, about_description, about_image, story_image,
-  story_image_2, story_body, website_url, shop_the_look, info_badges,
-  category_tabs, active_tab, values, similar_brand_slugs, created_at,
-  is_active, is_mahaly_partner, is_sponsored, sponsored_placements,
-  sponsored_order, shipping_policy, return_policy, return_window_days,
-  founder_name, journey_milestones, about_headline, about_quote, founder_names,
-  founders, collections_page_title, collections_detail_eyebrow,
-  collections_detail_heading
-) on public.brands to anon, authenticated;
+do $migration$
+declare
+  public_columns text;
+begin
+  select string_agg(format('%I', requested.column_name), ', ' order by requested.ordinality)
+  into public_columns
+  from unnest(array[
+    'id', 'slug', 'name', 'tagline', 'category', 'additional_categories', 'founded_year',
+    'city', 'hero_image', 'logo_image', 'about_description', 'about_image', 'story_image',
+    'story_image_2', 'story_body', 'website_url', 'shop_the_look', 'info_badges',
+    'category_tabs', 'active_tab', 'values', 'similar_brand_slugs', 'created_at',
+    'is_active', 'is_mahaly_partner', 'is_sponsored', 'sponsored_placements',
+    'sponsored_order', 'shipping_policy', 'return_policy', 'return_window_days',
+    'founder_name', 'journey_milestones', 'about_headline', 'about_quote', 'founder_names',
+    'founders', 'collections_page_title', 'collections_detail_eyebrow',
+    'collections_detail_heading'
+  ]::text[]) with ordinality as requested(column_name, ordinality)
+  where exists (
+    select 1
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'public.brands'::regclass
+      and attribute.attname = requested.column_name
+      and attribute.attnum > 0
+      and not attribute.attisdropped
+  );
+
+  if public_columns is null then
+    raise exception 'public.brands has none of the expected storefront columns';
+  end if;
+
+  execute format(
+    'grant select (%s) on public.brands to anon, authenticated',
+    public_columns
+  );
+end
+$migration$;
 
 create or replace function public.get_my_brand_edit_metadata(p_brand_slug text)
 returns table(deleted_image_backups jsonb, source_application_id uuid)
@@ -80,15 +105,39 @@ create policy "Public can read published products"
   );
 
 revoke select on public.products from anon, authenticated;
-grant select (
-  id, name, brand_name, brand_slug, brand_id, category, product_category,
-  product_type, product_type_id, audience, collection, collection_id,
-  material, materials, fit, price, discount_percent, discount_ends_at,
-  currency, image, images, rating, review_count, description, details,
-  care_instructions, shipping_returns, model_height, model_wearing, sku,
-  is_new, is_unisex, featured, status, publish_date, paused_by_brand,
-  default_low_stock_threshold, created_at
-) on public.products to anon, authenticated;
+do $migration$
+declare
+  public_columns text;
+begin
+  select string_agg(format('%I', requested.column_name), ', ' order by requested.ordinality)
+  into public_columns
+  from unnest(array[
+    'id', 'name', 'brand_name', 'brand_slug', 'brand_id', 'product_type_id', 'audience', 'collection_id',
+    'material', 'materials', 'fit', 'price', 'discount_percent', 'discount_ends_at',
+    'currency', 'image', 'images', 'rating', 'review_count', 'description', 'details',
+    'care_instructions', 'shipping_returns', 'model_height', 'model_wearing', 'sku',
+    'is_new', 'featured', 'status', 'publish_date', 'paused_by_brand',
+    'default_low_stock_threshold', 'created_at'
+  ]::text[]) with ordinality as requested(column_name, ordinality)
+  where exists (
+    select 1
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'public.products'::regclass
+      and attribute.attname = requested.column_name
+      and attribute.attnum > 0
+      and not attribute.attisdropped
+  );
+
+  if public_columns is null then
+    raise exception 'public.products has none of the expected storefront columns';
+  end if;
+
+  execute format(
+    'grant select (%s) on public.products to anon, authenticated',
+    public_columns
+  );
+end
+$migration$;
 
 -- ---------------------------------------------------------------------------
 -- Orders: co-owner access without base-row PII/internal-note disclosure
@@ -141,11 +190,36 @@ create policy "Brand members can read their own order items"
   );
 
 revoke select on public.orders from anon, authenticated;
-grant select (
-  id, order_number, status, shipping_name, shipping_city,
-  shipping_governorate, created_at, order_group_id, fulfillment_type,
-  brand_slug, shipping_fee_egp
-) on public.orders to authenticated;
+do $migration$
+declare
+  portal_columns text;
+begin
+  select string_agg(format('%I', requested.column_name), ', ' order by requested.ordinality)
+  into portal_columns
+  from unnest(array[
+    'id', 'order_number', 'status', 'shipping_name', 'shipping_city',
+    'shipping_governorate', 'created_at', 'order_group_id', 'fulfillment_type',
+    'brand_slug', 'shipping_fee_egp'
+  ]::text[]) with ordinality as requested(column_name, ordinality)
+  where exists (
+    select 1
+    from pg_catalog.pg_attribute attribute
+    where attribute.attrelid = 'public.orders'::regclass
+      and attribute.attname = requested.column_name
+      and attribute.attnum > 0
+      and not attribute.attisdropped
+  );
+
+  if portal_columns is null then
+    raise exception 'public.orders has none of the expected portal columns';
+  end if;
+
+  execute format(
+    'grant select (%s) on public.orders to authenticated',
+    portal_columns
+  );
+end
+$migration$;
 
 -- ---------------------------------------------------------------------------
 -- Review owners may edit review copy only through the authenticated API.
