@@ -105,6 +105,12 @@ export default function CheckoutPage() {
   // before React has re-rendered the (also-disabled) button in between.
   const cardRequestInFlightRef = useRef(false);
   const pixelInstanceRef = useRef<PaymobPixelInstance | null>(null);
+  // Latches true the first time a Pixel mount is attempted, and never
+  // resets — this is what keeps the container div (below) permanently in
+  // the DOM once Pixel has ever mounted into it, rather than letting React
+  // remove/recreate it across phase changes. State, not a ref, since it's
+  // read during render (refs can only be read in effects/handlers).
+  const [pixelMountEverStarted, setPixelMountEverStarted] = useState(false);
 
   // Saved addresses for a signed-in shopper — lets checkout offer a real
   // selector instead of just prefilling the default into a flat form.
@@ -251,12 +257,25 @@ export default function CheckoutPage() {
     // card attempt to send an empty shipping.firstName.
   }, [cardState.phase, items, shipping, appliedCoupon]);
 
-  // Mounts Paymob Pixel once a client_secret is available. Cleans up
-  // (.unmount()) on every re-run and on unmount — e.g. if the customer
-  // switches back to Cash on Delivery mid-flow.
+  // Mounts Paymob Pixel once a client_secret is available, and keeps it
+  // mounted through "ready" -> "pixel_open" (that transition only clears
+  // clientSecret/marks the instance as created — it isn't a reason to tear
+  // anything down). Depending on the derived pixelActive boolean rather
+  // than cardState.phase/clientSecret directly is deliberate: those two
+  // change together the instant PIXEL_MOUNTED fires, which previously
+  // re-ran this effect (and its cleanup) immediately after mounting,
+  // unmounting the widget the moment it was created. Cleanup now only
+  // fires when the customer actually leaves the ready/pixel_open pair
+  // (cancelled/error/confirming) — e.g. if they switch back to Cash on
+  // Delivery mid-flow.
+  const pixelActive = cardState.phase === "ready" || cardState.phase === "pixel_open";
   useEffect(() => {
-    if (cardState.phase !== "ready" || !cardState.clientSecret) return;
+    if (!pixelActive) return;
+    if (pixelInstanceRef.current) return; // already mounted for this attempt
+    if (!cardState.clientSecret) return; // pixel_open re-entry — nothing to (re)mount
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPixelMountEverStarted(true);
     let cancelled = false;
     const clientSecret = cardState.clientSecret;
 
@@ -306,7 +325,11 @@ export default function CheckoutPage() {
       pixelInstanceRef.current?.unmount();
       pixelInstanceRef.current = null;
     };
-  }, [cardState.phase, cardState.clientSecret]);
+    // cardState.clientSecret is deliberately excluded — see the comment
+    // above pixelActive. Including it would restore the exact premature-
+    // unmount bug this effect was rewritten to fix.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixelActive]);
 
   // Confirmation polling — the ONLY path that can ever move the UI to a
   // "confirmed" state. This never reads anything from Pixel; it reads our
@@ -358,7 +381,15 @@ export default function CheckoutPage() {
                 : "This card payment didn't succeed. Please try again or use Cash on Delivery.",
           }),
         });
-      } else {
+      } else if (status !== "created") {
+        // "created" means the customer hasn't submitted the card form yet
+        // — the very first poll (fired ~immediately after the form opens)
+        // would otherwise always be "created", incorrectly dispatching
+        // POLL_PENDING (which moves the UI to "confirming", hiding the
+        // form) within about a second of it appearing, before the
+        // customer could plausibly have entered anything. Only a status
+        // that indicates Paymob has actually started processing something
+        // (pending/processing) is a real reason to leave pixel_open.
         dispatchCard({ type: "POLL_PENDING" });
       }
     };
@@ -794,8 +825,21 @@ export default function CheckoutPage() {
                       </button>
                     )}
 
-                    {(cardState.phase === "ready" || cardState.phase === "pixel_open") && (
-                      <div className="rounded-md border border-stone-150 bg-white p-4">
+                    {/* Rendered continuously (never removed from the tree) for the
+                        whole card-attempt lifecycle once Pixel has mounted into it —
+                        only visually toggled via CSS. Pixel injects its own DOM nodes
+                        into #paymob-pixel-container that React has no knowledge of;
+                        if this block were conditionally unmounted by phase (as it used
+                        to be), React's reconciliation would try to remove DOM nodes it
+                        no longer recognizes and crash with a removeChild error the
+                        instant the phase changed away from pixel_open — which used to
+                        happen almost immediately (see the polling effect below). */}
+                    {pixelMountEverStarted && (
+                      <div
+                        className={`rounded-md border border-stone-150 bg-white p-4 ${
+                          cardState.phase === "ready" || cardState.phase === "pixel_open" ? "" : "hidden"
+                        }`}
+                      >
                         <p className="mb-3 text-[12.5px] leading-relaxed text-ink-soft/65">
                           Enter your card details below. Please don&apos;t close this window
                           until you&apos;re done — we&apos;ll confirm your payment once it&apos;s

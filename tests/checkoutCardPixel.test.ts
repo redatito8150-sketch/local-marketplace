@@ -66,7 +66,7 @@ test("no frontend code ever sets a payment_attempts status to paid, or calls a p
 });
 
 test("no order-creation call occurs from any Pixel callback (onCancel/onError) or from PIXEL_SUBMITTED", () => {
-  const effectMatch = checkoutPage.match(/useEffect\(\(\) => \{\s*if \(cardState\.phase !== "ready"[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.clientSecret\]\);/);
+  const effectMatch = checkoutPage.match(/useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/);
   assert.ok(effectMatch, "expected to find the Pixel-mounting effect");
   const body = effectMatch![0];
   assert.doesNotMatch(body, /\/api\/orders/);
@@ -176,7 +176,7 @@ test("the cart is cleared for a card payment ONLY when phase becomes 'confirmed'
 
 test("the polling and cart-clearing effects are the only places CARD flow ever calls clearCart — never from onError/onCancel/PIXEL_SUBMITTED", () => {
   const pixelEffectMatch = checkoutPage.match(
-    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "ready"[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.clientSecret\]\);/
+    /useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/
   )![0];
   const startCardAttemptMatch = checkoutPage.match(
     /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon\]\);/
@@ -192,4 +192,45 @@ test("the 'confirmed' UI state never redirects away from the checkout page and n
   assert.match(block, /Payment confirmed/);
   // Partial fulfillment gets distinct, honest copy, not a blanket success message.
   assert.match(block, /cardState\.isPartial/);
+});
+
+test("polling never dispatches POLL_PENDING while status is still 'created' — the very first poll (fired ~immediately after the Pixel form opens) would otherwise move the UI to 'confirming' before the customer could plausibly have submitted anything", () => {
+  const pollEffectMatch = checkoutPage.match(
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId\]\);/
+  );
+  assert.ok(pollEffectMatch, "expected to find the confirmation-polling effect");
+  const body = pollEffectMatch![0];
+  // Two POLL_PENDING dispatch sites exist: the MAX_ATTEMPTS transient-
+  // read-failure fallback, and the status-branch one this test targets —
+  // the latter is the one guarded by "status !== "created"".
+  const pollPendingIndex = body.lastIndexOf('dispatchCard({ type: "POLL_PENDING" })');
+  assert.ok(pollPendingIndex !== -1);
+  const guardBefore = body.slice(0, pollPendingIndex);
+  assert.match(guardBefore, /status !== "created"/);
+});
+
+test("the Pixel container div is never conditionally unmounted by cardState.phase — it's rendered continuously (CSS-hidden, not removed) once Pixel has ever mounted, so React never tries to remove DOM nodes Pixel injected outside its own knowledge", () => {
+  // The old, crash-prone pattern removed the container from the tree
+  // entirely on every phase change: {(cardState.phase === "ready" ||
+  // cardState.phase === "pixel_open") && (<div>...<div id={...}/></div>)}.
+  assert.doesNotMatch(
+    checkoutPage,
+    /\{\(cardState\.phase === "ready" \|\| cardState\.phase === "pixel_open"\) && \(/
+  );
+  assert.match(checkoutPage, /pixelMountEverStarted && \(/);
+  const containerBlockMatch = checkoutPage.match(
+    /\{pixelMountEverStarted && \([\s\S]*?<div id=\{PAYMOB_PIXEL_CONTAINER_ID\} \/>[\s\S]*?\)\}/
+  );
+  assert.ok(containerBlockMatch, "expected to find the always-rendered Pixel container block");
+  assert.match(containerBlockMatch![0], /"hidden"/);
+});
+
+test("the Pixel-mounting effect depends on a stable pixelActive boolean, not cardState.clientSecret directly — clientSecret is cleared by the same PIXEL_MOUNTED dispatch that sets phase to pixel_open, which previously re-ran (and cleaned up) this effect immediately after mounting", () => {
+  assert.match(
+    checkoutPage,
+    /const pixelActive = cardState\.phase === "ready" \|\| cardState\.phase === "pixel_open";/
+  );
+  const effectMatch = checkoutPage.match(/useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/);
+  assert.ok(effectMatch, "expected to find the Pixel-mounting effect");
+  assert.match(effectMatch![0], /if \(pixelInstanceRef\.current\) return/);
 });
