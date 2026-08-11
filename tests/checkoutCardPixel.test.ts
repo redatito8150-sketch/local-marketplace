@@ -199,7 +199,7 @@ test("the 'confirmed' UI state never redirects away from the checkout page and n
   assert.match(block, /cardState\.isPartial/);
 });
 
-test("polling never dispatches POLL_PENDING while status is still 'created' — the very first poll (fired ~immediately after the Pixel form opens) would otherwise move the UI to 'confirming' before the customer could plausibly have submitted anything", () => {
+test("polling never dispatches POLL_PENDING while status is 'created' or 'pending' — mark_paymob_intention_created sets 'pending' server-side before the customer has even seen the card form (nothing in this system ever sets a distinct 'processing' status), so excluding only 'created' still moved the UI to 'confirming' on literally the first poll", () => {
   const pollEffectMatch = checkoutPage.match(
     /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId\]\);/
   );
@@ -207,11 +207,12 @@ test("polling never dispatches POLL_PENDING while status is still 'created' — 
   const body = pollEffectMatch![0];
   // Two POLL_PENDING dispatch sites exist: the MAX_ATTEMPTS transient-
   // read-failure fallback, and the status-branch one this test targets —
-  // the latter is the one guarded by "status !== "created"".
+  // the latter is the one guarded by "status !== "created" && status !==
+  // "pending"".
   const pollPendingIndex = body.lastIndexOf('dispatchCard({ type: "POLL_PENDING" })');
   assert.ok(pollPendingIndex !== -1);
   const guardBefore = body.slice(0, pollPendingIndex);
-  assert.match(guardBefore, /status !== "created"/);
+  assert.match(guardBefore, /status !== "created" && status !== "pending"/);
 });
 
 test("the Pixel container div is never conditionally unmounted by cardState.phase — it's rendered unconditionally (CSS-hidden, not removed) for the whole card-payment-method lifetime, so React never tries to remove DOM nodes Pixel injected outside its own knowledge", () => {

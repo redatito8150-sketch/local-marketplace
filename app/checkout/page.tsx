@@ -383,15 +383,22 @@ export default function CheckoutPage() {
                 : "This card payment didn't succeed. Please try again or use Cash on Delivery.",
           }),
         });
-      } else if (status !== "created") {
-        // "created" means the customer hasn't submitted the card form yet
-        // — the very first poll (fired ~immediately after the form opens)
-        // would otherwise always be "created", incorrectly dispatching
-        // POLL_PENDING (which moves the UI to "confirming", hiding the
-        // form) within about a second of it appearing, before the
-        // customer could plausibly have entered anything. Only a status
-        // that indicates Paymob has actually started processing something
-        // (pending/processing) is a real reason to leave pixel_open.
+      } else if (status !== "created" && status !== "pending") {
+        // "pending" is set server-side by the intention-creation RPC immediately
+        // once Paymob confirms the intention — server-side, before the
+        // customer has even seen the card form, not once they've
+        // submitted it. There is no status value anywhere in this system
+        // for "customer is actively filling in card details" (nothing
+        // ever sets "processing" — the only real transitions are
+        // pending -> paid/failed once the webhook actually fires), so
+        // "pending" covers the entire waiting period, however long it
+        // takes the customer to type. Excluding only "created" here
+        // (which, per the above, is never actually observed by the time
+        // a poll can run) still moved the UI to "confirming" on literally
+        // the first poll, ~1-3s after the form opened. Only a status
+        // that's neither "created" nor "pending" means the webhook has
+        // actually fired with a real outcome — a genuine reason to leave
+        // pixel_open.
         dispatchCard({ type: "POLL_PENDING" });
       }
     };
