@@ -209,7 +209,7 @@ test("polling never dispatches POLL_PENDING while status is still 'created' — 
   assert.match(guardBefore, /status !== "created"/);
 });
 
-test("the Pixel container div is never conditionally unmounted by cardState.phase — it's rendered continuously (CSS-hidden, not removed) once Pixel has ever mounted, so React never tries to remove DOM nodes Pixel injected outside its own knowledge", () => {
+test("the Pixel container div is never conditionally unmounted by cardState.phase — it's rendered unconditionally (CSS-hidden, not removed) for the whole card-payment-method lifetime, so React never tries to remove DOM nodes Pixel injected outside its own knowledge", () => {
   // The old, crash-prone pattern removed the container from the tree
   // entirely on every phase change: {(cardState.phase === "ready" ||
   // cardState.phase === "pixel_open") && (<div>...<div id={...}/></div>)}.
@@ -217,9 +217,12 @@ test("the Pixel container div is never conditionally unmounted by cardState.phas
     checkoutPage,
     /\{\(cardState\.phase === "ready" \|\| cardState\.phase === "pixel_open"\) && \(/
   );
-  assert.match(checkoutPage, /pixelMountEverStarted && \(/);
+  // Also not gated on any state set from inside the mounting effect (that
+  // would race the effect's own synchronous new PixelConstructor(...)
+  // call, which needs the container to already exist in the DOM).
+  assert.doesNotMatch(checkoutPage, /pixelMountEverStarted/);
   const containerBlockMatch = checkoutPage.match(
-    /\{pixelMountEverStarted && \([\s\S]*?<div id=\{PAYMOB_PIXEL_CONTAINER_ID\} \/>[\s\S]*?\)\}/
+    /<div\s+className=\{`rounded-md border border-stone-150 bg-white p-4[\s\S]*?<div id=\{PAYMOB_PIXEL_CONTAINER_ID\} \/>[\s\S]*?<\/div>/
   );
   assert.ok(containerBlockMatch, "expected to find the always-rendered Pixel container block");
   assert.match(containerBlockMatch![0], /"hidden"/);

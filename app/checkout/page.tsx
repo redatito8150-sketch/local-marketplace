@@ -105,12 +105,6 @@ export default function CheckoutPage() {
   // before React has re-rendered the (also-disabled) button in between.
   const cardRequestInFlightRef = useRef(false);
   const pixelInstanceRef = useRef<PaymobPixelInstance | null>(null);
-  // Latches true the first time a Pixel mount is attempted, and never
-  // resets — this is what keeps the container div (below) permanently in
-  // the DOM once Pixel has ever mounted into it, rather than letting React
-  // remove/recreate it across phase changes. State, not a ref, since it's
-  // read during render (refs can only be read in effects/handlers).
-  const [pixelMountEverStarted, setPixelMountEverStarted] = useState(false);
 
   // Saved addresses for a signed-in shopper — lets checkout offer a real
   // selector instead of just prefilling the default into a flat form.
@@ -274,8 +268,6 @@ export default function CheckoutPage() {
     if (pixelInstanceRef.current) return; // already mounted for this attempt
     if (!cardState.clientSecret) return; // pixel_open re-entry — nothing to (re)mount
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPixelMountEverStarted(true);
     let cancelled = false;
     const clientSecret = cardState.clientSecret;
 
@@ -825,29 +817,35 @@ export default function CheckoutPage() {
                       </button>
                     )}
 
-                    {/* Rendered continuously (never removed from the tree) for the
-                        whole card-attempt lifecycle once Pixel has mounted into it —
-                        only visually toggled via CSS. Pixel injects its own DOM nodes
-                        into #paymob-pixel-container that React has no knowledge of;
-                        if this block were conditionally unmounted by phase (as it used
-                        to be), React's reconciliation would try to remove DOM nodes it
-                        no longer recognizes and crash with a removeChild error the
-                        instant the phase changed away from pixel_open — which used to
-                        happen almost immediately (see the polling effect below). */}
-                    {pixelMountEverStarted && (
-                      <div
-                        className={`rounded-md border border-stone-150 bg-white p-4 ${
-                          cardState.phase === "ready" || cardState.phase === "pixel_open" ? "" : "hidden"
-                        }`}
-                      >
-                        <p className="mb-3 text-[12.5px] leading-relaxed text-ink-soft/65">
-                          Enter your card details below. Please don&apos;t close this window
-                          until you&apos;re done — we&apos;ll confirm your payment once it&apos;s
-                          verified.
-                        </p>
-                        <div id={PAYMOB_PIXEL_CONTAINER_ID} />
-                      </div>
-                    )}
+                    {/* Rendered unconditionally (never removed from the tree) for
+                        the whole card-payment-method lifetime, only visually
+                        toggled via CSS — deliberately NOT gated on any state set
+                        from inside the mounting effect below (e.g. a "has Pixel
+                        ever started mounting" flag), since that would race the
+                        effect's own synchronous new PixelConstructor(...) call:
+                        Pixel mounts into document.getElementById(elementId)
+                        synchronously, and that element must already exist in the
+                        DOM at that exact moment, not merely be scheduled to via a
+                        state update from the same effect. Pixel injects its own DOM
+                        nodes into #paymob-pixel-container that React has no
+                        knowledge of; if this block were conditionally unmounted by
+                        phase (as it used to be), React's reconciliation would try
+                        to remove DOM nodes it no longer recognizes and crash with a
+                        removeChild error the instant the phase changed away from
+                        pixel_open — which used to happen almost immediately (see
+                        the polling effect below). */}
+                    <div
+                      className={`rounded-md border border-stone-150 bg-white p-4 ${
+                        cardState.phase === "ready" || cardState.phase === "pixel_open" ? "" : "hidden"
+                      }`}
+                    >
+                      <p className="mb-3 text-[12.5px] leading-relaxed text-ink-soft/65">
+                        Enter your card details below. Please don&apos;t close this window
+                        until you&apos;re done — we&apos;ll confirm your payment once it&apos;s
+                        verified.
+                      </p>
+                      <div id={PAYMOB_PIXEL_CONTAINER_ID} />
+                    </div>
 
                     {cardState.phase === "confirming" && (
                       <p className="rounded-md bg-stone-50 px-3.5 py-2.5 text-[13px] text-ink-soft/70">
