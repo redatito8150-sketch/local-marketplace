@@ -224,6 +224,7 @@ export default function CheckoutPage() {
               quantity: item.quantity,
             })),
             shipping,
+            couponCode: appliedCoupon?.code,
           }),
         }
       );
@@ -240,11 +241,15 @@ export default function CheckoutPage() {
     } finally {
       cardRequestInFlightRef.current = false;
     }
-    // items/shipping are read at click time, same as the Cash on Delivery
-    // handler further below — this only ever runs from a click, not an
-    // effect, so it doesn't need to re-identify on every keystroke.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardState.phase]);
+    // items/shipping/appliedCoupon MUST stay in this dependency array —
+    // useCallback only rebuilds the closure when a dep changes, and
+    // cardState.phase stays "idle" through the entire Shipping step, so
+    // without these deps this closes over whatever shipping/items were at
+    // first render (usually the empty initial shipping form) rather than
+    // what the customer actually filled in or selected before clicking
+    // Pay with Card. Was previously [cardState.phase] only — caused every
+    // card attempt to send an empty shipping.firstName.
+  }, [cardState.phase, items, shipping, appliedCoupon]);
 
   // Mounts Paymob Pixel once a client_secret is available. Cleans up
   // (.unmount()) on every re-run and on unmount — e.g. if the customer
@@ -751,6 +756,13 @@ export default function CheckoutPage() {
 
                 {paymentMethod === "card" && CARD_PAYMENT_ENABLED && (
                   <div className="space-y-4">
+                    {appliedCoupon && appliedCoupon.discountEgp > 0 && (
+                      <p className="rounded-md bg-amber-50 px-3.5 py-2.5 text-[12.5px] text-amber-800">
+                        Discount codes aren&apos;t supported for card payments yet — code
+                        &quot;{appliedCoupon.code}&quot; won&apos;t be deducted from this card
+                        charge. Switch to Cash on Delivery to use it.
+                      </p>
+                    )}
                     {(cardState.phase === "idle" ||
                       cardState.phase === "cancelled" ||
                       cardState.phase === "error") && (

@@ -19,6 +19,8 @@ export interface CartValidationVariant {
   quantity: number;
   purchasable: boolean;
   price: number; // this variant's own live effective price
+  originalPrice: number; // pre-discount price — equals price when no discount is active
+  discountActive: boolean;
 }
 
 export interface CartValidationEntry {
@@ -94,6 +96,8 @@ export async function getCartValidationData(
             isArchived: v.isArchived,
           }),
           price: priceResult.price,
+          originalPrice: v.variantPrice ?? Number(row.price),
+          discountActive: priceResult.active,
         };
       }),
     });

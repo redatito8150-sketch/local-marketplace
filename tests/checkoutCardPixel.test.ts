@@ -27,13 +27,21 @@ test("Card payment posts only to the Paymob intention endpoint, with an Idempote
 });
 
 test("Card payment never calls the orders endpoint or COD's order-placement functions", () => {
-  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/);
+  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon\]\);/);
   assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
   const body = startCardAttemptMatch![0];
   assert.doesNotMatch(body, /\/api\/orders/);
   assert.doesNotMatch(body, /submitOrder/);
   assert.doesNotMatch(body, /place_order/i);
   assert.doesNotMatch(body, /clearCart/);
+});
+
+test("startCardAttempt's useCallback dependency array includes items/shipping/appliedCoupon — a stale closure here previously sent an empty shipping.firstName on every card attempt, since cardState.phase never changes during the Shipping step", () => {
+  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[([^\]]*)\]\);/);
+  assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
+  const deps = startCardAttemptMatch![1];
+  assert.match(deps, /\bitems\b/);
+  assert.match(deps, /\bshipping\b/);
 });
 
 test("COD's own submit flow is untouched — still posts to /api/orders and still calls clearCart on real success", () => {
@@ -171,7 +179,7 @@ test("the polling and cart-clearing effects are the only places CARD flow ever c
     /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "ready"[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.clientSecret\]\);/
   )![0];
   const startCardAttemptMatch = checkoutPage.match(
-    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon\]\);/
   )![0];
   assert.doesNotMatch(pixelEffectMatch, /clearCart/);
   assert.doesNotMatch(startCardAttemptMatch, /clearCart/);

@@ -408,9 +408,16 @@ function CartLine({
             )}
           </div>
 
-          <p className="text-[14px] font-semibold text-ink">
-            {formatPrice(item.price * item.quantity, item.currency)}
-          </p>
+          <div className="flex items-baseline gap-2">
+            {resolved.variant?.discountActive && resolved.variant.originalPrice > resolved.variant.price && (
+              <span className="text-[12px] text-ink-soft/45 line-through">
+                {formatPrice(resolved.variant.originalPrice * item.quantity, item.currency)}
+              </span>
+            )}
+            <p className="text-[14px] font-semibold text-ink">
+              {formatPrice(item.price * item.quantity, item.currency)}
+            </p>
+          </div>
         </div>
       </div>
     </div>
