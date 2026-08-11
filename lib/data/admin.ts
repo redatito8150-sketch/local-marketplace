@@ -516,6 +516,62 @@ export async function getSiblingOrders(orderGroupId: string, excludeOrderId: str
   }));
 }
 
+export interface PaymentAttemptRefundReviewItem {
+  paymentAttemptId: string;
+  userId: string;
+  status: string;
+  amountCents: number;
+  currency: string;
+  isPartial: boolean;
+  refundAmountCents: number;
+  refundedAt: string | null;
+  refundNote: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+// Every card payment that was captured (paid_at set) but couldn't be fully
+// turned into an order — a full failure (status = 'fulfillment_failed') or
+// a partial one (status = 'fulfilled' but at least one vendor bucket
+// failed) — and hasn't yet been marked as refunded. Reads through a
+// SECURITY DEFINER RPC because private.payment_attempt_fulfillments (where
+// refund_amount_cents/is_partial are derived from) has no PostgREST
+// surface at all — see supabase/migrations/
+// 20260812000001_paymob_webhook_and_paid_fulfillment.sql.
+export async function getPaymentAttemptsNeedingRefundReview(): Promise<PaymentAttemptRefundReviewItem[]> {
+  const { data, error } = await supabaseAdmin.rpc("list_payment_attempts_needing_refund_review");
+  if (error) {
+    throw new Error(`getPaymentAttemptsNeedingRefundReview failed: ${error.message}`);
+  }
+  return (
+    (data ?? []) as {
+      payment_attempt_id: string;
+      user_id: string;
+      status: string;
+      amount_cents: number;
+      currency: string;
+      is_partial: boolean;
+      refund_amount_cents: number;
+      refunded_at: string | null;
+      refund_note: string | null;
+      created_at: string;
+      paid_at: string | null;
+    }[]
+  ).map((row) => ({
+    paymentAttemptId: row.payment_attempt_id,
+    userId: row.user_id,
+    status: row.status,
+    amountCents: row.amount_cents,
+    currency: row.currency,
+    isPartial: row.is_partial,
+    refundAmountCents: row.refund_amount_cents,
+    refundedAt: row.refunded_at,
+    refundNote: row.refund_note,
+    createdAt: row.created_at,
+    paidAt: row.paid_at,
+  }));
+}
+
 // Row-mapping lives in lib/join/applicationService.ts (shared with the
 // applicant routes) so the admin and applicant sides never drift onto two
 // different shapes for the same table.

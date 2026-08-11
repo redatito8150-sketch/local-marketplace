@@ -21,7 +21,11 @@ const siteHostname = siteUrl ? new URL(siteUrl).hostname : "";
 // all (no more "any domain can inject a script/frame"), not a perfect CSP.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  // https://cdn.jsdelivr.net is where the Paymob Pixel embedded-checkout
+  // widget (npm package `paymob-pixel`) is loaded from at runtime, on
+  // demand, only once a customer chooses card payment on /checkout — see
+  // lib/payments/paymobPixelLoader.ts. Never used for anything else.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   // https://lh3.googleusercontent.com is where Google serves the OAuth
@@ -31,7 +35,17 @@ const CSP = [
   `img-src 'self' data: blob: https://images.unsplash.com https://i.imgur.com https://lh3.googleusercontent.com${
     supabaseUrl ? ` ${supabaseUrl}` : ""
   }${siteHostname ? ` https://${siteHostname}` : ""}`,
-  `connect-src 'self'${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
+  // https://accept.paymob.com is the Egypt API host the Pixel widget itself
+  // calls client-side (confirmed from the widget's own bundle) to fetch
+  // payment-method/intention data using the public key + client_secret —
+  // distinct from https://accounts.paymob.com, which is only ever called
+  // server-side (lib/payments/paymob.ts) and therefore needs no CSP entry.
+  `connect-src 'self' https://accept.paymob.com${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
+  // The widget renders the actual card-number/CVV fields inside a
+  // Paymob-hosted iframe (eg.checkout.paymob.com) for PCI compliance, even
+  // though the surrounding layout is embedded inline — this is the one
+  // cross-origin frame the app intentionally allows.
+  "frame-src 'self' https://eg.checkout.paymob.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",

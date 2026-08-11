@@ -1,0 +1,187 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Static verification of the Phase 2 (Paymob Pixel) frontend integration —
+// the same established pattern tests/stage3OrderIntegrity.test.ts and
+// tests/paymentAttemptsSchema.test.ts already use for properties that
+// matter for security/correctness but aren't practical to exercise without
+// a real browser/DOM (this project has no React/DOM test runner).
+
+const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+
+function read(relativePath: string): string {
+  return readFileSync(path.join(rootDir, relativePath), "utf8");
+}
+
+const checkoutPage = read("app/checkout/page.tsx");
+const pixelLoader = read("lib/payments/paymobPixelLoader.ts");
+const cardReducer = read("lib/payments/cardPaymentAttempt.ts");
+const nextConfig = read("next.config.js");
+
+test("Card payment posts only to the Paymob intention endpoint, with an Idempotency-Key header", () => {
+  assert.match(checkoutPage, /"\/api\/payments\/paymob\/intention"/);
+  assert.match(checkoutPage, /"Idempotency-Key":\s*idempotencyKey/);
+});
+
+test("Card payment never calls the orders endpoint or COD's order-placement functions", () => {
+  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/);
+  assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
+  const body = startCardAttemptMatch![0];
+  assert.doesNotMatch(body, /\/api\/orders/);
+  assert.doesNotMatch(body, /submitOrder/);
+  assert.doesNotMatch(body, /place_order/i);
+  assert.doesNotMatch(body, /clearCart/);
+});
+
+test("COD's own submit flow is untouched — still posts to /api/orders and still calls clearCart on real success", () => {
+  const submitOrderMatch = checkoutPage.match(/const submitOrder = async \(\) => \{[\s\S]*?\n {2}\};/);
+  assert.ok(submitOrderMatch, "expected to find the submitOrder function");
+  const body = submitOrderMatch![0];
+  assert.match(body, /"\/api\/orders"/);
+  assert.match(body, /clearCart\(\)/);
+  assert.doesNotMatch(body, /paymob/i);
+});
+
+test("no frontend code ever sets a payment_attempts status to paid, or calls a paid-order/fulfillment RPC", () => {
+  for (const source of [checkoutPage, pixelLoader, cardReducer]) {
+    assert.doesNotMatch(source, /status['"]?\s*[:=]\s*['"]paid['"]/i);
+    assert.doesNotMatch(source, /place_paid_order/i);
+    assert.doesNotMatch(source, /mark_paymob_intention_created/); // server-only RPC, never called from the browser
+    assert.doesNotMatch(source, /supabaseAdmin/);
+  }
+  // The reducer's only phase names are enumerated directly — "paid" is not
+  // among them, and can never be reached by any action.
+  assert.doesNotMatch(cardReducer, /"paid"/);
+});
+
+test("no order-creation call occurs from any Pixel callback (onCancel/onError) or from PIXEL_SUBMITTED", () => {
+  const effectMatch = checkoutPage.match(/useEffect\(\(\) => \{\s*if \(cardState\.phase !== "ready"[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.clientSecret\]\);/);
+  assert.ok(effectMatch, "expected to find the Pixel-mounting effect");
+  const body = effectMatch![0];
+  assert.doesNotMatch(body, /\/api\/orders/);
+  assert.doesNotMatch(body, /submitOrder/);
+  assert.doesNotMatch(body, /clearCart/);
+  assert.doesNotMatch(body, /step\s*\(\s*"confirmation"/); // never auto-navigates to the COD confirmation step
+});
+
+test("clientSecret never reaches localStorage, sessionStorage, cookies, console, or a URL", () => {
+  for (const source of [checkoutPage, pixelLoader, cardReducer]) {
+    assert.doesNotMatch(source, /localStorage[\s\S]{0,60}clientSecret/i);
+    assert.doesNotMatch(source, /sessionStorage[\s\S]{0,60}clientSecret/i);
+    assert.doesNotMatch(source, /document\.cookie/i);
+    assert.doesNotMatch(source, /console\.(log|info|warn|debug)\([^)]*clientSecret/i);
+    assert.doesNotMatch(source, /(router\.push|redirect|URLSearchParams|searchParams)\([^)]*clientSecret/i);
+  }
+});
+
+test("clientSecret is cleared from React state at the same point it's handed to the Pixel constructor", () => {
+  assert.match(checkoutPage, /new PixelConstructor\(\{/);
+  const constructorCallMatch = checkoutPage.match(/const instance = new PixelConstructor\(\{[\s\S]*?\}\);/);
+  assert.ok(constructorCallMatch);
+  assert.match(constructorCallMatch![0], /clientSecret,/);
+  // Immediately after construction, PIXEL_MOUNTED fires — which the
+  // reducer (verified in tests/cardPaymentAttempt.test.ts) clears
+  // clientSecret in response to.
+  assert.match(checkoutPage, /dispatchCard\(\{ type: "PIXEL_MOUNTED" \}\)/);
+});
+
+test("no PAYMOB_SECRET_KEY / PAYMOB_HMAC_SECRET / provider secret reaches any client-bundled file", () => {
+  for (const source of [checkoutPage, pixelLoader, cardReducer]) {
+    assert.doesNotMatch(source, /PAYMOB_SECRET_KEY/);
+    assert.doesNotMatch(source, /PAYMOB_HMAC_SECRET/);
+    assert.doesNotMatch(source, /PAYMOB_CARD_INTEGRATION_ID/);
+  }
+  // Only the publishable key — explicitly NEXT_PUBLIC_-prefixed, safe to
+  // expose by design — is read client-side.
+  assert.match(checkoutPage, /NEXT_PUBLIC_PAYMOB_PUBLIC_KEY/);
+});
+
+test("Card payment option is feature-flagged off entirely when no public key is configured", () => {
+  assert.match(checkoutPage, /const CARD_PAYMENT_ENABLED = Boolean\(PAYMOB_PUBLIC_KEY\)/);
+  assert.match(checkoutPage, /\{CARD_PAYMENT_ENABLED &&/);
+});
+
+test("Pixel is loaded via a <script> tag from the documented CDN URL, not import()'d as an ESM package", () => {
+  // Confirmed by inspecting the actual published bundle: it sets
+  // window.Pixel as its only externally-visible effect and has no real
+  // ESM `export`, so `import` would not reliably work.
+  // Pinned to the exact version inspected — @latest would run an
+  // unverified future version without re-review.
+  assert.match(pixelLoader, /https:\/\/cdn\.jsdelivr\.net\/npm\/paymob-pixel@1\.2\.7\/main\.js/);
+  assert.doesNotMatch(pixelLoader, /paymob-pixel@latest/);
+  assert.match(pixelLoader, /script\.type = "module"/);
+  assert.doesNotMatch(pixelLoader, /^import .*paymob-pixel/m);
+});
+
+test("Pixel constructor options match the SDK's real API surface (publicKey, clientSecret, paymentMethods, elementId)", () => {
+  assert.match(pixelLoader, /publicKey: string/);
+  assert.match(pixelLoader, /clientSecret: string/);
+  assert.match(pixelLoader, /paymentMethods: string\[\]/);
+  assert.match(pixelLoader, /elementId: string/);
+  assert.match(checkoutPage, /paymentMethods: \["card"\]/);
+});
+
+test("Pixel cleanup calls the SDK's real .unmount() method on effect teardown", () => {
+  assert.match(checkoutPage, /pixelInstanceRef\.current\?\.unmount\(\)/);
+});
+
+test("CSP allows exactly the new external hosts this integration needs, nothing broader", () => {
+  assert.match(nextConfig, /script-src[^"]*https:\/\/cdn\.jsdelivr\.net/);
+  assert.match(nextConfig, /connect-src[^`]*https:\/\/accept\.paymob\.com/);
+  assert.match(nextConfig, /frame-src 'self' https:\/\/eg\.checkout\.paymob\.com/);
+});
+
+test("mobile app files are untouched by this phase", () => {
+  assert.doesNotMatch(checkoutPage, /apps\/mobile/);
+});
+
+test("confirmation polling reads our own backend status endpoint, never trusts Pixel, and dispatches only POLL_* actions", () => {
+  const pollEffectMatch = checkoutPage.match(
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId\]\);/
+  );
+  assert.ok(pollEffectMatch, "expected to find the confirmation-polling effect");
+  const body = pollEffectMatch![0];
+  assert.match(body, /\/api\/payments\/paymob\/attempts\/\$\{paymentAttemptId\}/);
+  assert.match(body, /dispatchCard\(\{ type: "POLL_CONFIRMED"/);
+  assert.match(body, /dispatchCard\(\{\s*type: "POLL_FAILED"/);
+  assert.match(body, /dispatchCard\(\{ type: "POLL_PENDING" \}\)/);
+  // Never any Pixel/order/cart mutation inside the polling effect itself.
+  assert.doesNotMatch(body, /\/api\/orders/);
+  assert.doesNotMatch(body, /clearCart/);
+  assert.doesNotMatch(body, /new PixelConstructor/);
+});
+
+test("the cart is cleared for a card payment ONLY when phase becomes 'confirmed' (a polled, backend-authoritative fact) — never from a Pixel callback", () => {
+  const cartClearEffectMatch = checkoutPage.match(
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "confirmed"\)[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/
+  );
+  assert.ok(cartClearEffectMatch, "expected to find the card cart-clearing effect");
+  const body = cartClearEffectMatch![0];
+  assert.match(body, /clearCart\(\)/);
+  assert.match(body, /if \(cardState\.phase !== "confirmed"\)/);
+  // Guarded so it only ever fires once per confirmed attempt.
+  assert.match(body, /cardCartClearedRef\.current/);
+});
+
+test("the polling and cart-clearing effects are the only places CARD flow ever calls clearCart — never from onError/onCancel/PIXEL_SUBMITTED", () => {
+  const pixelEffectMatch = checkoutPage.match(
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "ready"[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.clientSecret\]\);/
+  )![0];
+  const startCardAttemptMatch = checkoutPage.match(
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/
+  )![0];
+  assert.doesNotMatch(pixelEffectMatch, /clearCart/);
+  assert.doesNotMatch(startCardAttemptMatch, /clearCart/);
+});
+
+test("the 'confirmed' UI state never redirects away from the checkout page and never claims success before the fact", () => {
+  const confirmedBlockMatch = checkoutPage.match(/\{cardState\.phase === "confirmed" && \([\s\S]*?\)\}/);
+  assert.ok(confirmedBlockMatch, "expected to find the confirmed-phase UI block");
+  const block = confirmedBlockMatch![0];
+  assert.match(block, /Payment confirmed/);
+  // Partial fulfillment gets distinct, honest copy, not a blanket success message.
+  assert.match(block, /cardState\.isPartial/);
+});
