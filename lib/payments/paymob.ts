@@ -122,7 +122,23 @@ export async function createPaymobIntention(
   }
 
   if (!response.ok) {
-    throw new PaymobApiError(`Paymob rejected the intention request`, response.status);
+    // Paymob's 4xx bodies are DRF-style field validation errors ("this
+    // field is required", "invalid pk value") — not a raw echo of billing
+    // data — so a length-capped snippet is safe for the server-side error
+    // log (Discord #errors) even though the client never sees more than
+    // GENERIC_PAYMOB_ERROR. Without this, a rejected request was
+    // undiagnosable — the previous message never revealed WHY Paymob
+    // rejected it (wrong integration id, bad amount, etc).
+    let detail = "";
+    try {
+      detail = (await response.text()).slice(0, 500);
+    } catch {
+      // best-effort only
+    }
+    throw new PaymobApiError(
+      `Paymob rejected the intention request (${response.status})${detail ? `: ${detail}` : ""}`,
+      response.status
+    );
   }
 
   let body: PaymobIntentionResponseBody;
