@@ -232,16 +232,33 @@ export async function createPaymobIntentionForCart(
     apartment: "NA",
   };
 
+  // Paymob's Intention API rejects the request outright (406
+  // unmatched_item_prices) unless sum(items[].amount * quantity) equals
+  // the top-level amount exactly — the product lines alone don't cover
+  // this since amountCents also includes delivery. Adding a "Delivery"
+  // line for the exact remainder (rather than independently rounding
+  // amount.shippingFeeEgp) guarantees an exact match regardless of any
+  // per-bucket vs. aggregate rounding difference.
+  const productItemsTotalCents = resolved.lineItems.reduce(
+    (sum, line) => sum + egpToAmountCents(line.price) * line.quantity,
+    0
+  );
+  const deliveryLineCents = amountCents - productItemsTotalCents;
+  const paymobItems = resolved.lineItems.map((line) => ({
+    name: line.name,
+    amount: egpToAmountCents(line.price),
+    quantity: line.quantity,
+  }));
+  if (deliveryLineCents > 0) {
+    paymobItems.push({ name: "Delivery", amount: deliveryLineCents, quantity: 1 });
+  }
+
   const payload = buildPaymobIntentionPayload({
     amountCents,
     integrationId,
     billingData,
     specialReference: attemptResult.specialReference,
-    items: resolved.lineItems.map((line) => ({
-      name: line.name,
-      amount: egpToAmountCents(line.price),
-      quantity: line.quantity,
-    })),
+    items: paymobItems,
   });
 
   try {

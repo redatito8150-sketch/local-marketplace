@@ -402,6 +402,39 @@ test("never trusts a client-supplied price — the intention amount always comes
   assert.equal(sentPayload.amount, 105000);
 });
 
+test("the items array sent to Paymob always sums to exactly the top-level amount — Paymob rejects the request outright (406 unmatched_item_prices) otherwise, and a nonzero delivery fee previously wasn't represented as a line item at all", async () => {
+  const { deps, getCreateIntentionCalls } = makeDeps();
+
+  const outcome = await createPaymobIntentionForCart(validBody(), AUTH, VALID_IDEMPOTENCY_KEY, ENV, deps);
+  assert.equal(outcome.ok, true);
+
+  const [sentPayload] = getCreateIntentionCalls() as [
+    { amount: number; items: { amount: number; quantity: number; name: string }[] }
+  ];
+  const itemsTotal = sentPayload.items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  assert.equal(itemsTotal, sentPayload.amount);
+  // 500 EGP/unit * qty 2 + 50 flat shipping = 1050 EGP -> 105000 piasters,
+  // with the flat 50 EGP delivery fee represented as its own line item.
+  assert.equal(sentPayload.amount, 105000);
+  assert.ok(sentPayload.items.some((item) => item.name === "Delivery" && item.amount === 5000));
+});
+
+test("no delivery line item is added when shipping is free (order subtotal at/above the free-shipping threshold)", async () => {
+  const { deps, getCreateIntentionCalls } = makeDeps({
+    fetchShippingSettings: async () => ({ ...SHIPPING_SETTINGS, freeShippingThresholdEgp: 0 }),
+  });
+
+  const outcome = await createPaymobIntentionForCart(validBody(), AUTH, VALID_IDEMPOTENCY_KEY, ENV, deps);
+  assert.equal(outcome.ok, true);
+
+  const [sentPayload] = getCreateIntentionCalls() as [
+    { amount: number; items: { amount: number; quantity: number; name: string }[] }
+  ];
+  const itemsTotal = sentPayload.items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  assert.equal(itemsTotal, sentPayload.amount);
+  assert.ok(!sentPayload.items.some((item) => item.name === "Delivery"));
+});
+
 test("a duplicate Idempotency-Key with the same payload replays the existing attempt and never calls Paymob twice", async () => {
   const { deps, getCreateIntentionCalls } = makeDeps();
   const first = await createPaymobIntentionForCart(validBody(), AUTH, VALID_IDEMPOTENCY_KEY, ENV, deps);
