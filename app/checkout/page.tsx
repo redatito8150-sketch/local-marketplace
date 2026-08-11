@@ -314,7 +314,17 @@ export default function CheckoutPage() {
 
     return () => {
       cancelled = true;
-      pixelInstanceRef.current?.unmount();
+      // Defensive: confirmed live that the SDK doesn't always expose a
+      // callable .unmount on the returned instance (TypeError: .unmount
+      // is not a function, alongside the SDK's own "using deprecated
+      // parameters for the initialization function" console warning) —
+      // this reverse-engineered API surface isn't from official docs, so
+      // never assume a method exists on a third-party instance without
+      // checking first. Calling it when present is still the right
+      // cleanup; skipping it when absent must never crash the page.
+      if (typeof pixelInstanceRef.current?.unmount === "function") {
+        pixelInstanceRef.current.unmount();
+      }
       pixelInstanceRef.current = null;
     };
     // cardState.clientSecret is deliberately excluded — see the comment

@@ -132,8 +132,13 @@ test("Pixel constructor options match the SDK's real API surface (publicKey, cli
   assert.match(checkoutPage, /paymentMethods: \["card"\]/);
 });
 
-test("Pixel cleanup calls the SDK's real .unmount() method on effect teardown", () => {
-  assert.match(checkoutPage, /pixelInstanceRef\.current\?\.unmount\(\)/);
+test("Pixel cleanup calls .unmount() only after confirming it's actually a function — confirmed live that the SDK doesn't always expose one, which previously crashed the whole page with 'unmount is not a function' on every teardown", () => {
+  assert.doesNotMatch(checkoutPage, /pixelInstanceRef\.current\?\.unmount\(\);/);
+  assert.match(checkoutPage, /typeof pixelInstanceRef\.current\?\.unmount === "function"/);
+  const guardedCallMatch = checkoutPage.match(
+    /if \(typeof pixelInstanceRef\.current\?\.unmount === "function"\) \{\s*pixelInstanceRef\.current\.unmount\(\);\s*\}/
+  );
+  assert.ok(guardedCallMatch, "expected .unmount() to only be called inside the typeof guard");
 });
 
 test("CSP allows exactly the new external hosts this integration needs, nothing broader", () => {
