@@ -3060,3 +3060,10 @@ $$;
 
 revoke all on function public.list_payment_attempts_needing_refund_review() from public, anon, authenticated;
 grant execute on function public.list_payment_attempts_needing_refund_review() to service_role;
+
+-- 2026-08-12: restore public.brands SELECT grant for authenticated (see
+-- supabase/migrations/20260812000002_restore_brands_select_grant.sql for
+-- the full incident note) — unrelated to Paymob, fixes brand-portal +
+-- signed-in cart live-validation both throwing "permission denied for
+-- table brands".
+grant select on public.brands to authenticated;

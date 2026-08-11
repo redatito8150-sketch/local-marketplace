@@ -1,0 +1,15 @@
+-- public.brands lost its SELECT grant for the authenticated role at some
+-- point outside of any migration in this repo (not caused by the Paymob
+-- migrations — verified neither of those touch brands grants at all).
+-- Effect: any query joining through brands while running as the
+-- cookie-bound (authenticated) client throws "permission denied for table
+-- brands" — this broke both the brand-portal (getVariantsForBrand /
+-- getInventoryHistoryForBrand) and, for signed-in shoppers, the cart's
+-- live-validation (getCartValidationData / getVariantsForProducts, whose
+-- underlying RLS policies reference brands). The anon role kept working
+-- throughout, which is why logged-out storefront browsing was unaffected.
+--
+-- This restores only SELECT — brands writes still go through service_role
+-- server-side only, per this project's existing convention (see
+-- CLAUDE.md's "No public INSERT policies exist on purpose").
+grant select on public.brands to authenticated;
