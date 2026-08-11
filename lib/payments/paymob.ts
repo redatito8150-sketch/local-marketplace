@@ -8,7 +8,13 @@
 // them in, so this file stays a pure, dependency-injected client that's
 // trivial to unit test with a fake fetch implementation.
 
-export const PAYMOB_INTENTION_URL = "https://accounts.paymob.com/v1/intention/";
+// Confirmed live (2026-08-12) against Paymob's own API: this endpoint
+// returns a structured DRF auth-error JSON body for an invalid token
+// ({"detail":"Authentication credentials were not provided."}), while
+// accounts.paymob.com — used here originally — does not resolve in DNS at
+// all. Same host the Pixel widget itself calls client-side (see the CSP
+// comment in next.config.js) — Paymob uses one host for both, not two.
+export const PAYMOB_INTENTION_URL = "https://accept.paymob.com/v1/intention/";
 
 // Paymob amounts are always integers in the currency's smallest unit
 // (piasters for EGP, i.e. cents). Rounds to the nearest piaster rather than

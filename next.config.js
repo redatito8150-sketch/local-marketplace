@@ -37,9 +37,12 @@ const CSP = [
   }${siteHostname ? ` https://${siteHostname}` : ""}`,
   // https://accept.paymob.com is the Egypt API host the Pixel widget itself
   // calls client-side (confirmed from the widget's own bundle) to fetch
-  // payment-method/intention data using the public key + client_secret —
-  // distinct from https://accounts.paymob.com, which is only ever called
-  // server-side (lib/payments/paymob.ts) and therefore needs no CSP entry.
+  // payment-method/intention data using the public key + client_secret. The
+  // server-side Create Intention call (lib/payments/paymob.ts) hits the
+  // exact same host, not a separate accounts.paymob.com — that hostname
+  // doesn't resolve in DNS at all, an earlier research error fixed
+  // 2026-08-12. No separate CSP entry is needed for the server-side call
+  // since browsers never enforce CSP on server-to-server fetches anyway.
   `connect-src 'self' https://accept.paymob.com${supabaseUrl ? ` ${supabaseUrl}` : ""}`,
   // The widget renders the actual card-number/CVV fields inside a
   // Paymob-hosted iframe (eg.checkout.paymob.com) for PCI compliance, even

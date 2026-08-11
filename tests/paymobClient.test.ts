@@ -69,7 +69,7 @@ test("createPaymobIntention posts to the intention endpoint with a Token auth he
 
   const result = await createPaymobIntention(payload, "sk_test_super_secret", fakeFetch);
 
-  assert.equal(capturedUrl, "https://accounts.paymob.com/v1/intention/");
+  assert.equal(capturedUrl, "https://accept.paymob.com/v1/intention/");
   assert.equal((capturedInit!.headers as Record<string, string>).Authorization, "Token sk_test_super_secret");
   assert.equal(JSON.parse(capturedInit!.body as string).amount, 15000);
   assert.deepEqual(result, {
