@@ -51,6 +51,7 @@ export const COLLECTION_PAGE_CONFIGS: Record<CategorySlug, CollectionPageConfig>
       "iridescent-yoke-sandals-ou3n",
       "hand-bag-9izs",
     ],
+    allowProductFallback: true,
     placements: WOMEN_PLACEMENTS,
     modelDesktopClass: "left-[56%] h-[95%] w-[25%]",
     completeLookClass: "md:left-[58%]",
