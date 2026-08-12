@@ -31,11 +31,26 @@ import {
 // simply finds nothing to do.
 export function usePendingCardPaymentReconciliation() {
   const { user } = useAuth();
-  const { removePurchasedItems } = useCart();
+  const { removePurchasedItems, isHydrated } = useCart();
   const runningForRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    // CartProvider's own hydration effect and this one both gate on
+    // useAuth()'s user resolving, and this component is a CHILD of
+    // CartProvider (see app/providers.tsx) — React fires child effects
+    // before parent effects on the same commit, so without this guard,
+    // the very first time `user` becomes available, this effect used to
+    // run BEFORE CartProvider's hydration effect had replaced its
+    // placeholder `items: []` with the real stored cart. removePurchasedItems
+    // would then mutate that empty placeholder (a no-op), the pending-
+    // attempt marker still got cleared as if reconciliation succeeded, and
+    // moments later hydration overwrote state with the untouched original
+    // cart — silently discarding the removal. This was the actual reason
+    // a card order's item kept reappearing in the cart after every payment
+    // that involved a redirect/refresh (e.g. a 3D Secure bounce), no matter
+    // what was configured on Paymob's side — waiting for isHydrated fixes
+    // it at the source instead.
+    if (!user || !isHydrated) return;
     const pending = readPendingCardAttempt(user.id);
     if (!pending) return;
     // Guards against this hook's two call sites (or a re-render of either)
@@ -58,5 +73,5 @@ export function usePendingCardPaymentReconciliation() {
         runningForRef.current = null;
       }
     });
-  }, [user, removePurchasedItems]);
+  }, [user, isHydrated, removePurchasedItems]);
 }

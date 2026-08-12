@@ -84,3 +84,36 @@ test("the app-wide pending-card-payment reconciler is mounted inside CartProvide
   assert.ok(cartProviderOpen !== -1 && cartProviderClose !== -1 && reconcilerUsage !== -1);
   assert.ok(reconcilerUsage > cartProviderOpen && reconcilerUsage < cartProviderClose);
 });
+
+test("CartContext exposes isHydrated, computed only from hydratedForKey/storageKey — true exactly once items reflects the real stored cart", () => {
+  assert.match(cartContext, /isHydrated: hydratedForKey !== null && hydratedForKey === storageKey,/);
+});
+
+// The actual bug this guards against: PendingCardPaymentReconciler is a
+// CHILD of CartProvider (asserted above), and React fires child effects
+// before parent effects on the same commit. The first time useAuth()'s
+// user resolves, CartProvider's own hydration effect and the reconciler's
+// effect both become eligible to run in the same pass — without waiting
+// for isHydrated, the reconciler used to run FIRST, call
+// removePurchasedItems() against the still-empty placeholder `items: []`
+// (a silent no-op), then CartProvider's hydration effect would overwrite
+// state with the real stored cart a moment later — discarding the
+// removal entirely while the pending-attempt marker was already cleared,
+// so it could never retry. This was the root cause of a card order's item
+// staying in the cart after every payment involving a redirect/refresh
+// (e.g. a 3D Secure bounce), regardless of any Paymob-side configuration.
+const reconciliationHook = read("lib/hooks/usePendingCardPaymentReconciliation.ts");
+
+test("the pending-card-payment reconciler waits for isHydrated before touching the cart, and re-runs once it becomes true", () => {
+  assert.match(reconciliationHook, /const \{ removePurchasedItems, isHydrated \} = useCart\(\);/);
+  const effectMatch = reconciliationHook.match(
+    /useEffect\(\(\) => \{[\s\S]*?\n {2}\}, \[user, isHydrated, removePurchasedItems\]\);/
+  );
+  assert.ok(effectMatch, "expected to find the reconciliation effect with isHydrated in its dependency array");
+  assert.match(effectMatch![0], /if \(!user \|\| !isHydrated\) return;/);
+  // The guard must run before any cart read/mutation — readPendingCardAttempt
+  // and removePurchasedItems must not appear ahead of it.
+  const guardIndex = effectMatch![0].indexOf("if (!user || !isHydrated) return;");
+  const readPendingIndex = effectMatch![0].indexOf("readPendingCardAttempt(");
+  assert.ok(guardIndex !== -1 && readPendingIndex !== -1 && guardIndex < readPendingIndex);
+});

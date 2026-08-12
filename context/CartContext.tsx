@@ -42,6 +42,16 @@ interface CartContextValue {
   removePurchasedItems: (purchased: PurchasedCartLine[]) => void;
   itemCount: number;
   subtotal: { usd: number; egp: number };
+  // True only once `items` genuinely reflects this identity's stored cart
+  // (the hydration effect below has run for the current storageKey) —
+  // false for every render before that, including the very first render
+  // after a fresh page load/reload. A consumer that mutates `items` (e.g.
+  // removePurchasedItems) before this is true is operating on the
+  // placeholder empty array, and that mutation is silently discarded the
+  // moment hydration runs afterward and overwrites it — see
+  // lib/hooks/usePendingCardPaymentReconciliation.ts for the real bug this
+  // was added to fix.
+  isHydrated: boolean;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -180,6 +190,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         removePurchasedItems,
         itemCount,
         subtotal,
+        isHydrated: hydratedForKey !== null && hydratedForKey === storageKey,
       }}
     >
       {children}
