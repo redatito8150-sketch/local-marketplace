@@ -54,6 +54,11 @@ export async function POST(request: NextRequest) {
   // Never trust the client for which brand this belongs to, even though
   // the form locks it — force it server-side to the caller's own brand.
   body.brandId = owner.brandId;
+  // Same "never trust the client" rule — this is what lets
+  // validateProductSections skip the "needs stock > 0" publish
+  // requirement for a partner brand, whose variants always start at 0
+  // live quantity by design (see forceZeroOpeningStock below).
+  body.isPartnerBrand = owner.isMahalyPartner;
   // Brand-portal writes draft, published, or archived — archiving is a
   // real, brand-owner-usable action (e.g. quietly building a whole
   // collection before revealing it at once), gated by the same

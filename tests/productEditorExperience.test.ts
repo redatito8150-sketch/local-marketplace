@@ -98,6 +98,45 @@ test("publish readiness is reported inside Inventory & Variants", () => {
   assert.ok(issues.some((issue) => issue.section === "inventory" && /stock/i.test(issue.message)));
 });
 
+// A Zakhnook Partner brand's variants always start at 0 live quantity by
+// design (lib/admin/variantPersistence.ts's forceZeroOpeningStock — their
+// stock is provisioned later via a confirmed Local Warehouse transfer,
+// never through this form). Without this exception, a partner brand could
+// never publish anything at all: every variant they can possibly submit
+// has quantity 0, so the ordinary "needs stock > 0" rule would fail every
+// single time — indistinguishable, from the brand's side, from the
+// product editor being broken.
+test("a partner brand can publish with 0-stock variants — the ordinary 'needs stock > 0' rule does not apply to them", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    isPartnerBrand: true,
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
+  });
+  assert.deepEqual(issues, []);
+});
+
+test("a partner brand still needs at least one Active variant to publish — the exception only drops the stock requirement, not the whole check", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    isPartnerBrand: true,
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "paused" }],
+  });
+  assert.ok(issues.some((issue) => issue.section === "inventory" && issue.fieldId === "generated-variants"));
+  assert.ok(!/needs stock and/i.test(issues.find((i) => i.fieldId === "generated-variants")!.message));
+});
+
+test("a non-partner (brand_direct) brand is unaffected — still blocked on 0 stock exactly as before", () => {
+  const issues = validateProductSections({
+    ...validProduct,
+    status: "published",
+    isPartnerBrand: false,
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
+  });
+  assert.ok(issues.some((issue) => issue.section === "inventory" && /needs stock and/i.test(issue.message)));
+});
+
 test("the shared editor shell exposes all six sections and reliable active-section tracking", () => {
   const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");

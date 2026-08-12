@@ -466,6 +466,17 @@ export default function ProductForm({
     }));
   };
 
+  // Computed here (not inline in buildPayload, and not further down where
+  // it's also read for InventoryVariantsSection) so both usages share one
+  // value — the server independently re-derives and enforces this from
+  // the real brand row (never trusts this client computation), but the
+  // client-side completeness badge/publish-readiness check below needs
+  // the same signal to avoid showing a stock-related "issue" that a
+  // partner brand can never actually resolve from this form.
+  const isPartnerBrand = lockedBrand
+    ? Boolean(lockedIsPartnerBrand)
+    : Boolean(brandOptions.find((b) => b.id === form.brandId)?.isMahalyPartner);
+
   const buildPayload = (targetStatus: ProductStatus): ProductInput => ({
     name: form.name.trim(),
     brandId: lockedBrand?.id ?? form.brandId,
@@ -502,6 +513,7 @@ export default function ProductForm({
     variants: form.inventoryVariants.variants,
     colorImages: form.inventoryVariants.colorImages,
     colorOptionTypeId: colorType?.id,
+    isPartnerBrand,
   });
 
   const submit = async (targetStatus: ProductStatus) => {
@@ -611,9 +623,6 @@ export default function ProductForm({
         : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
     : undefined;
   const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
-  const isPartnerBrand = lockedBrand
-    ? Boolean(lockedIsPartnerBrand)
-    : Boolean(brandOptions.find((b) => b.id === form.brandId)?.isMahalyPartner);
 
   // Recalculates the instant a different Brand is picked (Admin) or once,
   // from the locked Brand's own fields (brand-portal — the brand can't

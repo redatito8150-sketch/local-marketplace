@@ -41,6 +41,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Brand and SKU are immutable after creation — whatever the client
   // sends is ignored, always the existing product's own values.
   body.brandId = existing.brand_id;
+  // Same "never trust the client" rule — lets validateProductSections
+  // skip the "needs stock > 0" publish requirement for a partner brand,
+  // whose variants always start at 0 live quantity by design (see
+  // forceZeroOpeningStock below).
+  body.isPartnerBrand = Boolean(brandRow?.is_mahaly_partner);
 
   const validationError = validateProductInput(body);
   if (validationError) {

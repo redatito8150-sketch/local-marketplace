@@ -35,6 +35,23 @@ export async function POST(request: NextRequest) {
   }
 
   const body: ProductInput = await request.json();
+
+  // Fetched before validation (not after, as this used to be) so
+  // isPartnerBrand can be set from the real brand row before
+  // validateProductInput runs — needed for the "needs stock > 0 to
+  // publish" check to correctly skip a partner brand, whose variants
+  // always start at 0 live quantity by design (see forceZeroOpeningStock
+  // below). Never trust body.brandId's partner claim, only this row's.
+  const { data: brandRow } = await supabaseAdmin
+    .from("brands")
+    .select("id, name, is_mahaly_partner")
+    .eq("id", body.brandId)
+    .maybeSingle();
+  if (!brandRow) {
+    return NextResponse.json({ error: "Selected brand was not found" }, { status: 400 });
+  }
+  body.isPartnerBrand = Boolean(brandRow.is_mahaly_partner);
+
   const validationError = validateProductInput(body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
@@ -45,15 +62,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: taxonomy.error }, { status: 400 });
   }
   body.productTypeId = taxonomy.productTypeId;
-
-  const { data: brandRow } = await supabaseAdmin
-    .from("brands")
-    .select("id, name, is_mahaly_partner")
-    .eq("id", body.brandId)
-    .maybeSingle();
-  if (!brandRow) {
-    return NextResponse.json({ error: "Selected brand was not found" }, { status: 400 });
-  }
 
   const collectionCheck = await resolveCollectionOwnership(body.collectionId, body.brandId);
   if (!collectionCheck.valid) {

@@ -138,6 +138,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Brand is immutable after creation — whatever the client sends is
   // ignored, always the caller's own brand.
   productBody.brandId = owner.brandId;
+  // Same "never trust the client" rule — lets validateProductSections
+  // skip the "needs stock > 0" publish requirement for a partner brand,
+  // whose variants always start at 0 live quantity by design (see
+  // forceZeroOpeningStock below).
+  productBody.isPartnerBrand = owner.isMahalyPartner;
   // Brand-portal writes draft, published, or archived from the editor's
   // own Save as Draft / Archive / Publish actions — archiving here is
   // distinct from the DELETE action below (a quick "remove this" shortcut

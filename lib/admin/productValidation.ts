@@ -57,6 +57,17 @@ export interface ProductInput {
   variants: VariantRowInput[];
   colorImages: Record<string, string>;
   colorOptionTypeId?: string;
+  // Zakhnook Partner brand — never trust the client for this, same rule
+  // as brandId above; callers must set it from the authenticated owner's
+  // own brands.is_mahaly_partner, not whatever the request body claims.
+  // A partner brand's variants always start at 0 live quantity by design
+  // (lib/admin/variantPersistence.ts's forceZeroOpeningStock — their
+  // stock is provisioned later via a confirmed Local Warehouse transfer,
+  // never through this form), so the "needs purchasable stock to publish"
+  // rule below must not apply to them the same way it does to a
+  // brand_direct brand — otherwise a partner brand could never publish
+  // anything at all.
+  isPartnerBrand?: boolean;
 }
 
 // Products no longer store colors as a flat product-level field, but the
@@ -202,10 +213,27 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   // Archived is intentionally "not for sale right now" — it still needs
   // the full product info above, just not live purchasable stock, unlike
   // Published which does.
+  //
+  // A partner brand is the one deliberate exception: their variants
+  // always start at 0 live quantity (see isPartnerBrand's comment above),
+  // so requiring quantity > 0 here would make publishing permanently
+  // impossible for them — 0 stock right after creation is their normal,
+  // expected state, not a sign the form was left incomplete. They still
+  // need at least one Active variant (not everything paused/discontinued)
+  // — the actual sellable-stock gap is expected to close once Mahaly's
+  // warehouse confirms a transfer, same as any other out-of-stock product.
   if (body.status === "published") {
-    const hasPurchasable = body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
+    const hasPurchasable = body.isPartnerBrand
+      ? body.variants.some((v) => v.sellingStatus === "active")
+      : body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
     if (!hasPurchasable) {
-      add("inventory", "At least one variant needs stock and an Active Selling Status before publishing", "generated-variants");
+      add(
+        "inventory",
+        body.isPartnerBrand
+          ? "At least one variant needs an Active Selling Status before publishing"
+          : "At least one variant needs stock and an Active Selling Status before publishing",
+        "generated-variants"
+      );
     }
   }
 
