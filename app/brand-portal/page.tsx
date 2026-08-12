@@ -17,7 +17,7 @@ import {
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand, getProductsForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin, getAuditLogsForBrand } from "@/lib/data/admin";
-import { getBestSellingProductsForBrand } from "@/lib/data/collections";
+import { getBestSellingColorsWithStatsForBrand } from "@/lib/data/collections";
 import { formatDateOnly, formatDateTime, formatPrice } from "@/lib/format";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
@@ -45,7 +45,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
     getOrdersForBrand(owner.brandSlug, owner.isImpersonating),
     getVariantsForBrand(owner.brandSlug, owner.isImpersonating),
     getProductsForBrand(owner.brandId!, owner.isImpersonating),
-    getBestSellingProductsForBrand(owner.brandSlug, 4),
+    getBestSellingColorsWithStatsForBrand(owner.brandSlug, 4),
     owner.accessLevel === "owner" ? getAuditLogsForBrand(owner.brandSlug, 6) : Promise.resolve([]),
   ]);
 
@@ -164,7 +164,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
         >
           {orders.length ? (
             <div className="divide-y divide-[#eee7de]">
-              {orders.slice(0, 6).map((order) => (
+              {orders.slice(0, 4).map((order) => (
                 <article key={order.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[#fbf8f4] sm:flex-row sm:items-center sm:justify-between sm:px-6">
                   <div className="min-w-0">
                     <p className="text-[13.5px] font-bold tabular-nums text-[#332c27]">#{order.orderNumber}</p>
@@ -191,7 +191,6 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
         <DashboardPanel
           title="Inventory health"
           description={`${variants.length} tracked variants`}
-          action={<Link href={`/brand-portal/stock${brandParam}`} className="text-[12.5px] font-semibold text-mahalyred hover:underline">Manage</Link>}
           className="border-[#e3dcd3] bg-[#fffdf9] shadow-[0_10px_30px_rgba(67,45,29,0.045)]"
         >
           <div className="p-5 sm:p-6">
@@ -210,33 +209,43 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
         <DashboardPanel
-          title="Best-selling products"
-          description="Ranked from real order quantities"
+          title="Best-selling colors"
+          description="All sizes combined for each product color"
           action={<Link href={`/brand-portal/products${brandParam}`} className="text-[12.5px] font-semibold text-mahalyred hover:underline">View products</Link>}
           className="border-[#e3dcd3] bg-[#fffdf9] shadow-[0_10px_30px_rgba(67,45,29,0.045)]"
         >
           {bestSellers.length ? (
             <div className="grid gap-3 p-5 sm:grid-cols-2 sm:p-6">
-              {bestSellers.map((product, index) => (
+              {bestSellers.map((color, index) => (
                 <Link
-                  key={product.id}
-                  href={`/product/${product.id}`}
+                  key={color.colorKey}
+                  href={`/product/${color.productId}`}
                   className="group flex min-w-0 items-center gap-3 rounded-xl bg-[#f7f1eb] p-3 transition-colors hover:bg-[#f1e7de] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"
                 >
+                  <span className="w-6 flex-none text-center text-[12px] font-semibold tracking-[-0.02em] text-[#8b7d72] tabular-nums">
+                    #{index + 1}
+                  </span>
                   <div className="relative h-16 w-14 flex-none overflow-hidden rounded-lg bg-[#eee7de]">
-                    <Image src={product.image} alt={product.name} fill sizes="56px" className="object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
+                    {color.image ? (
+                      <Image src={color.image} alt={`${color.productName} ${color.color}`} fill sizes="56px" className="object-cover transition-transform duration-300 group-hover:scale-[1.04]" />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-[#a29489]" title="No color image assigned"><Package className="h-5 w-5" aria-hidden="true" /></span>
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-[#9a8c81]">#{index + 1}</p>
-                    <p className="mt-1 truncate text-[13px] font-bold text-[#332c27]">{product.name}</p>
-                    <p className="mt-1 text-[12px] font-medium tabular-nums text-[#75685f]">{formatPrice(product.price, product.currency)}</p>
+                    <p className="truncate text-[13px] font-bold text-[#332c27]">{color.productName}</p>
+                    <p className="mt-1 truncate text-[11px] font-medium text-[#75685f]">{color.color}</p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] tabular-nums text-[#81746a]">
+                      <span><strong className="font-bold text-[#51473f]">{color.totalUnitsSold}</strong> sold total</span>
+                      <span><strong className="font-bold text-mahalyred">{color.last30DaysUnitsSold}</strong> last 30 days</span>
+                    </div>
                   </div>
                   <ArrowUpRight className="h-4 w-4 flex-none text-[#b7aaa0] transition-colors group-hover:text-mahalyred" />
                 </Link>
               ))}
             </div>
           ) : (
-            <DashboardEmptyState title="No sales ranking yet" description="Published products will appear here until sales data becomes available." />
+            <DashboardEmptyState title="No color sales yet" description="Product colors will appear here after their first non-cancelled sale." />
           )}
         </DashboardPanel>
 

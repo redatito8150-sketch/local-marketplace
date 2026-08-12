@@ -11,6 +11,7 @@ import { supabase } from "@/lib/supabase/client";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { Product } from "@/types";
 import { PRODUCT_PUBLIC_SELECT, ProductRow, toProductCard, loadDisplayContext } from "./products";
+import { getVariantsForProducts } from "./variants";
 import { publishDateLiveFilter } from "../newArrivals";
 
 // Ranks product ids by total quantity sold, optionally restricted to orders
@@ -162,4 +163,163 @@ export async function getBestSellingProductsForBrand(
   const rows = (data ?? []) as ProductRow[];
   const displayCtx = await loadDisplayContext(rows);
   return rows.map((row) => toProductCard(row, displayCtx));
+}
+
+export interface BestSellingColorWithStats {
+  colorKey: string;
+  productId: string;
+  productName: string;
+  color: string;
+  sizes: string[];
+  image?: string;
+  minPrice: number;
+  maxPrice: number;
+  currency: "USD" | "EGP";
+  totalUnitsSold: number;
+  last30DaysUnitsSold: number;
+}
+
+export async function getBestSellingColorsWithStatsForBrand(
+  brandSlug: string,
+  limit: number = 4
+): Promise<BestSellingColorWithStats[]> {
+  const { data, error } = await supabaseAdmin
+    .from("order_items")
+    .select("variant_id, product_id, name, size, color, price, currency, quantity, image, orders!inner(status, created_at)")
+    .eq("brand_slug", brandSlug)
+    .not("variant_id", "is", null)
+    .neq("orders.status", "cancelled");
+
+  if (error) {
+    throw new Error(`getBestSellingColorsWithStatsForBrand(${brandSlug}) failed: ${error.message}`);
+  }
+
+  type SoldVariantRow = {
+    variant_id: string;
+    product_id: string;
+    name: string;
+    size: string;
+    color: string | null;
+    price: number;
+    currency: "USD" | "EGP";
+    quantity: number;
+    image: string;
+    orders: { created_at: string } | Array<{ created_at: string }> | null;
+  };
+  const soldRows = ((data ?? []) as unknown as SoldVariantRow[]).filter((row) => row.variant_id && row.product_id && row.orders);
+  if (soldRows.length === 0) return [];
+
+  const productIds = [...new Set(soldRows.map((row) => row.product_id))];
+  const [variantsByProduct, mediaResult] = await Promise.all([
+    getVariantsForProducts(productIds, supabaseAdmin),
+    supabaseAdmin
+      .from("product_media")
+      .select("product_id, storage_reference, color_option_value_id")
+      .in("product_id", productIds)
+      .eq("is_archived", false)
+      .not("color_option_value_id", "is", null)
+      .order("display_order", { ascending: true }),
+  ]);
+  if (mediaResult.error) {
+    throw new Error(`getBestSellingColorsWithStatsForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
+  }
+
+  const mediaByColor = new Map<string, string>();
+  for (const media of mediaResult.data ?? []) {
+    if (!media.color_option_value_id || mediaByColor.has(`${media.product_id}:${media.color_option_value_id}`)) continue;
+    mediaByColor.set(`${media.product_id}:${media.color_option_value_id}`, media.storage_reference);
+  }
+
+  const variantsById = new Map(
+    [...variantsByProduct.values()].flat().map((variant) => [variant.id, variant] as const)
+  );
+  type ColorAggregate = {
+    colorKey: string;
+    productId: string;
+    productName: string;
+    color: string;
+    sizes: Set<string>;
+    image?: string;
+    hasExactColorImage: boolean;
+    minPrice: number;
+    maxPrice: number;
+    currency: "USD" | "EGP";
+    total: number;
+    recent: number;
+    latestOrderTime: number;
+  };
+
+  const thirtyDaysAgo = Date.now() - 30 * 86_400_000;
+  const aggregates = new Map<string, ColorAggregate>();
+  for (const row of soldRows) {
+    const order = Array.isArray(row.orders) ? row.orders[0] : row.orders;
+    if (!order) continue;
+
+    const variant = variantsById.get(row.variant_id);
+    const colorValue = variant?.optionValues.find((value) => value.optionTypeName.toLowerCase() === "color");
+    const sizeValue = variant?.optionValues.find((value) => value.optionTypeName.toLowerCase() === "size");
+    const color = colorValue?.label || row.color?.trim() || "No color";
+    const colorIdentity = colorValue?.optionValueId || color.toLocaleLowerCase();
+    const colorKey = `${row.product_id}:${colorIdentity}`;
+    const size = sizeValue?.label || row.size?.trim();
+    const exactColorImage = colorValue ? mediaByColor.get(`${row.product_id}:${colorValue.optionValueId}`) : undefined;
+    const snapshotImage = row.image?.trim() || undefined;
+    const orderTime = new Date(order.created_at).getTime();
+    const price = Number(row.price);
+    const current = aggregates.get(colorKey);
+
+    if (!current) {
+      aggregates.set(colorKey, {
+        colorKey,
+        productId: row.product_id,
+        productName: row.name,
+        color,
+        sizes: new Set(size ? [size] : []),
+        image: exactColorImage || snapshotImage,
+        hasExactColorImage: Boolean(exactColorImage),
+        minPrice: price,
+        maxPrice: price,
+        currency: row.currency,
+        total: row.quantity,
+        recent: orderTime >= thirtyDaysAgo ? row.quantity : 0,
+        latestOrderTime: orderTime,
+      });
+      continue;
+    }
+
+    if (size) current.sizes.add(size);
+    current.total += row.quantity;
+    if (orderTime >= thirtyDaysAgo) current.recent += row.quantity;
+    current.minPrice = Math.min(current.minPrice, price);
+    current.maxPrice = Math.max(current.maxPrice, price);
+    if (exactColorImage && !current.hasExactColorImage) {
+      current.image = exactColorImage;
+      current.hasExactColorImage = true;
+    } else if (!current.image && snapshotImage) {
+      current.image = snapshotImage;
+    }
+    if (orderTime > current.latestOrderTime) {
+      current.productName = row.name;
+      current.color = color;
+      current.currency = row.currency;
+      current.latestOrderTime = orderTime;
+    }
+  }
+
+  return [...aggregates.values()]
+    .sort((a, b) => b.total - a.total || b.recent - a.recent || b.latestOrderTime - a.latestOrderTime)
+    .slice(0, limit)
+    .map((color) => ({
+      colorKey: color.colorKey,
+      productId: color.productId,
+      productName: color.productName,
+      color: color.color,
+      sizes: [...color.sizes].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })),
+      image: color.image,
+      minPrice: color.minPrice,
+      maxPrice: color.maxPrice,
+      currency: color.currency,
+      totalUnitsSold: color.total,
+      last30DaysUnitsSold: color.recent,
+    }));
 }

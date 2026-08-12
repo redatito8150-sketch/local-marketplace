@@ -232,7 +232,12 @@ export interface BrandProductListItem {
   collection?: string;
   featured: boolean;
   inStock: boolean;
+  stockStatus: StockStatus;
+  stockIssueCount: number;
+  variantCount: number;
+  stockUnits: number;
   createdAt: string;
+  updatedAt: string;
   status: string;
   draftStartedAt?: string;
   publishDate?: string;
@@ -251,6 +256,7 @@ interface BrandProductRow {
   product_type_id: string;
   collection_id: string | null;
   featured: boolean;
+  default_low_stock_threshold: number;
   created_at: string;
   status: string;
   draft_started_at: string | null;
@@ -273,7 +279,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabaseAdmin
     .from("products")
     .select(
-      "id, name, image, price, currency, product_type_id, collection_id, featured, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_type_id, collection_id, featured, default_low_stock_threshold, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
@@ -295,6 +301,22 @@ export async function getProductsForBrand(
 
   return rows.map((row) => {
     const path = resolveTaxonomyPath(taxonomyTree, row.product_type_id);
+    const variants = variantsByProduct.get(row.id) ?? [];
+    const activeVariantStatuses = variants
+      .filter((variant) => variant.sellingStatus === "active")
+      .map((variant) => calculateStockStatus(
+        variant.quantity,
+        effectiveLowStockThreshold(variant.lowStockThresholdOverride, row.default_low_stock_threshold)
+      ));
+    const stockStatus: StockStatus = activeVariantStatuses.length === 0 || activeVariantStatuses.every((status) => status === "out_of_stock")
+      ? "out_of_stock"
+      : activeVariantStatuses.some((status) => status !== "in_stock")
+        ? "low_stock"
+        : "in_stock";
+    const updatedAt = variants.reduce(
+      (latest, variant) => variant.updatedAt && new Date(variant.updatedAt).getTime() > new Date(latest).getTime() ? variant.updatedAt : latest,
+      row.created_at
+    );
     return {
       id: row.id,
       name: row.name,
@@ -305,10 +327,15 @@ export async function getProductsForBrand(
       productType: path?.productTypeName,
       collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,
       featured: row.featured,
-      inStock: (variantsByProduct.get(row.id) ?? []).some(
+      inStock: variants.some(
         (variant) => variant.sellingStatus === "active" && variant.quantity > 0
       ),
+      stockStatus,
+      stockIssueCount: activeVariantStatuses.filter((status) => status !== "in_stock").length,
+      variantCount: variants.length,
+      stockUnits: variants.reduce((sum, variant) => sum + variant.quantity, 0),
       createdAt: row.created_at,
+      updatedAt,
       status: row.status,
       draftStartedAt: row.draft_started_at ?? undefined,
       publishDate: row.publish_date ?? undefined,
