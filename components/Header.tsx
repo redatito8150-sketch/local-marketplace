@@ -172,19 +172,12 @@ export default function Header({ overlayHero = false }: { overlayHero?: boolean 
           )}
 
           <Link
-            href="/join-as-a-brand"
-            className="hidden h-9 items-center rounded-full bg-mahalyred px-4 text-[11px] font-bold uppercase tracking-[0.12em] text-white transition hover:bg-mahalyred-dark sm:inline-flex"
-          >
-            Join us
-          </Link>
-
-          <Link
             href={user ? "/account" : `/account?next=${encodeURIComponent(pathname)}`}
             aria-label={user ? "Account" : "Login"}
-            className="relative inline-flex items-center gap-2 rounded-full p-1.5 text-ink transition-colors hover:bg-white/45 sm:px-2.5 sm:py-2"
+            title={user ? "Account" : "Login"}
+            className="relative rounded-full p-1.5 text-ink transition-colors hover:bg-white/45 sm:p-2"
           >
             <User className="h-5 w-5" strokeWidth={1.6} />
-            <span className="hidden text-[12px] font-semibold lg:inline">{user ? "Account" : "Login"}</span>
             {user && (
               <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-ink ring-2 ring-cream" />
             )}
@@ -233,15 +226,6 @@ export default function Header({ overlayHero = false }: { overlayHero?: boolean 
       {mobileMenuOpen && (
         <nav className="border-t border-stone-150 xl:hidden">
           <ul className="flex flex-col px-8 py-2">
-            <li className="sm:hidden">
-              <Link
-                href="/join-as-a-brand"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block py-3 text-[15px] font-semibold text-mahalyred"
-              >
-                Join us
-              </Link>
-            </li>
             {MOBILE_NAV_LINKS.map((link) => (
               <li key={link.label}>
                 <Link

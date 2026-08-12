@@ -31,6 +31,12 @@ body {
   letter-spacing: -0.035em;
 }
 
+.home-nile-background button:not(:disabled):active,
+.home-nile-background a[class~="bg-mahalyred"]:active,
+.home-nile-background a[class~="bg-[#C85956]"]:active {
+  scale: .98;
+}
+
 .join-showcase-background {
   position: relative;
   isolation: isolate;

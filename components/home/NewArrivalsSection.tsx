@@ -13,7 +13,7 @@ export default function NewArrivalsSection({ title, products, viewAllHref }: { t
   const move = (direction: number) => track.current?.scrollBy({ left: direction * Math.max(280, track.current.clientWidth * 0.72), behavior: "smooth" });
   return (
     <MotionConfig reducedMotion="never">
-    <section className="mx-auto max-w-[1920px] border-b border-white/20 bg-cream/20 px-6 py-9 md:px-10 xl:px-16">
+    <section className="mx-auto max-w-[1920px] border-t border-[#C85956]/10 bg-cream/20 px-6 py-9 md:px-10 xl:px-16">
       <motion.div initial={false} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.5 }} transition={{ duration: 0.55 }} className="mb-5 flex items-center justify-between">
         <h2 className="font-serif text-[25px] font-semibold tracking-tight text-ink">{title}</h2>
         <div className="flex items-center gap-2">

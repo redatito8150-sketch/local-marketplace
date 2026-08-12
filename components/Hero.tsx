@@ -31,14 +31,20 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
           initial={false}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           transition={{ delay: 0.28, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-          className="mx-auto mt-6"
+          className="mx-auto mt-6 flex items-center justify-center gap-2 sm:gap-3"
         >
           <Link
             href="/shop/all"
-            className="group inline-flex h-12 items-center gap-5 rounded-full border border-white/35 bg-[#C85956] px-8 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-[0_16px_42px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.16)] backdrop-blur-lg transition duration-500 hover:-translate-y-0.5 hover:border-white/55 hover:bg-[#C85956]"
+            className="group inline-flex h-[52px] items-center gap-3 whitespace-nowrap rounded-full border border-white/35 bg-[#C85956] px-5 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_12px_28px_rgba(200,89,86,.26),inset_0_1px_0_rgba(255,255,255,.22)] backdrop-blur-lg transition duration-300 hover:-translate-y-0.5 hover:border-white/55 hover:bg-mahalyred-dark active:scale-[0.98] sm:h-14 sm:gap-4 sm:px-10 sm:text-[11px] sm:tracking-[0.2em]"
           >
             Shop all
             <ArrowUpRight className="h-4 w-4 transition-transform duration-500 group-hover:rotate-45" />
+          </Link>
+          <Link
+            href="/join-as-a-brand"
+            className="inline-flex h-[52px] items-center justify-center whitespace-nowrap rounded-full border border-[#C85956]/40 bg-white/60 px-5 text-[10px] font-bold uppercase tracking-[0.12em] text-[#C85956] shadow-[0_8px_22px_rgba(200,89,86,.12),inset_0_1px_0_rgba(255,255,255,.65)] backdrop-blur-lg transition duration-300 hover:-translate-y-0.5 hover:border-[#C85956]/65 hover:bg-[#C85956]/10 active:scale-[0.98] sm:h-14 sm:px-10 sm:text-[11px] sm:tracking-[0.2em]"
+          >
+            Start selling
           </Link>
         </motion.div>
 
@@ -61,14 +67,14 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
               >
                 <Link
                   href={tile.href}
-                  className="group relative block h-[84px] overflow-hidden rounded-[999px] border border-white/55 bg-stone-200 shadow-[0_14px_34px_rgba(34,24,19,.16)] sm:h-[100px]"
+                  className="group relative block h-[84px] overflow-hidden rounded-[999px] border border-white/55 bg-stone-200 shadow-[0_14px_34px_rgba(34,24,19,.16)] transition-transform duration-300 active:scale-[0.99] sm:h-[100px]"
                 >
                   <Image src={tile.image} alt={`${tile.label} collection`} fill priority={index < 2} sizes="(max-width: 1024px) 48vw, 24vw" className="object-cover transition duration-700 group-hover:scale-110 group-hover:saturate-125" />
                   <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/25 to-black/5 transition-colors duration-500 group-hover:from-mahalyred/85" />
                   <div className="absolute inset-0 flex items-center justify-between px-5 text-white sm:px-7">
                     <div>
-                      <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/55">Explore</span>
-                      <h2 className="font-serif text-[21px] font-semibold sm:text-[25px]">{tile.label}</h2>
+                      <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-white/85 drop-shadow-[0_1px_3px_rgba(0,0,0,.55)]">Explore</span>
+                      <h2 className="font-serif text-[21px] font-semibold drop-shadow-[0_1px_4px_rgba(0,0,0,.48)] sm:text-[25px]">{tile.label}</h2>
                     </div>
                     <ArrowUpRight className="h-5 w-5 transition-transform duration-500 group-hover:rotate-45 group-hover:scale-125" />
                   </div>

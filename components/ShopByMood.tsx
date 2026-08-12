@@ -14,7 +14,7 @@ export default function ShopByMood({ tiles }: { tiles: ResolvedMoodTile[] }) {
 
   return (
     <MotionConfig reducedMotion="never">
-    <section className="mx-auto max-w-[1920px] border-b border-white/20 bg-cream/16 px-6 py-6 md:px-10 xl:px-16">
+    <section className="mx-auto max-w-[1920px] border-t border-[#C85956]/10 bg-cream/16 px-6 py-6 md:px-10 xl:px-16">
       <motion.div
         initial={false}
         whileInView={{ opacity: 1, y: 0 }}

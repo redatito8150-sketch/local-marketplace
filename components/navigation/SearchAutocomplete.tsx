@@ -117,7 +117,7 @@ export default function SearchAutocomplete() {
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
-          placeholder="Search for products, brands..."
+          placeholder="Search products or brands"
           role="combobox"
           aria-expanded={showDropdown}
           aria-autocomplete="list"
