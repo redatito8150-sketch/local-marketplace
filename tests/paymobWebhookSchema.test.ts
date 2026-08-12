@@ -218,3 +218,40 @@ test("COD's own order route is byte-for-byte untouched by this phase (still call
   assert.match(codRoute, /\.rpc\("place_order"/);
   assert.doesNotMatch(codRoute, /paymob/i);
 });
+
+// A card-paid order previously got neither an admin notify() nor a
+// customer confirmation email — COD (app/api/orders/route.ts) has always
+// sent both, but place_paid_order()/the webhook route were built later and
+// nothing ever added the equivalent here. Fixed by sending both once
+// place_paid_order actually fulfills (not on a replayed/idempotent retry).
+test("webhook route sends the admin notify() and a customer confirmation email once fulfillment succeeds, guarded against replays", () => {
+  const route = read("app/api/payments/paymob/webhook/route.ts");
+  assert.match(route, /import \{ notify \} from "@\/lib\/notify";/);
+  assert.match(route, /import \{ sendEmail \} from "@\/lib\/email\/sendEmail";/);
+  assert.match(route, /import \{ orderConfirmationEmail \} from "@\/lib\/email\/templates\/orderConfirmation";/);
+  assert.match(route, /import \{ getOrderForAdmin \} from "@\/lib\/data\/admin";/);
+
+  const notifyIndex = route.indexOf("await notify(");
+  const sendEmailIndex = route.indexOf("await sendEmail(");
+  assert.ok(notifyIndex !== -1, "expected an await notify(...) call");
+  assert.ok(sendEmailIndex !== -1 && sendEmailIndex > notifyIndex, "sendEmail() must come after notify()");
+
+  // Both the outer (action + !replayed + orderGroupId) and inner
+  // (groupOrders.length > 0) guards must appear somewhere before notify()
+  // is ever called.
+  const preceding = route.slice(0, notifyIndex);
+  assert.match(preceding, /outcome\.action === "paid_and_fulfilled"[\s\S]*!outcome\.result\.replayed[\s\S]*outcome\.result\.orderGroupId/);
+  assert.match(preceding, /groupOrders && groupOrders\.length > 0/);
+
+  // orderConfirmationEmail is payment-method-agnostic (no COD-specific
+  // wording) — safe to reuse verbatim for a card order.
+  assert.match(route, /orderConfirmationEmail\(fullOrder\)/);
+});
+
+test("the notify/email block only reads orders by order_group_id — never re-derives or trusts a client-provided order id", () => {
+  const route = read("app/api/payments/paymob/webhook/route.ts");
+  const fromOrdersIndex = route.indexOf('.from("orders")');
+  assert.ok(fromOrdersIndex !== -1);
+  const nearby = route.slice(fromOrdersIndex, fromOrdersIndex + 200);
+  assert.match(nearby, /\.eq\("order_group_id", outcome\.result\.orderGroupId\)/);
+});

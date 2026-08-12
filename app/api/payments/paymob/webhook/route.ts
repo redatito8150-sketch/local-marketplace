@@ -3,6 +3,10 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { verifyTransactionHmac, type PaymobTransactionObject } from "@/lib/payments/paymobWebhook";
 import { processPaymobWebhook, type ProcessWebhookDeps } from "@/lib/payments/processPaymobWebhook";
 import { logError } from "@/lib/errorLog";
+import { notify } from "@/lib/notify";
+import { sendEmail } from "@/lib/email/sendEmail";
+import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
+import { getOrderForAdmin } from "@/lib/data/admin";
 
 // Paymob's "Transaction Processed" server-to-server callback — the ONLY
 // authoritative source of payment status in this codebase. Nothing the
@@ -121,6 +125,47 @@ export async function POST(request: NextRequest) {
         "Paymob payment partially fulfilled — some vendor shipments failed, needs partial refund review",
         `payment_attempt_id ${outcome.paymentAttemptId}`
       );
+    }
+
+    // Bring card payments to parity with Cash on Delivery (app/api/orders/
+    // route.ts), which has always sent both of these on order creation —
+    // this path never did, since it was built before place_paid_order
+    // existed and nothing added it afterward. Guarded on `!replayed`: this
+    // route can be called more than once for the same attempt (Paymob
+    // retries, or two webhook deliveries racing) — place_paid_order()
+    // itself is idempotent and reports replayed: true on any call after
+    // the first that already reached a terminal state, which is exactly
+    // when this must NOT fire again.
+    if (
+      outcome.action === "paid_and_fulfilled" &&
+      !outcome.result.replayed &&
+      outcome.result.orderGroupId
+    ) {
+      const { data: groupOrders } = await supabaseAdmin
+        .from("orders")
+        .select("id, order_number, shipping_email")
+        .eq("order_group_id", outcome.result.orderGroupId);
+
+      if (groupOrders && groupOrders.length > 0) {
+        await notify(
+          "order_created",
+          `New order group (${groupOrders.length} shipment${groupOrders.length === 1 ? "" : "s"})`,
+          `Card payment — ${groupOrders.map((o) => o.order_number).join(", ")}`,
+          {
+            entityId: groupOrders[0]?.order_number,
+            entityIdLabel: "Order ID",
+            actorLabel: "card payment",
+            detailLabel: "Orders",
+          }
+        );
+
+        for (const groupOrder of groupOrders) {
+          const fullOrder = await getOrderForAdmin(groupOrder.id);
+          if (fullOrder && fullOrder.shippingEmail) {
+            await sendEmail({ to: fullOrder.shippingEmail, ...orderConfirmationEmail(fullOrder) });
+          }
+        }
+      }
     }
 
     return NextResponse.json({ ok: true });
