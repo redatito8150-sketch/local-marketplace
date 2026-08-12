@@ -28,7 +28,6 @@ export default async function BrandPortalLayout({
       </>}
     >
       {!owner.isActive && <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12.5px] text-red-800">This brand is inactive. Catalog changes are unavailable until an administrator reactivates it.</div>}
-      {owner.setupStatus && owner.setupStatus !== "complete" && <div role="status" className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12.5px] text-amber-900">Brand setup is {owner.setupStatus.replaceAll("_", " ")}. You can continue preparing the catalog while setup is completed.</div>}
       {children}
     </DashboardShell>
   );
