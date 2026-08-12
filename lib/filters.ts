@@ -1,6 +1,7 @@
 import type { FilterGroup, Product } from "@/types";
 import type { MarketplaceCatalogFacetRow } from "@/lib/data/products";
 import { isDiscountActive } from "./pricing.ts";
+import { compareSizeLabels } from "./inventory/sizeOrder.ts";
 
 // Fallback price bounds when no products are available to derive a real
 // range from (e.g. an empty catalog) — the project's own configured floor
@@ -35,7 +36,17 @@ export function parsePriceRangeValue(value: string | undefined): { min: number; 
   return { min, max };
 }
 
-function countedGroup(id: string, title: string, values: (string | undefined)[]): FilterGroup {
+function countedGroup(
+  id: string,
+  title: string,
+  values: (string | undefined)[],
+  // Defaults to "most common first" (the original behavior, still right
+  // for brand/color/category/etc.) — Size overrides this with
+  // sizeLabelSort below, since "most common first" produces an
+  // effectively random-looking order for something that has one obvious
+  // correct order (S, M, L, XL...).
+  sortEntries: (a: [string, number], b: [string, number]) => number = (a, b) => b[1] - a[1]
+): FilterGroup {
   const counts = new Map<string, number>();
   for (const v of values) {
     if (!v) continue;
@@ -47,9 +58,22 @@ function countedGroup(id: string, title: string, values: (string | undefined)[])
     // Using the real value as both id and label (rather than a slugified
     // id) keeps matching a direct string comparison, no reverse lookup.
     options: [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
+      .sort(sortEntries)
       .map(([label, count]) => ({ id: label, label, count })),
   };
+}
+
+// By this point each product's own `sizes` array is already in the
+// correct S/M/L/XL (or brand-custom) order — see lib/data/products.ts's
+// attachVariantDerivedFields, which is the single source of truth for
+// that ordering — but building the aggregate filter-sidebar option list
+// flattens every product's sizes together, so a text-based comparator is
+// the only ordering signal left at this point (no per-product structured
+// sortOrder/brandId survives the flatten). Covers every standard
+// letter/numeric size; an unrecognized custom label sorts to the end
+// rather than breaking anything.
+function sizeLabelSort(a: [string, number], b: [string, number]): number {
+  return compareSizeLabels(a[0], b[0]);
 }
 
 // The Price group no longer carries a discrete option list — it's rendered
@@ -95,7 +119,7 @@ export function buildMarketplaceFilterGroups(products: ProductFacet[]): FilterGr
     countedGroup("audience", "Audience", products.map((product) => product.category)),
     countedGroup("brand", "Brand", products.map((product) => product.brand)),
     PRICE_GROUP,
-    countedGroup("size", "Size", products.flatMap((product) => product.sizes)),
+    countedGroup("size", "Size", products.flatMap((product) => product.sizes), sizeLabelSort),
     countedGroup("color", "Color", products.flatMap((product) => product.colors.map((color) => color.name))),
     countedGroup("mainCategory", "Category", products.map((product) => product.mainCategory)),
     countedGroup("productType", "Product Type", products.map((product) => product.productType)),
@@ -126,7 +150,7 @@ export function buildDynamicFilterGroups(products: Product[]): FilterGroup[] {
     countedGroup("audience", "Audience", products.map((product) => product.category)),
     countedGroup("brand", "Brand", products.map((product) => product.brand)),
     PRICE_GROUP,
-    countedGroup("size", "Size", products.flatMap((product) => product.sizes)),
+    countedGroup("size", "Size", products.flatMap((product) => product.sizes), sizeLabelSort),
     countedGroup("color", "Color", products.flatMap((product) => product.colors.map((color) => color.name))),
     countedGroup("mainCategory", "Category", products.map((product) => product.mainCategory)),
     countedGroup("productType", "Product Type", products.map((product) => product.productTypeName)),

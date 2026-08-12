@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
 import { getVariantEffectivePrice } from "@/lib/pricing";
+import { compareSizeOrderables } from "@/lib/inventory/sizeOrder";
 import type { CartLineItem } from "@/types";
 
 // Re-checks every cart line against the *current* state of its product,
@@ -21,6 +22,13 @@ export interface CartValidationVariant {
   price: number; // this variant's own live effective price
   originalPrice: number; // pre-discount price — equals price when no discount is active
   discountActive: boolean;
+  // Carried through only so `variants` below can be sorted into the same
+  // canonical size order the product page and Variants Matrix use (see
+  // lib/inventory/sizeOrder.ts) — not meant to be read by callers
+  // otherwise; resolveCartLine/the cart page just consume the already-
+  // sorted `variants` array in order.
+  sizeSortOrder?: number | null;
+  sizeBrandId?: string | null;
 }
 
 export interface CartValidationEntry {
@@ -77,29 +85,44 @@ export async function getCartValidationData(
       image: row.image as string,
       colorImages: colorImagesByProduct.get(productId) ?? {},
       currency: row.currency as "USD" | "EGP",
-      variants: variants.map((v) => {
-        const priceResult = getVariantEffectivePrice(
-          Number(row.price),
-          v.variantPrice,
-          row.discount_percent as number | null,
-          row.discount_ends_at as string | null,
-          v.variantDiscountPercent
-        );
-        return {
-          id: v.id,
-          size: v.optionValues.find((o) => o.optionTypeName === "Size")?.label ?? "",
-          color: v.optionValues.find((o) => o.optionTypeName === "Color")?.label,
-          quantity: v.quantity,
-          purchasable: isVariantPurchasable({
-            sellingStatus: v.sellingStatus,
+      variants: variants
+        .map((v) => {
+          const priceResult = getVariantEffectivePrice(
+            Number(row.price),
+            v.variantPrice,
+            row.discount_percent as number | null,
+            row.discount_ends_at as string | null,
+            v.variantDiscountPercent
+          );
+          const sizeOption = v.optionValues.find((o) => o.optionTypeName === "Size");
+          return {
+            id: v.id,
+            size: sizeOption?.label ?? "",
+            color: v.optionValues.find((o) => o.optionTypeName === "Color")?.label,
             quantity: v.quantity,
-            isArchived: v.isArchived,
-          }),
-          price: priceResult.price,
-          originalPrice: v.variantPrice ?? Number(row.price),
-          discountActive: priceResult.active,
-        };
-      }),
+            purchasable: isVariantPurchasable({
+              sellingStatus: v.sellingStatus,
+              quantity: v.quantity,
+              isArchived: v.isArchived,
+            }),
+            price: priceResult.price,
+            originalPrice: v.variantPrice ?? Number(row.price),
+            discountActive: priceResult.active,
+            sizeSortOrder: sizeOption?.sortOrder,
+            sizeBrandId: sizeOption?.brandId,
+          };
+        })
+        // Same canonical order as the product page and Variants Matrix —
+        // see lib/inventory/sizeOrder.ts. Previously unsorted (whatever
+        // order the DB happened to return), so the cart's size
+        // switcher/quantity display could show sizes in a different,
+        // effectively arbitrary order from everywhere else on the site.
+        .sort((a, b) =>
+          compareSizeOrderables(
+            { id: a.id, label: a.size, sortOrder: a.sizeSortOrder, brandId: a.sizeBrandId },
+            { id: b.id, label: b.size, sortOrder: b.sizeSortOrder, brandId: b.sizeBrandId }
+          )
+        ),
     });
   }
 
