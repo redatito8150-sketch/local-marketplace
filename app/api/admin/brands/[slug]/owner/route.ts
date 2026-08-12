@@ -55,16 +55,26 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
   return NextResponse.json({ ok: true, ownerEmail: profile.email });
 }
 
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ slug: string }> }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
   const staff = await requireStaffRole("admin");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   }
 
-  const { error } = await supabaseAdmin.rpc("set_brand_primary_owner", {
+  // Which member to remove — a brand can have co-owners
+  // (brand_staff.access_level='owner' rows) beyond the single primary
+  // owner_user_id pointer, so unlinking always targets a specific account,
+  // never just "whoever's primary right now". See
+  // 20260812000004_brand_owner_removal.sql for why.
+  const { userId } = await request.json().catch(() => ({ userId: undefined }));
+  if (typeof userId !== "string" || !userId) {
+    return NextResponse.json({ error: "userId is required" }, { status: 400 });
+  }
+
+  const { error } = await supabaseAdmin.rpc("remove_brand_owner", {
     p_brand_slug: params.slug,
-    p_new_owner_id: null,
+    p_user_id: userId,
   });
 
   if (error) {
@@ -77,7 +87,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ s
     entityType: "brand",
     entityId: params.slug,
     action: "update",
-    after: { ownerUserId: null },
+    after: { removedOwnerId: userId },
   });
 
   return NextResponse.json({ ok: true });

@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation";
-import { getBrandForAdmin } from "@/lib/data/admin";
+import { getBrandForAdmin, getBrandMembersForAdmin } from "@/lib/data/admin";
 import BrandForm from "@/components/admin/BrandForm";
 import LinkBrandOwnerField from "@/components/admin/LinkBrandOwnerField";
 
 export default async function EditBrandPage(props: { params: Promise<{ slug: string }> }) {
   const params = await props.params;
-  const brand = await getBrandForAdmin(params.slug);
+  const [brand, members] = await Promise.all([
+    getBrandForAdmin(params.slug),
+    getBrandMembersForAdmin(params.slug),
+  ]);
 
   if (!brand) notFound();
 
@@ -19,7 +22,7 @@ export default async function EditBrandPage(props: { params: Promise<{ slug: str
           Link an existing account so this brand can log in and see their own orders and stock.
         </p>
         <div className="mt-3">
-          <LinkBrandOwnerField brandSlug={brand.slug} currentOwnerEmail={brand.ownerEmail} />
+          <LinkBrandOwnerField brandSlug={brand.slug} owners={members?.owners ?? []} />
         </div>
       </div>
 

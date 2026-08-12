@@ -33,7 +33,12 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
   const actorMaxRank = currentAdmin ? await getUserMaxRank(currentAdmin.id) : 0;
 
   const brandByOwnerEmail = new Map(brands.filter((brand) => brand.ownerEmail).map((brand) => [brand.ownerEmail!.toLowerCase(), { slug: brand.slug, name: brand.name }]));
-  const brandByAssistantUserId = new Map(brandStaff.map((row) => [row.userId, { slug: row.brandSlug, name: row.brandName }]));
+  // Every brand_staff row for this user, owner or assistant alike (the name
+  // is a holdover — brand_staff has held co-owner rows, access_level='owner',
+  // since 20260808000008_multiple_brand_owners.sql). This is what correctly
+  // keeps showing a co-owner as "linked" here even right after the brand's
+  // *primary* owner (brands.owner_user_id) gets unlinked on the edit page.
+  const brandByStaffUserId = new Map(brandStaff.map((row) => [row.userId, { slug: row.brandSlug, name: row.brandName }]));
   const brandOptions = brands.map((brand) => ({ slug: brand.slug, name: brand.name }));
 
   const rolesByIdMap = new Map(allRoles.map((role) => [role.id, role]));
@@ -53,7 +58,7 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
 
   const query = params.q?.trim().toLowerCase();
   const profiles = allProfiles.filter((profile) => {
-    const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByAssistantUserId.get(profile.id);
+    const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByStaffUserId.get(profile.id);
     if (query && !`${profile.fullName ?? ""} ${profile.email ?? ""} ${linkedBrand?.name ?? ""}`.toLowerCase().includes(query)) return false;
     if (params.role && profile.role !== params.role) return false;
     if (params.brandAccess === "linked" && !linkedBrand) return false;
@@ -103,7 +108,7 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
           <DashboardPanel className="mt-6">
             {profiles.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[13px]"><thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500"><tr><th className="px-5 py-3 font-semibold">User</th><th className="px-5 py-3 font-semibold">Joined</th><th className="px-5 py-3 font-semibold">Brand</th><th className="px-5 py-3 font-semibold">Access</th></tr></thead><tbody className="divide-y divide-slate-100">{profiles.map((profile) => {
               const isSelf = profile.id === currentAdmin?.id;
-              const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByAssistantUserId.get(profile.id);
+              const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByStaffUserId.get(profile.id);
               const heldRoleIds = roleIdsByUser.get(profile.id) ?? [];
               const heldRoleNames = heldRoleIds.map((id) => rolesByIdMap.get(id)?.name).filter(Boolean) as string[];
               const outranksActor = !isSelf && targetMaxRank(profile.id, profile.role) >= actorMaxRank;

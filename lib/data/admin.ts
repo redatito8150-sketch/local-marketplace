@@ -353,6 +353,65 @@ export async function getAllBrandStaffForAdmin(): Promise<
   );
 }
 
+export interface BrandMemberRecord {
+  id: string;
+  email: string | null;
+  name: string | null;
+}
+
+// Shared by the "Brand Portal Access" widget (app/admin/brands/[slug]/edit)
+// and GET /api/admin/brands/[slug]/owners (the "this brand already has an
+// owner" conflict check in UserAccessControl.tsx) — both need the *complete*
+// membership picture (brands.owner_user_id, the "primary owner" convenience
+// pointer, *and* every brand_staff access_level='owner' co-owner row,
+// deduplicated), not just the primary pointer. Reading only owner_user_id
+// here previously let a co-owner go completely invisible on the edit page:
+// the widget showed "not linked" (or the wrong single owner) after the
+// primary was unlinked, even though the co-owner still had full brand-portal
+// access the whole time.
+export async function getBrandMembersForAdmin(
+  brandSlug: string
+): Promise<{ owners: BrandMemberRecord[]; assistants: BrandMemberRecord[] } | null> {
+  const { data: brand, error: brandError } = await supabaseAdmin
+    .from("brands")
+    .select("id, owner_user_id")
+    .eq("slug", brandSlug)
+    .maybeSingle();
+  if (brandError) throw new Error(`getBrandMembersForAdmin(${brandSlug}) failed: ${brandError.message}`);
+  if (!brand) return null;
+
+  const { data: staffRows, error: staffError } = await supabaseAdmin
+    .from("brand_staff")
+    .select("user_id, access_level")
+    .eq("brand_id", brand.id);
+  if (staffError) throw new Error(`getBrandMembersForAdmin(${brandSlug}) failed: ${staffError.message}`);
+
+  const ownerIds = new Set<string>();
+  const assistantIds = new Set<string>();
+  if (brand.owner_user_id) ownerIds.add(brand.owner_user_id);
+  for (const row of staffRows ?? []) {
+    if (row.access_level === "owner") ownerIds.add(row.user_id);
+    else assistantIds.add(row.user_id);
+  }
+
+  const allIds = [...new Set([...ownerIds, ...assistantIds])];
+  const { data: profiles, error: profilesError } = allIds.length
+    ? await supabaseAdmin.from("profiles").select("id, email, full_name").in("id", allIds)
+    : { data: [], error: null };
+  if (profilesError) throw new Error(`getBrandMembersForAdmin(${brandSlug}) failed: ${profilesError.message}`);
+
+  const byId = new Map((profiles ?? []).map((row) => [row.id as string, row]));
+  const describe = (id: string): BrandMemberRecord => {
+    const profile = byId.get(id);
+    return { id, email: profile?.email ?? null, name: profile?.full_name ?? null };
+  };
+
+  return {
+    owners: [...ownerIds].map(describe),
+    assistants: [...assistantIds].map(describe),
+  };
+}
+
 export async function getBrandForAdmin(slug: string): Promise<BrandRecord | null> {
   const { data, error } = await supabaseAdmin
     .from("brands")
