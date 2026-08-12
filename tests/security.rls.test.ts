@@ -45,6 +45,15 @@ test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, as
   const anon = createClient(supabaseUrl!, anonKey!);
 
   await t.test("place_order", async () => {
+    // Signature grew idempotency support (supabase/migrations/
+    // 20260810000005_order_integrity_and_idempotency.sql) after this test
+    // was first written — p_idempotency_key/p_idempotency_actor/
+    // p_request_hash have no default, so PostgREST can't even resolve a
+    // call missing them ("Could not find the function ... in the schema
+    // cache") and the call never reaches the permission check at all.
+    // Values are irrelevant either way — anon has zero grant on any
+    // overload of this function, so it's rejected before any parameter is
+    // read.
     const { error } = await anon.rpc("place_order", {
       p_shipping_name: "x",
       p_shipping_email: "x@x.com",
@@ -54,6 +63,9 @@ test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, as
       p_shipping_governorate: "x",
       p_user_id: FAKE_UUID,
       p_items: [],
+      p_idempotency_key: FAKE_UUID,
+      p_idempotency_actor: "x",
+      p_request_hash: "x",
       p_coupon_code: null,
       p_address_id: null,
     });
