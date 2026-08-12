@@ -12,7 +12,7 @@
 // directly to payment_attempts server-side. This file cannot express that
 // state even by mistake.
 
-import type { AppError } from "../../types/index.ts";
+import type { AppError, PurchasedCartLine } from "../../types/index.ts";
 
 export type CardPaymentPhase =
   | "idle"
@@ -38,6 +38,13 @@ export interface CardPaymentState {
   // the attempt fulfilled. Never set from any Pixel-originated signal.
   orderGroupId: string | null;
   isPartial: boolean;
+  // The exact lines (productId/size/color/quantity) this attempt's own
+  // cart_snapshot says were paid for — empty whenever isPartial is true,
+  // since there's no safe per-bucket mapping to know which lines those
+  // buckets actually cover (see the status route's own comment). Read
+  // by app/checkout/page.tsx's cart-clearing effect to call
+  // removePurchasedItems() instead of a blind clearCart().
+  purchasedItems: PurchasedCartLine[];
 }
 
 export const INITIAL_CARD_PAYMENT_STATE: CardPaymentState = {
@@ -48,6 +55,7 @@ export const INITIAL_CARD_PAYMENT_STATE: CardPaymentState = {
   error: null,
   orderGroupId: null,
   isPartial: false,
+  purchasedItems: [],
 };
 
 export type CardPaymentAction =
@@ -68,7 +76,12 @@ export type CardPaymentAction =
   // our own backend's already-authoritative state, never a Pixel signal.
   // This is the ONLY path that can ever reach "confirmed".
   | { type: "POLL_PENDING" }
-  | { type: "POLL_CONFIRMED"; orderGroupId: string | null; isPartial: boolean }
+  | {
+      type: "POLL_CONFIRMED";
+      orderGroupId: string | null;
+      isPartial: boolean;
+      purchasedItems: PurchasedCartLine[];
+    }
   | { type: "POLL_FAILED"; error: AppError }
   | { type: "RESET" };
 
@@ -133,6 +146,7 @@ export function cardPaymentReducer(state: CardPaymentState, action: CardPaymentA
         error: null,
         orderGroupId: action.orderGroupId,
         isPartial: action.isPartial,
+        purchasedItems: action.purchasedItems,
       };
 
     case "POLL_FAILED":

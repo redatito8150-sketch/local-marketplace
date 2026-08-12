@@ -9,9 +9,17 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 // own attempt and to only the safe columns; there is no separate
 // ownership check to get wrong here.
 //
-// Never returns cart_snapshot, shipping_snapshot, special_reference, or
-// any provider id — RLS's column grant makes those structurally
-// unreadable through this client, regardless of what this route asks for.
+// Never returns shipping_snapshot, special_reference, or any provider id
+// — RLS's column grant makes those structurally unreadable through this
+// client, regardless of what this route asks for. The one deliberate
+// exception is purchasedItems below: a narrow, four-field-per-line
+// projection of cart_snapshot (never the raw column, never price/name/
+// brand), read through get_fulfilled_cart_snapshot_items — an
+// ownership-checked RPC that only returns rows once status is
+// 'fulfilled' — so the frontend can reconcile exactly which cart lines
+// were paid for (see context/CartContext.tsx's removePurchasedItems and
+// lib/payments/reconcilePendingCardPayment.ts) instead of ever blindly
+// clearing the whole cart.
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,11 +51,27 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 
   let isPartial = false;
+  // Only ever populated once status is 'fulfilled' AND fulfillment was
+  // NOT partial — with a partial result there is no safe way to tell,
+  // from cart_snapshot alone, which specific lines belonged to the bucket
+  // that actually succeeded vs. the one that failed (buckets aren't
+  // tracked per cart_snapshot line), so this deliberately stays empty and
+  // the frontend must not attempt automatic reconciliation for that case.
+  let purchasedItems: { productId: string; size: string; color: string; quantity: number }[] = [];
   if (attempt.status === "fulfilled") {
     const { data: summary } = await supabase
       .rpc("payment_attempt_fulfillment_summary", { p_payment_attempt_id: id })
       .maybeSingle();
     isPartial = Boolean((summary as { is_partial?: boolean } | null)?.is_partial);
+
+    if (!isPartial) {
+      const { data: snapshotItems } = await supabase.rpc("get_fulfilled_cart_snapshot_items", {
+        p_payment_attempt_id: id,
+      });
+      purchasedItems = ((snapshotItems ?? []) as { product_id: string; size: string; color: string; quantity: number }[]).map(
+        (row) => ({ productId: row.product_id, size: row.size, color: row.color, quantity: row.quantity })
+      );
+    }
   }
 
   return NextResponse.json({
@@ -59,5 +83,6 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     processedAt: attempt.processed_at,
     orderGroupId: attempt.order_group_id,
     isPartial,
+    purchasedItems,
   });
 }

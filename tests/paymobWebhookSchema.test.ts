@@ -154,7 +154,7 @@ test("webhook route: HMAC is verified before any database call, never logs the p
   assert.ok(hmacCheckIndex < firstDbCallIndex, "HMAC must be verified before any database call");
 });
 
-test("customer status endpoint uses the cookie-bound (RLS-respecting) client, not supabaseAdmin, and never SELECTs cart/shipping snapshots", () => {
+test("customer status endpoint uses the cookie-bound (RLS-respecting) client, not supabaseAdmin, never raw-SELECTs cart/shipping snapshots, and only reads cart_snapshot content through the narrow ownership-checked RPC", () => {
   const route = read("app/api/payments/paymob/attempts/[id]/route.ts");
   // Strip // line comments first — this file's own documentation comments
   // legitimately explain what it does NOT return, which would otherwise
@@ -170,9 +170,40 @@ test("customer status endpoint uses the cookie-bound (RLS-respecting) client, no
 
   assert.match(codeOnly, /createSupabaseServerClient/);
   assert.doesNotMatch(codeOnly, /\bsupabaseAdmin\b/);
-  assert.doesNotMatch(codeOnly, /cart_snapshot/);
+  // get_fulfilled_cart_snapshot_items — the one deliberate, narrow, RPC-
+  // mediated exception (see supabase/migrations/
+  // 20260812000003_cart_reconciliation_snapshot_read.sql) — has
+  // "cart_snapshot" as a literal substring of its own name, so a blanket
+  // doesNotMatch would false-positive on it. What must stay true is
+  // narrower: no raw SELECT of the cart_snapshot column itself anywhere
+  // in this route.
+  const selectCalls = codeOnly.match(/\.select\("[^"]*"\)/g) ?? [];
+  assert.ok(selectCalls.length > 0, "expected to find at least one .select(...) call");
+  for (const call of selectCalls) {
+    assert.doesNotMatch(call, /cart_snapshot/);
+  }
+  assert.match(codeOnly, /get_fulfilled_cart_snapshot_items/);
   assert.doesNotMatch(codeOnly, /shipping_snapshot/);
   assert.doesNotMatch(codeOnly, /special_reference/);
+});
+
+test("customer status endpoint only fetches purchasedItems when fulfillment was NOT partial — cart_snapshot has no per-bucket mapping, so a partial result can't be safely attributed to specific lines", () => {
+  const route = read("app/api/payments/paymob/attempts/[id]/route.ts");
+  // lastIndexOf, not indexOf — this route's own module comment also
+  // mentions the RPC by name (documenting the deliberate exception), so
+  // the first occurrence in the file is that comment, not the actual call.
+  const rpcCallIndex = route.lastIndexOf("get_fulfilled_cart_snapshot_items");
+  assert.ok(rpcCallIndex !== -1);
+  // The nearest preceding `if` guard before the RPC call must gate on
+  // !isPartial.
+  const before = route.slice(0, rpcCallIndex);
+  const guardIndex = before.lastIndexOf("if (!isPartial)");
+  assert.ok(guardIndex !== -1, "expected the RPC call to be guarded by if (!isPartial)");
+  // Nothing (no closing brace) between the guard and the call — i.e. the
+  // call is directly inside that guard's block, not some unrelated later
+  // `if`.
+  const between = route.slice(guardIndex, rpcCallIndex);
+  assert.doesNotMatch(between, /\n\s*\}/);
 });
 
 test("admin refund-marking route is gated by requireStaffRole(\"admin\") and never calls a Paymob refund API", () => {

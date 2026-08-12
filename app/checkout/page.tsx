@@ -23,7 +23,12 @@ import {
   PAYMOB_PIXEL_CONTAINER_ID,
   type PaymobPixelInstance,
 } from "@/lib/payments/paymobPixelLoader";
-import type { AddressLabel, AddressRecord, AppError } from "@/types";
+import {
+  clearPendingCardAttempt,
+  writePendingCardAttempt,
+} from "@/lib/payments/pendingCardAttempt";
+import { usePendingCardPaymentReconciliation } from "@/lib/hooks/usePendingCardPaymentReconciliation";
+import type { AddressLabel, AddressRecord, AppError, PurchasedCartLine } from "@/types";
 
 // Only set once the owner has configured a real Paymob publishable key
 // (see .env.local.example) — until then the "Pay by card" option simply
@@ -76,8 +81,14 @@ function addressToShipping(address: AddressRecord, fallbackEmail: string): Shipp
 const NEW_ADDRESS = "__new__";
 
 export default function CheckoutPage() {
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, removePurchasedItems } = useCart();
   const { user } = useAuth();
+  // Covers pressing Back into /checkout via client-side routing — this
+  // remounts CheckoutPage (resetting cardState) but not the app-level
+  // providers, so the global reconciler in app/providers.tsx wouldn't
+  // otherwise re-check on its own. See lib/hooks/
+  // usePendingCardPaymentReconciliation.ts for the full picture.
+  usePendingCardPaymentReconciliation();
   const [step, setStep] = useState<Step>("shipping");
   const [orderNumbers, setOrderNumbers] = useState<string[]>([]);
   const { partnerFlagsBySlug, shippingSettings } = useShippingPreview(
@@ -233,6 +244,13 @@ export default function CheckoutPage() {
         dispatchCard({ type: "INTENTION_FAILED", error: result.error });
         return;
       }
+      // Recorded as early as possible — before the customer has even seen
+      // the card form — so a refresh/Back/closed-tab at ANY point from
+      // here on can still recover and reconcile the cart later. Card
+      // payment always requires a signed-in user (the intention endpoint
+      // itself rejects unauthenticated requests), so `user` is guaranteed
+      // set by the time this succeeds.
+      if (user) writePendingCardAttempt(user.id, result.data.paymentAttemptId);
       dispatchCard({
         type: "INTENTION_SUCCEEDED",
         clientSecret: result.data.clientSecret,
@@ -249,7 +267,7 @@ export default function CheckoutPage() {
     // what the customer actually filled in or selected before clicking
     // Pay with Card. Was previously [cardState.phase] only — caused every
     // card attempt to send an empty shipping.firstName.
-  }, [cardState.phase, items, shipping, appliedCoupon]);
+  }, [cardState.phase, items, shipping, appliedCoupon, user]);
 
   // Mounts Paymob Pixel once a client_secret is available, and keeps it
   // mounted through "ready" -> "pixel_open" (that transition only clears
@@ -356,6 +374,7 @@ export default function CheckoutPage() {
         status: string;
         orderGroupId: string | null;
         isPartial: boolean;
+        purchasedItems: PurchasedCartLine[];
       }>(`/api/payments/paymob/attempts/${paymentAttemptId}`);
 
       if (cancelled) return;
@@ -370,10 +389,17 @@ export default function CheckoutPage() {
         return;
       }
 
-      const { status, orderGroupId, isPartial } = result.data;
+      const { status, orderGroupId, isPartial, purchasedItems } = result.data;
       if (status === "fulfilled") {
-        dispatchCard({ type: "POLL_CONFIRMED", orderGroupId, isPartial });
+        // Whether or not this ends up removing anything from the cart
+        // (isPartial leaves purchasedItems empty on purpose — see the
+        // status route's own comment), the attempt itself has reached a
+        // terminal state either way, so stop tracking it for the
+        // interrupted-session recovery path too.
+        if (user) clearPendingCardAttempt(user.id);
+        dispatchCard({ type: "POLL_CONFIRMED", orderGroupId, isPartial, purchasedItems });
       } else if (status === "fulfillment_failed" || status === "failed" || status === "expired" || status === "cancelled") {
+        if (user) clearPendingCardAttempt(user.id);
         dispatchCard({
           type: "POLL_FAILED",
           error: makeAppError("external_provider", {
@@ -416,12 +442,17 @@ export default function CheckoutPage() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [cardState.phase, cardState.paymentAttemptId]);
+  }, [cardState.phase, cardState.paymentAttemptId, user]);
 
-  // Cart-clearing for card payments — happens ONLY once polling has
+  // Cart reconciliation for card payments — happens ONLY once polling has
   // confirmed real fulfillment (an authoritative backend fact), never on
   // any Pixel signal, and only once per attempt (guarded so a re-render
-  // while already "confirmed" can't call clearCart repeatedly).
+  // while already "confirmed" can't call this repeatedly). Deliberately
+  // removePurchasedItems(), never clearCart() — a blind clear would also
+  // wipe out anything the customer added to the cart after starting this
+  // payment (e.g. while waiting through a 3DS redirect), which
+  // purchasedItems (this attempt's own cart_snapshot, empty when
+  // isPartial) does not touch. See context/CartContext.tsx.
   const cardCartClearedRef = useRef(false);
   useEffect(() => {
     if (cardState.phase !== "confirmed") {
@@ -430,7 +461,7 @@ export default function CheckoutPage() {
     }
     if (cardCartClearedRef.current) return;
     cardCartClearedRef.current = true;
-    clearCart();
+    removePurchasedItems(cardState.purchasedItems);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cardState.phase]);
 

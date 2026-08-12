@@ -231,12 +231,16 @@ test("POLL_CONFIRMED is the ONLY action that can ever reach 'confirmed' — neve
     type: "POLL_CONFIRMED",
     orderGroupId: "group-123",
     isPartial: false,
+    purchasedItems: [{ productId: "prod-1", size: "M", color: "Sand", quantity: 2 }],
   });
   assert.equal(confirmed.phase, "confirmed");
   assert.equal(confirmed.orderGroupId, "group-123");
   assert.equal(confirmed.isPartial, false);
   assert.equal(confirmed.clientSecret, null);
   assert.equal(confirmed.error, null);
+  assert.deepEqual(confirmed.purchasedItems, [
+    { productId: "prod-1", size: "M", color: "Sand", quantity: 2 },
+  ]);
 });
 
 test("POLL_CONFIRMED also reachable from 'confirming' (the normal polling path)", () => {
@@ -252,9 +256,13 @@ test("POLL_CONFIRMED also reachable from 'confirming' (the normal polling path)"
     type: "POLL_CONFIRMED",
     orderGroupId: "group-9",
     isPartial: true,
+    purchasedItems: [],
   });
   assert.equal(confirmed.phase, "confirmed");
   assert.equal(confirmed.isPartial, true);
+  // isPartial results carry no purchasedItems — see the status route's
+  // own comment on why per-bucket cart_snapshot removal isn't safe.
+  assert.deepEqual(confirmed.purchasedItems, []);
 });
 
 test("POLL_FAILED (backend reports fulfillment_failed/failed) moves to 'error' with the given AppError, carrying no order info", () => {
@@ -275,7 +283,12 @@ test("POLL_FAILED (backend reports fulfillment_failed/failed) moves to 'error' w
 test("POLL_* actions are no-ops outside pixel_open/confirming", () => {
   assert.equal(cardPaymentReducer(INITIAL_CARD_PAYMENT_STATE, { type: "POLL_PENDING" }), INITIAL_CARD_PAYMENT_STATE);
   assert.equal(
-    cardPaymentReducer(INITIAL_CARD_PAYMENT_STATE, { type: "POLL_CONFIRMED", orderGroupId: null, isPartial: false }),
+    cardPaymentReducer(INITIAL_CARD_PAYMENT_STATE, {
+      type: "POLL_CONFIRMED",
+      orderGroupId: null,
+      isPartial: false,
+      purchasedItems: [],
+    }),
     INITIAL_CARD_PAYMENT_STATE
   );
   assert.equal(

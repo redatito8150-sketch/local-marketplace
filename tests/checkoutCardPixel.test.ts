@@ -27,7 +27,7 @@ test("Card payment posts only to the Paymob intention endpoint, with an Idempote
 });
 
 test("Card payment never calls the orders endpoint or COD's order-placement functions", () => {
-  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon\]\);/);
+  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/);
   assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
   const body = startCardAttemptMatch![0];
   assert.doesNotMatch(body, /\/api\/orders/);
@@ -44,13 +44,16 @@ test("startCardAttempt's useCallback dependency array includes items/shipping/ap
   assert.match(deps, /\bshipping\b/);
 });
 
-test("COD's own submit flow is untouched — still posts to /api/orders and still calls clearCart on real success", () => {
+test("COD's own submit flow is untouched — still posts to /api/orders, still calls clearCart on real success, and is not regressed by the new card-payment cart-reconciliation machinery", () => {
   const submitOrderMatch = checkoutPage.match(/const submitOrder = async \(\) => \{[\s\S]*?\n {2}\};/);
   assert.ok(submitOrderMatch, "expected to find the submitOrder function");
   const body = submitOrderMatch![0];
   assert.match(body, /"\/api\/orders"/);
   assert.match(body, /clearCart\(\)/);
   assert.doesNotMatch(body, /paymob/i);
+  assert.doesNotMatch(body, /removePurchasedItems/);
+  assert.doesNotMatch(body, /writePendingCardAttempt/);
+  assert.doesNotMatch(body, /clearPendingCardAttempt/);
 });
 
 test("no frontend code ever sets a payment_attempts status to paid, or calls a paid-order/fulfillment RPC", () => {
@@ -153,7 +156,7 @@ test("mobile app files are untouched by this phase", () => {
 
 test("confirmation polling reads our own backend status endpoint, never trusts Pixel, and dispatches only POLL_* actions", () => {
   const pollEffectMatch = checkoutPage.match(
-    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId\]\);/
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId, user\]\);/
   );
   assert.ok(pollEffectMatch, "expected to find the confirmation-polling effect");
   const body = pollEffectMatch![0];
@@ -161,33 +164,39 @@ test("confirmation polling reads our own backend status endpoint, never trusts P
   assert.match(body, /dispatchCard\(\{ type: "POLL_CONFIRMED"/);
   assert.match(body, /dispatchCard\(\{\s*type: "POLL_FAILED"/);
   assert.match(body, /dispatchCard\(\{ type: "POLL_PENDING" \}\)/);
-  // Never any Pixel/order/cart mutation inside the polling effect itself.
+  // Never any Pixel/order/cart mutation inside the polling effect itself
+  // — it only dispatches actions; the actual cart change happens in the
+  // separate "confirmed" effect below.
   assert.doesNotMatch(body, /\/api\/orders/);
   assert.doesNotMatch(body, /clearCart/);
+  assert.doesNotMatch(body, /removePurchasedItems/);
   assert.doesNotMatch(body, /new PixelConstructor/);
 });
 
-test("the cart is cleared for a card payment ONLY when phase becomes 'confirmed' (a polled, backend-authoritative fact) — never from a Pixel callback", () => {
+test("the cart is reconciled for a card payment ONLY when phase becomes 'confirmed' (a polled, backend-authoritative fact) — never from a Pixel callback, and via removePurchasedItems (not a blind clearCart) so items added after the payment started are never wiped", () => {
   const cartClearEffectMatch = checkoutPage.match(
     /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "confirmed"\)[\s\S]*?\n {2}\}, \[cardState\.phase\]\);/
   );
   assert.ok(cartClearEffectMatch, "expected to find the card cart-clearing effect");
   const body = cartClearEffectMatch![0];
-  assert.match(body, /clearCart\(\)/);
+  assert.match(body, /removePurchasedItems\(cardState\.purchasedItems\)/);
+  assert.doesNotMatch(body, /clearCart\(\)/);
   assert.match(body, /if \(cardState\.phase !== "confirmed"\)/);
   // Guarded so it only ever fires once per confirmed attempt.
   assert.match(body, /cardCartClearedRef\.current/);
 });
 
-test("the polling and cart-clearing effects are the only places CARD flow ever calls clearCart — never from onError/onCancel/PIXEL_SUBMITTED", () => {
+test("the polling and cart-clearing effects are the only places CARD flow ever mutates the cart — never from onError/onCancel/PIXEL_SUBMITTED", () => {
   const pixelEffectMatch = checkoutPage.match(
     /useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/
   )![0];
   const startCardAttemptMatch = checkoutPage.match(
-    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon\]\);/
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/
   )![0];
   assert.doesNotMatch(pixelEffectMatch, /clearCart/);
+  assert.doesNotMatch(pixelEffectMatch, /removePurchasedItems/);
   assert.doesNotMatch(startCardAttemptMatch, /clearCart/);
+  assert.doesNotMatch(startCardAttemptMatch, /removePurchasedItems/);
 });
 
 test("the 'confirmed' UI state never redirects away from the checkout page and never claims success before the fact", () => {
@@ -201,7 +210,7 @@ test("the 'confirmed' UI state never redirects away from the checkout page and n
 
 test("polling never dispatches POLL_PENDING while status is 'created' or 'pending' — mark_paymob_intention_created sets 'pending' server-side before the customer has even seen the card form (nothing in this system ever sets a distinct 'processing' status), so excluding only 'created' still moved the UI to 'confirming' on literally the first poll", () => {
   const pollEffectMatch = checkoutPage.match(
-    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId\]\);/
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId, user\]\);/
   );
   assert.ok(pollEffectMatch, "expected to find the confirmation-polling effect");
   const body = pollEffectMatch![0];
@@ -242,4 +251,40 @@ test("the Pixel-mounting effect depends on a stable pixelActive boolean, not car
   const effectMatch = checkoutPage.match(/useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/);
   assert.ok(effectMatch, "expected to find the Pixel-mounting effect");
   assert.match(effectMatch![0], /if \(pixelInstanceRef\.current\) return/);
+});
+
+test("checkout mounts the pending-card-payment reconciler — covers pressing Back into /checkout via client-side routing, which remounts this page but not the app-level providers", () => {
+  assert.match(
+    checkoutPage,
+    /import \{ usePendingCardPaymentReconciliation \} from "@\/lib\/hooks\/usePendingCardPaymentReconciliation"/
+  );
+  assert.match(checkoutPage, /usePendingCardPaymentReconciliation\(\);/);
+});
+
+test("a pending-attempt marker is written the moment the intention succeeds — before the customer has even seen the card form — so a refresh/Back/closed-tab at any point after can still recover", () => {
+  assert.match(
+    checkoutPage,
+    /import \{\s*clearPendingCardAttempt,\s*writePendingCardAttempt,\s*\} from "@\/lib\/payments\/pendingCardAttempt"/
+  );
+  const startCardAttemptMatch = checkoutPage.match(
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/
+  );
+  assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
+  const body = startCardAttemptMatch![0];
+  const writeIndex = body.indexOf("writePendingCardAttempt(user.id, result.data.paymentAttemptId)");
+  const dispatchIndex = body.indexOf('type: "INTENTION_SUCCEEDED"');
+  assert.ok(writeIndex !== -1, "expected writePendingCardAttempt to be called on intention success");
+  assert.ok(dispatchIndex !== -1);
+  assert.ok(writeIndex < dispatchIndex, "marker should be written before (or as part of) handling success, not after");
+});
+
+test("the pending marker is cleared once the live polling path itself reaches a terminal outcome (fulfilled or a real failure) — not left to the next page load's reconciler alone", () => {
+  const pollEffectMatch = checkoutPage.match(
+    /useEffect\(\(\) => \{\s*if \(cardState\.phase !== "pixel_open" && cardState\.phase !== "confirming"\)[\s\S]*?\n {2}\}, \[cardState\.phase, cardState\.paymentAttemptId, user\]\);/
+  );
+  assert.ok(pollEffectMatch, "expected to find the confirmation-polling effect");
+  const body = pollEffectMatch![0];
+  const clearCount = (body.match(/clearPendingCardAttempt\(user\.id\)/g) ?? []).length;
+  // Once for the fulfilled branch, once for the real-failure branch.
+  assert.equal(clearCount, 2);
 });

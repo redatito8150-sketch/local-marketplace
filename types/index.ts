@@ -372,6 +372,21 @@ export interface CartLineItem {
   availableColors?: string[];
 }
 
+// Identifies exactly one purchased line from a payment attempt's own
+// cart_snapshot (see lib/payments/reconcilePendingCardPayment.ts and
+// context/CartContext.tsx's removePurchasedItems) — used only to remove
+// exactly those quantities from the current cart, never to clear it
+// wholesale. Keyed the same way CartLineItem itself is (productId+size+
+// color), not by variantId — a line's variant can drift between add-to-
+// cart time and purchase time (see lib/cart/liveValidation.ts), but what
+// was actually paid for should match what the cart already keys lines on.
+export interface PurchasedCartLine {
+  productId: string;
+  size: string;
+  color: string;
+  quantity: number;
+}
+
 export interface WishlistItem {
   productId: string;
   name: string;

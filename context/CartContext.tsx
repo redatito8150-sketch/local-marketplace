@@ -8,9 +8,11 @@ import {
   useMemo,
   useState,
 } from "react";
-import { CartLineItem } from "@/types";
+import { CartLineItem, PurchasedCartLine } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import { applyPurchasedItemRemoval, cartStorageKey } from "@/lib/cart/cartStorage";
 
-export type { CartLineItem };
+export type { CartLineItem, PurchasedCartLine };
 
 interface CartContextValue {
   items: CartLineItem[];
@@ -29,35 +31,56 @@ interface CartContextValue {
     next: { size?: string; color?: string; variantId?: string; price?: number; image?: string }
   ) => void;
   clearCart: () => void;
+  // Removes exactly the given quantities (decrementing, not just deleting
+  // the whole line) of matching productId+size+color entries — anything
+  // else in the cart, including items added after the purchase this list
+  // came from, is left completely untouched. The safe alternative to
+  // clearCart() for reconciling a specific confirmed purchase; see its
+  // callers in app/checkout/page.tsx and
+  // lib/payments/reconcilePendingCardPayment.ts for why a blind clearCart()
+  // is unsafe there.
+  removePurchasedItems: (purchased: PurchasedCartLine[]) => void;
   itemCount: number;
   subtotal: { usd: number; egp: number };
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = "local_cart_v1";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [items, setItems] = useState<CartLineItem[]>([]);
-  const [hydrated, setHydrated] = useState(false);
+  // Which storage scope `items` currently reflects — null until the first
+  // hydration completes. Both effects below gate on this so that (a)
+  // nothing is ever persisted before a scope has been loaded (which would
+  // stomp real stored data with an empty array) and (b) switching identity
+  // never persists the outgoing scope's in-memory items into the new
+  // scope's key — each identity's storage is only ever written from data
+  // that was itself hydrated from that same identity's key.
+  const [hydratedForKey, setHydratedForKey] = useState<string | null>(null);
+  // Deliberately null (not a "guest" default) while auth is still
+  // resolving — hydrating into the guest scope first and then swapping to
+  // the real account's scope a moment later would work, but risks a
+  // visible flash of the wrong cart on every signed-in page load.
+  const storageKey = authLoading ? null : cartStorageKey(user?.id ?? null);
 
   useEffect(() => {
+    if (!storageKey || storageKey === hydratedForKey) return;
     try {
-      const stored = window.localStorage.getItem(STORAGE_KEY);
-      // One-time hydration from an external system (localStorage isn't
-      // available during SSR/render) — not derivable during render itself.
+      const stored = window.localStorage.getItem(storageKey);
+      // One-time hydration from an external system per scope — not
+      // derivable during render itself.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (stored) setItems(JSON.parse(stored));
+      setItems(stored ? JSON.parse(stored) : []);
     } catch {
-      // ignore malformed storage
-    } finally {
-      setHydrated(true);
+      setItems([]);
     }
-  }, []);
+    setHydratedForKey(storageKey);
+  }, [storageKey, hydratedForKey]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  }, [items, hydrated]);
+    if (!storageKey || storageKey !== hydratedForKey) return;
+    window.localStorage.setItem(storageKey, JSON.stringify(items));
+  }, [items, storageKey, hydratedForKey]);
 
   const addItem = useCallback((item: Omit<CartLineItem, "id">) => {
     const lineId = `${item.productId}-${item.size}-${item.color ?? "default"}`;
@@ -124,6 +147,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = useCallback(() => setItems([]), []);
 
+  const removePurchasedItems = useCallback((purchased: PurchasedCartLine[]) => {
+    setItems((prev) => applyPurchasedItemRemoval(prev, purchased));
+  }, []);
+
   const itemCount = useMemo(
     () => items.reduce((sum, i) => sum + i.quantity, 0),
     [items]
@@ -150,6 +177,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         updateQuantity,
         updateVariant,
         clearCart,
+        removePurchasedItems,
         itemCount,
         subtotal,
       }}
