@@ -19,6 +19,9 @@ interface OrderRow {
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
+  payment_method: OrderRecord["paymentMethod"];
+  payment_status: OrderRecord["paymentStatus"];
+  payment_attempt_id: string | null;
   order_items: {
     id: string;
     product_id: string | null;
@@ -58,6 +61,9 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     fulfillmentType: row.fulfillment_type,
     brandSlug: row.brand_slug ?? undefined,
     shippingFeeEgp: Number(row.shipping_fee_egp),
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status,
+    paymentAttemptId: row.payment_attempt_id ?? undefined,
     items: row.order_items.map((item) => ({
       id: item.id,
       productId: item.product_id,

@@ -10,6 +10,39 @@ export const ORDER_STATUS_LABELS: Record<OrderStatusValue, string> = {
   cancelled: "Cancelled",
 };
 
+// Mirrors public.transition_order_status()'s allowed-transition matrix
+// exactly (supabase/migrations/20260810000005_order_integrity_and_
+// idempotency.sql) and public.cancel_order()'s own status guard — the
+// admin status dropdown previously listed all six ORDER_STATUSES
+// unconditionally, with no idea that "paid" branches differently
+// depending on fulfillment_type (brand_direct -> preparing, mahaly_pool
+// -> shipped). Picking the wrong one for a Zakhnook-pool order (e.g.
+// "Preparing", which only brand_direct orders can use) always failed
+// server-side with INVALID_ORDER_TRANSITION — from the admin's
+// perspective, indistinguishable from "the status can't be changed at
+// all," since every other listed option was equally invalid for that
+// order. This is the single source of truth both the dropdown and (by
+// construction, since it's copied from the same migration) the RPC
+// agree on — if the DB's matrix ever changes, this must change with it.
+export function getValidOrderStatusOptions(
+  current: OrderStatusValue,
+  fulfillmentType: "mahaly_pool" | "brand_direct"
+): OrderStatusValue[] {
+  const options: OrderStatusValue[] = [current];
+
+  if (current === "pending") options.push("paid");
+  else if (current === "paid") {
+    options.push(fulfillmentType === "mahaly_pool" ? "shipped" : "preparing");
+  } else if (current === "preparing") options.push("shipped");
+  else if (current === "shipped") options.push("fulfilled");
+
+  if (current !== "cancelled" && current !== "shipped" && current !== "fulfilled") {
+    options.push("cancelled");
+  }
+
+  return options;
+}
+
 export function orderStatusBadgeClass(status: string): string {
   switch (status) {
     case "fulfilled":

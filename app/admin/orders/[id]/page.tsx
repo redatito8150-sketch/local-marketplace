@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrderForAdmin, getAuditLogsForEntity, getSiblingOrders } from "@/lib/data/admin";
 import { formatDateTime, formatPrice, formatSize } from "@/lib/format";
-import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import { ORDER_STATUS_LABELS, getValidOrderStatusOptions, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
 import type { OrderStatus } from "@/types";
@@ -34,7 +34,10 @@ export default async function AdminOrderDetailPage(
         <StatusSelect
           apiPath={`/api/admin/orders/${order.id}`}
           value={order.status}
-          options={ORDER_STATUSES.map((s) => ({ value: s, label: ORDER_STATUS_LABELS[s] }))}
+          options={getValidOrderStatusOptions(order.status, order.fulfillmentType).map((s) => ({
+            value: s,
+            label: ORDER_STATUS_LABELS[s],
+          }))}
         />
       </div>
 
@@ -121,6 +124,35 @@ export default async function AdminOrderDetailPage(
               Guest checkout — no account linked to this order.
             </p>
           )}
+        </div>
+
+        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
+          <h2 className="text-[15px] font-semibold text-ink">Payment</h2>
+          <div className="mt-3 space-y-2 text-[13px] text-ink-soft/75">
+            <p>
+              <span className="font-medium text-ink">
+                {order.paymentMethod === "card" ? "Card (Paymob)" : "Cash on Delivery"}
+              </span>
+            </p>
+            <p>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
+                  order.paymentStatus === "paid"
+                    ? "bg-green-50 text-green-700"
+                    : order.paymentStatus === "refunded"
+                    ? "bg-red-50 text-red-700"
+                    : "bg-stone-100 text-ink-soft/70"
+                }`}
+              >
+                {order.paymentStatus === "paid" ? "Paid" : order.paymentStatus === "refunded" ? "Refunded" : "Unpaid"}
+              </span>
+            </p>
+            {order.paymentAttemptId && (
+              <p className="text-[11.5px] text-ink-soft/50" title={order.paymentAttemptId}>
+                Paymob payment attempt: {order.paymentAttemptId.slice(0, 8)}…
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl3 border border-stone-150 bg-white p-6 lg:col-start-1">

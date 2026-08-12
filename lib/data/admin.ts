@@ -409,6 +409,9 @@ interface OrderRow {
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
+  payment_method: OrderRecord["paymentMethod"];
+  payment_status: OrderRecord["paymentStatus"];
+  payment_attempt_id: string | null;
   order_items: OrderItemRow[];
   order_status_history?: { id: string; status: OrderStatus; note: string | null; created_at: string }[];
 }
@@ -423,6 +426,9 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     fulfillmentType: row.fulfillment_type,
     brandSlug: row.brand_slug ?? undefined,
     shippingFeeEgp: Number(row.shipping_fee_egp),
+    paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status,
+    paymentAttemptId: row.payment_attempt_id ?? undefined,
     shippingName: row.shipping_name,
     shippingEmail: row.shipping_email,
     shippingPhone: row.shipping_phone,

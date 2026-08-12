@@ -624,6 +624,15 @@ export interface OrderRecord {
   brandSlug?: string;
   shippingFeeEgp: number;
   statusHistory?: OrderStatusHistoryEntry[];
+  // Present on every order (COD included — paymentMethod is always
+  // 'cash_on_delivery' there), but paymentAttemptId is only ever set for
+  // a card order (see supabase/migrations/
+  // 20260812000001_paymob_webhook_and_paid_fulfillment.sql's
+  // place_paid_order) — this is the only evidence in the admin UI that an
+  // order was actually paid by card through Paymob rather than COD.
+  paymentMethod: "cash_on_delivery" | "card";
+  paymentStatus: "unpaid" | "paid" | "refunded";
+  paymentAttemptId?: string;
 }
 
 // ── Admin (raw `coupons` row shape) ─────────────────────────────────────────
