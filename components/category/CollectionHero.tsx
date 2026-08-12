@@ -99,7 +99,10 @@ export default function CollectionHero({ products, config }: { products: Product
         </div>
 
         <div className={`pointer-events-none absolute bottom-[2px] z-[9] hidden h-8 w-[18%] -translate-x-1/2 rounded-[50%] blur-xl lg:block ${config.modelDesktopClass.split(" ")[0]} ${config.theme.shadow}`} />
-        <div className={`pointer-events-none absolute bottom-0 z-10 hidden -translate-x-1/2 lg:block ${config.modelDesktopClass}`}>
+        <div
+          className={`pointer-events-none absolute bottom-0 z-10 hidden -translate-x-1/2 lg:block ${config.modelDesktopClass}`}
+          style={{ maxHeight: "calc(100% - 68px)" }}
+        >
           <Image src={config.modelImage} alt={config.modelAlt} fill priority sizes="25vw" className="object-contain object-bottom drop-shadow-[0_16px_18px_rgba(55,50,45,.1)]" />
         </div>
 
@@ -108,7 +111,7 @@ export default function CollectionHero({ products, config }: { products: Product
           <Image src={config.modelImage} alt={config.modelAlt} fill priority sizes="(max-width: 639px) 72vw, 58vw" className="object-contain object-bottom drop-shadow-[0_14px_16px_rgba(55,50,45,.1)]" />
         </div>
 
-        <div className="absolute inset-0 hidden lg:block">
+        <div className="absolute inset-x-0 bottom-0 top-[68px] hidden lg:block">
           {featuredItems.map((product, index) => {
             const placement = config.placements[index];
             const active = activeId === product.id;
