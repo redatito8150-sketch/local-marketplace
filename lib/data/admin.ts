@@ -13,6 +13,7 @@ import {
   CouponRecord,
   LowStockVariantRecord,
   NotificationRecord,
+  OrderItemDiscountSource,
   OrderItemRecord,
   OrderRecord,
   OrderStatus,
@@ -445,6 +446,10 @@ interface OrderItemRow {
   color: string | null;
   quantity: number;
   image: string;
+  original_unit_price: number | null;
+  discount_percent_snapshot: number | null;
+  discount_source: OrderItemDiscountSource | null;
+  item_coupon_discount_egp: number;
 }
 
 interface OrderRow {
@@ -514,6 +519,10 @@ function toOrderRecord(row: OrderRow): OrderRecord {
       color: item.color ?? undefined,
       quantity: item.quantity,
       image: item.image,
+      originalUnitPrice: item.original_unit_price != null ? Number(item.original_unit_price) : null,
+      discountPercentSnapshot: item.discount_percent_snapshot != null ? Number(item.discount_percent_snapshot) : null,
+      discountSource: item.discount_source,
+      itemCouponDiscountEgp: Number(item.item_coupon_discount_egp ?? 0),
     })),
     statusHistory: (row.order_status_history ?? [])
       .slice()
@@ -560,6 +569,12 @@ export interface SiblingOrderSummary {
   status: string;
   fulfillmentType: "mahaly_pool" | "brand_direct";
   brandSlug: string | null;
+  // Admin is explicitly allowed to see the complete master-order picture
+  // (unlike Brand Portal) — these let the order detail page sum a full
+  // master-order total across every shipment from the same checkout.
+  subtotalEgp: number;
+  discountAmountEgp: number;
+  shippingFeeEgp: number;
 }
 
 // Other shipments created from the same checkout (see master_order_id) —
@@ -568,7 +583,7 @@ export interface SiblingOrderSummary {
 export async function getSiblingOrders(masterOrderId: string, excludeOrderId: string): Promise<SiblingOrderSummary[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("id, order_number, status, fulfillment_type, brand_slug")
+    .select("id, order_number, status, fulfillment_type, brand_slug, subtotal_egp, discount_amount_egp, shipping_fee_egp")
     .eq("master_order_id", masterOrderId)
     .neq("id", excludeOrderId);
 
@@ -581,6 +596,9 @@ export async function getSiblingOrders(masterOrderId: string, excludeOrderId: st
     status: r.status,
     fulfillmentType: r.fulfillment_type,
     brandSlug: r.brand_slug,
+    subtotalEgp: Number(r.subtotal_egp),
+    discountAmountEgp: Number(r.discount_amount_egp),
+    shippingFeeEgp: Number(r.shipping_fee_egp),
   }));
 }
 

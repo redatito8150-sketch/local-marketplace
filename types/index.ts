@@ -576,6 +576,14 @@ export type OrderStatus = "pending" | "paid" | "preparing" | "shipped" | "fulfil
 
 export type OrderFulfillmentType = "mahaly_pool" | "brand_direct";
 
+// Point-in-time pricing snapshot fields (added by
+// supabase/migrations/20260813000002_order_pricing_snapshots.sql). All
+// optional/nullable — historical order_items rows placed before this
+// migration have none of them, and must never have these values derived
+// from a product's current price. Older rows simply render `price` alone,
+// with no strikethrough.
+export type OrderItemDiscountSource = "product_discount" | "variant_discount" | "none";
+
 export interface OrderItemRecord {
   id: string;
   productId: string | null;
@@ -588,6 +596,10 @@ export interface OrderItemRecord {
   color?: string;
   quantity: number;
   image: string;
+  originalUnitPrice?: number | null;
+  discountPercentSnapshot?: number | null;
+  discountSource?: OrderItemDiscountSource | null;
+  itemCouponDiscountEgp?: number;
 }
 
 export interface OrderStatusHistoryEntry {

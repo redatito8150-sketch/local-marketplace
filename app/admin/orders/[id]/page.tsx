@@ -23,6 +23,24 @@ export default async function AdminOrderDetailPage(
   const cancellableCount =
     [order, ...siblingOrders].filter((o) => o.status !== "shipped" && o.status !== "fulfilled" && o.status !== "cancelled").length;
 
+  // This order's own breakdown, straight from orders.subtotal_egp/
+  // discount_amount_egp — Admin (unlike Brand Portal) is explicitly allowed
+  // to read these order-wide fields directly, no per-brand scoping needed.
+  const subtotalBeforeDiscounts = order.items.reduce(
+    (sum, item) => (item.currency === "EGP" ? sum + (item.originalUnitPrice ?? item.price) * item.quantity : sum),
+    0
+  );
+  const productVariantDiscount = Math.max(0, subtotalBeforeDiscounts - order.subtotalEgp);
+  const subtotalAfterAllDiscounts = order.subtotalEgp - order.discountAmountEgp;
+  const orderTotal = subtotalAfterAllDiscounts + order.shippingFeeEgp;
+
+  // Full master-order total across every shipment from the same checkout —
+  // only Admin sees this aggregate; Brand Portal never does.
+  const masterOrderTotal = [
+    { subtotalEgp: order.subtotalEgp, discountAmountEgp: order.discountAmountEgp, shippingFeeEgp: order.shippingFeeEgp },
+    ...siblingOrders,
+  ].reduce((sum, o) => sum + (o.subtotalEgp - o.discountAmountEgp + o.shippingFeeEgp), 0);
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-4">
@@ -48,31 +66,78 @@ export default async function AdminOrderDetailPage(
         <div className="rounded-xl3 border border-stone-150 bg-white p-6">
           <h2 className="text-[15px] font-semibold text-ink">Items</h2>
           <div className="mt-4 divide-y divide-stone-150">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex items-center justify-between py-3 first:pt-0">
-                <div>
-                  <p className="text-[13.5px] font-medium text-ink">{item.name}</p>
-                  <p className="text-[12px] text-ink-soft/50">
-                    {item.brand} · Qty {item.quantity} · {formatSize(item.size)}
-                    {item.color ? ` · ${item.color}` : ""}
-                  </p>
+            {order.items.map((item) => {
+              const showStrikethrough =
+                item.discountSource != null && item.discountSource !== "none" && item.originalUnitPrice != null;
+              return (
+                <div key={item.id} className="flex items-center justify-between py-3 first:pt-0">
+                  <div>
+                    <p className="text-[13.5px] font-medium text-ink">{item.name}</p>
+                    <p className="text-[12px] text-ink-soft/50">
+                      {item.brand} · Qty {item.quantity} · {formatSize(item.size)}
+                      {item.color ? ` · ${item.color}` : ""}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    {showStrikethrough && (
+                      <p className="text-[11.5px] text-ink-soft/40 line-through">
+                        {formatPrice(item.originalUnitPrice!, item.currency)}
+                      </p>
+                    )}
+                    <p className="text-[13.5px] font-semibold text-ink">
+                      {formatPrice(item.price, item.currency)}
+                      {item.quantity > 1 && (
+                        <span className="ml-1 font-normal text-ink-soft/50">
+                          × {item.quantity} = {formatPrice(item.price * item.quantity, item.currency)}
+                        </span>
+                      )}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-[13.5px] font-semibold text-ink">
-                  {formatPrice(item.price * item.quantity, item.currency)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          {order.couponCode && (
-            <div className="mt-4 flex items-center justify-between border-t border-stone-150 pt-4 text-[13px]">
-              <span className="text-ink-soft/60">
-                Coupon <span className="font-medium text-ink">{order.couponCode}</span>
-              </span>
-              <span className="font-semibold text-green-700">
-                -{formatPrice(order.discountAmountEgp, "EGP")}
-              </span>
+
+          <div className="mt-4 space-y-1.5 border-t border-stone-150 pt-4 text-[13px]">
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft/60">Products subtotal</span>
+              <span className="text-ink">{formatPrice(subtotalBeforeDiscounts, "EGP")}</span>
             </div>
-          )}
+            {productVariantDiscount > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-ink-soft/60">Product/variant discounts</span>
+                <span className="font-medium text-green-700">-{formatPrice(productVariantDiscount, "EGP")}</span>
+              </div>
+            )}
+            {order.couponCode && (
+              <div className="flex items-center justify-between">
+                <span className="text-ink-soft/60">
+                  Coupon <span className="font-medium text-ink">{order.couponCode}</span>
+                </span>
+                <span className="font-semibold text-green-700">-{formatPrice(order.discountAmountEgp, "EGP")}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft/60">Subtotal after discounts</span>
+              <span className="text-ink">{formatPrice(subtotalAfterAllDiscounts, "EGP")}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-ink-soft/60">Delivery fee</span>
+              <span className="text-ink">{formatPrice(order.shippingFeeEgp, "EGP")}</span>
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="font-medium text-ink">Order total (this shipment)</span>
+              <span className="font-bold text-ink">{formatPrice(orderTotal, "EGP")}</span>
+            </div>
+            {siblingOrders.length > 0 && (
+              <div className="flex items-center justify-between border-t border-stone-150 pt-2">
+                <span className="font-medium text-ink">
+                  Master order total ({siblingOrders.length + 1} shipments)
+                </span>
+                <span className="font-bold text-ink">{formatPrice(masterOrderTotal, "EGP")}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">

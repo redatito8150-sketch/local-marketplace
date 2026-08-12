@@ -162,6 +162,7 @@ function makeDeps(overrides: Partial<CreateIntentionDeps> = {}) {
     fetchBrandFlags: async () => [{ slug: "zakhnook-studio", isMahalyPartner: false }],
     fetchOpenTransitionBrandSlugs: async () => [],
     fetchShippingSettings: async () => SHIPPING_SETTINGS,
+    fetchCoupon: async () => null,
     createPaymentAttempt: store.createPaymentAttempt,
     markIntentionCreated: store.markIntentionCreated,
     markIntentionFailed: store.markIntentionFailed,
@@ -466,4 +467,182 @@ test("a duplicate Idempotency-Key with a different payload is rejected safely, w
     assert.match(second.error, /different order details/i);
   }
   assert.equal(getCreateIntentionCalls().length, 1);
+});
+
+// Coupon-on-card — full support, per Section 3. couponCode flows through
+// validateOrderRequest (already shared with the COD route) unchanged; this
+// file only needs to exercise the new fetchCoupon dependency + amount math.
+
+const ACTIVE_COUPON = {
+  code: "SAVE10",
+  discount_type: "percentage" as const,
+  discount_value: 10,
+  max_uses: null,
+  used_count: 0,
+  expires_at: null,
+  active: true,
+};
+
+test("a valid percentage coupon reduces the charged amount and is sent to create_payment_attempt as coupon_snapshot", async () => {
+  const { deps, getCreateIntentionCalls } = makeDeps({ fetchCoupon: async () => ACTIVE_COUPON });
+  let capturedInput: CreatePaymentAttemptInput | undefined;
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "save10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    { ...deps, createPaymentAttempt: async (input) => { capturedInput = input; return deps.createPaymentAttempt(input); } }
+  );
+  assert.equal(outcome.ok, true);
+  // 500 * 2 = 1000 subtotal, 10% off = 100, + 50 shipping = 950 EGP -> 95000 piasters.
+  const [sentPayload] = getCreateIntentionCalls() as [{ amount: number }];
+  assert.equal(sentPayload.amount, 95000);
+  assert.deepEqual(capturedInput?.couponSnapshot, {
+    code: "SAVE10",
+    discountType: "percentage",
+    discountValue: 10,
+    totalDiscountEgp: 100,
+  });
+});
+
+test("the Paymob items array still sums exactly to amount when a coupon is applied, via a separate negative Discount line (never a negative Delivery line)", async () => {
+  const { deps, getCreateIntentionCalls } = makeDeps({ fetchCoupon: async () => ACTIVE_COUPON });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, true);
+  const [sentPayload] = getCreateIntentionCalls() as [
+    { amount: number; items: { amount: number; quantity: number; name: string }[] }
+  ];
+  const itemsTotal = sentPayload.items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  assert.equal(itemsTotal, sentPayload.amount);
+  const discountLine = sentPayload.items.find((item) => item.name === "Discount");
+  assert.ok(discountLine);
+  assert.equal(discountLine!.amount, -10000); // -100 EGP
+  const deliveryLine = sentPayload.items.find((item) => item.name === "Delivery");
+  assert.ok(deliveryLine && deliveryLine.amount > 0, "delivery line must stay positive even when a coupon applies");
+});
+
+test("a coupon larger than the delivery fee still keeps every Paymob line item non-negative except the Discount line itself", async () => {
+  // subtotal 1000 EGP, a 90% coupon (900 EGP off) dwarfs the 50 EGP shipping fee.
+  const { deps, getCreateIntentionCalls } = makeDeps({
+    fetchCoupon: async () => ({ ...ACTIVE_COUPON, discount_value: 90 }),
+  });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, true);
+  const [sentPayload] = getCreateIntentionCalls() as [
+    { amount: number; items: { amount: number; quantity: number; name: string }[] }
+  ];
+  for (const item of sentPayload.items) {
+    if (item.name !== "Discount") assert.ok(item.amount >= 0, `${item.name} must not be negative`);
+  }
+  const itemsTotal = sentPayload.items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+  assert.equal(itemsTotal, sentPayload.amount);
+});
+
+test("a fixed-value coupon clamps to the subtotal and never produces a negative amount", async () => {
+  const { deps, getCreateIntentionCalls } = makeDeps({
+    fetchCoupon: async () => ({ ...ACTIVE_COUPON, discount_type: "fixed" as const, discount_value: 5000 }),
+  });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  // Subtotal is 1000 EGP; a coupon clamped to 1000 off leaves only the 50 EGP
+  // shipping fee to charge — never zero/negative, never over-discounted.
+  assert.equal(outcome.ok, true);
+  const [sentPayload] = getCreateIntentionCalls() as [{ amount: number }];
+  assert.equal(sentPayload.amount, 5000); // 50 EGP shipping only, in piasters
+});
+
+test("rejects an unknown coupon code", async () => {
+  const { deps } = makeDeps({ fetchCoupon: async () => null });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "NOPE" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.status, 400);
+});
+
+test("rejects an inactive coupon", async () => {
+  const { deps } = makeDeps({ fetchCoupon: async () => ({ ...ACTIVE_COUPON, active: false }) });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.status, 400);
+});
+
+test("rejects an expired coupon", async () => {
+  const { deps } = makeDeps({
+    fetchCoupon: async () => ({ ...ACTIVE_COUPON, expires_at: "2020-01-01T00:00:00.000Z" }),
+  });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.status, 400);
+});
+
+test("rejects a coupon that has reached its usage limit", async () => {
+  const { deps } = makeDeps({
+    fetchCoupon: async () => ({ ...ACTIVE_COUPON, max_uses: 5, used_count: 5 }),
+  });
+  const outcome = await createPaymobIntentionForCart(
+    validBody({ couponCode: "SAVE10" }),
+    AUTH,
+    VALID_IDEMPOTENCY_KEY,
+    ENV,
+    deps
+  );
+  assert.equal(outcome.ok, false);
+  if (!outcome.ok) assert.equal(outcome.status, 400);
+});
+
+test("no couponCode in the request means no coupon lookup, no discount, and no coupon_snapshot", async () => {
+  let called = false;
+  const { deps, getCreateIntentionCalls } = makeDeps({
+    fetchCoupon: async () => {
+      called = true;
+      return ACTIVE_COUPON;
+    },
+  });
+  let capturedInput: CreatePaymentAttemptInput | undefined;
+  const outcome = await createPaymobIntentionForCart(validBody(), AUTH, VALID_IDEMPOTENCY_KEY, ENV, {
+    ...deps,
+    createPaymentAttempt: async (input) => {
+      capturedInput = input;
+      return deps.createPaymentAttempt(input);
+    },
+  });
+  assert.equal(outcome.ok, true);
+  assert.equal(called, false);
+  assert.equal(capturedInput?.couponSnapshot, null);
+  const [sentPayload] = getCreateIntentionCalls() as [{ amount: number }];
+  assert.equal(sentPayload.amount, 105000); // unchanged, no discount
 });

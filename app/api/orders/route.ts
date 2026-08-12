@@ -37,6 +37,9 @@ interface RpcOrderItem {
   brand: string;
   brand_slug: string;
   price: number;
+  original_unit_price: number;
+  discount_percent_snapshot: number | null;
+  discount_source: "product_discount" | "variant_discount" | "none";
   currency: string;
   size: string;
   color: string;
@@ -214,24 +217,32 @@ export async function POST(request: NextRequest) {
         throw new Error(`INSUFFICIENT_STOCK:${product.name}`);
       }
 
+      // The real, live price at the moment of payment — if a discount
+      // expired between add-to-cart and checkout, this correctly charges
+      // the full base price, not whatever the cart displayed earlier. A
+      // variant discount and the product's own discount are mutually
+      // exclusive, so this picks whichever one actually applies. The `base`/
+      // `percent`/`source` fields are the point-in-time pricing snapshot
+      // stored on order_items — computed here from live DB data, never from
+      // browser input, same trust boundary as `price` itself.
+      const effective = getVariantEffectivePrice(
+        Number(product.price),
+        variant.variantPrice,
+        product.discount_percent,
+        product.discount_ends_at,
+        variant.variantDiscountPercent
+      );
+
       return {
         product_id: product.id,
         variant_id: variant.id,
         name: product.name,
         brand: product.brand_name,
         brand_slug: product.brand_slug ?? "",
-        // The real, live price at the moment of payment — if a discount
-        // expired between add-to-cart and checkout, this correctly charges
-        // the full base price, not whatever the cart displayed earlier. A
-        // variant discount and the product's own discount are mutually
-        // exclusive, so this picks whichever one actually applies.
-        price: getVariantEffectivePrice(
-          Number(product.price),
-          variant.variantPrice,
-          product.discount_percent,
-          product.discount_ends_at,
-          variant.variantDiscountPercent
-        ).price,
+        price: effective.price,
+        original_unit_price: effective.base,
+        discount_percent_snapshot: effective.source === "none" ? null : (effective.percent ?? null),
+        discount_source: effective.source,
         currency: product.currency,
         size: item.size,
         color: item.color ?? "",

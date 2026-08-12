@@ -47,15 +47,23 @@ export function getVariantEffectivePrice(
   productDiscountEndsAt: string | null | undefined,
   variantDiscountPercent: number | null | undefined,
   now: Date = new Date()
-): { price: number; active: boolean; percent?: number } {
+): { price: number; active: boolean; percent?: number; base: number; source: "product_discount" | "variant_discount" | "none" } {
   const base = variantPrice ?? productPrice;
   if (variantDiscountPercent && variantDiscountPercent > 0) {
-    return { price: Math.round(base * (1 - variantDiscountPercent / 100) * 100) / 100, active: true, percent: variantDiscountPercent };
+    return {
+      price: Math.round(base * (1 - variantDiscountPercent / 100) * 100) / 100,
+      active: true,
+      percent: variantDiscountPercent,
+      base,
+      source: "variant_discount",
+    };
   }
   const active = isDiscountActive(productDiscountPercent, productDiscountEndsAt, now);
   return {
     price: active ? getEffectivePrice(base, productDiscountPercent, productDiscountEndsAt, now) : base,
     active,
     percent: productDiscountPercent ?? undefined,
+    base,
+    source: active ? "product_discount" : "none",
   };
 }

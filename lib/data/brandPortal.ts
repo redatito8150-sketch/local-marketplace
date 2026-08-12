@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
-import type { SellingStatus, StockStatus } from "@/types";
+import type { OrderItemDiscountSource, SellingStatus, StockStatus } from "@/types";
 
 // Every query here uses the cookie-aware anon client by default (never
 // supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
@@ -24,6 +24,21 @@ export interface BrandOrderItem {
   price: number;
   currency: "USD" | "EGP";
   quantity: number;
+  image: string;
+  variantId: string | null;
+  // Pricing snapshot — see supabase/migrations/
+  // 20260813000002_order_pricing_snapshots.sql. All null on historical
+  // rows placed before that migration; never derived from a product's
+  // current price. originalUnitPrice/discountSource together decide
+  // whether the UI shows a strikethrough (only when discountSource is not
+  // "none"/null AND originalUnitPrice is present).
+  originalUnitPrice: number | null;
+  discountPercentSnapshot: number | null;
+  discountSource: OrderItemDiscountSource | null;
+  // This line's own share of the order's coupon discount — always this
+  // brand's own line, never another brand's, since every row here is
+  // already scoped by the brand_slug filter below.
+  itemCouponDiscountEgp: number;
 }
 
 export interface BrandOrder {
@@ -41,6 +56,22 @@ export interface BrandOrder {
   // brand-portal view stays read-only for them (see BrandOrdersTable).
   fulfillmentType: "mahaly_pool" | "brand_direct";
   shippingFeeEgp: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  // A 'mahaly_pool' order can contain other brands' items too — this
+  // brand's own products subtotal/discount below are always summed from
+  // ONLY this order's own `items` array (already brand_slug-scoped), never
+  // from orders.subtotal_egp/discount_amount_egp directly, which would be
+  // the WHOLE pooled shipment's totals across every brand in it. Computed
+  // here, once, so every caller gets the same brand-scoped numbers instead
+  // of recomputing (and risking reaching for the wrong, order-wide field).
+  brandProductsSubtotalEgp: number;
+  brandDiscountEgp: number;
+  couponCode: string | null;
+  // This brand's pool/shipment is one piece of a larger purchase — masterOrderNumber
+  // is shown so the UI can label "part of purchase ZK-XXXXXX" without ever
+  // fetching (or needing) any other brand's order/items.
+  masterOrderNumber: string | null;
 }
 
 interface OrderItemRow {
@@ -51,6 +82,12 @@ interface OrderItemRow {
   price: number;
   currency: "USD" | "EGP";
   quantity: number;
+  image: string;
+  variant_id: string | null;
+  original_unit_price: number | null;
+  discount_percent_snapshot: number | null;
+  discount_source: OrderItemDiscountSource | null;
+  item_coupon_discount_egp: number;
   order_id: string;
   orders: {
     id: string;
@@ -62,6 +99,10 @@ interface OrderItemRow {
     created_at: string;
     fulfillment_type: "mahaly_pool" | "brand_direct";
     shipping_fee_egp: number;
+    payment_method: string;
+    payment_status: string;
+    coupon_code: string | null;
+    master_orders: { master_order_number: string } | null;
   } | null;
 }
 
@@ -75,7 +116,7 @@ export async function getOrdersForBrand(
   const { data, error } = await supabaseAdmin
     .from("order_items")
     .select(
-      "id, name, size, color, price, currency, quantity, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp)"
+      "id, name, size, color, price, currency, quantity, image, variant_id, original_unit_price, discount_percent_snapshot, discount_source, item_coupon_discount_egp, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp, payment_method, payment_status, coupon_code, master_orders(master_order_number))"
     )
     .eq("brand_slug", brandSlug);
 
@@ -96,6 +137,12 @@ export async function getOrdersForBrand(
       createdAt: row.orders.created_at,
       fulfillmentType: row.orders.fulfillment_type,
       shippingFeeEgp: Number(row.orders.shipping_fee_egp),
+      paymentMethod: row.orders.payment_method,
+      paymentStatus: row.orders.payment_status,
+      brandProductsSubtotalEgp: 0,
+      brandDiscountEgp: 0,
+      couponCode: row.orders.coupon_code,
+      masterOrderNumber: row.orders.master_orders?.master_order_number ?? null,
       items: [],
     };
     existing.items.push({
@@ -106,13 +153,28 @@ export async function getOrdersForBrand(
       price: Number(row.price),
       currency: row.currency,
       quantity: row.quantity,
+      image: row.image,
+      variantId: row.variant_id,
+      originalUnitPrice: row.original_unit_price != null ? Number(row.original_unit_price) : null,
+      discountPercentSnapshot:
+        row.discount_percent_snapshot != null ? Number(row.discount_percent_snapshot) : null,
+      discountSource: row.discount_source,
+      itemCouponDiscountEgp: Number(row.item_coupon_discount_egp ?? 0),
     });
+    if (row.currency === "EGP") {
+      existing.brandProductsSubtotalEgp += Number(row.price) * row.quantity;
+      existing.brandDiscountEgp += Number(row.item_coupon_discount_egp ?? 0);
+    }
     byOrder.set(row.orders.id, existing);
   }
 
-  return [...byOrder.values()].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  return [...byOrder.values()]
+    .map((order) => ({
+      ...order,
+      brandProductsSubtotalEgp: Math.round(order.brandProductsSubtotalEgp * 100) / 100,
+      brandDiscountEgp: Math.round(order.brandDiscountEgp * 100) / 100,
+    }))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 export interface BrandVariant {

@@ -9,6 +9,7 @@ import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
 import {
   createPaymobIntentionForCart,
+  type CouponLookupRow,
   type CreatePaymentAttemptInput,
   type CreatePaymentAttemptResult,
 } from "@/lib/payments/createIntentionForCart";
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("products")
           .select(
-            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)"
+            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, brands!products_brand_slug_fkey!inner(is_active)"
           )
           .in("id", productIds);
         if (error) return { ok: false };
@@ -84,15 +85,13 @@ export async function POST(request: NextRequest) {
       fetchBrandFlags: (slugs) => getBrandFulfillmentFlags(slugs),
       fetchShippingSettings: () =>
         getSiteContentWithFallback<ShippingSettingsContent>("shipping_settings", DEFAULT_SHIPPING_SETTINGS),
-      fetchOpenTransitionBrandSlugs: async (slugs) => {
-        if (!slugs.length) return [];
-        const { data, error } = await supabaseAdmin
-          .from("brand_fulfillment_transitions")
-          .select("brands!inner(slug)")
-          .in("brands.slug", slugs)
-          .not("status", "in", "(completed,cancelled,failed)");
-        if (error) return [];
-        return [...new Set((data ?? []).map((row) => (row.brands as unknown as { slug: string }).slug))];
+      fetchCoupon: async (code) => {
+        const { data } = await supabaseAdmin
+          .from("coupons")
+          .select("code, discount_type, discount_value, max_uses, used_count, expires_at, active")
+          .eq("code", code)
+          .maybeSingle();
+        return (data as CouponLookupRow | null) ?? null;
       },
 
       // The database's own unique (idempotency_actor, client_request_id)
@@ -110,6 +109,7 @@ export async function POST(request: NextRequest) {
           p_currency: input.currency,
           p_cart_snapshot: input.cartSnapshot,
           p_shipping_snapshot: input.shippingSnapshot,
+          p_coupon_snapshot: input.couponSnapshot ?? null,
         });
 
         if (error) {

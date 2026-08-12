@@ -25,8 +25,10 @@ import {
   type PaymobIntentionResult,
 } from "./paymob.ts";
 import {
+  allocateCouponDiscount,
   computeIntentionAmount,
   resolveIntentionCart,
+  type CouponForIntention,
   type ProductLookupRow,
 } from "./intentionCart.ts";
 import { logError } from "../errorLog.ts";
@@ -56,6 +58,7 @@ export interface CreatePaymentAttemptInput {
   currency: "EGP";
   cartSnapshot: unknown;
   shippingSnapshot: unknown;
+  couponSnapshot?: unknown;
 }
 
 export type CreatePaymentAttemptResult =
@@ -68,22 +71,27 @@ export type CreatePaymentAttemptResult =
     }
   | { ok: false; status: number; error: string };
 
+export interface CouponLookupRow {
+  code: string;
+  discount_type: "percentage" | "fixed";
+  discount_value: number;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+  active: boolean;
+}
+
 export interface CreateIntentionDeps {
   fetchProducts: (productIds: string[]) => Promise<{ ok: true; rows: ProductLookupRow[] } | { ok: false }>;
   fetchVariants: (productIds: string[]) => Promise<Map<string, ProductVariant[]> | null>;
   fetchBrandFlags: (brandSlugs: string[]) => Promise<{ slug: string; isMahalyPartner: boolean }[]>;
   fetchShippingSettings: () => Promise<ShippingSettingsContent>;
-  // Card-payment race fix (second corrective pass, item 3): a Paymob
-  // intention created for a brand that already has an open fulfillment
-  // transition must be refused outright — if it were allowed, the payment
-  // could complete Paymob-side AFTER the transition finishes cutting the
-  // brand's stock over, and the order-placement RPC (which already refuses
-  // to sell a brand's stock during an open transition — see
-  // 20260814000005_inventory_permission_boundaries.sql) would then charge
-  // the customer without ever being able to fulfill the order. Returns the
-  // subset of the given slugs that currently have a non-terminal
-  // brand_fulfillment_transitions row.
-  fetchOpenTransitionBrandSlugs: (brandSlugs: string[]) => Promise<string[]>;
+  // Same active/expiry/max-uses checks the COD checkout function enforces
+  // server-side in Postgres — duplicated intentionally, not shared SQL,
+  // matching this file's existing convention of mirroring that function's
+  // checks rather than reusing them (see the header comment). Returns null
+  // if the code doesn't exist at all.
+  fetchCoupon: (code: string) => Promise<CouponLookupRow | null>;
   // Idempotent insert — see create_payment_attempt in the Phase 1 migration.
   // The database's own unique constraint is what actually prevents two rows
   // for the same idempotency key, even under real concurrency; this is just
@@ -152,7 +160,7 @@ export async function createPaymobIntentionForCart(
   if (!validation.ok) {
     return { ok: false, status: 400, error: validation.error };
   }
-  const { items, shipping } = validation.value;
+  const { items, shipping, couponCode } = validation.value;
 
   const productIds = [...new Set(items.map((item) => item.productId))];
   const [productsResult, variantsByProduct] = await Promise.all([
@@ -180,23 +188,59 @@ export async function createPaymobIntentionForCart(
   }
 
   const brandSlugs = [...new Set(resolved.lineItems.map((line) => line.brandSlug).filter(Boolean))];
-  const [brandFlags, shippingSettings, openTransitionBrandSlugs] = await Promise.all([
+  const [brandFlags, shippingSettings] = await Promise.all([
     deps.fetchBrandFlags(brandSlugs),
     deps.fetchShippingSettings(),
-    deps.fetchOpenTransitionBrandSlugs(brandSlugs),
   ]);
   const partnerFlagsBySlug = new Map(brandFlags.map((flag) => [flag.slug, flag.isMahalyPartner]));
 
-  if (openTransitionBrandSlugs.length > 0) {
-    return {
-      ok: false,
-      status: 400,
-      error: "An item in your cart is temporarily unavailable for card payment. Please try again shortly or use Cash on Delivery.",
+  const amount = computeIntentionAmount(resolved.lineItems, partnerFlagsBySlug, shippingSettings);
+  const originalAmountCents = amount.totalAmountCents;
+  if (!Number.isFinite(originalAmountCents) || originalAmountCents <= 0) {
+    return { ok: false, status: 400, error: "Invalid order amount." };
+  }
+
+  // Coupon support: validated with the exact same active/expiry/max-uses
+  // checks the COD checkout function enforces (see fetchCoupon's own
+  // comment), then allocated across buckets/items with the same
+  // proportional-with-remainder algorithm as the COD path. The discount is
+  // subtracted from amountCents BEFORE Paymob is ever called — this is the
+  // amount actually charged, so the card-fulfillment function can later
+  // just record it rather than recompute it (never re-derived at
+  // fulfillment time; see that function's own header comment for why).
+  let lineItems = resolved.lineItems;
+  let totalDiscountEgp = 0;
+  let couponSnapshot: { code: string; discountType: "percentage" | "fixed"; discountValue: number; totalDiscountEgp: number } | null = null;
+
+  if (couponCode) {
+    const coupon = await deps.fetchCoupon(couponCode);
+    if (!coupon) return { ok: false, status: 400, error: "This code isn't valid" };
+    if (!coupon.active) return { ok: false, status: 400, error: "This code is no longer active" };
+    if (coupon.expires_at && new Date(coupon.expires_at).getTime() < now.getTime()) {
+      return { ok: false, status: 400, error: "This code has expired" };
+    }
+    if (coupon.max_uses != null && coupon.used_count >= coupon.max_uses) {
+      return { ok: false, status: 400, error: "This code has reached its usage limit" };
+    }
+
+    const discountValue = Number(coupon.discount_value);
+    const allocation = allocateCouponDiscount(lineItems, partnerFlagsBySlug, {
+      code: coupon.code,
+      discountType: coupon.discount_type,
+      discountValue,
+    });
+    lineItems = allocation.lineItems;
+    totalDiscountEgp = allocation.totalDiscountEgp;
+    couponSnapshot = {
+      code: coupon.code,
+      discountType: coupon.discount_type,
+      discountValue,
+      totalDiscountEgp,
     };
   }
 
-  const amount = computeIntentionAmount(resolved.lineItems, partnerFlagsBySlug, shippingSettings);
-  const amountCents = amount.totalAmountCents;
+  const discountCents = egpToAmountCents(totalDiscountEgp);
+  const amountCents = originalAmountCents - discountCents;
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
     return { ok: false, status: 400, error: "Invalid order amount." };
   }
@@ -211,8 +255,9 @@ export async function createPaymobIntentionForCart(
     requestHash,
     amountCents,
     currency: "EGP",
-    cartSnapshot: resolved.lineItems,
+    cartSnapshot: lineItems,
     shippingSnapshot: shipping,
+    couponSnapshot,
   });
 
   if (!attemptResult.ok) {
@@ -255,22 +300,29 @@ export async function createPaymobIntentionForCart(
   // Paymob's Intention API rejects the request outright (406
   // unmatched_item_prices) unless sum(items[].amount * quantity) equals
   // the top-level amount exactly — the product lines alone don't cover
-  // this since amountCents also includes delivery. Adding a "Delivery"
-  // line for the exact remainder (rather than independently rounding
-  // amount.shippingFeeEgp) guarantees an exact match regardless of any
-  // per-bucket vs. aggregate rounding difference.
-  const productItemsTotalCents = resolved.lineItems.reduce(
+  // this since amountCents also includes delivery (and now, a coupon).
+  // The "Delivery" remainder is computed against the PRE-discount total
+  // (originalAmountCents), never the discounted one — otherwise a coupon
+  // larger than the delivery fee would push this negative and break the
+  // exact-sum requirement. A separate negative "Discount" line carries the
+  // coupon instead, so `product lines + Delivery + Discount` still equals
+  // amountCents exactly regardless of how large the discount is relative
+  // to shipping.
+  const productItemsTotalCents = lineItems.reduce(
     (sum, line) => sum + egpToAmountCents(line.price) * line.quantity,
     0
   );
-  const deliveryLineCents = amountCents - productItemsTotalCents;
-  const paymobItems = resolved.lineItems.map((line) => ({
+  const deliveryLineCents = originalAmountCents - productItemsTotalCents;
+  const paymobItems = lineItems.map((line) => ({
     name: line.name,
     amount: egpToAmountCents(line.price),
     quantity: line.quantity,
   }));
   if (deliveryLineCents > 0) {
     paymobItems.push({ name: "Delivery", amount: deliveryLineCents, quantity: 1 });
+  }
+  if (discountCents > 0) {
+    paymobItems.push({ name: "Discount", amount: -discountCents, quantity: 1 });
   }
 
   const payload = buildPaymobIntentionPayload({

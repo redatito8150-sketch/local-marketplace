@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { computeIntentionAmount, resolveIntentionCart } from "../lib/payments/intentionCart.ts";
-import type { ProductLookupRow } from "../lib/payments/intentionCart.ts";
+import { allocateCouponDiscount, computeIntentionAmount, resolveIntentionCart } from "../lib/payments/intentionCart.ts";
+import type { ProductLookupRow, ResolvedIntentionLine } from "../lib/payments/intentionCart.ts";
 import type { ProductVariant } from "../types/index.ts";
 
 const NOW = new Date("2026-08-11T00:00:00.000Z");
@@ -139,6 +139,30 @@ test("resolveIntentionCart prefers a variant's own discount over the product's",
   const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
   assert.equal(result.ok, true);
   if (result.ok) assert.equal(result.lineItems[0].price, 250); // 500 * (1 - 0.50)
+});
+
+test("resolveIntentionCart carries the pricing snapshot (originalUnitPrice/discountPercentSnapshot/discountSource) through each resolved line", () => {
+  const productById = new Map([["prod-1", product({ price: 500, discount_percent: 20 })]]);
+  const variantsByProduct = new Map([["prod-1", [variant()]]]);
+  const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.lineItems[0].originalUnitPrice, 500);
+    assert.equal(result.lineItems[0].discountPercentSnapshot, 20);
+    assert.equal(result.lineItems[0].discountSource, "product_discount");
+  }
+});
+
+test("resolveIntentionCart's snapshot reflects no discount when none applies", () => {
+  const productById = new Map([["prod-1", product({ price: 500, discount_percent: null })]]);
+  const variantsByProduct = new Map([["prod-1", [variant()]]]);
+  const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.lineItems[0].originalUnitPrice, 500);
+    assert.equal(result.lineItems[0].discountPercentSnapshot, null);
+    assert.equal(result.lineItems[0].discountSource, "none");
+  }
 });
 
 // A card-paid order's items previously always ended up with no image at
@@ -350,4 +374,108 @@ test("IMPORTANT AMOUNT RULE: totalAmountCents always equals the sum of bucket am
     assert.equal(amount.totalAmountCents, bucketSum);
     assert.ok(amount.totalAmountCents > 0);
   }
+});
+
+// allocateCouponDiscount — card/Paymob coupon support. Mirrors
+// private.place_order()'s bucket/item allocation exactly (proportional by
+// EGP subtotal share, last bucket/item absorbs the rounding remainder), so
+// the two paths can never diverge — see the function's own header comment.
+
+function line(overrides: Partial<ResolvedIntentionLine> = {}): ResolvedIntentionLine {
+  return {
+    productId: "p1",
+    variantId: "v1",
+    name: "Item",
+    brand: "Brand",
+    brandSlug: "brand-a",
+    price: 100,
+    currency: "EGP",
+    size: "M",
+    color: "",
+    quantity: 1,
+    image: "",
+    ...overrides,
+  };
+}
+
+test("allocateCouponDiscount applies a percentage coupon against the full EGP subtotal", () => {
+  const lineItems = [line({ price: 200, quantity: 2 })]; // subtotal 400
+  const result = allocateCouponDiscount(lineItems, new Map(), {
+    code: "SAVE10",
+    discountType: "percentage",
+    discountValue: 10,
+  });
+  assert.equal(result.totalDiscountEgp, 40);
+  assert.equal(result.lineItems[0].itemCouponDiscountEgp, 40);
+});
+
+test("allocateCouponDiscount clamps a fixed-value coupon to the subtotal (never exceeds eligible product value)", () => {
+  const lineItems = [line({ price: 50, quantity: 1 })]; // subtotal 50
+  const result = allocateCouponDiscount(lineItems, new Map(), {
+    code: "FLAT100",
+    discountType: "fixed",
+    discountValue: 100,
+  });
+  assert.equal(result.totalDiscountEgp, 50);
+  assert.equal(result.lineItems[0].itemCouponDiscountEgp, 50);
+});
+
+test("allocateCouponDiscount: multi-brand allocation and rounding sums exactly to the total discount (piaster-level)", () => {
+  const lineItems = [
+    line({ productId: "p1", brandSlug: "brand-a", price: 33.33, quantity: 1 }),
+    line({ productId: "p2", brandSlug: "brand-b", price: 33.33, quantity: 1 }),
+    line({ productId: "p3", brandSlug: "brand-c", price: 33.34, quantity: 1 }),
+  ];
+  const result = allocateCouponDiscount(lineItems, new Map(), {
+    code: "SAVE10",
+    discountType: "percentage",
+    discountValue: 10,
+  });
+  const sumOfItemDiscounts = result.lineItems.reduce((sum, l) => sum + (l.itemCouponDiscountEgp ?? 0), 0);
+  assert.equal(Math.round(sumOfItemDiscounts * 100) / 100, result.totalDiscountEgp);
+});
+
+test("allocateCouponDiscount: a single quantity>1 line's coupon share sums correctly and is never negative", () => {
+  const lineItems = [line({ price: 99.99, quantity: 3 })]; // subtotal 299.97
+  const result = allocateCouponDiscount(lineItems, new Map(), {
+    code: "SAVE15",
+    discountType: "percentage",
+    discountValue: 15,
+  });
+  assert.ok(result.lineItems[0].itemCouponDiscountEgp! >= 0);
+  assert.equal(result.lineItems[0].itemCouponDiscountEgp, result.totalDiscountEgp);
+});
+
+test("allocateCouponDiscount: partner brands pool into one bucket, sharing one proportional discount slice", () => {
+  const lineItems = [
+    line({ productId: "p1", brandSlug: "partner-a", price: 100, quantity: 1 }),
+    line({ productId: "p2", brandSlug: "partner-b", price: 100, quantity: 1 }),
+    line({ productId: "p3", brandSlug: "independent", price: 200, quantity: 1 }),
+  ];
+  const partnerFlagsBySlug = new Map([
+    ["partner-a", true],
+    ["partner-b", true],
+    ["independent", false],
+  ]);
+  const result = allocateCouponDiscount(lineItems, partnerFlagsBySlug, {
+    code: "SAVE20",
+    discountType: "percentage",
+    discountValue: 20,
+  });
+  // subtotal 400, 20% = 80 total. Pool bucket (200) gets 40, independent (200) gets 40.
+  assert.equal(result.totalDiscountEgp, 80);
+  const poolDiscount = (result.lineItems[0].itemCouponDiscountEgp ?? 0) + (result.lineItems[1].itemCouponDiscountEgp ?? 0);
+  assert.equal(poolDiscount, 40);
+  assert.equal(result.lineItems[2].itemCouponDiscountEgp, 40);
+});
+
+test("allocateCouponDiscount: no coupon effectively means zero discount and zero-filled lines", () => {
+  const lineItems = [line({ price: 100, quantity: 1 })];
+  const result = allocateCouponDiscount(lineItems, new Map(), {
+    code: "EMPTY",
+    discountType: "fixed",
+    discountValue: 0,
+  });
+  assert.equal(result.totalDiscountEgp, 0);
+  assert.equal(result.lineItems[0].itemCouponDiscountEgp, 0);
 });

@@ -51,6 +51,24 @@ export interface ResolvedIntentionLine {
   // <img src=""> a "shipped" email (lib/email/templates/orderShipped.ts,
   // via lib/email/templates/shared.ts's orderItemsTable) then rendered.
   image: string;
+  // Point-in-time pricing snapshot — same fields app/api/orders/route.ts
+  // (COD) already sends into place_order()'s p_items, now carried the same
+  // way through cart_snapshot so place_paid_order() can write them onto
+  // order_items too. See getVariantEffectivePrice()'s `base`/`percent`/
+  // `source` fields in lib/pricing.ts. Optional (not required by
+  // computeIntentionAmount, which only needs price/quantity/currency/brand)
+  // so existing fixtures/tests building a bare CartLineItem-shaped object
+  // don't need every field — resolveIntentionCart always sets all four on
+  // its real output.
+  originalUnitPrice?: number;
+  discountPercentSnapshot?: number | null;
+  discountSource?: "product_discount" | "variant_discount" | "none";
+  // This line's own share of the coupon discount, in EGP — filled in by
+  // allocateCouponDiscount() below (0 until then, and always 0 when no
+  // coupon was applied). Baked in at intention-creation time, since that's
+  // the exact amount actually charged via Paymob — see this file's own
+  // header comment on why place_paid_order() never recomputes this later.
+  itemCouponDiscountEgp?: number;
 }
 
 export type ResolveCartResult =
@@ -114,25 +132,31 @@ export function resolveIntentionCart(
       };
     }
 
+    const effective = getVariantEffectivePrice(
+      Number(product.price),
+      variant.variantPrice,
+      product.discount_percent,
+      product.discount_ends_at,
+      variant.variantDiscountPercent,
+      now
+    );
+
     lineItems.push({
       productId: product.id,
       variantId: variant.id,
       name: product.name,
       brand: product.brand_name,
       brandSlug: product.brand_slug ?? "",
-      price: getVariantEffectivePrice(
-        Number(product.price),
-        variant.variantPrice,
-        product.discount_percent,
-        product.discount_ends_at,
-        variant.variantDiscountPercent,
-        now
-      ).price,
+      price: effective.price,
       currency: product.currency,
       size: item.size,
       color: item.color ?? "",
       quantity: item.quantity,
       image: product.image,
+      originalUnitPrice: effective.base,
+      discountPercentSnapshot: effective.source === "none" ? null : (effective.percent ?? null),
+      discountSource: effective.source,
+      itemCouponDiscountEgp: 0,
     });
   }
 
@@ -217,4 +241,96 @@ export function computeIntentionAmount(
   const totalAmountCents = buckets.reduce((sum, bucket) => sum + bucket.amountCents, 0);
 
   return { subtotalEgp, shippingFeeEgp, totalEgp: subtotalEgp + shippingFeeEgp, totalAmountCents, buckets };
+}
+
+export interface CouponForIntention {
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+}
+
+export interface CouponAllocationResult {
+  lineItems: ResolvedIntentionLine[];
+  totalDiscountEgp: number;
+}
+
+// Mirrors private.place_order()'s Pass 2/3 discount split exactly (round to
+// the piaster, proportional by EGP subtotal share, the LAST bucket/item in
+// iteration order absorbs the rounding remainder) so the two paths can never
+// diverge in how a shared coupon is allocated. This is computed once, here,
+// at intention-creation time — the amount actually sent to Paymob is derived
+// from this result, so place_paid_order() can later just record it rather
+// than recompute it (see that function's own header comment for why
+// recomputing at fulfillment time would risk a charge/record mismatch).
+// coupon.discountValue is assumed already validated (active/not expired/
+// under max_uses) by the caller — this function only does the math.
+export function allocateCouponDiscount(
+  lineItems: ResolvedIntentionLine[],
+  partnerFlagsBySlug: Map<string, boolean>,
+  coupon: CouponForIntention
+): CouponAllocationResult {
+  const bucketKeyOf = (line: ResolvedIntentionLine): string => {
+    const isPartner = line.brandSlug ? (partnerFlagsBySlug.get(line.brandSlug) ?? false) : false;
+    return isPartner || !line.brandSlug ? "__mahaly_pool__" : line.brandSlug;
+  };
+
+  const bucketKeys: string[] = [];
+  for (const line of lineItems) {
+    const key = bucketKeyOf(line);
+    if (!bucketKeys.includes(key)) bucketKeys.push(key);
+  }
+
+  // All Paymob lines are already asserted EGP-only by the caller before
+  // this runs (see createIntentionForCart.ts), so every line counts toward
+  // the proportional base — unlike the COD path, there's no USD/EGP split
+  // to filter here.
+  const totalSubtotalEgp = lineItems.reduce((sum, line) => sum + line.price * line.quantity, 0);
+
+  let totalDiscountEgp: number;
+  if (coupon.discountType === "percentage") {
+    totalDiscountEgp = Math.round(totalSubtotalEgp * (coupon.discountValue / 100) * 100) / 100;
+  } else {
+    totalDiscountEgp = Math.min(coupon.discountValue, totalSubtotalEgp);
+  }
+
+  if (totalDiscountEgp <= 0 || totalSubtotalEgp <= 0) {
+    return { lineItems: lineItems.map((line) => ({ ...line, itemCouponDiscountEgp: 0 })), totalDiscountEgp: 0 };
+  }
+
+  const result: ResolvedIntentionLine[] = [...lineItems];
+  let discountAssigned = 0;
+
+  bucketKeys.forEach((bucketKey, bucketIndex) => {
+    const bucketIndices = result
+      .map((line, i) => (bucketKeyOf(line) === bucketKey ? i : -1))
+      .filter((i) => i !== -1);
+    const bucketSubtotalEgp = bucketIndices.reduce((sum, i) => sum + result[i].price * result[i].quantity, 0);
+
+    let bucketDiscount: number;
+    if (bucketIndex === bucketKeys.length - 1) {
+      bucketDiscount = Math.round((totalDiscountEgp - discountAssigned) * 100) / 100;
+    } else if (totalSubtotalEgp > 0) {
+      bucketDiscount = Math.round(totalDiscountEgp * (bucketSubtotalEgp / totalSubtotalEgp) * 100) / 100;
+    } else {
+      bucketDiscount = 0;
+    }
+    discountAssigned = Math.round((discountAssigned + bucketDiscount) * 100) / 100;
+
+    let bucketAssigned = 0;
+    bucketIndices.forEach((lineIndex, itemIndexInBucket) => {
+      const line = result[lineIndex];
+      let itemDiscount: number;
+      if (itemIndexInBucket === bucketIndices.length - 1) {
+        itemDiscount = Math.round((bucketDiscount - bucketAssigned) * 100) / 100;
+      } else if (bucketSubtotalEgp > 0) {
+        itemDiscount = Math.round(bucketDiscount * ((line.price * line.quantity) / bucketSubtotalEgp) * 100) / 100;
+      } else {
+        itemDiscount = 0;
+      }
+      bucketAssigned = Math.round((bucketAssigned + itemDiscount) * 100) / 100;
+      result[lineIndex] = { ...line, itemCouponDiscountEgp: itemDiscount };
+    });
+  });
+
+  return { lineItems: result, totalDiscountEgp };
 }
