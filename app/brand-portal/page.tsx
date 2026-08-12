@@ -10,7 +10,6 @@ import {
   Clock3,
   Eye,
   Package,
-  Plus,
   ReceiptText,
   ShoppingBag,
 } from "lucide-react";
@@ -26,7 +25,6 @@ import {
   DashboardEmptyState,
   DashboardPageHeader,
   DashboardPanel,
-  dashboardButtonPrimary,
   dashboardButtonSecondary,
 } from "@/components/dashboard/DashboardUI";
 import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
@@ -72,11 +70,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
   const publishedProducts = products.filter((product) => product.status === "published").length;
   const brandParam = owner.isImpersonating ? `?brand=${owner.brandSlug}` : "";
   const pendingActions = pendingOrders.length + lowStock.length + outOfStock.length + pendingProducts.length;
-  const attentionHref = pendingOrders.length
-    ? `/brand-portal/orders${brandParam}`
-    : lowStock.length || outOfStock.length
-      ? `/brand-portal/stock${brandParam}`
-      : `/brand-portal/products${brandParam}`;
+  const attentionHref = `/brand-portal/products${brandParam ? `${brandParam}&attention=1` : "?attention=1"}`;
 
   return (
     <div className="mx-auto max-w-[1540px] space-y-7 pb-3 text-[#242424] sm:space-y-8">
@@ -87,21 +81,15 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
         title={`Welcome back${owner.brandName ? `, ${owner.brandName}` : ""}`}
         description="Track your business, handle urgent work, and keep your catalog ready for customers."
         actions={
-          <>
-            <Link href={`/brand-portal/products/new${brandParam}`} className={`${dashboardButtonPrimary} active:translate-y-px`}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add product
-            </Link>
-            <Link
-              href={`/brands/${owner.brandSlug}`}
-              target="_blank"
-              rel="noreferrer"
-              className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              View storefront
-            </Link>
-          </>
+          <Link
+            href={`/brands/${owner.brandSlug}`}
+            target="_blank"
+            rel="noreferrer"
+            className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            View storefront
+          </Link>
         }
       />
 

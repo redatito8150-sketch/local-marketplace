@@ -103,14 +103,14 @@ export default function DashboardShell({
         className={`grid w-full grid-cols-1 transition-[grid-template-columns] duration-200 lg:grid-cols-[var(--dashboard-sidebar-width)_minmax(0,1fr)] ${collapsed ? "[--dashboard-sidebar-width:76px]" : "[--dashboard-sidebar-width:260px]"}`}
         data-sidebar-collapsed={collapsed}
       >
-        <aside className={`relative hidden border-r px-3 py-6 transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-x-visible lg:overflow-y-auto ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
+        <aside className={`relative hidden border-r px-3 py-6 transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-x-visible ${isAdmin ? "lg:overflow-y-auto border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "lg:overflow-y-visible border-[#e3dcd3] bg-[#fffdf9]"}`}>
           <button
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-expanded={!collapsed}
             aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
             title={collapsed ? "Expand navigation" : "Collapse navigation"}
-            className={`absolute right-0 top-4 z-10 inline-flex h-8 w-8 translate-x-1/2 items-center justify-center rounded-full border bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] focus-visible:ring-[var(--admin-primary)]/30" : "border-[#e3dcd3] text-[#75685f] focus-visible:ring-mahalyred/30"}`}
+            className={`absolute right-0 z-10 inline-flex h-8 w-8 translate-x-1/2 items-center justify-center rounded-full border bg-white shadow-sm focus-visible:outline-none focus-visible:ring-2 ${isAdmin ? "top-4 border-[var(--admin-border)] text-[var(--admin-text-muted)] focus-visible:ring-[var(--admin-primary)]/30" : "top-2 border-[#e3dcd3] text-[#75685f] focus-visible:ring-mahalyred/30"}`}
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
