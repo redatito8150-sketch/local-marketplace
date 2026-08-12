@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("products")
           .select(
-            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, brands!products_brand_slug_fkey!inner(is_active)"
+            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, brands!products_brand_slug_fkey!inner(is_active)"
           )
           .in("id", productIds);
         if (error) return { ok: false };

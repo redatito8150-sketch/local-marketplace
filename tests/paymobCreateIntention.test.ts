@@ -34,6 +34,7 @@ function product(overrides: Partial<ProductLookupRow> = {}): ProductLookupRow {
     publish_date: null,
     paused_by_brand: false,
     brands: { is_active: true },
+    image: "https://example.com/linen-shirt.jpg",
     ...overrides,
   };
 }

@@ -29,6 +29,7 @@ export interface ProductLookupRow {
   publish_date: string | null;
   paused_by_brand: boolean;
   brands: { is_active: boolean } | null;
+  image: string;
 }
 
 export interface ResolvedIntentionLine {
@@ -42,6 +43,13 @@ export interface ResolvedIntentionLine {
   size: string;
   color: string;
   quantity: number;
+  // Carried through into payment_attempts.cart_snapshot and, from there,
+  // into order_items.image once place_paid_order() runs — without this, a
+  // card-paid order's items always had an empty image (place_paid_order
+  // used to insert '' unconditionally), which is exactly the broken
+  // <img src=""> a "shipped" email (lib/email/templates/orderShipped.ts,
+  // via lib/email/templates/shared.ts's orderItemsTable) then rendered.
+  image: string;
 }
 
 export type ResolveCartResult =
@@ -114,6 +122,7 @@ export function resolveIntentionCart(
       size: item.size,
       color: item.color ?? "",
       quantity: item.quantity,
+      image: product.image,
     });
   }
 
@@ -170,7 +179,7 @@ export function computeIntentionAmount(
     brandSlug: line.brandSlug,
     price: line.price,
     currency: line.currency,
-    image: "",
+    image: line.image,
     size: line.size,
     color: line.color || undefined,
     quantity: line.quantity,
