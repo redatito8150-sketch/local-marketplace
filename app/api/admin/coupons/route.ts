@@ -50,7 +50,8 @@ export async function POST(request: NextRequest) {
     `New coupon: ${code}`,
     body.discountType === "percentage" ? `${body.discountValue}% off` : `${body.discountValue} off`,
     {
-      entityId: code,
+      relatedEntityType: "coupon",
+      relatedEntityId: code,
       entityIdLabel: "Coupon Code",
       actorLabel: staff.user.email ?? staff.user.id,
     }

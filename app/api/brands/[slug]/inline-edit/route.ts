@@ -209,7 +209,8 @@ async function applyUpdate(
     brandSlug: slug,
   });
   await notify("brand_updated", `Brand page updated: ${slug}`, "", {
-    entityId: slug,
+    relatedEntityType: "brand",
+    relatedEntityId: slug,
     entityIdLabel: "Brand ID",
     actorLabel: editor.actorLabel,
   });

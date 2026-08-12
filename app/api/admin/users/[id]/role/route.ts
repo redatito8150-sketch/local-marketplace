@@ -82,7 +82,8 @@ export async function PUT(request: NextRequest, props: { params: Promise<{ id: s
     after: { roleAssigned: role?.name ?? "Customer (no role)" },
   });
   await notify(role ? "role_assigned" : "role_unassigned", `Access updated to ${role?.name ?? "Customer"}`, "", {
-    entityId: params.id,
+    relatedEntityType: "profile",
+    relatedEntityId: params.id,
     entityIdLabel: "User ID",
     actorLabel: auth.user.email ?? auth.user.id,
   });

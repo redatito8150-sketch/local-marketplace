@@ -18,12 +18,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const { data: existing } = await supabaseAdmin
-    .from("brands")
-    .select("*")
-    .eq("slug", params.slug)
-    .maybeSingle();
-
   // Slug is the primary key and the /brands/[slug] URL — it's locked in the
   // UI, and ignored here even if a caller sends a different value, so a
   // rename can never silently orphan a product's brand_slug.
@@ -32,25 +26,38 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
   // this update — BrandForm no longer collects them (they're edited live on
   // the brand page via InlineEditableImage/RichTextEditableField), so this
   // route must never touch those columns or it would silently wipe them.
+  // For the same reason, before/after below are scoped to just these
+  // columns rather than the full `brands` row — comparing the whole row
+  // against this narrower payload used to make every untouched column
+  // (hero_image, owner_user_id, setup_status, etc.) show up as a phantom
+  // "removed" change in the Discord/Audit Log diff.
+  const updatePayload = {
+    name: body.name,
+    category: body.category,
+    additional_categories: body.additionalCategories ?? [],
+    sku_prefix: body.skuPrefix.trim().toUpperCase(),
+    is_active: body.isActive ?? true,
+    is_mahaly_partner: body.isMahalyPartner ?? false,
+    is_sponsored: body.isSponsored ?? false,
+    sponsored_placements: body.sponsoredPlacements ?? [],
+    sponsored_order: body.sponsoredOrder ?? null,
+    founded_year: body.foundedYear ?? null,
+    city: body.city,
+    story_body: body.storyBody,
+    shipping_policy: body.shippingPolicy?.trim() || null,
+    return_policy: body.returnPolicy?.trim() || null,
+    return_window_days: body.returnWindowDays ?? null,
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from("brands")
+    .select(Object.keys(updatePayload).join(", "))
+    .eq("slug", params.slug)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin
     .from("brands")
-    .update({
-      name: body.name,
-      category: body.category,
-      additional_categories: body.additionalCategories ?? [],
-      sku_prefix: body.skuPrefix.trim().toUpperCase(),
-      is_active: body.isActive ?? true,
-      is_mahaly_partner: body.isMahalyPartner ?? false,
-      is_sponsored: body.isSponsored ?? false,
-      sponsored_placements: body.sponsoredPlacements ?? [],
-      sponsored_order: body.sponsoredOrder ?? null,
-      founded_year: body.foundedYear ?? null,
-      city: body.city,
-      story_body: body.storyBody,
-      shipping_policy: body.shippingPolicy?.trim() || null,
-      return_policy: body.returnPolicy?.trim() || null,
-      return_window_days: body.returnWindowDays ?? null,
-    })
+    .update(updatePayload)
     .eq("slug", params.slug);
 
   if (error) {
@@ -69,7 +76,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
     entityId: params.slug,
     action: "update",
     before: existing,
-    after: body,
+    after: updatePayload,
   });
 
   return NextResponse.json({ slug: params.slug });

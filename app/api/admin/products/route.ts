@@ -143,7 +143,8 @@ export async function POST(request: NextRequest) {
     body.status === "published" ? `Product published: ${body.name}` : `Product created: ${body.name}`,
     brandRow.name,
     {
-      entityId: id,
+      relatedEntityType: "product",
+      relatedEntityId: id,
       entityIdLabel: "Product ID",
       actorLabel: admin.email ?? admin.id,
       detailLabel: "Brand",

@@ -153,7 +153,11 @@ export async function POST(request: NextRequest) {
           `New order group (${groupOrders.length} shipment${groupOrders.length === 1 ? "" : "s"})`,
           `Card payment — ${groupOrders.map((o) => o.order_number).join(", ")}`,
           {
-            entityId: groupOrders[0]?.order_number,
+            // Links to the first shipment's real admin detail page (see
+            // the matching comment in app/api/orders/route.ts) — the old
+            // order_number value could never resolve to a working link.
+            relatedEntityType: "order",
+            relatedEntityId: groupOrders[0]?.id,
             entityIdLabel: "Order ID",
             actorLabel: "card payment",
             detailLabel: "Orders",

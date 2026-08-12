@@ -329,7 +329,14 @@ export async function POST(request: NextRequest) {
     `New order group (${createdOrders.length} shipment${createdOrders.length === 1 ? "" : "s"})`,
     `${items.length} item${items.length === 1 ? "" : "s"} — ${createdOrders.map((o) => o.order_number).join(", ")}`,
     {
-      entityId: createdOrders[0]?.order_number,
+      // Links to the first shipment's real admin detail page — that page
+      // itself shows every sibling shipment from the same checkout (see
+      // getSiblingOrders), so one working link is enough to reach the
+      // whole purchase. The old value here (order_number, "LC-XXXXXX")
+      // could never resolve — /admin/orders/[id] looks up by the real
+      // orders.id UUID, not the human-readable order number.
+      relatedEntityType: "order",
+      relatedEntityId: createdOrders[0]?.order_id,
       entityIdLabel: "Order ID",
       actorLabel: user ? `customer:${user.id}` : "guest customer",
       detailLabel: "Items",

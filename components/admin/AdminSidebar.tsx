@@ -9,6 +9,7 @@ import {
   BarChart3,
   Bell,
   ChevronDown,
+  CreditCard,
   FileText,
   History,
   LayoutDashboard,
@@ -59,6 +60,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
     label: "Commerce",
     items: [
       { label: "Orders", href: "/admin/orders", icon: ShoppingBag, permission: "manage_orders" },
+      { label: "Payments", href: "/admin/payments", icon: CreditCard, permission: "manage_orders" },
       { label: "Refund Review", href: "/admin/payments/refund-queue", icon: AlertTriangle, permission: "manage_orders" },
       { label: "Products", href: "/admin/products", icon: Package, permission: "manage_products" },
       {

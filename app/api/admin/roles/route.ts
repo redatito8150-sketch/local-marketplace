@@ -70,13 +70,17 @@ export async function POST(request: NextRequest) {
   await logAudit({
     actorId: auth.user.id,
     actorLabel: auth.user.email ?? auth.user.id,
-    entityType: "profile",
+    // Was "profile" — a copy-paste leftover that pointed the Discord link
+    // at /admin/users?q=<role id>, searching the user list for a role's
+    // id (never matches anything). This creates/edits a role, not a user.
+    entityType: "role",
     entityId: data.id,
     action: "create",
     after: { name, description, color },
   });
   await notify("role_created", `New role created: ${name}`, description, {
-    entityId: data.id,
+    relatedEntityType: "role",
+    relatedEntityId: data.id,
     entityIdLabel: "Role ID",
     actorLabel: auth.user.email ?? auth.user.id,
   });

@@ -640,6 +640,197 @@ export async function getPaymentAttemptsNeedingRefundReview(): Promise<PaymentAt
   }));
 }
 
+export interface PaymentAttemptListItem {
+  id: string;
+  specialReference: string;
+  userId: string;
+  userEmail: string | null;
+  amountCents: number;
+  currency: string;
+  status: string;
+  masterOrderId: string | null;
+  masterOrderNumber: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
+interface PaymentAttemptListRow {
+  id: string;
+  special_reference: string;
+  user_id: string;
+  amount_cents: number;
+  currency: string;
+  status: string;
+  master_order_id: string | null;
+  master_orders: { master_order_number: string } | null;
+  created_at: string;
+  paid_at: string | null;
+}
+
+// payment_attempts has no admin-read RLS bypass (owner-only, same as
+// orders) — every admin read here goes through supabaseAdmin, same
+// convention as getAllOrdersForAdmin. user_id -> email needs a separate
+// batch lookup (payment_attempts has no direct FK PostgREST can embed
+// profiles through), matching getOwnerEmailsByUserId's pattern above.
+export async function getAllPaymentAttemptsForAdmin(): Promise<PaymentAttemptListItem[]> {
+  const { data, error } = await supabaseAdmin
+    .from("payment_attempts")
+    .select("id, special_reference, user_id, amount_cents, currency, status, master_order_id, master_orders(master_order_number), created_at, paid_at")
+    .order("created_at", { ascending: false });
+  if (error) {
+    throw new Error(`getAllPaymentAttemptsForAdmin failed: ${error.message}`);
+  }
+  const rows = (data ?? []) as unknown as PaymentAttemptListRow[];
+
+  const userIds = [...new Set(rows.map((r) => r.user_id).filter(Boolean))];
+  const emailByUser = new Map<string, string>();
+  if (userIds.length) {
+    const { data: profiles } = await supabaseAdmin.from("profiles").select("id, email").in("id", userIds);
+    for (const p of profiles ?? []) {
+      if (p.email) emailByUser.set(p.id, p.email);
+    }
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    specialReference: row.special_reference,
+    userId: row.user_id,
+    userEmail: emailByUser.get(row.user_id) ?? null,
+    amountCents: row.amount_cents,
+    currency: row.currency,
+    status: row.status,
+    masterOrderId: row.master_order_id,
+    masterOrderNumber: row.master_orders?.master_order_number ?? null,
+    createdAt: row.created_at,
+    paidAt: row.paid_at,
+  }));
+}
+
+export interface PaymentAttemptFulfillmentBucket {
+  bucketKey: string;
+  brandId: string | null;
+  brandName: string | null;
+  brandSlug: string | null;
+  status: string;
+  orderId: string | null;
+  expectedAmountCents: number;
+  failureReason: string | null;
+  fulfilledAt: string | null;
+}
+
+export interface PaymentAttemptDetail extends PaymentAttemptListItem {
+  provider: string;
+  providerIntentionId: string | null;
+  providerOrderId: number | null;
+  providerTransactionId: string | null;
+  failureReason: string | null;
+  itemCount: number;
+  refundedAt: string | null;
+  refundNote: string | null;
+  updatedAt: string;
+  expiresAt: string;
+  processedAt: string | null;
+  siblingOrders: { id: string; orderNumber: string; status: string; brandSlug: string | null }[];
+  buckets: PaymentAttemptFulfillmentBucket[];
+}
+
+// Detail view for /admin/payments/[id] — the full row plus its linked
+// orders (via master_order_id, same shape as getSiblingOrders) and its
+// per-bucket fulfillment ledger (list_payment_attempt_fulfillments_for_admin,
+// the one genuinely new piece of admin visibility this page adds —
+// private.payment_attempt_fulfillments has no other PostgREST/RPC surface).
+export async function getPaymentAttemptForAdmin(id: string): Promise<PaymentAttemptDetail | null> {
+  const { data, error } = await supabaseAdmin
+    .from("payment_attempts")
+    .select(
+      "id, special_reference, user_id, amount_cents, currency, status, master_order_id, master_orders(master_order_number), created_at, paid_at, provider, provider_intention_id, provider_order_id, provider_transaction_id, failure_reason, cart_snapshot, refunded_at, refund_note, updated_at, expires_at, processed_at"
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`getPaymentAttemptForAdmin(${id}) failed: ${error.message}`);
+  }
+  if (!data) return null;
+  const row = data as unknown as PaymentAttemptListRow & {
+    provider: string;
+    provider_intention_id: string | null;
+    provider_order_id: number | null;
+    provider_transaction_id: string | null;
+    failure_reason: string | null;
+    cart_snapshot: unknown[];
+    refunded_at: string | null;
+    refund_note: string | null;
+    updated_at: string;
+    expires_at: string;
+    processed_at: string | null;
+  };
+
+  const [{ data: profile }, siblingOrders, bucketsResult] = await Promise.all([
+    supabaseAdmin.from("profiles").select("email").eq("id", row.user_id).maybeSingle(),
+    row.master_order_id
+      ? supabaseAdmin.from("orders").select("id, order_number, status, brand_slug").eq("master_order_id", row.master_order_id)
+      : Promise.resolve({ data: [] as { id: string; order_number: string; status: string; brand_slug: string | null }[] }),
+    supabaseAdmin.rpc("list_payment_attempt_fulfillments_for_admin", { p_payment_attempt_id: id }),
+  ]);
+
+  if (bucketsResult.error) {
+    throw new Error(`getPaymentAttemptForAdmin(${id}) buckets failed: ${bucketsResult.error.message}`);
+  }
+  const bucketRows = (bucketsResult.data ?? []) as {
+    bucket_key: string;
+    brand_id: string | null;
+    brand_name: string | null;
+    brand_slug: string | null;
+    status: string;
+    order_id: string | null;
+    expected_amount_cents: number;
+    failure_reason: string | null;
+    fulfilled_at: string | null;
+  }[];
+
+  return {
+    id: row.id,
+    specialReference: row.special_reference,
+    userId: row.user_id,
+    userEmail: profile?.email ?? null,
+    amountCents: row.amount_cents,
+    currency: row.currency,
+    status: row.status,
+    masterOrderId: row.master_order_id,
+    masterOrderNumber: row.master_orders?.master_order_number ?? null,
+    createdAt: row.created_at,
+    paidAt: row.paid_at,
+    provider: row.provider,
+    providerIntentionId: row.provider_intention_id,
+    providerOrderId: row.provider_order_id,
+    providerTransactionId: row.provider_transaction_id,
+    failureReason: row.failure_reason,
+    itemCount: Array.isArray(row.cart_snapshot) ? row.cart_snapshot.length : 0,
+    refundedAt: row.refunded_at,
+    refundNote: row.refund_note,
+    updatedAt: row.updated_at,
+    expiresAt: row.expires_at,
+    processedAt: row.processed_at,
+    siblingOrders: (siblingOrders.data ?? []).map((o) => ({
+      id: o.id,
+      orderNumber: o.order_number,
+      status: o.status,
+      brandSlug: o.brand_slug,
+    })),
+    buckets: bucketRows.map((b) => ({
+      bucketKey: b.bucket_key,
+      brandId: b.brand_id,
+      brandName: b.brand_name,
+      brandSlug: b.brand_slug,
+      status: b.status,
+      orderId: b.order_id,
+      expectedAmountCents: b.expected_amount_cents,
+      failureReason: b.failure_reason,
+      fulfilledAt: b.fulfilled_at,
+    })),
+  };
+}
+
 // Row-mapping lives in lib/join/applicationService.ts (shared with the
 // applicant routes) so the admin and applicant sides never drift onto two
 // different shapes for the same table.

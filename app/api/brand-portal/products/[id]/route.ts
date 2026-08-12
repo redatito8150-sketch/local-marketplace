@@ -81,7 +81,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       `${paused ? "Paused" : "Unpaused"}: ${existing.name}`,
       owner.brandName ?? "",
       {
-        entityId: params.id,
+        relatedEntityType: "product",
+        relatedEntityId: params.id,
         entityIdLabel: "Product ID",
         actorLabel: owner.user.email ?? owner.user.id,
         detailLabel: "Brand",

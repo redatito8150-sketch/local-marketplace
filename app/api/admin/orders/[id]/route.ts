@@ -124,7 +124,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (order && order.shippingEmail) {
     if (status === "cancelled") {
       await notify("order_cancelled", `Order cancelled: #${order.orderNumber}`, order.shippingName, {
-        entityId: order.orderNumber,
+        relatedEntityType: "order",
+        relatedEntityId: params.id,
         entityIdLabel: "Order ID",
         actorLabel: admin.email ?? admin.id,
         detailLabel: "Customer",

@@ -35,6 +35,10 @@ export function getEntityAdminPath(entityType: string, entityId: string): string
       return `/admin/low-stock`;
     case "warehouse_transfer":
       return `/admin/warehouse/${entityId}`;
+    case "role":
+      return `/admin/users?tab=roles`;
+    case "payment_attempt":
+      return `/admin/payments/${entityId}`;
     default:
       return null;
   }

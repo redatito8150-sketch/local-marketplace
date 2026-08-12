@@ -52,7 +52,9 @@ export type AuditEntityType =
   | "option_type"
   | "option_value"
   | "inventory"
-  | "warehouse_transfer";
+  | "warehouse_transfer"
+  | "role"
+  | "payment_attempt";
 
 // Which Discord channel each entity type's activity mirrors to — see
 // lib/discord.ts for the channel keys and their env vars. #notifications
@@ -73,6 +75,10 @@ const CHANNEL_BY_ENTITY: Record<AuditEntityType, DiscordChannel> = {
   coupon: "auditSiteMarketing",
   site_content: "auditSiteMarketing",
   page: "auditSiteMarketing",
+  role: "auditUsersRoles",
+  // Payment activity is closely related to order activity and doesn't
+  // warrant its own Discord webhook/env var — mirrors to the same channel.
+  payment_attempt: "auditOrders",
 };
 
 // Green = something was added, red = something was removed, orange for

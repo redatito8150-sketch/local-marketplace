@@ -119,14 +119,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   await logAudit({
     actorId: auth.user.id,
     actorLabel: auth.user.email ?? auth.user.id,
-    entityType: "profile",
+    entityType: "role",
     entityId: params.id,
     action: "update",
     before: existing,
     after: body,
   });
   await notify("role_updated", `Role updated: ${(patch.name as string) ?? existing.name}`, "", {
-    entityId: params.id,
+    relatedEntityType: "role",
+    relatedEntityId: params.id,
     entityIdLabel: "Role ID",
     actorLabel: auth.user.email ?? auth.user.id,
   });
@@ -175,7 +176,7 @@ export async function DELETE(_request: NextRequest, props: { params: Promise<{ i
   await logAudit({
     actorId: auth.user.id,
     actorLabel: auth.user.email ?? auth.user.id,
-    entityType: "profile",
+    entityType: "role",
     entityId: params.id,
     action: "delete",
     before: existing,

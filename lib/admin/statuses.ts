@@ -115,6 +115,56 @@ export function applicationStatusBadgeClass(status: string): string {
   }
 }
 
+// payment_attempts.status — distinct from ORDER_STATUSES above. This is
+// the payment gateway's own lifecycle (see supabase/migrations/
+// 20260811000001_payment_attempts.sql), not an order's operational status;
+// a single 'fulfilled' attempt can back several orders (one per bucket).
+export const PAYMENT_ATTEMPT_STATUSES = [
+  "created",
+  "pending",
+  "processing",
+  "paid",
+  "reflecting",
+  "fulfilled",
+  "fulfillment_failed",
+  "failed",
+  "expired",
+  "cancelled",
+] as const;
+export type PaymentAttemptStatusValue = (typeof PAYMENT_ATTEMPT_STATUSES)[number];
+
+export const PAYMENT_ATTEMPT_STATUS_LABELS: Record<PaymentAttemptStatusValue, string> = {
+  created: "Created",
+  pending: "Pending",
+  processing: "Processing",
+  paid: "Paid",
+  reflecting: "Reflecting",
+  fulfilled: "Fulfilled",
+  fulfillment_failed: "Fulfillment Failed",
+  failed: "Failed",
+  expired: "Expired",
+  cancelled: "Cancelled",
+};
+
+export function paymentAttemptStatusBadgeClass(status: string): string {
+  switch (status) {
+    case "fulfilled":
+    case "paid":
+      return "bg-green-50 text-green-700";
+    case "fulfillment_failed":
+    case "failed":
+      return "bg-red-50 text-red-700";
+    case "expired":
+    case "cancelled":
+      return "bg-slate-100 text-slate-600";
+    case "reflecting":
+    case "processing":
+      return "bg-blue-50 text-blue-700";
+    default:
+      return "bg-amber-50 text-amber-700"; // created, pending
+  }
+}
+
 export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   order_created: "New Order",
   order_cancelled: "Order Cancelled",

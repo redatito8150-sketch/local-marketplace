@@ -37,28 +37,37 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const { data: existing } = await supabaseAdmin
-    .from("brands")
-    .select("*")
-    .eq("slug", owner.brandSlug)
-    .maybeSingle();
-
   // hero/logo/about images, about description, and tagline are edited live
   // on the brand page (InlineEditableImage/RichTextEditableField) now, not
   // through this form — never touch those columns here or a save would
-  // silently wipe them.
+  // silently wipe them. This is also exactly why before/after below are
+  // scoped to just these 8 fields rather than the whole row: comparing the
+  // full `brands` row (which has ~20 columns) against this narrow payload
+  // used to make every untouched column — hero_image, logo, is_active,
+  // sponsored*, etc. — show up as a phantom "removed" change in the
+  // Discord/Audit Log diff, even though the UPDATE below never touches
+  // them. Matches the already-correct narrow-select pattern in
+  // app/api/brands/[slug]/inline-edit/route.ts.
+  const updatePayload = {
+    category: body.category,
+    additional_categories: body.additionalCategories ?? [],
+    founded_year: body.foundedYear ?? null,
+    city: body.city,
+    story_body: body.storyBody,
+    shipping_policy: body.shippingPolicy?.trim() || null,
+    return_policy: body.returnPolicy?.trim() || null,
+    return_window_days: body.returnWindowDays ?? null,
+  };
+
+  const { data: existing } = await supabaseAdmin
+    .from("brands")
+    .select(Object.keys(updatePayload).join(", "))
+    .eq("slug", owner.brandSlug)
+    .maybeSingle();
+
   const { error } = await supabaseAdmin
     .from("brands")
-    .update({
-      category: body.category,
-      additional_categories: body.additionalCategories ?? [],
-      founded_year: body.foundedYear ?? null,
-      city: body.city,
-      story_body: body.storyBody,
-      shipping_policy: body.shippingPolicy?.trim() || null,
-      return_policy: body.returnPolicy?.trim() || null,
-      return_window_days: body.returnWindowDays ?? null,
-    })
+    .update(updatePayload)
     .eq("slug", owner.brandSlug);
 
   if (error) {
@@ -72,11 +81,12 @@ export async function PATCH(request: NextRequest) {
     entityId: owner.brandSlug,
     action: "update",
     before: existing,
-    after: body,
+    after: updatePayload,
     brandSlug: owner.brandSlug,
   });
   await notify("brand_updated", `Brand page updated: ${body.name}`, "", {
-    entityId: owner.brandSlug,
+    relatedEntityType: "brand",
+    relatedEntityId: owner.brandSlug,
     entityIdLabel: "Brand ID",
     actorLabel: owner.user.email ?? owner.user.id,
   });

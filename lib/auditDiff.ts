@@ -95,6 +95,20 @@ export function diffEntitySnapshots(before: unknown, after: unknown): AuditField
     } else if (after === undefined) {
       // Pure delete — show what existed, not a change.
       changes.push({ field, from: formatFieldValue(beforeRec[key]) });
+    } else if (hasBefore && !hasAfter) {
+      // Both before/after are real entity snapshots (an actual edit, not a
+      // create/delete), but this specific key is missing from `after`.
+      // Across every caller in this codebase (see lib/auditLog.ts), that
+      // always means "this write path doesn't touch this field" — a
+      // partial-update route logging `before: <full DB row>` against
+      // `after: <its own narrower patch object>` — never a deliberate
+      // "clear this field" (that's always an explicit `null` in `after`,
+      // which the branch below already handles as a real change). Treating
+      // a merely-absent key as "removed" was a real bug: it made saving
+      // one real field on a narrow form (e.g. the brand-content editor,
+      // which only ever sends ~8 of the brands table's ~20 columns) log
+      // every other untouched column as a phantom removal. Skip it.
+      continue;
     } else {
       changes.push({
         field,
