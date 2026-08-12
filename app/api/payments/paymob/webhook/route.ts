@@ -7,6 +7,7 @@ import { notify } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
 import { getOrderForAdmin } from "@/lib/data/admin";
+import { notifyBrandOwnersOfNewOrder } from "@/lib/orders/notifyBrandOwnersOfNewOrder";
 
 // Paymob's "Transaction Processed" server-to-server callback — the ONLY
 // authoritative source of payment status in this codebase. Nothing the
@@ -164,6 +165,7 @@ export async function POST(request: NextRequest) {
           if (fullOrder && fullOrder.shippingEmail) {
             await sendEmail({ to: fullOrder.shippingEmail, ...orderConfirmationEmail(fullOrder) });
           }
+          await notifyBrandOwnersOfNewOrder(groupOrder.id);
         }
       }
     }

@@ -4,6 +4,7 @@ import { notify } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
 import { getOrderForAdmin } from "@/lib/data/admin";
+import { notifyBrandOwnersOfNewOrder } from "@/lib/orders/notifyBrandOwnersOfNewOrder";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { logError } from "@/lib/errorLog";
 import { MAX_ORDER_BODY_BYTES, validateOrderRequest } from "@/lib/orders/orderRequest";
@@ -341,6 +342,7 @@ export async function POST(request: NextRequest) {
     if (order) {
       await sendEmail({ to: shipping.email, ...orderConfirmationEmail(order) });
     }
+    await notifyBrandOwnersOfNewOrder(created.order_id);
   }
 
   // Check the variants this order actually touched for anything that just
