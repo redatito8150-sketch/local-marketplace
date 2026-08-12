@@ -30,7 +30,7 @@ export interface MarkDeclinedResult {
 
 export interface PlacePaidOrderResult {
   status: "fulfilled" | "fulfillment_failed";
-  orderGroupId: string | null;
+  masterOrderId: string | null;
   isPartial: boolean;
   replayed: boolean;
 }

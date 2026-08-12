@@ -45,7 +45,7 @@ function makeDeps(overrides: Partial<ProcessWebhookDeps> = {}) {
     },
     placePaidOrder: async (paymentAttemptId) => {
       calls.push({ fn: "placePaidOrder", args: paymentAttemptId });
-      return { status: "fulfilled", orderGroupId: "group-1", isPartial: false, replayed: false };
+      return { status: "fulfilled", masterOrderId: "group-1", isPartial: false, replayed: false };
     },
     ...overrides,
   };

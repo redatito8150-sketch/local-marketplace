@@ -229,12 +229,14 @@ test("POLL_CONFIRMED is the ONLY action that can ever reach 'confirmed' — neve
 
   const confirmed = cardPaymentReducer(pixelOpen, {
     type: "POLL_CONFIRMED",
-    orderGroupId: "group-123",
+    masterOrderId: "group-123",
+    masterOrderNumber: "ZK-583921",
     isPartial: false,
     purchasedItems: [{ productId: "prod-1", size: "M", color: "Sand", quantity: 2 }],
   });
   assert.equal(confirmed.phase, "confirmed");
-  assert.equal(confirmed.orderGroupId, "group-123");
+  assert.equal(confirmed.masterOrderId, "group-123");
+  assert.equal(confirmed.masterOrderNumber, "ZK-583921");
   assert.equal(confirmed.isPartial, false);
   assert.equal(confirmed.clientSecret, null);
   assert.equal(confirmed.error, null);
@@ -254,7 +256,8 @@ test("POLL_CONFIRMED also reachable from 'confirming' (the normal polling path)"
   const confirming = cardPaymentReducer(pixelOpen, { type: "POLL_PENDING" });
   const confirmed = cardPaymentReducer(confirming, {
     type: "POLL_CONFIRMED",
-    orderGroupId: "group-9",
+    masterOrderId: "group-9",
+    masterOrderNumber: "ZK-100245",
     isPartial: true,
     purchasedItems: [],
   });
@@ -285,7 +288,8 @@ test("POLL_* actions are no-ops outside pixel_open/confirming", () => {
   assert.equal(
     cardPaymentReducer(INITIAL_CARD_PAYMENT_STATE, {
       type: "POLL_CONFIRMED",
-      orderGroupId: null,
+      masterOrderId: null,
+      masterOrderNumber: null,
       isPartial: false,
       purchasedItems: [],
     }),

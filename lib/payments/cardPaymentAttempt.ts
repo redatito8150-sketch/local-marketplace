@@ -36,7 +36,8 @@ export interface CardPaymentState {
   // Set only by POLL_CONFIRMED — i.e. only once our OWN backend (whose
   // status is itself only ever set by the HMAC-verified webhook) reports
   // the attempt fulfilled. Never set from any Pixel-originated signal.
-  orderGroupId: string | null;
+  masterOrderId: string | null;
+  masterOrderNumber: string | null;
   isPartial: boolean;
   // The exact lines (productId/size/color/quantity) this attempt's own
   // cart_snapshot says were paid for — empty whenever isPartial is true,
@@ -53,7 +54,8 @@ export const INITIAL_CARD_PAYMENT_STATE: CardPaymentState = {
   paymentAttemptId: null,
   clientSecret: null,
   error: null,
-  orderGroupId: null,
+  masterOrderId: null,
+  masterOrderNumber: null,
   isPartial: false,
   purchasedItems: [],
 };
@@ -78,7 +80,8 @@ export type CardPaymentAction =
   | { type: "POLL_PENDING" }
   | {
       type: "POLL_CONFIRMED";
-      orderGroupId: string | null;
+      masterOrderId: string | null;
+      masterOrderNumber: string | null;
       isPartial: boolean;
       purchasedItems: PurchasedCartLine[];
     }
@@ -144,7 +147,8 @@ export function cardPaymentReducer(state: CardPaymentState, action: CardPaymentA
         phase: "confirmed",
         clientSecret: null,
         error: null,
-        orderGroupId: action.orderGroupId,
+        masterOrderId: action.masterOrderId,
+        masterOrderNumber: action.masterOrderNumber,
         isPartial: action.isPartial,
         purchasedItems: action.purchasedItems,
       };

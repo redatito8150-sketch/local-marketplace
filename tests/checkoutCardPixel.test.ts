@@ -200,7 +200,7 @@ test("the polling and cart-clearing effects are the only places CARD flow ever m
 });
 
 test("the 'confirmed' UI state never redirects away from the checkout page and never claims success before the fact", () => {
-  const confirmedBlockMatch = checkoutPage.match(/\{cardState\.phase === "confirmed" && \([\s\S]*?\)\}/);
+  const confirmedBlockMatch = checkoutPage.match(/\{cardState\.phase === "confirmed" && \([\s\S]*?Continue Shopping[\s\S]*?\)\}/);
   assert.ok(confirmedBlockMatch, "expected to find the confirmed-phase UI block");
   const block = confirmedBlockMatch![0];
   assert.match(block, /Payment confirmed/);

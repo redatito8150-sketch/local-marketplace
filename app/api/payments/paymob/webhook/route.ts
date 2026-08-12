@@ -96,13 +96,13 @@ export async function POST(request: NextRequest) {
       if (error) throw new Error(error.message);
       const result = data as {
         status: "fulfilled" | "fulfillment_failed";
-        order_group_id: string | null;
+        master_order_id: string | null;
         is_partial: boolean;
         replayed: boolean;
       };
       return {
         status: result.status,
-        orderGroupId: result.order_group_id,
+        masterOrderId: result.master_order_id,
         isPartial: result.is_partial,
         replayed: result.replayed,
       };
@@ -140,12 +140,12 @@ export async function POST(request: NextRequest) {
     if (
       outcome.action === "paid_and_fulfilled" &&
       !outcome.result.replayed &&
-      outcome.result.orderGroupId
+      outcome.result.masterOrderId
     ) {
       const { data: groupOrders } = await supabaseAdmin
         .from("orders")
         .select("id, order_number, shipping_email")
-        .eq("order_group_id", outcome.result.orderGroupId);
+        .eq("master_order_id", outcome.result.masterOrderId);
 
       if (groupOrders && groupOrders.length > 0) {
         await notify(

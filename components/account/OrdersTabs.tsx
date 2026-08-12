@@ -15,16 +15,16 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
   }, [orders, activeTab]);
 
   // A single checkout can fan out into several shipments (see
-  // brands.is_mahaly_partner splitting) — group by orderGroupId so a
+  // brands.is_mahaly_partner splitting) — group by masterOrderId so a
   // multi-shipment purchase reads as one purchase event with N tracked
   // shipments, not N unrelated orders. Only wraps groups that actually have
   // more than one order surviving the current status filter.
   const groupedOrders = useMemo(() => {
     const byGroup = new Map<string, OrderRecord[]>();
     for (const order of filteredOrders) {
-      const list = byGroup.get(order.orderGroupId) ?? [];
+      const list = byGroup.get(order.masterOrderId) ?? [];
       list.push(order);
-      byGroup.set(order.orderGroupId, list);
+      byGroup.set(order.masterOrderId, list);
     }
     return [...byGroup.entries()].sort(
       (a, b) =>
@@ -64,7 +64,7 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
             groupOrders.length > 1 ? (
               <div key={groupId} className="rounded-[24px] border border-dashed border-[var(--account-border)] p-4">
                 <p className="mb-3 px-1 text-[12px] font-semibold uppercase tracking-wide text-[var(--account-text-muted)]">
-                  One purchase · {groupOrders.length} shipments
+                  Purchase {groupOrders[0].masterOrderNumber} · {groupOrders.length} shipments
                 </p>
                 <div className="space-y-4">
                   {groupOrders.map((order) => (

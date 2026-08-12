@@ -45,7 +45,8 @@ interface RpcOrderItem {
 }
 
 interface PlaceOrderResult {
-  order_group_id: string;
+  master_order_id: string;
+  master_order_number: string;
   orders: { order_id: string; order_number: string }[];
   replayed?: boolean;
 }
@@ -53,7 +54,8 @@ interface PlaceOrderResult {
 function orderApiResponse(result: PlaceOrderResult, replayed = false) {
   return {
     orderNumbers: result.orders.map((order) => order.order_number),
-    orderGroupId: result.order_group_id,
+    masterOrderId: result.master_order_id,
+    masterOrderNumber: result.master_order_number,
     ...(replayed || result.replayed ? { replayed: true } : {}),
   };
 }

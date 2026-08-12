@@ -5,6 +5,7 @@ import { formatDateTime, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, getValidOrderStatusOptions, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
+import CancelMasterOrderButton from "@/components/admin/CancelMasterOrderButton";
 import type { OrderStatus } from "@/types";
 
 export default async function AdminOrderDetailPage(
@@ -18,7 +19,9 @@ export default async function AdminOrderDetailPage(
     getAuditLogsForEntity("order", params.id),
   ]);
   if (!order) notFound();
-  const siblingOrders = await getSiblingOrders(order.orderGroupId, order.id);
+  const siblingOrders = await getSiblingOrders(order.masterOrderId, order.id);
+  const cancellableCount =
+    [order, ...siblingOrders].filter((o) => o.status !== "shipped" && o.status !== "fulfilled" && o.status !== "cancelled").length;
 
   return (
     <div>
@@ -28,7 +31,7 @@ export default async function AdminOrderDetailPage(
             Order #{order.orderNumber}
           </h1>
           <p className="mt-1 text-[13px] text-ink-soft/60">
-            {formatDateTime(order.createdAt)}
+            Purchase {order.masterOrderNumber} · {formatDateTime(order.createdAt)}
           </p>
         </div>
         <StatusSelect
@@ -86,7 +89,7 @@ export default async function AdminOrderDetailPage(
           {siblingOrders.length > 0 && (
             <div className="mt-4 border-t border-stone-150 pt-3">
               <p className="text-[11.5px] font-medium text-ink-soft/60">
-                Other shipments from this same checkout
+                Other shipments in purchase {order.masterOrderNumber}
               </p>
               <div className="mt-2 space-y-1.5">
                 {siblingOrders.map((sib) => (
@@ -104,6 +107,15 @@ export default async function AdminOrderDetailPage(
                   </Link>
                 ))}
               </div>
+              {cancellableCount > 0 && (
+                <div className="mt-3">
+                  <CancelMasterOrderButton
+                    masterOrderId={order.masterOrderId}
+                    masterOrderNumber={order.masterOrderNumber}
+                    shipmentCount={siblingOrders.length + 1}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

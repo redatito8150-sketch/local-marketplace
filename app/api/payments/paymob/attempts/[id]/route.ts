@@ -37,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const { data: attempt, error } = await supabase
     .from("payment_attempts")
-    .select("id, status, amount_cents, currency, failure_reason, paid_at, processed_at, order_group_id")
+    .select("id, status, amount_cents, currency, failure_reason, paid_at, processed_at, master_order_id, master_orders(master_order_number)")
     .eq("id", id)
     .maybeSingle();
 
@@ -81,7 +81,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     failureReason: attempt.failure_reason,
     paidAt: attempt.paid_at,
     processedAt: attempt.processed_at,
-    orderGroupId: attempt.order_group_id,
+    masterOrderId: attempt.master_order_id,
+    masterOrderNumber: (attempt.master_orders as unknown as { master_order_number: string } | null)?.master_order_number ?? null,
     isPartial,
     purchasedItems,
   });

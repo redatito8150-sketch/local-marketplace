@@ -91,6 +91,7 @@ export default function CheckoutPage() {
   usePendingCardPaymentReconciliation();
   const [step, setStep] = useState<Step>("shipping");
   const [orderNumbers, setOrderNumbers] = useState<string[]>([]);
+  const [masterOrderNumber, setMasterOrderNumber] = useState<string | null>(null);
   const { partnerFlagsBySlug, shippingSettings } = useShippingPreview(
     items.map((i) => i.brandSlug).filter(Boolean)
   );
@@ -372,7 +373,8 @@ export default function CheckoutPage() {
       attempts += 1;
       const result = await fetchWithAppError<{
         status: string;
-        orderGroupId: string | null;
+        masterOrderId: string | null;
+        masterOrderNumber: string | null;
         isPartial: boolean;
         purchasedItems: PurchasedCartLine[];
       }>(`/api/payments/paymob/attempts/${paymentAttemptId}`);
@@ -389,7 +391,7 @@ export default function CheckoutPage() {
         return;
       }
 
-      const { status, orderGroupId, isPartial, purchasedItems } = result.data;
+      const { status, masterOrderId, masterOrderNumber, isPartial, purchasedItems } = result.data;
       if (status === "fulfilled") {
         // Whether or not this ends up removing anything from the cart
         // (isPartial leaves purchasedItems empty on purpose — see the
@@ -397,7 +399,7 @@ export default function CheckoutPage() {
         // terminal state either way, so stop tracking it for the
         // interrupted-session recovery path too.
         if (user) clearPendingCardAttempt(user.id);
-        dispatchCard({ type: "POLL_CONFIRMED", orderGroupId, isPartial, purchasedItems });
+        dispatchCard({ type: "POLL_CONFIRMED", masterOrderId, masterOrderNumber, isPartial, purchasedItems });
       } else if (status === "fulfillment_failed" || status === "failed" || status === "expired" || status === "cancelled") {
         if (user) clearPendingCardAttempt(user.id);
         dispatchCard({
@@ -500,7 +502,7 @@ export default function CheckoutPage() {
     const idempotencyKey =
       orderIdempotencyKeyRef.current ?? crypto.randomUUID();
     orderIdempotencyKeyRef.current = idempotencyKey;
-    const orderResult = await fetchWithAppError<{ orderNumbers: string[] }>("/api/orders", {
+    const orderResult = await fetchWithAppError<{ orderNumbers: string[]; masterOrderNumber: string }>("/api/orders", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -526,6 +528,7 @@ export default function CheckoutPage() {
     }
 
     setOrderNumbers(orderResult.data.orderNumbers ?? []);
+    setMasterOrderNumber(orderResult.data.masterOrderNumber ?? null);
     orderIdempotencyKeyRef.current = null;
     clearCart();
     setStep("confirmation");
@@ -909,6 +912,11 @@ export default function CheckoutPage() {
                         <h2 className="mt-4 text-lg font-bold tracking-tightest text-ink">
                           Payment confirmed
                         </h2>
+                        {cardState.masterOrderNumber && (
+                          <p className="mt-1 text-[13.5px] font-semibold text-ink">
+                            Your purchase number is {cardState.masterOrderNumber}
+                          </p>
+                        )}
                         <p className="mt-2 text-[13.5px] text-ink-soft/70">
                           {cardState.isPartial
                             ? "Your payment went through and part of your order is confirmed — one item couldn't be fulfilled and our team will follow up by email about a refund for that portion."
@@ -935,6 +943,11 @@ export default function CheckoutPage() {
                 <h1 className="mt-6 text-2xl font-bold tracking-tightest text-ink">
                   Order confirmed
                 </h1>
+                {masterOrderNumber && (
+                  <p className="mt-1 text-[14px] font-semibold text-ink">
+                    Your purchase number is {masterOrderNumber}
+                  </p>
+                )}
                 {orderNumbers.length > 1 ? (
                   <p className="mt-2 text-[14px] text-ink-soft/70">
                     Thank you — your order shipped as{" "}

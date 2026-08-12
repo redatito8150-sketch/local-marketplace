@@ -616,10 +616,14 @@ export interface OrderRecord {
   createdAt: string;
   items: OrderItemRecord[];
   // Multi-brand/partner-fulfillment splitting — see
-  // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql.
-  // orderGroupId ties every shipment created from one checkout together;
-  // fulfillmentType/brandSlug/shippingFeeEgp describe this shipment alone.
-  orderGroupId: string;
+  // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql
+  // and, for the real master_orders parent row, supabase/migrations/
+  // 20260812000006_master_orders.sql. masterOrderId/masterOrderNumber tie
+  // every shipment created from one checkout together (masterOrderNumber
+  // is the ZK-XXXXXX customer-facing purchase reference); fulfillmentType/
+  // brandSlug/shippingFeeEgp describe this shipment alone.
+  masterOrderId: string;
+  masterOrderNumber: string;
   fulfillmentType: OrderFulfillmentType;
   brandSlug?: string;
   shippingFeeEgp: number;

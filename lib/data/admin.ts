@@ -464,7 +464,8 @@ interface OrderRow {
   coupon_code: string | null;
   discount_amount_egp: number;
   created_at: string;
-  order_group_id: string;
+  master_order_id: string;
+  master_orders: { master_order_number: string } | null;
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
@@ -481,7 +482,8 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     orderNumber: row.order_number,
     status: row.status,
     userId: row.user_id ?? undefined,
-    orderGroupId: row.order_group_id,
+    masterOrderId: row.master_order_id,
+    masterOrderNumber: row.master_orders?.master_order_number ?? "",
     fulfillmentType: row.fulfillment_type,
     brandSlug: row.brand_slug ?? undefined,
     shippingFeeEgp: Number(row.shipping_fee_egp),
@@ -520,7 +522,8 @@ function toOrderRecord(row: OrderRow): OrderRecord {
   };
 }
 
-const ADMIN_ORDER_SELECT = "*, order_items(*), order_status_history(id, status, note, created_at)";
+const ADMIN_ORDER_SELECT =
+  "*, master_orders(master_order_number), order_items(*), order_status_history(id, status, note, created_at)";
 
 // Orders have no public/admin RLS read policy, so admin reads go through
 // the service-role client directly — these functions are only ever called
@@ -559,18 +562,18 @@ export interface SiblingOrderSummary {
   brandSlug: string | null;
 }
 
-// Other shipments created from the same checkout (see order_group_id) — the
-// admin order detail page links to these so a multi-brand purchase's
+// Other shipments created from the same checkout (see master_order_id) —
+// the admin order detail page links to these so a multi-brand purchase's
 // shipments are easy to navigate between.
-export async function getSiblingOrders(orderGroupId: string, excludeOrderId: string): Promise<SiblingOrderSummary[]> {
+export async function getSiblingOrders(masterOrderId: string, excludeOrderId: string): Promise<SiblingOrderSummary[]> {
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("id, order_number, status, fulfillment_type, brand_slug")
-    .eq("order_group_id", orderGroupId)
+    .eq("master_order_id", masterOrderId)
     .neq("id", excludeOrderId);
 
   if (error) {
-    throw new Error(`getSiblingOrders(${orderGroupId}) failed: ${error.message}`);
+    throw new Error(`getSiblingOrders(${masterOrderId}) failed: ${error.message}`);
   }
   return (data ?? []).map((r) => ({
     id: r.id,

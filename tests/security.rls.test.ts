@@ -80,13 +80,15 @@ test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, as
   });
 
   // Added after this exact RPC was found live with zero access restriction
-  // (see 20260807000004) — it takes p_user_id as a plain parameter instead
-  // of deriving it from the caller's session, so an open grant would let
-  // any signed-in user cancel a *different* customer's orders.
+  // (see 20260807000004). As of 20260812000006_master_orders.sql it no
+  // longer takes p_user_id at all (an admin-only "cancel this whole
+  // purchase" action now — see app/api/admin/master-orders/[id]/cancel/
+  // route.ts) — ownership is enforced by that route's requireAdminUser()
+  // gate, not by the RPC, so the RPC itself must stay service_role-only
+  // regardless of who's calling.
   await t.test("cancel_order_group", async () => {
     const { error } = await anon.rpc("cancel_order_group", {
-      p_order_group_id: FAKE_UUID,
-      p_user_id: FAKE_UUID,
+      p_master_order_id: FAKE_UUID,
     });
     assert.ok(error, "expected an error calling cancel_order_group with the anon key");
     assert.match(error!.message, /permission denied/i);

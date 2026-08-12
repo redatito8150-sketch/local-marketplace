@@ -236,11 +236,11 @@ test("webhook route sends the admin notify() and a customer confirmation email o
   assert.ok(notifyIndex !== -1, "expected an await notify(...) call");
   assert.ok(sendEmailIndex !== -1 && sendEmailIndex > notifyIndex, "sendEmail() must come after notify()");
 
-  // Both the outer (action + !replayed + orderGroupId) and inner
+  // Both the outer (action + !replayed + masterOrderId) and inner
   // (groupOrders.length > 0) guards must appear somewhere before notify()
   // is ever called.
   const preceding = route.slice(0, notifyIndex);
-  assert.match(preceding, /outcome\.action === "paid_and_fulfilled"[\s\S]*!outcome\.result\.replayed[\s\S]*outcome\.result\.orderGroupId/);
+  assert.match(preceding, /outcome\.action === "paid_and_fulfilled"[\s\S]*!outcome\.result\.replayed[\s\S]*outcome\.result\.masterOrderId/);
   assert.match(preceding, /groupOrders && groupOrders\.length > 0/);
 
   // orderConfirmationEmail is payment-method-agnostic (no COD-specific
@@ -248,10 +248,10 @@ test("webhook route sends the admin notify() and a customer confirmation email o
   assert.match(route, /orderConfirmationEmail\(fullOrder\)/);
 });
 
-test("the notify/email block only reads orders by order_group_id — never re-derives or trusts a client-provided order id", () => {
+test("the notify/email block only reads orders by master_order_id — never re-derives or trusts a client-provided order id", () => {
   const route = read("app/api/payments/paymob/webhook/route.ts");
   const fromOrdersIndex = route.indexOf('.from("orders")');
   assert.ok(fromOrdersIndex !== -1);
   const nearby = route.slice(fromOrdersIndex, fromOrdersIndex + 200);
-  assert.match(nearby, /\.eq\("order_group_id", outcome\.result\.orderGroupId\)/);
+  assert.match(nearby, /\.eq\("master_order_id", outcome\.result\.masterOrderId\)/);
 });

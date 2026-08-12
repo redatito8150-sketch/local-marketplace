@@ -15,7 +15,8 @@ interface OrderRow {
   subtotal_egp: number;
   discount_amount_egp: number;
   created_at: string;
-  order_group_id: string;
+  master_order_id: string;
+  master_orders: { master_order_number: string } | null;
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
@@ -57,7 +58,8 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     subtotalEgp: Number(row.subtotal_egp),
     discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
-    orderGroupId: row.order_group_id,
+    masterOrderId: row.master_order_id,
+    masterOrderNumber: row.master_orders?.master_order_number ?? "",
     fulfillmentType: row.fulfillment_type,
     brandSlug: row.brand_slug ?? undefined,
     shippingFeeEgp: Number(row.shipping_fee_egp),
@@ -88,7 +90,8 @@ function toOrderRecord(row: OrderRow): OrderRecord {
   };
 }
 
-const ORDER_SELECT = "*, order_items(*), order_status_history(id, status, note, created_at)";
+const ORDER_SELECT =
+  "*, master_orders(master_order_number), order_items(*), order_status_history(id, status, note, created_at)";
 
 // Uses supabaseAdmin (not the cookie-bound server client) so this can be
 // called from any server context with just a resolved userId — same

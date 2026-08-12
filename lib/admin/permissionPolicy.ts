@@ -54,7 +54,8 @@ const ADMIN_PATH_RULES: ReadonlyArray<{
       path.startsWith("/api/admin/orders") ||
       path.startsWith("/admin/orders") ||
       path.startsWith("/api/admin/payments") ||
-      path.startsWith("/admin/payments"),
+      path.startsWith("/admin/payments") ||
+      path.startsWith("/api/admin/master-orders"),
     permission: "manage_orders",
   },
   {
