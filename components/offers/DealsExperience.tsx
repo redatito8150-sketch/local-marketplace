@@ -110,7 +110,7 @@ function HeroDeal({ product, index }: { product: Product; index: number }) {
 function BudgetPanel({ limit, products, active, onSelect }: { limit: number; products: Product[]; active: boolean; onSelect: () => void }) {
   const picks = products.filter((item) => dealPrice(item) <= limit).slice(0, 2);
   return (
-    <a href="#deal-products" onClick={onSelect} className={`group grid min-h-[116px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-[18px] border p-4 transition duration-300 sm:p-5 lg:grid-cols-[auto_1fr_minmax(220px,0.9fr)_auto] ${active ? "border-mahalyred bg-[#fff6f1] shadow-[0_15px_38px_rgba(176,28,23,.12)]" : "border-black/7 bg-white/70 hover:border-mahalyred/30 hover:bg-white hover:shadow-[0_15px_38px_rgba(44,31,22,.10)]"}`}>
+    <a href="#deal-products" onClick={onSelect} className={`group grid min-h-[116px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-[18px] border p-4 transition duration-300 sm:p-5 lg:grid-cols-[auto_1fr_minmax(220px,0.9fr)_auto] ${active ? "border-mahalyred bg-[#fff6f1] shadow-[0_15px_38px_rgba(200,89,86,.12)]" : "border-black/7 bg-white/70 hover:border-mahalyred/30 hover:bg-white hover:shadow-[0_15px_38px_rgba(44,31,22,.10)]"}`}>
       <Tag className={`h-10 w-10 rotate-[-8deg] ${active ? "text-mahalyred" : "text-[#b96f20]"}`} strokeWidth={1.35} />
       <div><p className="font-serif text-[23px] font-semibold tracking-[-0.025em]">Under EGP {limit.toLocaleString("en-US")}</p><p className="mt-1 text-[11px] text-ink-soft/65">Great local finds, easy on your budget.</p></div>
       <div className="hidden grid-cols-2 gap-2 lg:grid">

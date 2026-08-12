@@ -7,7 +7,7 @@ import { BadgeCheck } from "lucide-react";
 export default function PartnerBadge({ className = "h-4 w-4" }: { className?: string }) {
   return (
     <span title="Zakhnook Partner" className="inline-flex shrink-0">
-      <BadgeCheck className={`${className} partner-shine text-[#AC3935]`} aria-label="Zakhnook Partner" />
+      <BadgeCheck className={`${className} partner-shine text-[#C85956]`} aria-label="Zakhnook Partner" />
     </span>
   );
 }

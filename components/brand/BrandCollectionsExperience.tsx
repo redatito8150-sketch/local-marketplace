@@ -104,7 +104,7 @@ export default function BrandCollectionsExperience({
     <div className="space-y-4">
       <div className="flex items-end justify-between gap-6 pb-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#AC3935]">Curated by {brandName}</p>
+          <p className="text-[10px] font-bold uppercase tracking-[.22em] text-[#C85956]">Curated by {brandName}</p>
           <InlineEditableText
             field="collectionsPageTitle"
             value={pageTitle || "Collections, reimagined."}
@@ -157,7 +157,7 @@ export default function BrandCollectionsExperience({
             <div className="flex min-w-0 flex-col justify-center p-5 sm:p-8 lg:p-9">
               <div className="mb-6 flex items-center justify-between gap-4">
                 <div>
-                  <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#AC3935]">
+                  <span className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.18em] text-[#C85956]">
                     <Layers3 className="h-3.5 w-3.5" />
                     <InlineEditableText field="collectionsDetailEyebrow" value={detailEyebrow || "The edit"} as="span" />
                   </span>
@@ -187,7 +187,7 @@ export default function BrandCollectionsExperience({
                 aria-expanded={isActive}
                 className={`group relative shrink-0 overflow-hidden rounded-[18px] bg-[#d9cec4] text-left transition-[min-height,width,filter,opacity] duration-500 ${
                   isCompressed ? "h-[116px] w-[220px] sm:h-[138px]" : "h-[340px] w-[260px] sm:h-[430px] sm:w-[300px]"
-                } ${isActive ? "ring-2 ring-[#AC3935] ring-offset-2" : ""}`}
+                } ${isActive ? "ring-2 ring-[#C85956] ring-offset-2" : ""}`}
               >
                 <CollectionCoverCarousel
                   images={item.coverImages}
@@ -216,7 +216,7 @@ export default function BrandCollectionsExperience({
         <section key={`supporting-${active.id}`} className="collection-panel-enter overflow-hidden rounded-[20px] border border-[#e5d8cd] bg-[#fffaf5] p-5 shadow-[0_14px_45px_rgba(63,42,31,.065)] sm:p-7 lg:p-9">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#AC3935]">{active.eyebrow} · {active.season}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#C85956]">{active.eyebrow} · {active.season}</p>
               <h3 className="mt-2 font-serif text-3xl tracking-[-.025em] text-[#242424] sm:text-4xl">{active.name}</h3>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-[#776c65]">{active.description}</p>
             </div>

@@ -182,7 +182,7 @@ export default function AuthOrbitStage({ compact = false }: { compact?: boolean 
             className="absolute inset-0 z-20 flex flex-col items-center justify-center"
           >
             <div className={`relative ${compact ? "h-16 w-16" : "h-40 w-40"}`}>
-              <Image src="/images/auth/logo-transparent.png" alt="Zakhnook" fill sizes={compact ? "64px" : "160px"} className="object-contain drop-shadow-[0_0_38px_rgba(183,31,26,.38)]" />
+              <Image src="/images/auth/logo-transparent.png" alt="Zakhnook" fill sizes={compact ? "64px" : "160px"} className="object-contain drop-shadow-[0_0_38px_rgba(200,89,86,.38)]" />
             </div>
             <motion.div
               initial={{ opacity: 0, y: 18, filter: "blur(12px)" }}

@@ -67,7 +67,7 @@ export default async function AboutPage({
       <div className="mx-auto max-w-brand px-5 pb-14 pt-10 sm:px-6 lg:px-10 lg:pb-20 lg:pt-12">
         <div className="grid items-center gap-9 lg:grid-cols-[0.86fr_1.14fr] lg:gap-16">
           <div className="max-w-[500px]">
-            <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#AC3935]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.23em] text-[#C85956]">
               The story behind {brand.name}
             </p>
             <InlineEditableText
@@ -102,7 +102,7 @@ export default async function AboutPage({
 
         <div className="mt-9 grid items-center gap-7 rounded-[16px] bg-[linear-gradient(105deg,#f6eee7_0%,#faf6f1_56%,#f2e8de_100%)] px-7 py-8 sm:px-10 lg:grid-cols-[1fr_240px] lg:px-11 lg:py-9">
           <blockquote className="flex gap-5">
-            <span className="font-serif text-[64px] leading-[0.72] text-[#AC3935]" aria-hidden="true">
+            <span className="font-serif text-[64px] leading-[0.72] text-[#C85956]" aria-hidden="true">
               “
             </span>
             <InlineEditableText

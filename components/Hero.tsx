@@ -13,14 +13,14 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
     <MotionConfig reducedMotion="never">
     <section id="home" className="home-hero-scene relative overflow-hidden border-b border-white/20">
       <div className="home-hero-vignette" aria-hidden />
-      <div className="relative z-10 mx-auto flex min-h-[650px] max-w-[1560px] flex-col px-5 pb-12 pt-9 sm:px-8 lg:min-h-[700px] lg:px-12 lg:pt-11">
+      <div className="relative z-10 mx-auto flex max-w-[1560px] flex-col px-5 pb-8 pt-7 sm:px-8 lg:px-12 lg:pt-8">
         <motion.div
           initial={false}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 0.85, ease: [0.22, 1, 0.36, 1] }}
           className="mx-auto max-w-3xl text-center"
         >
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.24em] text-mahalyred">A marketplace made in Egypt</p>
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.24em] text-[#C85956]">A marketplace made in Egypt</p>
           <h1 className="font-serif text-[42px] font-semibold leading-[0.96] tracking-[-0.045em] text-ink sm:text-[58px] lg:text-[72px]">
             {content.headingLines.slice(0, 2).map((line) => <span key={line} className="block">{line}</span>)}
           </h1>
@@ -35,7 +35,7 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
         >
           <Link
             href="/shop/all"
-            className="group inline-flex h-12 items-center gap-5 rounded-full border border-white/35 bg-black/[0.78] px-8 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-[0_16px_42px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.16)] backdrop-blur-lg transition duration-500 hover:-translate-y-0.5 hover:border-white/55 hover:bg-mahalyred"
+            className="group inline-flex h-12 items-center gap-5 rounded-full border border-white/35 bg-[#C85956] px-8 text-[11px] font-bold uppercase tracking-[0.2em] text-white shadow-[0_16px_42px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.16)] backdrop-blur-lg transition duration-500 hover:-translate-y-0.5 hover:border-white/55 hover:bg-[#C85956]"
           >
             Shop all
             <ArrowUpRight className="h-4 w-4 transition-transform duration-500 group-hover:rotate-45" />
@@ -46,7 +46,7 @@ export default function Hero({ content, tiles }: { content: HomeHeroContent; til
           initial={false}
           animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: 0.55 } } }}
-          className="mt-20 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-24 lg:grid-cols-4"
+          className="mt-14 grid grid-cols-2 gap-3 sm:gap-4 lg:mt-16 lg:grid-cols-4"
         >
           {TILE_ORDER.map((key, index) => {
             const tile = tiles[key];

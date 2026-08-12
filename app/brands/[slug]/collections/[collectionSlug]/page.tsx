@@ -42,12 +42,12 @@ export default async function BrandCollectionPage({
     <section className="mx-auto max-w-brand px-5 py-14 sm:px-6 lg:px-10 lg:py-20">
       <Link
         href={`/brands/${slug}/collections`}
-        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#AC3935] hover:underline"
+        className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#C85956] hover:underline"
       >
         <ArrowLeft className="h-3.5 w-3.5" /> All collections
       </Link>
       <div className="mt-4 max-w-2xl">
-        <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#AC3935]">Curated by {brand.name}</p>
+        <p className="text-[11px] font-bold uppercase tracking-[.18em] text-[#C85956]">Curated by {brand.name}</p>
         <h1 className="mt-2 font-serif text-3xl text-[#261f1b] sm:text-4xl">{collection.name}</h1>
         {collection.description && (
           <p className="mt-4 text-sm leading-6 text-[#736861]">{collection.description}</p>

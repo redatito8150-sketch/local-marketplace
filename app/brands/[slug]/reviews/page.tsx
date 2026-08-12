@@ -84,7 +84,7 @@ export default async function ReviewsPage({
             </p>
             <Link
               href={hasFilters ? `/brands/${slug}/reviews` : `/brands/${slug}/products`}
-              className="mt-5 inline-flex min-h-10 items-center rounded-full border border-[#AC3935] px-5 text-xs font-bold text-[#AC3935]"
+              className="mt-5 inline-flex min-h-10 items-center rounded-full border border-[#C85956] px-5 text-xs font-bold text-[#C85956]"
             >
               {hasFilters ? "Reset filters" : "Explore products"}
             </Link>
@@ -98,7 +98,7 @@ export default async function ReviewsPage({
                 key={page}
                 aria-current={page === result.page ? "page" : undefined}
                 href={{ pathname: `/brands/${slug}/reviews`, query: { ...raw, page } }}
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm ${page === result.page ? "bg-[#781c2d] text-white" : "border border-[#ddd2c8] bg-white"}`}
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm ${page === result.page ? "bg-[#C85956] text-white" : "border border-[#ddd2c8] bg-white"}`}
               >
                 {page}
               </Link>

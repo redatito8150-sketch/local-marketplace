@@ -72,7 +72,7 @@ export default function CollectionsOrderPanel({ brandSlug }: { brandSlug: string
 
   return (
     <div className="mb-8 rounded-[20px] border border-[#e5d8cd] bg-[#fffaf5] p-5 sm:p-6">
-      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#AC3935]">Owner tools</p>
+      <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#C85956]">Owner tools</p>
       <h2 className="mt-1 font-serif text-lg text-[#2f2824]">Drag to reorder — the first is your featured collection</h2>
       <p className="mt-1 text-[11px] text-[#8b8078]">
         To create, edit, or delete a collection, use{" "}

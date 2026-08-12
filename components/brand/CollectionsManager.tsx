@@ -179,7 +179,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
     <div className="mb-10 rounded-[20px] border border-[#e5d8cd] bg-[#fffaf5] p-5 sm:p-7">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#AC3935]">Owner tools</p>
+          <p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#C85956]">Owner tools</p>
           <h2 className="mt-1 font-serif text-xl text-[#2f2824]">Manage your collections</h2>
         </div>
         {collections && (
@@ -188,7 +188,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
       </div>
 
       {!collections ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-[#AC3935]" /></div>
+        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-[#C85956]" /></div>
       ) : (
         <div className="mt-5 space-y-4">
           {collections.map((collection) => {
@@ -224,14 +224,14 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                           placeholder="Collection name"
                           maxLength={80}
-                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-sm font-semibold outline-none focus:border-[#AC3935]"
+                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-sm font-semibold outline-none focus:border-[#C85956]"
                         />
                         <input
                           value={draft.tagline}
                           onChange={(e) => setDraft({ ...draft, tagline: e.target.value })}
                           placeholder="Tag (e.g. Summer 2026)"
                           maxLength={40}
-                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#AC3935]"
+                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#C85956]"
                         />
                         <textarea
                           value={draft.description}
@@ -239,7 +239,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                           placeholder="Short description"
                           rows={2}
                           maxLength={1000}
-                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#AC3935]"
+                          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#C85956]"
                         />
                         <label className="block text-[11px] text-[#8b8078]">
                           Show starting (optional — leave blank to show now)
@@ -247,7 +247,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                             type="datetime-local"
                             value={draft.visibleFrom}
                             onChange={(e) => setDraft({ ...draft, visibleFrom: e.target.value })}
-                            className="mt-1 w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#AC3935]"
+                            className="mt-1 w-full rounded-md border border-[#ddd2c8] px-2 py-1.5 text-xs outline-none focus:border-[#C85956]"
                           />
                         </label>
                         <div className="flex items-center gap-2 pt-1">
@@ -275,7 +275,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <h3 className="truncate text-sm font-bold text-[#302925]">{collection.name}</h3>
-                            {collection.tagline && <p className="text-[11px] text-[#AC3935]">{collection.tagline}</p>}
+                            {collection.tagline && <p className="text-[11px] text-[#C85956]">{collection.tagline}</p>}
                           </div>
                           <button
                             type="button"
@@ -290,7 +290,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                           <p className="mt-1.5 line-clamp-2 text-[12px] text-[#766d66]">{collection.description}</p>
                         )}
                         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide">
-                          <span className={`rounded-full px-2 py-0.5 ${collection.isActive ? "bg-[#e6f4ea] text-[#2f7a4a]" : "bg-[#f4e6e6] text-[#AC3935]"}`}>
+                          <span className={`rounded-full px-2 py-0.5 ${collection.isActive ? "bg-[#e6f4ea] text-[#2f7a4a]" : "bg-[#f4e6e6] text-[#C85956]"}`}>
                             {collection.isActive ? "Live" : "Paused"}
                           </span>
                           {collection.visibleFrom && new Date(collection.visibleFrom).getTime() > nowMs && (
@@ -335,7 +335,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
 
           {collections.length < MAX_COLLECTIONS &&
             (creating ? (
-              <div className="flex items-center gap-2 rounded-2xl border-2 border-[#AC3935]/40 bg-white p-3">
+              <div className="flex items-center gap-2 rounded-2xl border-2 border-[#C85956]/40 bg-white p-3">
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
@@ -343,7 +343,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
                   maxLength={80}
                   autoFocus
                   onKeyDown={(e) => e.key === "Enter" && createCollection()}
-                  className="min-w-0 flex-1 rounded-md border border-[#ddd2c8] px-2 py-1.5 text-sm outline-none focus:border-[#AC3935]"
+                  className="min-w-0 flex-1 rounded-md border border-[#ddd2c8] px-2 py-1.5 text-sm outline-none focus:border-[#C85956]"
                 />
                 <button
                   type="button"
@@ -365,7 +365,7 @@ export default function CollectionsManager({ brandSlug }: { brandSlug: string })
               <button
                 type="button"
                 onClick={() => setCreating(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#AC3935]"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#C85956]"
               >
                 <Plus className="h-4 w-4" strokeWidth={2} /> Add collection
               </button>

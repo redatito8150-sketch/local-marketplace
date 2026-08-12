@@ -107,13 +107,13 @@ export default function CollectionProductPicker({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search your products"
-            className="w-full rounded-full border border-[#ddd2c8] px-4 py-2 text-sm outline-none focus:border-[#AC3935]"
+            className="w-full rounded-full border border-[#ddd2c8] px-4 py-2 text-sm outline-none focus:border-[#C85956]"
           />
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {!products ? (
-            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#AC3935]" /></div>
+            <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#C85956]" /></div>
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-[#8b8078]">No products match.</p>
           ) : (
@@ -126,7 +126,7 @@ export default function CollectionProductPicker({
                       type="button"
                       onClick={() => toggle(product.id)}
                       className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                        checked ? "border-[#AC3935] bg-[#fff2f2]" : "border-transparent hover:bg-[#f8f2ec]"
+                        checked ? "border-[#C85956] bg-[#fff2f2]" : "border-transparent hover:bg-[#f8f2ec]"
                       }`}
                     >
                       <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#f1e9e1]">
@@ -142,7 +142,7 @@ export default function CollectionProductPicker({
                       </span>
                       <span
                         className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                          checked ? "border-[#AC3935] bg-[#AC3935] text-white" : "border-[#ddd2c8]"
+                          checked ? "border-[#C85956] bg-[#C85956] text-white" : "border-[#ddd2c8]"
                         }`}
                       >
                         {checked && <Check className="h-3 w-3" strokeWidth={3} />}

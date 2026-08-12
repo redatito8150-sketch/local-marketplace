@@ -150,7 +150,7 @@ function AccountPageContent() {
     <main className="relative min-h-screen overflow-hidden bg-[#090607] p-3 sm:p-5 lg:p-6">
       <div className="pointer-events-none absolute -left-32 -top-32 h-[520px] w-[520px] rounded-full bg-[#7f0e15]/32 blur-[140px]" />
       <div className="pointer-events-none absolute -bottom-48 right-[18%] h-[560px] w-[560px] rounded-full bg-[#4d070d]/42 blur-[150px]" />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(128deg,rgba(183,31,26,.12),transparent_38%,rgba(0,0,0,.62))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(128deg,rgba(200,89,86,.12),transparent_38%,rgba(0,0,0,.62))]" />
 
       <div className="relative mx-auto grid min-h-[calc(100vh-48px)] max-w-[1540px] overflow-hidden rounded-[36px] border border-white/10 bg-[#160b0e]/72 shadow-[0_36px_120px_rgba(0,0,0,.48)] backdrop-blur-xl lg:grid-cols-[1.08fr_.92fr]">
         <motion.div initial={{ x: "103%" }} animate={{ x: 0 }} transition={{ duration: 1.15, ease: [0.76, 0, 0.24, 1] }} className="hidden p-3 lg:block"><AuthOrbitStage /></motion.div>
@@ -203,7 +203,7 @@ function AccountPageContent() {
               {error && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-[12px] font-medium text-red-700">{error}</p>}
               {confirmationMessage && <p className="rounded-xl bg-emerald-50 px-4 py-3 text-[12px] font-medium text-emerald-800">{confirmationMessage}</p>}
 
-              <button type="submit" disabled={submitting} className="group flex w-full items-center justify-between rounded-2xl bg-mahalyred px-5 py-4 text-[13px] font-semibold text-white shadow-[0_14px_30px_rgba(183,31,26,.22)] transition hover:-translate-y-0.5 hover:bg-mahalyred-dark disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="submit" disabled={submitting} className="group flex w-full items-center justify-between rounded-2xl bg-mahalyred px-5 py-4 text-[13px] font-semibold text-white shadow-[0_14px_30px_rgba(200,89,86,.22)] transition hover:-translate-y-0.5 hover:bg-mahalyred-dark disabled:cursor-not-allowed disabled:opacity-60">
                 <span>{submitting ? "Please wait…" : mode === "sign-in" ? "Enter Zakhnook" : "Create my account"}</span><ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </button>
             </form>

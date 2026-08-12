@@ -143,7 +143,7 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
           <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
             <label className="relative">
               <span className="sr-only">Filter by category</span>
-              <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
+              <select value={category} onChange={(event) => setCategory(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#C85956] focus:ring-2 focus:ring-[#C85956]/10">
                 {categories.map((item) => <option key={item} value={item}>{item === ALL ? "All categories" : item}</option>)}
               </select>
               <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-[#776a61]" />
@@ -151,7 +151,7 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
 
             <label className="relative">
               <span className="sr-only">Filter by location</span>
-              <select value={city} onChange={(event) => setCity(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
+              <select value={city} onChange={(event) => setCity(event.target.value)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#C85956] focus:ring-2 focus:ring-[#C85956]/10">
                 {cities.map((item) => <option key={item} value={item}>{item === ALL ? "All locations" : item}</option>)}
               </select>
               <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-[#776a61]" />
@@ -159,7 +159,7 @@ export default function BrandsDirectory({ brands }: { brands: FeaturedBrandSumma
 
             <label className="relative">
               <span className="sr-only">Filter by Zakhnook partnership</span>
-              <select value={partner} onChange={(event) => setPartner(event.target.value as PartnerFilter)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#AC3935] focus:ring-2 focus:ring-[#AC3935]/10">
+              <select value={partner} onChange={(event) => setPartner(event.target.value as PartnerFilter)} className="h-11 w-full appearance-none rounded-full border border-[#e4dbd0] bg-[#fbf7f1] px-4 pr-10 text-sm font-semibold text-[#242424] outline-none transition focus:border-[#C85956] focus:ring-2 focus:ring-[#C85956]/10">
                 <option value="all">All brands</option>
                 <option value="partner">Zakhnook partners</option>
                 <option value="independent">Independent brands</option>

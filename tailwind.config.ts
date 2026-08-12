@@ -28,9 +28,9 @@ const config: Config = {
         // internally so existing components inherit the new palette without
         // a risky class-name migration.
         mahalyred: {
-          DEFAULT: "#AC3935", // --color-primary
-          dark: "#8B2E2B", // --color-primary-hover
-          soft: "#E5B8B6", // --color-primary-soft
+          DEFAULT: "#C85956", // --color-primary
+          dark: "#AD4744", // --color-primary-hover
+          soft: "#F1D2D0", // --color-primary-soft
         },
         // Owner-supplied Zakhnook design-system colors not covered by the
         // existing cream/stone/beige/ink group above. Added alongside,
@@ -49,7 +49,7 @@ const config: Config = {
           DEFAULT: "#103B5C",
           dark: "#0C2E47",
         },
-        accentred: "#AC3935",
+        accentred: "#C85956",
         charcoal: "#111111",
         muted: "#6B6B6B",
         hairline: "#E8E8E8",

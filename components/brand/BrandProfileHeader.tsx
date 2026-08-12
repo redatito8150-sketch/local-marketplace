@@ -43,7 +43,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
           <div className="absolute inset-x-0 bottom-0 z-30 flex items-end p-5 sm:p-8 lg:p-10">
             <div className="flex w-full flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex items-end gap-4">
-                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#fffaf4] font-serif text-xl text-[#AC3935] shadow-xl sm:h-24 sm:w-24">
+                <div className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-white bg-[#fffaf4] font-serif text-xl text-[#C85956] shadow-xl sm:h-24 sm:w-24">
                   <InlineEditableImage
                     field="logo"
                     src={brand.logoImage}
@@ -100,7 +100,7 @@ export default function BrandProfileHeader({ brand }: { brand: BrandPageContent 
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 py-5 sm:flex sm:gap-8">
-          {stats.map(({ icon: Icon, value, label }) => <div key={label} className="flex items-center justify-center gap-2 rounded-2xl bg-white/60 px-3 py-3 sm:justify-start sm:bg-transparent sm:px-0"><Icon className="hidden h-4 w-4 text-[#AC3935] sm:block" /><p className="text-center sm:text-left"><strong className="block text-sm text-[#242424] sm:inline">{value}</strong>{" "}<span className="text-[11px] text-[#786e65] sm:text-xs">{label}</span></p></div>)}
+          {stats.map(({ icon: Icon, value, label }) => <div key={label} className="flex items-center justify-center gap-2 rounded-2xl bg-white/60 px-3 py-3 sm:justify-start sm:bg-transparent sm:px-0"><Icon className="hidden h-4 w-4 text-[#C85956] sm:block" /><p className="text-center sm:text-left"><strong className="block text-sm text-[#242424] sm:inline">{value}</strong>{" "}<span className="text-[11px] text-[#786e65] sm:text-xs">{label}</span></p></div>)}
         </div>
       </div>
       <BrandProfileNav slug={brand.slug} />

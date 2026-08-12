@@ -30,7 +30,7 @@ export default function ReviewCard({
       <article className="group rounded-[18px] border border-[#e8ddd3] bg-[#fffdfa] px-5 py-6 shadow-[0_7px_25px_rgba(67,45,34,.028)] sm:px-7 sm:py-7">
         <div className="grid gap-6 sm:grid-cols-[180px_1fr] lg:grid-cols-[200px_1fr]">
           <div className="flex items-start gap-3 sm:block">
-            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-[#AC3935] font-serif text-xl text-white">
+            <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-[#C85956] font-serif text-xl text-white">
               {review.authorAvatar ? <Image src={review.authorAvatar} alt="" width={56} height={56} className="h-full w-full object-cover" /> : initial}
             </div>
             <div className="sm:mt-3">
@@ -68,8 +68,8 @@ export default function ReviewCard({
             </Link>
 
             {review.reply && (
-              <section className="mt-5 rounded-xl border-l-[3px] border-[#AC3935] bg-[#fff7f5] p-4" aria-label={`Response from ${review.reply.brandName}`}>
-                <h4 className="flex items-center gap-2 text-xs font-bold text-[#AC3935]"><MessageSquareQuote className="h-4 w-4" />Response from {review.reply.brandName}</h4>
+              <section className="mt-5 rounded-xl border-l-[3px] border-[#C85956] bg-[#fff7f5] p-4" aria-label={`Response from ${review.reply.brandName}`}>
+                <h4 className="flex items-center gap-2 text-xs font-bold text-[#C85956]"><MessageSquareQuote className="h-4 w-4" />Response from {review.reply.brandName}</h4>
                 <p className="mt-2 text-sm leading-6 text-[#665a54]">{review.reply.body}</p>
               </section>
             )}
@@ -94,7 +94,7 @@ export default function ReviewCard({
         <span className="relative h-12 w-12 overflow-hidden rounded-xl bg-white"><Image src={review.productImage} alt="" fill sizes="48px" className="object-cover" /></span>
         <span><span className="block text-[10px] font-bold uppercase tracking-[.14em] text-[#9a8b80]">Purchased product</span><span className="mt-0.5 block text-sm font-semibold text-[#3b302a]">{review.productName}</span></span>
       </Link>
-      {review.reply && <section className="mt-5 rounded-2xl border-l-4 border-[#AC3935] bg-[#fff7f5] p-4" aria-label={`Response from ${review.reply.brandName}`}><h4 className="flex items-center gap-2 text-xs font-bold text-[#AC3935]"><MessageSquareQuote className="h-4 w-4" />Response from {review.reply.brandName}</h4><p className="mt-2 text-sm leading-6 text-[#665a54]">{review.reply.body}</p></section>}
+      {review.reply && <section className="mt-5 rounded-2xl border-l-4 border-[#C85956] bg-[#fff7f5] p-4" aria-label={`Response from ${review.reply.brandName}`}><h4 className="flex items-center gap-2 text-xs font-bold text-[#C85956]"><MessageSquareQuote className="h-4 w-4" />Response from {review.reply.brandName}</h4><p className="mt-2 text-sm leading-6 text-[#665a54]">{review.reply.body}</p></section>}
       <div className="mt-5"><ReviewActions reviewId={review.id} initialCount={review.helpfulCount} initialHelpful={review.viewerFoundHelpful} /></div>
     </article>
   );

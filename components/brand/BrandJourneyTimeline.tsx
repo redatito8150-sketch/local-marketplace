@@ -268,7 +268,7 @@ export default function BrandJourneyTimeline({
                 )}
                 <div
                   className={`relative z-10 mx-auto grid h-12 w-12 place-items-center rounded-full text-white shadow-[0_4px_14px_rgba(143,38,52,0.2)] ${
-                    item.variant === "gold" ? "bg-[#c9962c]" : "bg-[#AC3935]"
+                    item.variant === "gold" ? "bg-[#c9962c]" : "bg-[#C85956]"
                   }`}
                 >
                   <Icon className="h-5 w-5" strokeWidth={1.7} />
@@ -297,7 +297,7 @@ export default function BrandJourneyTimeline({
             <button
               type="button"
               onClick={() => startEdit(-1)}
-              className="mt-3 flex w-[168px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#AC3935] opacity-70 transition hover:opacity-100"
+              className="mt-3 flex w-[168px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#c9b6a6] px-3 py-4 text-[12px] font-semibold text-[#C85956] opacity-70 transition hover:opacity-100"
             >
               <Plus className="h-5 w-5" strokeWidth={2} />
               Add milestone
@@ -328,7 +328,7 @@ function MilestoneEditor({
   error: string;
 }) {
   return (
-    <div className="mt-3 w-[210px] shrink-0 rounded-2xl border-2 border-[#AC3935]/40 bg-white p-3 text-left">
+    <div className="mt-3 w-[210px] shrink-0 rounded-2xl border-2 border-[#C85956]/40 bg-white p-3 text-left">
       <div className="flex flex-wrap gap-1.5">
         {JOURNEY_ICON_KEYS.map((key) => {
           const Icon = ICON_COMPONENTS[key];
@@ -342,7 +342,7 @@ function MilestoneEditor({
               aria-pressed={selected}
               disabled={saving}
               className={`flex h-7 w-7 items-center justify-center rounded-full border transition ${
-                selected ? "border-[#AC3935] bg-[#AC3935] text-white" : "border-[#ddd2c8] text-[#6d625b] hover:border-[#AC3935]/50"
+                selected ? "border-[#C85956] bg-[#C85956] text-white" : "border-[#ddd2c8] text-[#6d625b] hover:border-[#C85956]/50"
               }`}
             >
               <Icon className="h-3.5 w-3.5" strokeWidth={2} />
@@ -356,7 +356,7 @@ function MilestoneEditor({
           onChange={(e) => setDraft({ ...draft, month: e.target.value ? Number(e.target.value) : undefined })}
           disabled={saving}
           aria-label="Month (optional)"
-          className="w-[88px] rounded-md border border-[#ddd2c8] px-1.5 py-1 text-xs outline-none focus:border-[#AC3935]"
+          className="w-[88px] rounded-md border border-[#ddd2c8] px-1.5 py-1 text-xs outline-none focus:border-[#C85956]"
         >
           <option value="">Month</option>
           {MONTH_LABELS.map((label, index) => (
@@ -370,7 +370,7 @@ function MilestoneEditor({
           inputMode="numeric"
           maxLength={4}
           disabled={saving}
-          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#AC3935]"
+          className="w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#C85956]"
         />
       </div>
       <input
@@ -379,7 +379,7 @@ function MilestoneEditor({
         placeholder="Milestone title"
         maxLength={60}
         disabled={saving}
-        className="mt-1.5 w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#AC3935]"
+        className="mt-1.5 w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#C85956]"
       />
       <textarea
         value={draft.description}
@@ -388,7 +388,7 @@ function MilestoneEditor({
         maxLength={200}
         rows={2}
         disabled={saving}
-        className="mt-1.5 w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#AC3935]"
+        className="mt-1.5 w-full rounded-md border border-[#ddd2c8] px-2 py-1 text-xs outline-none focus:border-[#C85956]"
       />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button

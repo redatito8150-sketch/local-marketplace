@@ -18,25 +18,17 @@ body {
 .home-nile-background {
   position: relative;
   isolation: isolate;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(250, 248, 245, .025) 0%,
-      rgba(239, 226, 216, .045) 42%,
-      rgba(194, 140, 130, .065) 72%,
-      rgba(91, 31, 27, .09) 100%
-    ),
-    url("/images/home/homepage-background-subtle.webp") center / cover fixed;
+  background-color: #FAF3ED;
+  background-image: url("/images/homepage-background.webp");
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 .home-nile-background .font-serif {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
   letter-spacing: -0.035em;
-}
-
-.home-hero-scene {
-  background:
-    linear-gradient(180deg, rgba(245, 236, 229, .025) 0%, transparent 68%, rgba(205, 172, 158, .035) 100%);
 }
 
 .join-showcase-background {
@@ -76,7 +68,7 @@ body {
 
 .home-colour-flow {
   background:
-    radial-gradient(circle at 12% 18%, rgba(183,31,26,.18), transparent 29%),
+    radial-gradient(circle at 12% 18%, rgba(200,89,86,.18), transparent 29%),
     radial-gradient(circle at 84% 58%, rgba(177,125,82,.22), transparent 33%),
     linear-gradient(145deg, #f1e7dc 0%, #ead8ce 34%, #e9c8c3 62%, #d9b5a8 100%);
 }
@@ -153,8 +145,8 @@ body {
 
 /* A slow glint on the Zakhnook Partner badge (components/shared/PartnerBadge.tsx) */
 @keyframes partner-shine {
-  0%, 100% { filter: drop-shadow(0 0 0 rgba(127, 29, 29, 0)); transform: scale(1); }
-  50% { filter: drop-shadow(0 0 3px rgba(127, 29, 29, 0.65)); transform: scale(1.08); }
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(200, 89, 86, 0)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 3px rgba(200, 89, 86, 0.65)); transform: scale(1.08); }
 }
 .partner-shine {
   animation: partner-shine 2.4s ease-in-out infinite;
@@ -175,9 +167,9 @@ body {
   --account-text: #242424;
   --account-text-muted: #686866;
   --account-border: #deddd8;
-  --account-accent: #ac3935;
-  --account-accent-hover: #8b2e2b;
-  --account-accent-soft: #f0d8d7;
+  --account-accent: #c85956;
+  --account-accent-hover: #ad4744;
+  --account-accent-soft: #f1d2d0;
   --account-accent-foreground: #fafaf7;
   --account-selected: #f2e4e3;
   --account-success: #56715f;
@@ -194,8 +186,8 @@ body {
   --account-text: #242424;
   --account-text-muted: #80676b;
   --account-border: #e3c9c7;
-  --account-accent: #ac3935;
-  --account-accent-hover: #8b2e2b;
+  --account-accent: #c85956;
+  --account-accent-hover: #ad4744;
   --account-accent-soft: #ebcfd2;
   --account-accent-foreground: #fff9f8;
   --account-selected: #efdadd;
@@ -212,8 +204,8 @@ body {
   --account-text: #242424;
   --account-text-muted: #6c7165;
   --account-border: #d1d1c3;
-  --account-accent: #ac3935;
-  --account-accent-hover: #8b2e2b;
+  --account-accent: #c85956;
+  --account-accent-hover: #ad4744;
   --account-accent-soft: #d6d9c9;
   --account-accent-foreground: #fbfaf5;
   --account-selected: #dde0d2;
@@ -242,9 +234,9 @@ body {
   --admin-border: #deddd8;
   --admin-text: #242424;
   --admin-text-muted: #686866;
-  --admin-primary: #ac3935;
-  --admin-primary-hover: #8b2e2b;
-  --admin-primary-soft: #f0d8d7;
+  --admin-primary: #c85956;
+  --admin-primary-hover: #ad4744;
+  --admin-primary-soft: #f1d2d0;
   --admin-selected: #f2e4e3;
   --admin-success: #607765;
   --admin-warning: #ac7535;

@@ -212,7 +212,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
                     title={product.featured ? "Featured — click to unfeature" : "Not featured — click to feature"}
                     className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink disabled:opacity-50"
                   >
-                    <Star className="h-4 w-4" strokeWidth={1.6} fill={product.featured ? "#AC3935" : "none"} color={product.featured ? "#AC3935" : "currentColor"} />
+                    <Star className="h-4 w-4" strokeWidth={1.6} fill={product.featured ? "#C85956" : "none"} color={product.featured ? "#C85956" : "currentColor"} />
                   </button>
                   <Link
                     href={`/admin/products/${product.id}/edit`}
