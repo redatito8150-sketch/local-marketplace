@@ -11,7 +11,7 @@ const INVENTORY_ITEM = { label: "Inventory", href: "/brand-portal/stock", icon: 
 const PRODUCTS_ITEM = { label: "Products", href: "/brand-portal/products", icon: ShoppingCart };
 const COLLECTIONS_ITEM = { label: "Collections", href: "/brand-portal/collections", icon: FolderKanban };
 const PROFILE_ITEM = { label: "Brand Profile", href: "/brand-portal/page-content", icon: FileEdit };
-const WAREHOUSE_ITEM = { label: "Local Warehouse", href: "/brand-portal/warehouse", icon: Warehouse };
+const WAREHOUSE_ITEM = { label: "Shipments & Transfers", href: "/brand-portal/warehouse", icon: Warehouse };
 const REVIEWS_ITEM = { label: "Reviews", href: "/brand-portal/reviews", icon: MessageSquare };
 const ACTIVITY_ITEM = { label: "Activity", href: "/brand-portal/logs", icon: History };
 

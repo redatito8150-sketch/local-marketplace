@@ -150,10 +150,10 @@ test("getOrdersForBrand filters order_items by brand_slug — the same query tha
 });
 
 test("Brand Portal item cards only show a strikethrough original price when a trusted discount snapshot exists (never for historical rows with a null snapshot)", () => {
-  const page = read("app/brand-portal/orders/page.tsx");
+  const page = read("components/brand-portal/BrandOrdersWorkspace.tsx");
   assert.match(
     page,
-    /const showStrikethrough = item\.discountSource != null && item\.discountSource !== "none" && item\.originalUnitPrice != null;/
+    /return item\.discountSource != null && item\.discountSource !== "none" && item\.originalUnitPrice != null;/
   );
   const summary = read("components/brand-portal/BrandOrderPricingSummary.tsx");
   assert.match(summary, /item\.originalUnitPrice \?\? item\.price/);
@@ -169,7 +169,7 @@ test("Admin order detail page applies the identical strikethrough rule and addit
 });
 
 test("Qty × unit price is shown whenever quantity > 1, on both Brand Portal and Admin", () => {
-  const brandPage = read("app/brand-portal/orders/page.tsx");
+  const brandPage = read("components/brand-portal/BrandOrdersWorkspace.tsx");
   assert.match(brandPage, /item\.quantity > 1 &&/);
   const adminPage = read("app/admin/orders/[id]/page.tsx");
   assert.match(adminPage, /item\.quantity > 1 &&/);

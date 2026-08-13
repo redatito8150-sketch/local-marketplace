@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Clock, Loader2, XCircle } from "lucide-react";
 import { DashboardEmptyState, DashboardPanel, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
@@ -19,14 +20,28 @@ export default function WarehouseExperience({
   variants,
   transfers,
   brandParam,
+  initialVariantId,
+  initialQuantity,
 }: {
   variants: WarehouseVariantRow[];
   transfers: WarehouseTransferRow[];
   brandParam?: string;
+  initialVariantId?: string;
+  initialQuantity?: number;
 }) {
+  const router = useRouter();
+  const initialVariant = variants.find((variant) => variant.variantId === initialVariantId);
+  const initialAvailable = initialVariant ? Math.max(0, initialVariant.brandStockQuantity - initialVariant.pendingRequestedQty) : 0;
+  const initialRequested = initialVariant && Number.isInteger(initialQuantity) && (initialQuantity ?? 0) > 0
+    ? Math.min(initialAvailable, initialQuantity!)
+    : 0;
+  const orderedVariants = useMemo(() => initialVariantId
+    ? [...variants].sort((left, right) => Number(right.variantId === initialVariantId) - Number(left.variantId === initialVariantId))
+    : variants, [initialVariantId, variants]);
+  const [workspaceView, setWorkspaceView] = useState<"send" | "return" | "history">("send");
   const [stockDrafts, setStockDrafts] = useState<Record<string, number>>({});
-  const [requestQty, setRequestQty] = useState<Record<string, number>>({});
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [requestQty, setRequestQty] = useState<Record<string, number>>(() => initialVariant && initialRequested > 0 ? { [initialVariant.variantId]: initialRequested } : {});
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(initialVariant && initialRequested > 0 ? [initialVariant.variantId] : []));
   const [returnQty, setReturnQty] = useState<Record<string, number>>({});
   const returnOperationKey = useRef(crypto.randomUUID());
   const transferOperationKey = useRef(crypto.randomUUID());
@@ -93,7 +108,7 @@ export default function WarehouseExperience({
       setReturnQty({});
       setReturnNote("");
       returnOperationKey.current = crypto.randomUUID();
-      window.location.reload();
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit return request");
     } finally {
@@ -128,7 +143,7 @@ export default function WarehouseExperience({
       setRequestQty({});
       setTransferNote("");
       transferOperationKey.current = crypto.randomUUID();
-      window.location.reload();
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to submit transfer");
     } finally {
@@ -141,55 +156,66 @@ export default function WarehouseExperience({
       {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12.5px] text-red-800">{error}</div>}
       {message && <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12.5px] text-emerald-800">{message}</div>}
 
-      <DashboardPanel
-        title="Your variants"
-        description="Declare what you physically hold, then select what to include in a transfer request. Live site stock only changes once Zakhnook confirms receipt."
+      <nav aria-label="Shipment workspace" className="flex w-fit items-center gap-1 rounded-xl bg-[#eee7e1] p-1">
+        {([[
+          "send", "Send stock"
+        ], ["return", "Return stock"], ["history", "History"]] as const).map(([key, label]) => <button key={key} type="button" onClick={() => setWorkspaceView(key)} aria-pressed={workspaceView === key} className={`rounded-lg px-4 py-2 text-[11px] font-bold transition-colors ${workspaceView === key ? "bg-white text-[#242424] shadow-[0_1px_4px_rgba(72,50,36,.09)]" : "text-[#776a61] hover:text-[#242424]"}`}>{label}</button>)}
+      </nav>
+
+      {workspaceView === "send" && initialVariant && <div className="rounded-2xl border border-[#eadfd7] bg-[#fff8f6] px-4 py-3 text-[11px] text-[#756960]">
+        <span className="font-bold text-[#403730]">Selected from Inventory:</span> {initialVariant.productName}{initialVariant.optionLabel ? ` — ${initialVariant.optionLabel}` : ""}.
+        {initialRequested > 0 ? ` Suggested quantity ${initialRequested} is ready for review.` : " Register stock held by your brand before submitting this shipment."}
+      </div>}
+
+      {workspaceView !== "history" && <div id="shipment-variants" className="scroll-mt-6"><DashboardPanel
+        title={workspaceView === "send" ? "Choose stock to send" : "Choose stock to return"}
+        description={workspaceView === "send" ? "Select the variants leaving your location for Zakhnook. They become sellable only after receiving." : "Select units currently held by Zakhnook that you want returned to your brand."}
         action={
-          <button type="button" onClick={saveStockCounts} disabled={savingStock || Object.keys(stockDrafts).length === 0} className={dashboardButtonSecondary}>
+          workspaceView === "send" ? <button type="button" onClick={saveStockCounts} disabled={savingStock || Object.keys(stockDrafts).length === 0} className={dashboardButtonSecondary}>
             {savingStock ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
-            Save stock counts
-          </button>
+            Confirm held quantities
+          </button> : undefined
         }
       >
         {variants.length === 0 ? (
           <DashboardEmptyState title="No variants yet" description="Create products and their variants first — then come back here to register your stock and request a transfer." />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="space-y-3 p-3 md:hidden">
+            {orderedVariants.map((variant) => {
+              const sendSelected = selected.has(variant.variantId);
+              const returnIsSelected = returnSelected.has(variant.variantId);
+              const sendMax = availableToRequest(variant);
+              const returnMax = availableToReturn(variant);
+              return <article key={variant.variantId} className={`rounded-2xl border p-4 ${initialVariantId === variant.variantId ? "border-[#C85956]/35 bg-[#fff8f6]" : "border-[#eadfd7] bg-white"}`}>
+                <div className="flex items-start gap-3">
+                  {workspaceView === "send" ? <input type="checkbox" aria-label={`Select ${variant.productName} for transfer`} className="mt-1 h-5 w-5 accent-[#C85956]" checked={sendSelected} disabled={sendMax === 0} onChange={(event) => { const next = new Set(selected); if (event.target.checked) next.add(variant.variantId); else next.delete(variant.variantId); setSelected(next); }} /> : <input type="checkbox" aria-label={`Select ${variant.productName} for return`} className="mt-1 h-5 w-5 accent-[#C85956]" checked={returnIsSelected} disabled={returnMax === 0} onChange={(event) => { const next = new Set(returnSelected); if (event.target.checked) next.add(variant.variantId); else next.delete(variant.variantId); setReturnSelected(next); }} />}
+                  <div className="min-w-0 flex-1"><p className="truncate text-[12px] font-bold text-[#403730]">{variant.productName}</p><p className="mt-1 truncate text-[10px] text-[#81746b]">{variant.optionLabel || "Default variant"}</p><code className="mt-1 block truncate text-[8.5px] text-[#9a8c82]">{variant.sku}</code></div>
+                  <div className="text-right"><p className="text-[17px] font-extrabold tabular-nums text-[#242424]">{variant.quantity}</p><p className="text-[8.5px] text-[#94867c]">At Zakhnook</p></div>
+                </div>
+                {workspaceView === "send" ? <div className="mt-3 grid grid-cols-2 gap-3"><label className="text-[9px] font-bold uppercase tracking-[0.06em] text-[#8d8076]">Held by your brand<input type="number" min={0} step={1} value={stockFor(variant)} onChange={(event) => setStockDrafts((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className="mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] px-3 text-[12px] font-semibold tabular-nums outline-none focus:border-[#C85956]/50" /></label><label className="text-[9px] font-bold uppercase tracking-[0.06em] text-[#8d8076]">Send quantity<input type="number" min={0} max={sendMax} step={1} disabled={!sendSelected} value={requestQty[variant.variantId] ?? ""} onChange={(event) => setRequestQty((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(sendMax, Math.trunc(Number(event.target.value) || 0))) }))} className="mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] px-3 text-[12px] font-semibold tabular-nums outline-none focus:border-[#C85956]/50 disabled:bg-[#f7f3ef]" /></label></div> : <div className="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-[#faf7f4] p-3"><div><p className="text-[15px] font-extrabold tabular-nums text-[#242424]">{returnMax}</p><p className="text-[8.5px] text-[#94867c]">Available to return</p></div><label className="text-[9px] font-bold uppercase tracking-[0.06em] text-[#8d8076]">Return quantity<input type="number" min={0} max={returnMax} step={1} disabled={!returnIsSelected} value={returnQty[variant.variantId] ?? ""} onChange={(event) => setReturnQty((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(returnMax, Math.trunc(Number(event.target.value) || 0))) }))} className="mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] bg-white px-3 text-[12px] font-semibold tabular-nums outline-none focus:border-[#C85956]/50 disabled:bg-[#f7f3ef]" /></label></div>}
+              </article>;
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   <th className="w-10 px-3 py-2.5" />
                   <th className="px-3 py-2.5">Product / Variant</th>
-                  <th className="px-3 py-2.5">Live site stock</th>
-                  <th className="px-3 py-2.5">Your warehouse stock</th>
-                  <th className="px-3 py-2.5">Pending transfer</th>
-                  <th className="px-3 py-2.5">Request qty</th>
-                  <th className="w-10 px-3 py-2.5" />
-                  <th className="px-3 py-2.5">Return qty</th>
+                  <th className="px-3 py-2.5">At Zakhnook</th>
+                  {workspaceView === "send" ? <><th className="px-3 py-2.5">Held by your brand</th><th className="px-3 py-2.5">Already pending</th><th className="px-3 py-2.5">Send qty</th></> : <><th className="px-3 py-2.5">Available to return</th><th className="px-3 py-2.5">Return qty</th></>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {variants.map((v) => {
+                {orderedVariants.map((v) => {
                   const isSelected = selected.has(v.variantId);
                   const max = availableToRequest(v);
                   const isReturnSelected = returnSelected.has(v.variantId);
                   const returnMax = availableToReturn(v);
                   return (
                     <tr key={v.variantId}>
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${v.productName} for transfer`}
-                          checked={isSelected}
-                          disabled={max === 0}
-                          onChange={(e) => {
-                            const next = new Set(selected);
-                            if (e.target.checked) next.add(v.variantId);
-                            else next.delete(v.variantId);
-                            setSelected(next);
-                          }}
-                        />
-                      </td>
+                      <td className="px-3 py-2.5">{workspaceView === "send" ? <input type="checkbox" aria-label={`Select ${v.productName} for transfer`} checked={isSelected} disabled={max === 0} onChange={(e) => { const next = new Set(selected); if (e.target.checked) next.add(v.variantId); else next.delete(v.variantId); setSelected(next); }} /> : <input type="checkbox" aria-label={`Select ${v.productName} for return`} checked={isReturnSelected} disabled={returnMax === 0} onChange={(e) => { const next = new Set(returnSelected); if (e.target.checked) next.add(v.variantId); else next.delete(v.variantId); setReturnSelected(next); }} />}</td>
                       <td className="px-3 py-2.5">
                         <span className="font-semibold text-slate-900">{v.productName}</span>
                         {v.optionLabel && <span className="ml-1.5 text-slate-500">— {v.optionLabel}</span>}
@@ -197,7 +223,7 @@ export default function WarehouseExperience({
                         <code className="text-[11px] text-slate-400">{v.sku}</code>
                       </td>
                       <td className="px-3 py-2.5 text-slate-900">{v.quantity}</td>
-                      <td className="px-3 py-2.5">
+                      {workspaceView === "send" ? <><td className="px-3 py-2.5">
                         <input
                           type="number"
                           min={0}
@@ -222,22 +248,7 @@ export default function WarehouseExperience({
                           onChange={(e) => setRequestQty((prev) => ({ ...prev, [v.variantId]: Math.max(0, Math.min(max, Math.trunc(Number(e.target.value) || 0))) }))}
                           className="w-20 rounded border border-slate-200 px-2 py-1 text-[12.5px] outline-none focus:border-slate-400 disabled:bg-slate-50"
                         />
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${v.productName} for return`}
-                          checked={isReturnSelected}
-                          disabled={returnMax === 0}
-                          onChange={(e) => {
-                            const next = new Set(returnSelected);
-                            if (e.target.checked) next.add(v.variantId);
-                            else next.delete(v.variantId);
-                            setReturnSelected(next);
-                          }}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5">
+                      </td></> : <><td className="px-3 py-2.5 text-slate-500">{returnMax}</td><td className="px-3 py-2.5">
                         <input
                           type="number"
                           min={0}
@@ -250,17 +261,17 @@ export default function WarehouseExperience({
                           onChange={(e) => setReturnQty((prev) => ({ ...prev, [v.variantId]: Math.max(0, Math.min(returnMax, Math.trunc(Number(e.target.value) || 0))) }))}
                           className="w-20 rounded border border-slate-200 px-2 py-1 text-[12.5px] outline-none focus:border-slate-400 disabled:bg-slate-50"
                         />
-                      </td>
+                      </td></>}
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-          </div>
+          </div></>
         )}
-      </DashboardPanel>
+      </DashboardPanel></div>}
 
-      {variants.length > 0 && (
+      {workspaceView === "send" && variants.length > 0 && (
         <DashboardPanel title="Request a transfer (اذن صرف مخزن)">
           <div className="space-y-3 px-5 py-4">
             <textarea
@@ -278,7 +289,7 @@ export default function WarehouseExperience({
         </DashboardPanel>
       )}
 
-      {variants.length > 0 && (
+      {workspaceView === "return" && variants.length > 0 && (
         <DashboardPanel title="Request a return (رجوع من المخزن المحلي)" description="Ask Zakhnook's warehouse to hand back stock it's currently holding for you — checked off in the 'Return qty' column above.">
           <div className="space-y-3 px-5 py-4">
             <textarea
@@ -296,7 +307,7 @@ export default function WarehouseExperience({
         </DashboardPanel>
       )}
 
-      <DashboardPanel title="Transfer history">
+      {workspaceView === "history" && <DashboardPanel title="Transfer history">
         {transfers.length === 0 ? (
           <DashboardEmptyState title="No transfers yet" description="Requested transfers and their outcomes will show up here." />
         ) : (
@@ -342,7 +353,7 @@ export default function WarehouseExperience({
             })}
           </div>
         )}
-      </DashboardPanel>
+      </DashboardPanel>}
     </div>
   );
 }

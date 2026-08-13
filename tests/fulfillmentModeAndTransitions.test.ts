@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 function read(relativePath: string): string {
-  return readFileSync(path.join(rootDir, relativePath), "utf8");
+  return readFileSync(path.join(rootDir, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 function compact(value: string): string {
   return value.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\r\n]*/g, " ").toLowerCase().replace(/\s+/g, "");

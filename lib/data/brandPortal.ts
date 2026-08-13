@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
 import type { OrderItemDiscountSource, SellingStatus, StockStatus } from "@/types";
 
 // Every query here uses the cookie-aware anon client by default (never
@@ -18,14 +19,15 @@ import type { OrderItemDiscountSource, SellingStatus, StockStatus } from "@/type
 
 export interface BrandOrderItem {
   id: string;
+  productId: string;
+  variantId: string | null;
   name: string;
   size: string;
   color?: string;
   price: number;
   currency: "USD" | "EGP";
   quantity: number;
-  image: string;
-  variantId: string | null;
+  image?: string;
   // Pricing snapshot — see supabase/migrations/
   // 20260813000002_order_pricing_snapshots.sql. All null on historical
   // rows placed before that migration; never derived from a product's
@@ -49,6 +51,8 @@ export interface BrandOrder {
   shippingCity: string;
   shippingGovernorate: string;
   createdAt: string;
+  history: Array<{ status: string; note?: string; createdAt: string }>;
+  isOverdue: boolean;
   items: BrandOrderItem[];
   // 'brand_direct' orders are this brand's own shipment (this brand can
   // advance its status); 'mahaly_pool' orders pool this brand's items with
@@ -76,14 +80,15 @@ export interface BrandOrder {
 
 interface OrderItemRow {
   id: string;
+  product_id: string;
+  variant_id: string | null;
+  image: string | null;
   name: string;
   size: string;
   color: string | null;
   price: number;
   currency: "USD" | "EGP";
   quantity: number;
-  image: string;
-  variant_id: string | null;
   original_unit_price: number | null;
   discount_percent_snapshot: number | null;
   discount_source: OrderItemDiscountSource | null;
@@ -116,7 +121,7 @@ export async function getOrdersForBrand(
   const { data, error } = await supabaseAdmin
     .from("order_items")
     .select(
-      "id, name, size, color, price, currency, quantity, image, variant_id, original_unit_price, discount_percent_snapshot, discount_source, item_coupon_discount_egp, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp, payment_method, payment_status, coupon_code, master_orders(master_order_number))"
+      "id, product_id, variant_id, image, name, size, color, price, currency, quantity, original_unit_price, discount_percent_snapshot, discount_source, item_coupon_discount_egp, order_id, orders(id, order_number, status, shipping_name, shipping_city, shipping_governorate, created_at, fulfillment_type, shipping_fee_egp, payment_method, payment_status, coupon_code, master_orders(master_order_number))"
     )
     .eq("brand_slug", brandSlug);
 
@@ -135,6 +140,8 @@ export async function getOrdersForBrand(
       shippingCity: row.orders.shipping_city,
       shippingGovernorate: row.orders.shipping_governorate,
       createdAt: row.orders.created_at,
+      history: [],
+      isOverdue: false,
       fulfillmentType: row.orders.fulfillment_type,
       shippingFeeEgp: Number(row.orders.shipping_fee_egp),
       paymentMethod: row.orders.payment_method,
@@ -147,14 +154,15 @@ export async function getOrdersForBrand(
     };
     existing.items.push({
       id: row.id,
+      productId: row.product_id,
+      variantId: row.variant_id,
       name: row.name,
       size: row.size,
       color: row.color ?? undefined,
       price: Number(row.price),
       currency: row.currency,
       quantity: row.quantity,
-      image: row.image,
-      variantId: row.variant_id,
+      image: row.image?.trim() || undefined,
       originalUnitPrice: row.original_unit_price != null ? Number(row.original_unit_price) : null,
       discountPercentSnapshot:
         row.discount_percent_snapshot != null ? Number(row.discount_percent_snapshot) : null,
@@ -168,7 +176,55 @@ export async function getOrdersForBrand(
     byOrder.set(row.orders.id, existing);
   }
 
-  return [...byOrder.values()]
+  const orders = [...byOrder.values()];
+  if (orders.length) {
+    const { data: historyRows, error: historyError } = await supabaseAdmin
+      .from("order_status_history")
+      .select("order_id, status, note, created_at")
+      .in("order_id", orders.map((order) => order.id))
+      .order("created_at", { ascending: true });
+    if (historyError) throw new Error(`getOrdersForBrand(${brandSlug}) history failed: ${historyError.message}`);
+    for (const row of historyRows ?? []) {
+      const order = byOrder.get(row.order_id);
+      if (!order) continue;
+      order.history.push({ status: row.status, note: row.note ?? undefined, createdAt: row.created_at });
+    }
+    const now = Date.now();
+    for (const order of orders) {
+      if (order.fulfillmentType !== "brand_direct" || !["paid", "preparing"].includes(order.status)) continue;
+      const currentStatusStartedAt = [...order.history].reverse().find((entry) => entry.status === order.status)?.createdAt ?? order.createdAt;
+      order.isOverdue = now - new Date(currentStatusStartedAt).getTime() > 24 * 60 * 60 * 1000;
+    }
+  }
+  const itemsMissingImages = orders.flatMap((order) => order.items).filter((item) => !item.image && item.variantId);
+  if (itemsMissingImages.length) {
+    const productIds = [...new Set(itemsMissingImages.map((item) => item.productId))];
+    const [variantsByProduct, mediaResult] = await Promise.all([
+      getVariantsForProducts(productIds, supabaseAdmin),
+      supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+        .not("color_option_value_id", "is", null)
+        .order("display_order", { ascending: true }),
+    ]);
+    if (mediaResult.error) throw new Error(`getOrdersForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
+
+    const mediaByColor = new Map<string, string>();
+    for (const media of mediaResult.data ?? []) {
+      if (!media.color_option_value_id) continue;
+      const key = `${media.product_id}:${media.color_option_value_id}`;
+      if (!mediaByColor.has(key)) mediaByColor.set(key, media.storage_reference);
+    }
+    const variantsById = new Map([...variantsByProduct.values()].flat().map((variant) => [variant.id, variant] as const));
+    for (const item of itemsMissingImages) {
+      const colorValue = variantsById.get(item.variantId!)?.optionValues.find((value) => value.optionTypeName.toLowerCase() === "color");
+      if (colorValue) item.image = mediaByColor.get(`${item.productId}:${colorValue.optionValueId}`);
+    }
+  }
+
+  return orders
     .map((order) => ({
       ...order,
       brandProductsSubtotalEgp: Math.round(order.brandProductsSubtotalEgp * 100) / 100,
@@ -190,6 +246,9 @@ export interface BrandVariant {
   lowStockThreshold: number;
   sellingStatus: SellingStatus;
   stockStatus: StockStatus;
+  soldLast30Days: number;
+  estimatedDaysRemaining?: number;
+  suggestedRestock: number;
 }
 
 export interface InventoryMovement {
@@ -252,13 +311,44 @@ export async function getVariantsForBrand(
   }
 
   const rows = ((data as unknown as BrandVariantRow[]) ?? []).filter((row) => row.products);
-  const variantsByProduct = await getVariantsForProducts(
-    [...new Set(rows.map((row) => row.product_id))],
-    impersonating ? supabaseAdmin : supabase
-  );
+  const productIds = [...new Set(rows.map((row) => row.product_id))];
+  const dataClient = impersonating ? supabaseAdmin : supabase;
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [variantsByProduct, mediaResult, salesResult] = await Promise.all([
+    getVariantsForProducts(productIds, dataClient),
+    productIds.length
+      ? dataClient
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+        .not("color_option_value_id", "is", null)
+        .order("display_order", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin
+      .from("order_items")
+      .select("variant_id, quantity, orders!inner(status, created_at)")
+      .eq("brand_slug", brandSlug)
+      .gte("orders.created_at", since)
+      .neq("orders.status", "cancelled"),
+  ]);
+  if (mediaResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
+  if (salesResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) sales failed: ${salesResult.error.message}`);
+
   const optionValuesByVariant = new Map(
     [...variantsByProduct.values()].flat().map((v) => [v.id, v.optionValues])
   );
+  const mediaByColor = new Map<string, string>();
+  for (const media of mediaResult.data ?? []) {
+    if (!media.color_option_value_id) continue;
+    const key = `${media.product_id}:${media.color_option_value_id}`;
+    if (!mediaByColor.has(key)) mediaByColor.set(key, media.storage_reference);
+  }
+  const soldByVariant = new Map<string, number>();
+  for (const sale of salesResult.data ?? []) {
+    if (!sale.variant_id) continue;
+    soldByVariant.set(sale.variant_id, (soldByVariant.get(sale.variant_id) ?? 0) + Number(sale.quantity));
+  }
 
   return rows.map((row) => {
     const threshold = effectiveLowStockThreshold(
@@ -266,11 +356,14 @@ export async function getVariantsForBrand(
       row.products!.default_low_stock_threshold
     );
     const optionValues = optionValuesByVariant.get(row.id) ?? [];
+    const colorValue = optionValues.find((option) => option.optionTypeName === "Color");
+    const soldLast30Days = soldByVariant.get(row.id) ?? 0;
+    const daysRemaining = estimateDaysRemaining(row.quantity, soldLast30Days);
     return {
       variantId: row.id,
       productId: row.product_id,
       productName: row.products!.name,
-      image: row.products!.image,
+      image: (colorValue ? mediaByColor.get(`${row.product_id}:${colorValue.optionValueId}`) : undefined) ?? row.products!.image,
       sku: row.sku,
       optionSummary: optionValues.map((option) => `${option.optionTypeName}: ${option.label}`).join(" / ") || "Default",
       color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
@@ -279,6 +372,9 @@ export async function getVariantsForBrand(
       lowStockThreshold: threshold,
       sellingStatus: row.selling_status,
       stockStatus: calculateStockStatus(row.quantity, threshold),
+      soldLast30Days,
+      estimatedDaysRemaining: daysRemaining ?? undefined,
+      suggestedRestock: suggestedRestockQuantity(row.quantity, threshold, soldLast30Days),
     };
   });
 }
