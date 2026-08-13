@@ -79,36 +79,32 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
       <DashboardPageHeader
         eyebrow="Overview"
         title={`Welcome back${owner.brandName ? `, ${owner.brandName}` : ""}`}
-        description="Track your business, handle urgent work, and keep your catalog ready for customers."
+        description="Track this month’s performance, handle urgent work, and keep your catalog ready for customers."
         actions={
-          <Link
-            href={`/brands/${owner.brandSlug}`}
-            target="_blank"
-            rel="noreferrer"
-            className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
-          >
-            <Eye className="mr-2 h-4 w-4" />
-            View storefront
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={attentionHref}
+              aria-label={pendingActions ? `${pendingActions} items need attention` : "Everything is up to date"}
+              className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${pendingActions ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
+            >
+              {pendingActions ? <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} /> : <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />}
+              <span className="tabular-nums">{pendingActions ? `${pendingActions} need attention` : "All up to date"}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href={`/brands/${owner.brandSlug}`}
+              target="_blank"
+              rel="noreferrer"
+              className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              View storefront
+            </Link>
+          </div>
         }
       />
 
-      <section aria-labelledby="performance-heading">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 id="performance-heading" className="text-[17px] font-bold tracking-[-0.02em] text-[#332c27]">Business performance</h2>
-            <p className="mt-1 text-[13px] text-[#81746a]">A concise view of this month and today.</p>
-          </div>
-          <Link
-            href={attentionHref}
-            aria-label={pendingActions ? `${pendingActions} items need attention` : "Everything is up to date"}
-            className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${pendingActions ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
-          >
-            {pendingActions ? <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} /> : <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />}
-            <span className="tabular-nums">{pendingActions ? `${pendingActions} need attention` : "All up to date"}</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
+      <section aria-label="Business performance">
         <div className="grid gap-4 tabular-nums sm:grid-cols-2 xl:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))]">
           <OverviewMetricCard
             label="Sales this month"

@@ -5,6 +5,7 @@ import { PAYMENT_ATTEMPT_STATUSES, PAYMENT_ATTEMPT_STATUS_LABELS, paymentAttempt
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 
 type PaymentSearchParams = { q?: string; status?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -88,12 +89,7 @@ export default async function AdminPaymentsPage(props: { searchParams: Promise<P
             ))}
           </select>
         </DashboardFilterField>
-        <DashboardFilterField label="From">
-          <input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} />
-        </DashboardFilterField>
-        <DashboardFilterField label="To">
-          <input type="date" name="to" defaultValue={params.to ?? ""} className={dashboardFilterControl} />
-        </DashboardFilterField>
+        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" className="sm:col-span-2 lg:min-w-[320px]" />
         <DashboardFilterField label="Sort">
           <select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}>
             <option value="">Newest</option>

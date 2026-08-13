@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Banknote, Check, ChevronLeft, ChevronRight, Clock3, CreditCard, Download, Filter, PackageCheck, Printer, RotateCcw, Search, Truck, X } from "lucide-react";
 import BrandOrderStatusControl from "@/components/brand-portal/BrandOrderStatusControl";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import { formatDateOnly, formatDateTime, formatPrice, formatSize } from "@/lib/format";
 import type { BrandOrder } from "@/lib/data/brandPortal";
@@ -92,7 +93,7 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
 
   return (
     <>
-      <section className="mt-6 overflow-hidden rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.045)]">
+      <section className="relative mt-6 overflow-visible rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.045)]">
         <div className="grid border-b border-[#eee7e1] lg:grid-cols-[1.25fr_repeat(4,minmax(0,1fr))]">
           {QUEUES.map((queue) => {
             const active = activeQueue === queue.key;
@@ -114,9 +115,8 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
             <button type="button" onClick={() => setFiltersOpen((value) => !value)} className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-4 text-[12px] font-bold transition ${filtersOpen ? "border-[#C85956]/30 bg-[#fff4f2] text-[#C85956]" : "border-[#e7ddd5] bg-white text-[#554940] hover:bg-[#fcfaf8]"}`}><Filter className="h-4 w-4" />More filters</button>
             <button className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white transition hover:bg-[#b84e4b]">Search</button>
           </div>
-          {filtersOpen && <div className="mt-4 grid gap-3 border-t border-[#f0e9e3] pt-4 sm:grid-cols-3">
-            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">From<input type="date" name="from" defaultValue={params.from ?? ""} className="mt-2 h-10 w-full rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12px] normal-case tracking-normal text-[#51473f] outline-none focus:border-[#C85956]/55" /></label>
-            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">To<input type="date" name="to" defaultValue={params.to ?? ""} className="mt-2 h-10 w-full rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12px] normal-case tracking-normal text-[#51473f] outline-none focus:border-[#C85956]/55" /></label>
+          {filtersOpen && <div className="mt-4 grid gap-3 border-t border-[#f0e9e3] pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(160px,1fr)]">
+            <DateRangePicker key={`${params.from ?? ""}-${params.to ?? ""}`} defaultFrom={params.from} defaultTo={params.to} />
             <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">Sort<select name="sort" defaultValue={params.sort ?? ""} className="mt-2 h-10 w-full rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12px] normal-case tracking-normal text-[#51473f] outline-none focus:border-[#C85956]/55"><option value="">Newest first</option><option value="oldest">Oldest first</option></select></label>
           </div>}
         </form>

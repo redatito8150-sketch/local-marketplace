@@ -8,6 +8,7 @@ import { diffEntitySnapshots } from "@/lib/auditDiff";
 import { getEntityAdminPath } from "@/lib/admin/entityLinks";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 
 const ENTITY_LABELS: Record<string, string> = { product: "Product", brand: "Brand", order: "Order", application: "Application", profile: "User", coupon: "Coupon", site_content: "Site content", page: "Page", review: "Review", collection: "Collection", option_type: "Option type", option_value: "Option value", inventory: "Inventory" };
 const ACTION_LABELS: Record<string, string> = { create: "Created", update: "Updated", delete: "Deleted", status_change: "Status changed", bulk_archive: "Bulk archived", bulk_publish: "Bulk published", bulk_delete: "Bulk deleted", restock: "Restocked", role_change: "Role changed", pause: "Paused", unpause: "Unpaused", request_deletion: "Deletion requested", approve: "Approved", request_changes: "Changes requested", reject_deletion: "Deletion rejected", archive: "Archived", revert: "Reverted" };
@@ -26,8 +27,7 @@ export default async function AdminAuditLogPage(props: { searchParams: Promise<{
         <DashboardFilterField label="Actor" className="lg:flex-1"><input name="actor" defaultValue={params.actor ?? ""} placeholder="Name or email" className={`${dashboardFilterControl} w-full lg:min-w-[220px]`} /></DashboardFilterField>
         <DashboardFilterField label="Entity"><select name="entityType" defaultValue={params.entityType ?? ""} className={dashboardFilterControl}><option value="">All entities</option>{Object.entries(ENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
         <DashboardFilterField label="Action"><select name="action" defaultValue={params.action ?? ""} className={dashboardFilterControl}><option value="">All actions</option>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="From"><input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
-        <DashboardFilterField label="To"><input type="date" name="to" defaultValue={params.to ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
+        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" className="sm:col-span-2 lg:min-w-[320px]" />
       </DashboardFilters>
       <DashboardPanel className="mt-6">
         {logs.length ? <div className="divide-y divide-slate-100">{logs.map((log) => {

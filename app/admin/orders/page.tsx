@@ -6,6 +6,7 @@ import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/li
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
 import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 
 type OrderSearchParams = { q?: string; status?: string; brand?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -46,8 +47,7 @@ export default async function AdminOrdersPage(props: { searchParams: Promise<Ord
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Purchase #, order, customer or email" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
         <DashboardFilterField label="Status"><select name="status" defaultValue={params.status ?? ""} className={dashboardFilterControl}><option value="">All statuses</option>{ORDER_STATUSES.map((status) => <option key={status} value={status}>{ORDER_STATUS_LABELS[status]}</option>)}</select></DashboardFilterField>
         <DashboardFilterField label="Brand"><select name="brand" defaultValue={params.brand ?? ""} className={dashboardFilterControl}><option value="">All brands</option>{brands.map((brand) => <option key={brand}>{brand}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="From"><input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
-        <DashboardFilterField label="To"><input type="date" name="to" defaultValue={params.to ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
+        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" className="sm:col-span-2 lg:min-w-[320px]" />
         <DashboardFilterField label="Sort"><select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}><option value="">Newest</option><option value="oldest">Oldest</option><option value="total-desc">Highest total</option><option value="total-asc">Lowest total</option></select></DashboardFilterField>
       </DashboardFilters>
 
