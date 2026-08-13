@@ -179,6 +179,19 @@ test("resolveIntentionCart carries the product's image into each resolved line i
   if (result.ok) assert.equal(result.lineItems[0].image, "https://cdn.example.com/shirt.jpg");
 });
 
+test("resolveIntentionCart snapshots the selected color image instead of the product cover", () => {
+  const productById = new Map([
+    ["prod-1", product({
+      image: "https://cdn.example.com/cover.jpg",
+      color_images_by_option_value_id: { "v-color": "https://cdn.example.com/sand.jpg" },
+    })],
+  ]);
+  const variantsByProduct = new Map([["prod-1", [variant()]]]);
+  const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.lineItems[0].image, "https://cdn.example.com/sand.jpg");
+});
+
 test("computeIntentionAmount's internal fulfillment-grouping pass preserves each line's image", () => {
   const lineItems = [
     {

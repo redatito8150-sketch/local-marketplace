@@ -4,6 +4,7 @@ import { formatDateOnly, formatPrice } from "@/lib/format";
 import { PAYMENT_ATTEMPT_STATUSES, PAYMENT_ATTEMPT_STATUS_LABELS, paymentAttemptStatusBadgeClass } from "@/lib/admin/statuses";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
 
 type PaymentSearchParams = { q?: string; status?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -14,14 +15,14 @@ const PAGE_SIZE = 25;
 export default async function AdminPaymentsPage(props: { searchParams: Promise<PaymentSearchParams> }) {
   const params = await props.searchParams;
   const allAttempts = await getAllPaymentAttemptsForAdmin();
-  const query = params.q?.trim().toLowerCase();
+  const query = normalizeSearchText(params.q ?? "");
+  const referenceQuery = normalizeReference(params.q ?? "");
 
   const filtered = allAttempts.filter((attempt) => {
     if (
       query &&
-      !`${attempt.specialReference} ${attempt.masterOrderNumber ?? ""} ${attempt.userEmail ?? ""}`
-        .toLowerCase()
-        .includes(query)
+      !normalizeSearchText(`${attempt.specialReference} ${attempt.masterOrderNumber ?? ""} ${attempt.userEmail ?? ""}`).includes(query)
+      && !(referenceQuery.length >= 3 && [attempt.specialReference, attempt.masterOrderNumber].some((value) => normalizeReference(value ?? "").includes(referenceQuery)))
     ) {
       return false;
     }

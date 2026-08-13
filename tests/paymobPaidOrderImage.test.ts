@@ -58,7 +58,7 @@ test("the fix does not touch bucketing, stock decrement, or shipping — only th
   assert.ok(compacted.includes("exceptionwhenothersthen"));
 });
 
-test("Paymob intention route now selects the product image, and it flows into ResolvedIntentionLine/ProductLookupRow", () => {
+test("Paymob intention resolves the selected color image and falls back to the product cover", () => {
   const route = read("app/api/payments/paymob/intention/route.ts");
   const selectMatch = route.match(/\.select\(\s*\n?\s*"([^"]*)"/);
   assert.ok(selectMatch, "expected a .select(...) call for the products query");
@@ -67,5 +67,6 @@ test("Paymob intention route now selects the product image, and it flows into Re
   const intentionCart = read("lib/payments/intentionCart.ts");
   assert.match(intentionCart, /export interface ProductLookupRow \{[\s\S]*?image: string;[\s\S]*?\}/);
   assert.match(intentionCart, /export interface ResolvedIntentionLine \{[\s\S]*?image: string;[\s\S]*?\}/);
-  assert.match(intentionCart, /image: product\.image,/);
+  assert.match(intentionCart, /color_images_by_option_value_id/);
+  assert.match(intentionCart, /\]\s*\?\? product\.image,/);
 });

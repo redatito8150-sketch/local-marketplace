@@ -5,6 +5,7 @@ import { formatDateOnly, formatPrice } from "@/lib/format";
 import { ORDER_STATUSES, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
+import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
 
 type OrderSearchParams = { q?: string; status?: string; brand?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -12,9 +13,14 @@ const PAGE_SIZE = 25;
 export default async function AdminOrdersPage(props: { searchParams: Promise<OrderSearchParams> }) {
   const params = await props.searchParams;
   const allOrders = await getAllOrdersForAdmin();
-  const query = params.q?.trim().toLowerCase();
+  const query = normalizeSearchText(params.q ?? "");
+  const referenceQuery = normalizeReference(params.q ?? "");
   const filtered = allOrders.filter((order) => {
-    if (query && !`${order.masterOrderNumber} ${order.orderNumber} ${order.shippingName} ${order.shippingEmail}`.toLowerCase().includes(query)) return false;
+    if (query) {
+      const text = normalizeSearchText(`${order.masterOrderNumber} ${order.orderNumber} ${order.shippingName} ${order.shippingEmail}`);
+      const referenceMatch = referenceQuery.length >= 3 && [order.masterOrderNumber, order.orderNumber].some((value) => normalizeReference(value ?? "").includes(referenceQuery));
+      if (!text.includes(query) && !referenceMatch) return false;
+    }
     if (params.status && order.status !== params.status) return false;
     if (params.brand && !order.items.some((item) => item.brand === params.brand)) return false;
     if (params.from && new Date(order.createdAt) < new Date(`${params.from}T00:00:00`)) return false;

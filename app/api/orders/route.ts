@@ -21,6 +21,7 @@ import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getVariantEffectivePrice } from "@/lib/pricing";
 import { DEFAULT_SHIPPING_SETTINGS } from "@/content/settings";
 import { isPublishDateLive } from "@/lib/newArrivals";
+import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 import type { ShippingSettingsContent } from "@/types";
 
 export async function GET(request: NextRequest) {
@@ -135,7 +136,7 @@ export async function POST(request: NextRequest) {
   // client-submitted values — the client only sends product id +
   // size/color/quantity, never a price or variant id we'd act on directly.
   const productIds = [...new Set(items.map((i) => i.productId))];
-  const [{ data: products, error: productsError }, variantsByProduct] = await Promise.all([
+  const [{ data: products, error: productsError }, variantsByProduct, mediaResult] = await Promise.all([
     supabaseAdmin
       .from("products")
       .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)")
@@ -144,6 +145,13 @@ export async function POST(request: NextRequest) {
       logError("Order variant lookup failed", error.message);
       return null;
     }),
+    supabaseAdmin
+      .from("product_media")
+      .select("product_id, storage_reference, color_option_value_id")
+      .in("product_id", productIds)
+      .eq("is_archived", false)
+      .not("color_option_value_id", "is", null)
+      .order("display_order", { ascending: true }),
   ]);
 
   if (productsError) {
@@ -159,8 +167,16 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  if (mediaResult.error) {
+    logError("Order variant image lookup failed", mediaResult.error.message);
+    return NextResponse.json(
+      { error: "We couldn't validate your cart. Please try again." },
+      { status: 500 }
+    );
+  }
 
   const productById = new Map((products ?? []).map((p) => [p.id, p]));
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
 
   for (const item of items) {
     const product = productById.get(item.productId);
@@ -247,7 +263,7 @@ export async function POST(request: NextRequest) {
         size: item.size,
         color: item.color ?? "",
         quantity: item.quantity,
-        image: product.image,
+        image: resolveVariantImage(product.id, variant, colorImages, product.image),
       };
     });
   } catch (error) {

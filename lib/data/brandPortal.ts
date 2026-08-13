@@ -5,6 +5,7 @@ import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
 import type { OrderItemDiscountSource, SellingStatus, StockStatus } from "@/types";
+import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 
 // Every query here uses the cookie-aware anon client by default (never
 // supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
@@ -196,10 +197,10 @@ export async function getOrdersForBrand(
       order.isOverdue = now - new Date(currentStatusStartedAt).getTime() > 24 * 60 * 60 * 1000;
     }
   }
-  const itemsMissingImages = orders.flatMap((order) => order.items).filter((item) => !item.image && item.variantId);
-  if (itemsMissingImages.length) {
-    const productIds = [...new Set(itemsMissingImages.map((item) => item.productId))];
-    const [variantsByProduct, mediaResult] = await Promise.all([
+  const orderItems = orders.flatMap((order) => order.items);
+  if (orderItems.length) {
+    const productIds = [...new Set(orderItems.map((item) => item.productId))];
+    const [variantsByProduct, mediaResult, productsResult] = await Promise.all([
       getVariantsForProducts(productIds, supabaseAdmin),
       supabaseAdmin
         .from("product_media")
@@ -208,19 +209,22 @@ export async function getOrdersForBrand(
         .eq("is_archived", false)
         .not("color_option_value_id", "is", null)
         .order("display_order", { ascending: true }),
+      supabaseAdmin.from("products").select("id, image").in("id", productIds),
     ]);
     if (mediaResult.error) throw new Error(`getOrdersForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
+    if (productsResult.error) throw new Error(`getOrdersForBrand(${brandSlug}) products failed: ${productsResult.error.message}`);
 
-    const mediaByColor = new Map<string, string>();
-    for (const media of mediaResult.data ?? []) {
-      if (!media.color_option_value_id) continue;
-      const key = `${media.product_id}:${media.color_option_value_id}`;
-      if (!mediaByColor.has(key)) mediaByColor.set(key, media.storage_reference);
-    }
+    const mediaByColor = buildColorImageLookup(mediaResult.data ?? []);
+    const productCovers = new Map((productsResult.data ?? []).map((product) => [product.id, product.image as string]));
     const variantsById = new Map([...variantsByProduct.values()].flat().map((variant) => [variant.id, variant] as const));
-    for (const item of itemsMissingImages) {
-      const colorValue = variantsById.get(item.variantId!)?.optionValues.find((value) => value.optionTypeName.toLowerCase() === "color");
-      if (colorValue) item.image = mediaByColor.get(`${item.productId}:${colorValue.optionValueId}`);
+    for (const item of orderItems) {
+      const variant = item.variantId ? variantsById.get(item.variantId) : undefined;
+      item.image = resolveVariantImage(
+        item.productId,
+        variant,
+        mediaByColor,
+        item.image ?? productCovers.get(item.productId)
+      ) || undefined;
     }
   }
 

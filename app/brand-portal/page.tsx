@@ -17,7 +17,7 @@ import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand, getProductsForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin, getAuditLogsForBrand } from "@/lib/data/admin";
 import { getBestSellingColorsWithStatsForBrand } from "@/lib/data/collections";
-import { formatDateOnly, formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
@@ -27,7 +27,7 @@ import {
   DashboardPanel,
   dashboardButtonSecondary,
 } from "@/components/dashboard/DashboardUI";
-import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import BrandPerformanceAnalytics from "@/components/brand-portal/BrandPerformanceAnalytics";
 
 export default async function BrandPortalOverviewPage(props: { searchParams: Promise<{ brand?: string }> }) {
   const searchParams = await props.searchParams;
@@ -144,37 +144,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.45fr)]">
-        <DashboardPanel
-          title="Recent orders"
-          description="The latest orders containing products from your brand"
-          action={<Link href={`/brand-portal/orders${brandParam}`} className="text-[12.5px] font-semibold text-mahalyred hover:underline">View all orders</Link>}
-          className="border-[#e3dcd3] bg-[#fffdf9] shadow-[0_10px_30px_rgba(67,45,29,0.045)]"
-        >
-          {orders.length ? (
-            <div className="divide-y divide-[#eee7de]">
-              {orders.slice(0, 4).map((order) => (
-                <article key={order.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[#fbf8f4] sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                  <div className="min-w-0">
-                    <p className="text-[13.5px] font-bold tabular-nums text-[#332c27]">#{order.orderNumber}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#81746a]">
-                      <span>{order.shippingName}</span>
-                      <span>{order.shippingCity}</span>
-                      <time dateTime={order.createdAt}>{formatDateOnly(order.createdAt)}</time>
-                    </div>
-                  </div>
-                  <div className="flex flex-none items-center justify-between gap-3 sm:justify-end">
-                    <p className="text-[13.5px] font-bold tabular-nums text-[#332c27]">{formatPrice(orderRevenue(order), "EGP")}</p>
-                    <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${orderStatusBadgeClass(order.status as never)}`}>
-                      {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS] ?? order.status}
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <DashboardEmptyState title="No orders yet" description="Orders containing your products will appear here." />
-          )}
-        </DashboardPanel>
+        <BrandPerformanceAnalytics orders={orders} />
 
         <DashboardPanel
           title="Inventory health"
