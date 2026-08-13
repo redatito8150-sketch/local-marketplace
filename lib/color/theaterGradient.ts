@@ -60,13 +60,13 @@ function hslToHex(h: number, s: number, l: number): string {
 // while animating between two gradient strings, and silently drops
 // keyword-only segments like "ellipse at center".
 export const DEFAULT_THEATER_GLOW =
-  "radial-gradient(at 50% 50%, rgba(231,177,44,.58) 0%, rgba(218,158,25,.3) 38%, rgba(193,132,20,.1) 60%, transparent 76%)";
+  "radial-gradient(at 50% 50%, rgba(200,89,86,.22) 0%, rgba(173,126,116,.12) 40%, rgba(111,87,77,.05) 62%, transparent 78%)";
 
 export function theaterGlowFromHex(hex: string | undefined): string {
   const rgb = hex ? hexToRgb(hex) : null;
   if (!rgb) return DEFAULT_THEATER_GLOW;
   const { r, g, b } = rgb;
-  return `radial-gradient(at 50% 50%, rgba(${r},${g},${b},.58) 0%, rgba(${r},${g},${b},.3) 38%, rgba(${r},${g},${b},.1) 60%, transparent 76%)`;
+  return `radial-gradient(at 50% 50%, rgba(${r},${g},${b},.26) 0%, rgba(${r},${g},${b},.14) 40%, rgba(${r},${g},${b},.05) 62%, transparent 78%)`;
 }
 
 export function theaterGradientFromHex(hex: string | undefined): string {

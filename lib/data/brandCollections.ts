@@ -131,5 +131,33 @@ export async function getAllCollectionsForBrand(brandId: string): Promise<Collec
   }
 
   if (error) throw new Error(`getAllCollectionsForBrand failed: ${error.message}`);
-  return ((data as CollectionRow[] | null) ?? []).map(toCollectionRecord);
+
+  const records = ((data as CollectionRow[] | null) ?? []).map(toCollectionRecord);
+  if (!records.length) return records;
+
+  const { data: products, error: productsError } = await supabaseAdmin
+    .from("products")
+    .select("collection_id, image")
+    .eq("brand_id", brandId)
+    .in("collection_id", records.map((collection) => collection.id))
+    .order("created_at", { ascending: false });
+
+  if (productsError) throw new Error(`getAllCollectionsForBrand products failed: ${productsError.message}`);
+
+  const productSummary = new Map<string, { count: number; images: string[] }>();
+  for (const product of products ?? []) {
+    if (!product.collection_id) continue;
+    const current = productSummary.get(product.collection_id) ?? { count: 0, images: [] };
+    current.count += 1;
+    if (product.image && current.images.length < 4 && !current.images.includes(product.image)) {
+      current.images.push(product.image);
+    }
+    productSummary.set(product.collection_id, current);
+  }
+
+  return records.map((collection) => ({
+    ...collection,
+    productCount: productSummary.get(collection.id)?.count ?? 0,
+    productPreviewImages: productSummary.get(collection.id)?.images ?? [],
+  }));
 }

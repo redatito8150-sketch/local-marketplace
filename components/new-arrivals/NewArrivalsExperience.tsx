@@ -7,37 +7,21 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
-  Baby,
   BadgeCheck,
-  Grid2X2,
   Heart,
-  Package,
-  Shirt,
   ShoppingBag,
-  Sparkles,
-  UserRound,
 } from "lucide-react";
+import CatalogControls, { CatalogEmptyState } from "@/components/category/CatalogControls";
+import CompactProductCard from "@/components/shared/CompactProductCard";
 import { formatPrice } from "@/lib/format";
-import { useCart } from "@/context/CartContext";
 import { useWishlist } from "@/context/WishlistContext";
 import { isVariantPurchasable } from "@/lib/inventory/stockStatus";
-import { getEffectivePrice } from "@/lib/pricing";
-import CompactProductCard from "@/components/shared/CompactProductCard";
+import { getVariantEffectivePrice } from "@/lib/pricing";
+import { buildDynamicFilterGroups } from "@/lib/filters";
+import { useProductFilters } from "@/lib/hooks/useProductFilters";
+import { NEW_ARRIVAL_WINDOW_DAYS } from "@/lib/newArrivals";
 import { DEFAULT_THEATER_GRADIENT, theaterGlowFromHex, theaterGradientFromHex } from "@/lib/color/theaterGradient";
 import type { Product } from "@/types";
-
-type ProductKind = "clothing" | "accessories" | "shoes" | "bags";
-
-const FILTERS = [
-  { id: "all", label: "All", icon: Grid2X2 },
-  { id: "women", label: "Women", icon: UserRound },
-  { id: "men", label: "Men", icon: UserRound },
-  { id: "unisex", label: "Unisex", icon: Shirt },
-  { id: "accessories", label: "Accessories", icon: Sparkles },
-  { id: "shoes", label: "Shoes", icon: Package },
-  { id: "bags", label: "Bags", icon: ShoppingBag },
-  { id: "kids_baby", label: "Kids", icon: Baby },
-] as const;
 
 const SLOT_X = [
   "-50%",
@@ -45,14 +29,6 @@ const SLOT_X = [
   "calc(-50% + clamp(250px, 28vw, 360px))",
   "calc(-50% + clamp(375px, 42vw, 540px))",
 ] as const;
-
-function inferKind(product: Product): ProductKind {
-  const taxonomy = `${product.mainCategory} ${product.productGroup} ${product.productTypeName}`.toLowerCase();
-  if (taxonomy.includes("shoe") || taxonomy.includes("sneaker") || taxonomy.includes("loafer")) return "shoes";
-  if (taxonomy.includes("bag") || taxonomy.includes("backpack")) return "bags";
-  if (taxonomy.includes("accessor")) return "accessories";
-  return "clothing";
-}
 
 function relativeSlot(index: number, activeIndex: number, length: number) {
   let distance = (index - activeIndex + length) % length;
@@ -67,11 +43,18 @@ function normalizeIndex(step: number, length: number) {
 function getPurchaseDetails(product: Product) {
   const variants = product.variants ?? [];
   const variant = variants.find((item) => isVariantPurchasable(item)) ?? variants[0];
+  const basePrice = variant?.variantPrice ?? product.price;
+  const pricing = getVariantEffectivePrice(
+    product.price,
+    variant?.variantPrice,
+    product.discountPercent,
+    product.discountEndsAt,
+    variant?.variantDiscountPercent
+  );
   return {
-    variant,
-    price: getEffectivePrice(variant?.variantPrice ?? product.price, product.discountPercent, product.discountEndsAt),
-    size: variant?.optionValues.find((option) => option.optionTypeName === "Size")?.label ?? product.sizes[0] ?? "",
-    color: variant?.optionValues.find((option) => option.optionTypeName === "Color")?.label,
+    basePrice,
+    price: pricing.price,
+    discountActive: pricing.active,
   };
 }
 
@@ -83,7 +66,7 @@ function TheaterProductCard({ product, slot }: { product: Product; slot: number 
   const opacity = [1, 0.92, 0.76, 0.5];
   const blur = [0, 0.2, 0.8, 1.8];
   const depthFilter = distance === 0
-    ? "blur(0px) drop-shadow(0 12px 24px rgba(193,128,13,.45)) drop-shadow(0 0 20px rgba(224,170,49,.58))"
+    ? "blur(0px) drop-shadow(0 18px 28px rgba(66,48,39,.18)) drop-shadow(0 0 18px rgba(200,89,86,.16))"
     : `blur(${blur[distance]}px)`;
   const x = distance === 0
     ? SLOT_X[0]
@@ -117,7 +100,6 @@ function TheaterProductCard({ product, slot }: { product: Product; slot: number 
 
 function ProductTheater({ products, onActiveColorChange }: { products: Product[]; onActiveColorChange?: (hex: string | undefined) => void }) {
   const reduceMotion = useReducedMotion();
-  const { addItem } = useCart();
   const { toggleItem, isWishlisted } = useWishlist();
   const [activeStep, setActiveStep] = useState(() => Math.min(2, products.length - 1));
   const [interactionVersion, setInteractionVersion] = useState(0);
@@ -152,24 +134,6 @@ function ProductTheater({ products, onActiveColorChange }: { products: Product[]
     return () => window.clearInterval(timer);
   }, [interactionVersion, products.length, reduceMotion]);
 
-  const addActiveProduct = () => {
-    addItem({
-      productId: activeProduct.id,
-      variantId: purchase.variant?.id,
-      name: activeProduct.name,
-      brand: activeProduct.brand,
-      brandSlug: activeProduct.brandSlug ?? "",
-      price: purchase.price,
-      currency: activeProduct.currency,
-      image: activeProduct.image,
-      size: purchase.size,
-      color: purchase.color,
-      quantity: 1,
-      availableSizes: activeProduct.sizes,
-      availableColors: activeProduct.colors.map((item) => item.name),
-    });
-  };
-
   const toggleActiveWishlist = () => {
     toggleItem({
       productId: activeProduct.id,
@@ -183,7 +147,7 @@ function ProductTheater({ products, onActiveColorChange }: { products: Product[]
   };
 
   return (
-    <div className="relative min-h-[480px] overflow-hidden sm:min-h-[555px] lg:min-h-[610px]" style={{ perspective: "1200px" }}>
+    <div className="relative min-h-[465px] overflow-hidden sm:min-h-[520px] lg:min-h-[550px]" style={{ perspective: "1200px" }}>
       <div className="pointer-events-none absolute left-1/2 top-[6%] h-[64%] w-[72%] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(255,255,255,.95)_0%,rgba(255,244,236,.62)_44%,transparent_72%)] blur-2xl" />
       <motion.div
         animate={{ background: theaterGlowFromHex(activeProduct.colors[0]?.hex) }}
@@ -222,15 +186,15 @@ function ProductTheater({ products, onActiveColorChange }: { products: Product[]
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={`brand-${activeProduct.id}`} initial={{ opacity: 0, x: "-50%", y: 6, scale: 0.97 }} animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }} exit={{ opacity: 0, x: "-50%", y: -5, scale: 0.97 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ left: "calc(50% - clamp(125px, 14vw, 180px))" }} className="absolute bottom-[82px] flex h-[52px] w-[clamp(100px,11vw,150px)] items-center justify-center gap-1.5 text-center text-[9px] font-bold sm:text-[12px] lg:text-[13px]">
             <span className="max-w-[150px] truncate">{activeProduct.brand}</span>
-            <BadgeCheck className="h-4 w-4 shrink-0 fill-[#f4ae08] text-white" strokeWidth={2.2} />
+            <BadgeCheck className="h-4 w-4 shrink-0 fill-[#C85956] text-white" strokeWidth={2.2} />
           </motion.div>
         </AnimatePresence>
-        <button type="button" onClick={addActiveProduct} disabled={!activeProduct.inStock} aria-label={`Add ${activeProduct.name} to cart for ${formatPrice(purchase.price, activeProduct.currency)}`} className="pointer-events-auto absolute bottom-[88px] left-1/2 flex h-10 min-w-[118px] -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#df1719,#c50008)] px-4 text-[11px] font-bold text-white shadow-[0_9px_18px_rgba(184,0,8,.2),inset_0_1px_0_rgba(255,255,255,.28)] transition hover:scale-[1.025] hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-45 sm:h-[46px] sm:min-w-[160px] sm:text-[14px]">
+        <Link href={`/product/${activeProduct.id}`} aria-label={`View ${activeProduct.name} for ${formatPrice(purchase.price, activeProduct.currency)}`} className="pointer-events-auto absolute bottom-[88px] left-1/2 flex h-10 min-w-[148px] -translate-x-1/2 items-center justify-center gap-2 rounded-full bg-[#C85956] px-4 text-[10.5px] font-bold text-white shadow-[0_9px_18px_rgba(162,66,64,.24),inset_0_1px_0_rgba(255,255,255,.22)] transition hover:scale-[1.025] hover:bg-[#b94f4c] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#C85956] sm:h-[46px] sm:min-w-[190px] sm:text-[12.5px]">
           <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5" strokeWidth={1.8} />
           <AnimatePresence mode="wait" initial={false}>
-            <motion.span key={`price-${activeProduct.id}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>{formatPrice(purchase.price, activeProduct.currency)}</motion.span>
+            <motion.span key={`price-${activeProduct.id}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.18 }}>{activeProduct.inStock ? "View product" : "View details"} · {formatPrice(purchase.price, activeProduct.currency)}</motion.span>
           </AnimatePresence>
-        </button>
+        </Link>
         <AnimatePresence mode="wait" initial={false}>
           <motion.button key={`wishlist-${activeProduct.id}`} type="button" onClick={toggleActiveWishlist} aria-label={wishlisted ? `Remove ${activeProduct.name} from wishlist` : `Add ${activeProduct.name} to wishlist`} initial={{ opacity: 0, x: "-50%", y: 6, scale: 0.86 }} animate={{ opacity: 1, x: "-50%", y: 0, scale: 1 }} exit={{ opacity: 0, x: "-50%", y: -5, scale: 0.86 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ left: "calc(50% + clamp(125px, 14vw, 180px))" }} className="pointer-events-auto absolute bottom-[89px] flex h-11 w-11 items-center justify-center rounded-full transition-colors hover:text-mahalyred">
             <Heart className="h-6 w-6 sm:h-7 sm:w-7" fill={wishlisted ? "currentColor" : "none"} strokeWidth={1.5} />
@@ -248,26 +212,41 @@ function ProductTheater({ products, onActiveColorChange }: { products: Product[]
 }
 
 export default function NewArrivalsExperience({ products }: { products: Product[] }) {
-  const [activeFilter, setActiveFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
-  const [sort, setSort] = useState("newest");
   const [heroGradient, setHeroGradient] = useState(DEFAULT_THEATER_GRADIENT);
   const handleActiveColorChange = useCallback((hex: string | undefined) => {
     setHeroGradient(theaterGradientFromHex(hex));
   }, []);
   const arrivals = products;
-  const theaterProducts = useMemo(() => arrivals.slice(0, 9), [arrivals]);
-  const visibleArrivals = useMemo(() => {
-    const filtered = arrivals.filter((item) => {
-      if (activeFilter === "all") return true;
-      const kind = inferKind(item);
-      if (activeFilter === "accessories") return kind === "accessories" || kind === "bags";
-      if (activeFilter === "shoes" || activeFilter === "bags") return kind === activeFilter;
-      return item.audience === activeFilter;
-    });
-    if (sort === "price-low") return [...filtered].sort((a, b) => a.price - b.price);
-    if (sort === "price-high") return [...filtered].sort((a, b) => b.price - a.price);
-    return filtered;
-  }, [activeFilter, arrivals, sort]);
+  const theaterProducts = useMemo(() => arrivals.slice(0, 7), [arrivals]);
+  const filterGroups = useMemo(() => buildDynamicFilterGroups(arrivals), [arrivals]);
+  const productTypeRelations = useMemo(
+    () => arrivals.map((product) => ({ mainCategory: product.mainCategory, productType: product.productTypeName })),
+    [arrivals]
+  );
+  const {
+    selected,
+    sort,
+    setSort,
+    toggleFilter,
+    clearFilters,
+    sortedProducts: visibleArrivals,
+    priceBounds,
+    setPriceRange,
+  } = useProductFilters(arrivals);
+
+  if (!arrivals.length) {
+    return (
+      <section className="relative grid min-h-[68vh] place-items-center overflow-hidden bg-[radial-gradient(circle_at_50%_28%,#fffdfb_0%,#f7eee8_48%,#eee1d8_100%)] px-6 py-20 text-center">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/55 blur-3xl" />
+        <div className="relative max-w-lg">
+          <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#C85956]">New on Zakhnook</p>
+          <h1 className="mt-4 font-serif text-[42px] font-semibold leading-[1.05] tracking-[-.04em] text-[#242424] sm:text-[54px]">The next drop is taking shape.</h1>
+          <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-[#6f655f]">There are no products inside the new-arrival window today. Explore the full marketplace while our brands prepare what is next.</p>
+          <Link href="/shop/all" className="mt-7 inline-flex h-11 items-center gap-2 rounded-full bg-[#C85956] px-6 text-xs font-bold text-white transition hover:bg-[#b94f4c] active:scale-[.98]">Explore all products <ArrowRight className="h-4 w-4" /></Link>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div className="bg-[#f7f3ee] text-ink">
@@ -285,10 +264,9 @@ export default function NewArrivalsExperience({ products }: { products: Product[
           <div className="relative z-30 flex flex-col items-center px-7 pb-1 pt-11 text-center sm:px-12 sm:pt-12 lg:pt-14">
             <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mb-3 text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#cf1014] sm:text-[11px]">New on Zakhnook</motion.p>
             <motion.h1 id="new-arrivals-title" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.65, delay: 0.06, ease: [0.22, 1, 0.36, 1] }} className="font-serif text-[39px] font-semibold leading-[1.06] tracking-[-0.04em] text-[#12100f] sm:text-[48px] lg:text-[54px]">Just landed, locally made.</motion.h1>
-            <p className="mt-3 max-w-[660px] text-[13px] leading-6 text-[#5f5a56] sm:text-[14px]">Fresh drops from Egypt&apos;s most exciting independent brands — updated every week.</p>
-            <Link href="#more-to-explore" className="group mt-3 inline-flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.04em] text-[#cc1115]">The everyday edit <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" strokeWidth={1.8} /></Link>
+            <p className="mt-3 max-w-[660px] text-[13px] leading-6 text-[#5f5a56] sm:text-[14px]">The latest pieces from Egypt&apos;s independent brands, collected as soon as they arrive.</p>
           </div>
-          <div className="mx-auto w-full max-w-[1500px]">
+          <div className="mx-auto mt-6 w-full max-w-[1500px]">
             {theaterProducts.length ? (
               <ProductTheater products={theaterProducts} onActiveColorChange={handleActiveColorChange} />
             ) : (
@@ -301,23 +279,33 @@ export default function NewArrivalsExperience({ products }: { products: Product[
         </div>
       </motion.section>
 
-      <section id="more-to-explore" className="relative mx-auto max-w-[1500px] scroll-mt-24 px-5 pb-20 pt-10 sm:px-8 lg:px-12">
-        <div className="relative z-20 rounded-[16px] border border-black/5 bg-white/90 px-3 shadow-[0_14px_45px_rgba(44,31,22,.10)] backdrop-blur-xl sm:px-5">
-          <div className="no-scrollbar flex items-center gap-1 overflow-x-auto">
-            {FILTERS.map(({ id, label, icon: Icon }) => <button key={id} type="button" onClick={() => setActiveFilter(id)} className={`relative flex min-w-[116px] flex-1 items-center justify-center gap-2.5 px-4 py-4 text-[11px] font-medium transition-colors ${activeFilter === id ? "text-mahalyred" : "text-ink-soft hover:text-ink"}`}><Icon className="h-[18px] w-[18px]" strokeWidth={1.5} />{label}{activeFilter === id ? <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-mahalyred" /> : null}</button>)}
-          </div>
+      <section id="more-to-explore" className="relative mx-auto max-w-[1440px] scroll-mt-24 px-5 pb-20 pt-10 sm:px-8 lg:px-12">
+        <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#C85956]">Latest {NEW_ARRIVAL_WINDOW_DAYS} days</p><h2 className="mt-1 font-serif text-[32px] font-semibold tracking-[-0.03em]">All new arrivals</h2></div>
+          <p className="text-[11px] tabular-nums text-ink-soft/60">{visibleArrivals.length} {visibleArrivals.length === 1 ? "item" : "items"}</p>
         </div>
-        <div className="mb-5 mt-10 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div><p className="text-[10px] font-bold uppercase tracking-[0.2em] text-mahalyred">Fresh this week</p><h2 className="mt-1 font-serif text-[32px] font-semibold tracking-[-0.03em]">More to explore</h2></div>
-          <div className="flex items-center gap-2.5 text-[11px]"><label className="sr-only" htmlFor="new-arrivals-sort">Sort new arrivals</label><select id="new-arrivals-sort" value={sort} onChange={(event) => setSort(event.target.value)} className="rounded-full border border-black/10 bg-white px-4 py-2 outline-none transition focus:border-mahalyred/50"><option value="newest">Newest first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select><span className="rounded-full border border-black/10 bg-white px-4 py-2">This week</span><span className="ml-2 whitespace-nowrap text-ink-soft/60">{visibleArrivals.length} items</span></div>
-        </div>
+        <CatalogControls
+          groups={filterGroups}
+          products={arrivals}
+          productTypeRelations={productTypeRelations}
+          selected={selected}
+          onToggle={toggleFilter}
+          onClear={clearFilters}
+          productCount={visibleArrivals.length}
+          viewMode="grid"
+          onViewModeChange={() => undefined}
+          sort={sort}
+          onSortChange={setSort}
+          priceBounds={priceBounds}
+          onPriceChange={setPriceRange}
+        />
         {visibleArrivals.length ? (
-          <motion.div layout className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <motion.div layout className="mt-6 grid grid-cols-1 gap-5 min-[460px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
             <AnimatePresence mode="popLayout">
               {visibleArrivals.map((item, index) => <motion.div key={item.id} layout initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.38, delay: Math.min(index, 5) * 0.04 }}><CompactProductCard product={item} /></motion.div>)}
             </AnimatePresence>
           </motion.div>
-        ) : <div className="rounded-[18px] border border-dashed border-black/10 bg-white/55 py-16 text-center"><p className="font-serif text-2xl">More local drops are on the way.</p><button type="button" onClick={() => setActiveFilter("all")} className="mt-4 text-sm font-semibold text-mahalyred">View all arrivals</button></div>}
+        ) : <CatalogEmptyState onClear={clearFilters} />}
       </section>
     </div>
   );
