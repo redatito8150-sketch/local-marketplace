@@ -84,14 +84,49 @@ test("blocker computation is direction-aware: remaining brand stock/open inbound
   assert.match(fn, /'OPEN_WAREHOUSE_DOCUMENT_PENDING'/);
 });
 
-test("request_fulfillment_mode_transition snapshots stock, is idempotent on operation_key, refuses a second open transition, and (for brand->zakhnook) atomically moves brand-held quantity into brand_stock_quantity so it stops being sellable", () => {
+test("request_fulfillment_mode_transition locks the brand row BEFORE checking the operation_key (item 12) — the idempotency check can no longer run unlocked", () => {
   const fn = migration.match(/create or replace function public\.request_fulfillment_mode_transition\([\s\S]*?\n\$\$;/i)![0];
-  assert.match(fn, /select id, operation_key into v_existing\s*\n\s*from public\.brand_fulfillment_transitions\s*\n\s*where operation_key = p_operation_key;/);
-  assert.match(fn, /jsonb_build_object\('transition_id', v_existing\.id, 'replayed', true\)/);
+  const lockIndex = fn.indexOf("select fulfillment_mode into v_from_mode from public.brands where id = p_brand_id for update;");
+  const idempotencyCheckIndex = fn.indexOf("select id, brand_id, to_mode into v_existing\n  from public.brand_fulfillment_transitions\n  where operation_key = p_operation_key;");
+  assert.ok(lockIndex !== -1, "expected the brand lock statement");
+  assert.ok(idempotencyCheckIndex !== -1, "expected the post-lock idempotency check");
+  assert.ok(lockIndex < idempotencyCheckIndex, "brand lock must happen before the operation_key check");
+});
+
+test("request_fulfillment_mode_transition only treats an operation_key match as a safe replay when brand_id AND to_mode both match — any other match is an explicit IDEMPOTENCY_CONFLICT, never a silent replay (item 12)", () => {
+  const fn = migration.match(/create or replace function public\.request_fulfillment_mode_transition\([\s\S]*?\n\$\$;/i)![0];
+  assert.match(fn, /if v_existing\.brand_id = p_brand_id and v_existing\.to_mode = p_to_mode then\s*\n\s*return jsonb_build_object\('transition_id', v_existing\.id, 'replayed', true\);\s*\n\s*end if;\s*\n\s*raise exception 'IDEMPOTENCY_CONFLICT';/);
+  // Same match/conflict logic is repeated in the unique_violation race
+  // handler — a concurrent insert loss must be re-validated identically,
+  // never assumed safe just because *a* row now exists for that key.
+  assert.match(fn, /exception when unique_violation then/);
+  const raceHandler = fn.slice(fn.indexOf("exception when unique_violation then"));
+  assert.match(raceHandler, /if v_existing\.id is not null and v_existing\.brand_id = p_brand_id and v_existing\.to_mode = p_to_mode then/);
+  assert.match(raceHandler, /raise exception 'IDEMPOTENCY_CONFLICT';/);
+});
+
+test("request_fulfillment_mode_transition refuses a second open transition and atomically moves brand-held quantity into brand_stock_quantity so it stops being sellable", () => {
+  const fn = migration.match(/create or replace function public\.request_fulfillment_mode_transition\([\s\S]*?\n\$\$;/i)![0];
   assert.match(fn, /raise exception 'FULFILLMENT_TRANSITION_ALREADY_OPEN';/);
-  assert.match(fn, /brand_stock_quantity = brand_stock_quantity \+ quantity,\s*\n\s*quantity = 0,/);
+  assert.match(fn, /brand_stock_quantity = brand_stock_quantity \+ v_original_quantity,\s*\n\s*quantity = 0,/);
   assert.match(fn, /order by pv\.id\s*\n\s*for update of pv/);
   assert.match(fn, /'brand_location', 'in_transit_to_zakhnook', 'fulfillment_transition', v_transition_id/);
+});
+
+test("item 2: the cutover ledger entry captures the original quantity from the locking cursor BEFORE the UPDATE zeroes it, never re-reading the row afterward", () => {
+  const fn = migration.match(/create or replace function public\.request_fulfillment_mode_transition\([\s\S]*?\n\$\$;/i)![0];
+  // The lock cursor selects quantity explicitly, and v_original_quantity is
+  // assigned from it BEFORE the UPDATE statement — not derived from a
+  // second read of product_variants after the row has already changed.
+  assert.match(fn, /select pv\.id, pv\.quantity\s*\n\s*from public\.product_variants pv/);
+  assert.match(fn, /v_original_quantity := v_lock\.quantity;/);
+  const captureIndex = fn.indexOf("v_original_quantity := v_lock.quantity;");
+  const updateIndex = fn.indexOf("set brand_stock_quantity = brand_stock_quantity + v_original_quantity");
+  assert.ok(captureIndex !== -1 && updateIndex !== -1 && captureIndex < updateIndex);
+  // The ledger insert uses v_original_quantity for previous_quantity and
+  // -v_original_quantity for the delta — not a re-read of pv.quantity
+  // (which would already be 0 by the time this statement runs).
+  assert.match(fn, /select pv\.id, pv\.product_id, p_brand_id, v_original_quantity, -v_original_quantity, 0,/);
 });
 
 test("activate_fulfillment_mode_transition re-checks blockers under lock before flipping the mode, and reverts the guard-flag pattern correctly (sets the session flag immediately before, and only before, the one UPDATE that changes fulfillment_mode)", () => {
@@ -111,11 +146,33 @@ test("activate_fulfillment_mode_transition (zakhnook->brand) moves residual bran
   assert.match(fn, /'returned_to_brand', 'brand_location', 'fulfillment_transition', p_transition_id/);
 });
 
+test("item 11: activation is refused before effective_date, rather than silently ignoring the scheduling request", () => {
+  const fn = migration.match(/create or replace function public\.activate_fulfillment_mode_transition\([\s\S]*?\n\$\$;/i)![0];
+  assert.match(fn, /select id, brand_id, from_mode, to_mode, status, effective_date into v_transition/);
+  assert.match(fn, /if v_transition\.effective_date is not null and v_transition\.effective_date > now\(\) then\s*\n\s*raise exception 'EFFECTIVE_DATE_NOT_REACHED';/);
+});
+
+test("item 8: cancel_fulfillment_transition refuses to cancel once any of its own linked inbound documents has already delivered stock to Zakhnook (received/partially_received) — only resolvable via an auditable reverse transfer", () => {
+  const fn = migration.match(/create or replace function public\.cancel_fulfillment_transition\([\s\S]*?\n\$\$;/i)![0];
+  assert.match(fn, /select count\(\*\) into v_progressed_count\s*\n\s*from public\.warehouse_transfers\s*\n\s*where related_fulfillment_transition_id = p_transition_id\s*\n\s*and status in \('received', 'partially_received'\);/);
+  assert.match(fn, /raise exception 'FULFILLMENT_TRANSITION_CANNOT_CANCEL_STOCK_ALREADY_RECEIVED';/);
+  // The block check runs BEFORE the un-shipped-remainder reversal loop —
+  // cancellation must not partially revert anything before confirming it's
+  // actually safe to.
+  const blockIndex = fn.indexOf("raise exception 'FULFILLMENT_TRANSITION_CANNOT_CANCEL_STOCK_ALREADY_RECEIVED';");
+  const reversalIndex = fn.indexOf("quantity = quantity + brand_stock_quantity, brand_stock_quantity = 0");
+  assert.ok(blockIndex !== -1 && reversalIndex !== -1 && blockIndex < reversalIndex);
+});
+
 test("cancel_fulfillment_transition reverts any un-shipped cutover snapshot back onto sellable quantity", () => {
   const fn = migration.match(/create or replace function public\.cancel_fulfillment_transition\([\s\S]*?\n\$\$;/i)![0];
   assert.match(fn, /quantity = quantity \+ brand_stock_quantity, brand_stock_quantity = 0/);
   assert.match(fn, /'in_transit_to_zakhnook', 'brand_location', 'fulfillment_transition', p_transition_id/);
   assert.match(fn, /status = 'cancelled', cancelled_at = now\(\)/);
+});
+
+test("warehouse_transfers.related_fulfillment_transition_id links a document back to the transition that caused it, for item 8's cancel-safety check", () => {
+  assert.match(migration, /alter table public\.warehouse_transfers\s*\n\s*add column if not exists related_fulfillment_transition_id uuid\s*\n\s*references public\.brand_fulfillment_transitions\(id\) on delete set null;/);
 });
 
 test("all four transition RPCs are service_role-only, and the blocker helper is unreachable from anywhere but them", () => {

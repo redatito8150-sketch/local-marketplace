@@ -42,6 +42,21 @@ alter table public.warehouse_transfer_items drop constraint if exists warehouse_
 alter table public.warehouse_transfer_items add constraint warehouse_transfer_items_returned_qty_check
   check (returned_qty is null or returned_qty >= 0);
 
+-- Real quarantine-resolution model (item 13): a line's damaged/missing
+-- quantity is "unresolved quarantine" only while quarantine_resolved_at is
+-- null. enforce_variant_archive_safety (supabase/migrations/
+-- 20260814000005_inventory_permission_boundaries.sql) counts only
+-- unresolved rows — a resolved historical discrepancy no longer blocks
+-- archiving a variant, whereas the original version of that trigger
+-- treated ANY damaged/missing history as a permanent archive block.
+alter table public.warehouse_transfer_items
+  add column if not exists quarantine_resolved_at timestamptz,
+  add column if not exists quarantine_resolved_by uuid references auth.users(id) on delete set null,
+  add column if not exists quarantine_resolution text;
+alter table public.warehouse_transfer_items drop constraint if exists warehouse_transfer_items_quarantine_resolution_check;
+alter table public.warehouse_transfer_items add constraint warehouse_transfer_items_quarantine_resolution_check
+  check (quarantine_resolution is null or quarantine_resolution in ('written_off', 'returned_to_brand', 'restored_to_sellable'));
+
 -- ============================================================================
 -- Sequential, human-readable document numbers — mirrors brand_sku_counters/
 -- next_product_sku's dedicated-counter-table pattern (atomic via
@@ -84,6 +99,87 @@ $$;
 
 revoke all on function public.next_warehouse_document_number(text) from public, anon, authenticated;
 grant execute on function public.next_warehouse_document_number(text) to service_role;
+
+-- Shared by reject_warehouse_document and cancel_warehouse_document below —
+-- releasing a reserved outbound (to_brand, stock_reserved_at is not null)
+-- return's stock back onto `quantity`. Factored out so the two entry
+-- points can never drift out of sync with each other (the bug this fix
+-- addresses: cancellation previously didn't release anything at all,
+-- silently losing the reservation from sellable stock forever). The
+-- transfer row is already locked by the caller before this runs; the
+-- status guard in both callers (only pending/submitted/approved/in_transit
+-- may reject or cancel) is what makes "exactly once" hold — once this has
+-- run, the transfer's status is terminal and neither entry point can be
+-- called again for it.
+create or replace function private.release_reserved_outbound_stock(
+  p_transfer_id uuid,
+  p_actor_id uuid,
+  p_note text,
+  p_ledger_reason text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_transfer record;
+  v_item record;
+  v_variant record;
+  v_lock record;
+begin
+  select id, brand_id, direction, stock_reserved_at into v_transfer
+  from public.warehouse_transfers where id = p_transfer_id;
+  if v_transfer.direction <> 'to_brand' or v_transfer.stock_reserved_at is null then
+    return;
+  end if;
+
+  for v_lock in
+    select pv.id
+    from public.product_variants pv
+    join public.warehouse_transfer_items wti on wti.variant_id = pv.id
+    where wti.transfer_id = p_transfer_id
+    order by pv.id
+    for update of pv
+  loop
+    null;
+  end loop;
+
+  for v_item in
+    select id, variant_id, requested_qty
+    from public.warehouse_transfer_items
+    where transfer_id = p_transfer_id and received_ok_qty is null
+    order by variant_id
+  loop
+    select id, product_id, quantity into v_variant
+    from public.product_variants where id = v_item.variant_id;
+
+    update public.product_variants
+    set quantity = quantity + v_item.requested_qty, updated_at = now()
+    where id = v_variant.id;
+
+    insert into public.inventory_movements (
+      variant_id, product_id, brand_id, previous_quantity, quantity_delta,
+      new_quantity, movement_type, reason, note, created_by, source,
+      source_operation_key, from_location, to_location,
+      related_entity_type, related_entity_id
+    ) values (
+      v_variant.id, v_variant.product_id, v_transfer.brand_id,
+      v_variant.quantity, v_item.requested_qty,
+      v_variant.quantity + v_item.requested_qty,
+      'warehouse_return_released', p_ledger_reason,
+      nullif(pg_catalog.btrim(p_note), ''), p_actor_id,
+      'warehouse_transfer',
+      'warehouse-return-release:' || p_transfer_id::text || ':' || v_item.id::text,
+      'returned_to_brand', 'zakhnook_available', 'warehouse_document', p_transfer_id
+    )
+    on conflict (variant_id, source_operation_key) do nothing;
+  end loop;
+end;
+$$;
+
+revoke all on function private.release_reserved_outbound_stock(uuid, uuid, text, text)
+  from public, anon, authenticated, service_role;
 
 -- Give every future document a number/type at creation. Same signature as
 -- before (purely additive body change) — existing callers (the brand-portal
@@ -237,6 +333,18 @@ begin
 end;
 $$;
 
+-- Allowed to run in two cases: an ordinary partner brand (is_mahaly_partner
+-- = true), OR a brand_fulfilled brand with an open transition targeting
+-- zakhnook_fulfilled (v_open_transition_id) — this is the fix for the
+-- direct -> Zakhnook deadlock: without it, a brand mid-cutover could never
+-- create the inbound transfer request_fulfillment_mode_transition's own
+-- blocker computation demands, since fulfillment_mode/is_mahaly_partner
+-- only flip at activation, not at request time. The brand is NOT exposed
+-- as a partner anywhere else by this — is_mahaly_partner/fulfillment_mode
+-- are untouched; only this one specific action is allowed early, and the
+-- resulting document is linked back to the transition via
+-- related_fulfillment_transition_id so cancel_fulfillment_transition can
+-- reason about it later.
 create or replace function public.request_warehouse_transfer(
   p_brand_id uuid,
   p_actor_id uuid,
@@ -251,6 +359,7 @@ set search_path = ''
 as $$
 declare
   v_is_partner boolean;
+  v_open_transition_id uuid;
   v_existing record;
   v_transfer_id uuid;
   v_item jsonb;
@@ -292,7 +401,16 @@ begin
   select is_mahaly_partner into v_is_partner
   from public.brands where id = p_brand_id for update;
   if v_is_partner is null then raise exception 'BRAND_NOT_FOUND'; end if;
-  if not v_is_partner then raise exception 'BRAND_NOT_PARTNER'; end if;
+
+  select id into v_open_transition_id
+  from public.brand_fulfillment_transitions
+  where brand_id = p_brand_id and to_mode = 'zakhnook_fulfilled'
+    and status not in ('completed', 'cancelled', 'failed')
+  limit 1;
+
+  if not v_is_partner and v_open_transition_id is null then
+    raise exception 'BRAND_NOT_PARTNER';
+  end if;
 
   select id, brand_id, direction, request_payload into v_existing
   from public.warehouse_transfers
@@ -331,10 +449,10 @@ begin
 
   insert into public.warehouse_transfers (
     brand_id, requested_by, brand_note, operation_key, direction,
-    request_payload, document_number, document_type
+    request_payload, document_number, document_type, related_fulfillment_transition_id
   ) values (
     p_brand_id, p_actor_id, nullif(pg_catalog.btrim(p_note), ''),
-    p_operation_key, 'to_local', p_items, v_document_number, 'stock_transfer_note'
+    p_operation_key, 'to_local', p_items, v_document_number, 'stock_transfer_note', v_open_transition_id
   ) returning id into v_transfer_id;
 
   for v_item in
@@ -347,12 +465,19 @@ begin
     from public.product_variants
     where id = (v_item->>'variant_id')::uuid;
 
+    -- Allocated-but-not-yet-reconciled quantity across EVERY nonterminal
+    -- document status (not just 'pending' — a document that's moved on to
+    -- submitted/approved/in_transit/partially_received still holds a claim
+    -- against brand_stock_quantity), counting only lines not yet reconciled
+    -- (received_ok_qty is null) so a partially_received document's
+    -- already-settled lines don't double-count.
     select coalesce(sum(wti.requested_qty), 0) into v_already_pending
     from public.warehouse_transfer_items wti
     join public.warehouse_transfers wt on wt.id = wti.transfer_id
     where wti.variant_id = v_variant.id
-      and wt.status = 'pending'
-      and wt.direction = 'to_local';
+      and wt.direction = 'to_local'
+      and wt.status not in ('received', 'rejected', 'cancelled')
+      and wti.received_ok_qty is null;
 
     if v_requested > v_variant.brand_stock_quantity - v_already_pending then
       raise exception 'INSUFFICIENT_BRAND_STOCK';
@@ -412,6 +537,15 @@ begin
   return jsonb_build_object('transfer_id', p_transfer_id, 'status', 'in_transit');
 end; $$;
 
+-- A cancelled 'to_brand' return document that had already reserved
+-- sellable stock at request time (stock_reserved_at is not null) must
+-- release that reservation exactly like a rejection does — previously this
+-- function only flipped status, silently losing the reserved units from
+-- sellable stock forever. Locks the transfer row first (so the release
+-- helper's own read of status/direction/stock_reserved_at is consistent),
+-- releases under that same lock, then marks cancelled — the status guard
+-- above is what makes this "exactly once": once cancelled, neither this
+-- function nor reject_warehouse_document can run again for this row.
 create or replace function public.cancel_warehouse_document(p_transfer_id uuid, p_actor_id uuid, p_note text)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare v_status text;
@@ -421,6 +555,11 @@ begin
   if v_status not in ('draft', 'pending', 'submitted', 'approved') then
     raise exception 'DOCUMENT_CANNOT_BE_CANCELLED_ONCE_IN_TRANSIT_OR_DECIDED';
   end if;
+
+  perform private.release_reserved_outbound_stock(
+    p_transfer_id, p_actor_id, p_note, 'Local Warehouse Return Reservation Released (document cancelled)'
+  );
+
   update public.warehouse_transfers
   set status = 'cancelled', decided_by = p_actor_id, decided_at = now(),
       receiving_note = coalesce(nullif(pg_catalog.btrim(p_note), ''), receiving_note), updated_at = now()
@@ -649,6 +788,121 @@ begin
 end;
 $$;
 
+-- ============================================================================
+-- resolve_warehouse_quarantine — the real quarantine-resolution RPC (item
+-- 13). A damaged/missing line's quantity sits in 'zakhnook_quarantine'
+-- (see the warehouse_quarantine_hold movement written by
+-- receive_warehouse_document_canonical above) until this is called.
+-- 'written_off' simply closes it out (goods destroyed/discarded, nothing
+-- moves); 'returned_to_brand' credits it back onto brand_stock_quantity
+-- (matches a brand pickup of the damaged goods) with a
+-- warehouse_quarantine_release ledger row; 'restored_to_sellable' is for a
+-- damaged-flag-corrected-on-inspection case and credits the quantity back
+-- onto sellable `quantity` instead. Mandatory reason, warehouse/admin only
+-- (gated at the route layer by requireWarehouseReceiver(), same as every
+-- other warehouse RPC) — never callable by a brand-portal actor.
+-- ============================================================================
+create or replace function public.resolve_warehouse_quarantine(
+  p_transfer_item_id uuid,
+  p_actor_id uuid,
+  p_resolution text,
+  p_note text,
+  p_operation_key text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_item record;
+  v_variant record;
+  v_transfer record;
+  v_quarantine_qty integer;
+begin
+  if p_resolution not in ('written_off', 'returned_to_brand', 'restored_to_sellable') then
+    raise exception 'INVALID_QUARANTINE_RESOLUTION';
+  end if;
+  if nullif(pg_catalog.btrim(p_operation_key), '') is null or length(p_operation_key) > 160 then
+    raise exception 'INVALID_OPERATION_KEY';
+  end if;
+
+  select id, variant_id, transfer_id, damaged_qty, missing_qty, quarantine_resolved_at into v_item
+  from public.warehouse_transfer_items
+  where id = p_transfer_item_id
+  for update;
+  if v_item.id is null then raise exception 'TRANSFER_ITEM_NOT_FOUND'; end if;
+  if v_item.quarantine_resolved_at is not null then raise exception 'QUARANTINE_ALREADY_RESOLVED'; end if;
+
+  v_quarantine_qty := coalesce(v_item.damaged_qty, 0) + coalesce(v_item.missing_qty, 0);
+  if v_quarantine_qty <= 0 then raise exception 'NO_UNRESOLVED_QUARANTINE_QUANTITY'; end if;
+
+  if exists (
+    select 1 from public.inventory_movements
+    where variant_id = v_item.variant_id and source_operation_key = p_operation_key
+  ) then
+    return jsonb_build_object('transfer_item_id', v_item.id, 'replayed', true);
+  end if;
+
+  select id, brand_id into v_transfer from public.warehouse_transfers where id = v_item.transfer_id;
+  select id, quantity, product_id, brand_stock_quantity into v_variant
+  from public.product_variants where id = v_item.variant_id for update;
+
+  if p_resolution = 'returned_to_brand' then
+    update public.product_variants
+    set brand_stock_quantity = brand_stock_quantity + v_quarantine_qty, updated_at = now()
+    where id = v_variant.id;
+    insert into public.inventory_movements (
+      variant_id, product_id, brand_id, previous_quantity, quantity_delta, new_quantity,
+      movement_type, reason, note, created_by, source, source_operation_key,
+      from_location, to_location, related_entity_type, related_entity_id
+    ) values (
+      v_variant.id, v_variant.product_id, v_transfer.brand_id, 0, 0, 0,
+      'warehouse_quarantine_release', 'Quarantine resolved: returned to brand',
+      nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
+      'zakhnook_quarantine', 'returned_to_brand', 'warehouse_document', v_transfer.id
+    );
+  elsif p_resolution = 'restored_to_sellable' then
+    update public.product_variants
+    set quantity = quantity + v_quarantine_qty, updated_at = now()
+    where id = v_variant.id;
+    insert into public.inventory_movements (
+      variant_id, product_id, brand_id, previous_quantity, quantity_delta, new_quantity,
+      movement_type, reason, note, created_by, source, source_operation_key,
+      from_location, to_location, related_entity_type, related_entity_id
+    ) values (
+      v_variant.id, v_variant.product_id, v_transfer.brand_id, v_variant.quantity, v_quarantine_qty,
+      v_variant.quantity + v_quarantine_qty,
+      'warehouse_quarantine_release', 'Quarantine resolved: restored to sellable stock',
+      nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
+      'zakhnook_quarantine', 'zakhnook_available', 'warehouse_document', v_transfer.id
+    );
+  else
+    insert into public.inventory_movements (
+      variant_id, product_id, brand_id, previous_quantity, quantity_delta, new_quantity,
+      movement_type, reason, note, created_by, source, source_operation_key,
+      from_location, to_location, related_entity_type, related_entity_id
+    ) values (
+      v_variant.id, v_variant.product_id, v_transfer.brand_id, 0, 0, 0,
+      'warehouse_quarantine_release', 'Quarantine resolved: written off',
+      nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
+      'zakhnook_quarantine', 'sold_or_removed', 'warehouse_document', v_transfer.id
+    );
+  end if;
+
+  update public.warehouse_transfer_items
+  set quarantine_resolved_at = now(), quarantine_resolved_by = p_actor_id, quarantine_resolution = p_resolution
+  where id = p_transfer_item_id;
+
+  return jsonb_build_object('transfer_item_id', p_transfer_item_id, 'resolution', p_resolution, 'replayed', false);
+end;
+$$;
+
+revoke all on function public.resolve_warehouse_quarantine(uuid, uuid, text, text, text)
+  from public, anon, authenticated;
+grant execute on function public.resolve_warehouse_quarantine(uuid, uuid, text, text, text)
+  to service_role;
+
 -- Back-compat wrappers, unchanged signatures — Codex's UI (and the admin
 -- receive route) can keep calling these exactly as before. Submitting every
 -- line in one call (the only thing the old callers ever did) still resolves
@@ -686,9 +940,6 @@ set search_path = ''
 as $$
 declare
   v_transfer record;
-  v_item record;
-  v_variant record;
-  v_lock record;
 begin
   select id, brand_id, status, direction, stock_reserved_at into v_transfer
   from public.warehouse_transfers
@@ -699,48 +950,9 @@ begin
     raise exception 'TRANSFER_ALREADY_DECIDED';
   end if;
 
-  if v_transfer.direction = 'to_brand' and v_transfer.stock_reserved_at is not null then
-    for v_lock in
-      select pv.id
-      from public.product_variants pv
-      join public.warehouse_transfer_items wti on wti.variant_id = pv.id
-      where wti.transfer_id = p_transfer_id
-      order by pv.id
-      for update of pv
-    loop
-      null;
-    end loop;
-
-    for v_item in
-      select id, variant_id, requested_qty
-      from public.warehouse_transfer_items
-      where transfer_id = p_transfer_id
-      order by variant_id
-    loop
-      select id, product_id, quantity into v_variant
-      from public.product_variants where id = v_item.variant_id;
-
-      update public.product_variants
-      set quantity = quantity + v_item.requested_qty, updated_at = now()
-      where id = v_variant.id;
-
-      insert into public.inventory_movements (
-        variant_id, product_id, brand_id, previous_quantity, quantity_delta,
-        new_quantity, movement_type, reason, note, created_by, source,
-        source_operation_key, from_location, to_location,
-        related_entity_type, related_entity_id
-      ) values (
-        v_variant.id, v_variant.product_id, v_transfer.brand_id,
-        v_variant.quantity, v_item.requested_qty,
-        v_variant.quantity + v_item.requested_qty,
-        'warehouse_return_released', 'Local Warehouse Return Reservation Released',
-        nullif(pg_catalog.btrim(p_note), ''), p_actor_id,
-        'warehouse_transfer',
-        'warehouse-return-release:' || p_transfer_id::text || ':' || v_item.id::text,
-        'returned_to_brand', 'zakhnook_available', 'warehouse_document', p_transfer_id
-      );
-    end loop;
-  end if;
+  perform private.release_reserved_outbound_stock(
+    p_transfer_id, p_actor_id, p_note, 'Local Warehouse Return Reservation Released'
+  );
 
   update public.warehouse_transfers
   set status = 'rejected',

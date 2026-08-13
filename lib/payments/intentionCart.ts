@@ -28,8 +28,9 @@ export interface ProductLookupRow {
   status: string;
   publish_date: string | null;
   paused_by_brand: boolean;
-  brands: { is_active: boolean } | null;
+  brands: { is_active: boolean; fulfillment_mode: string } | null;
   image: string;
+  first_stocked_at: string | null;
 }
 
 export interface ResolvedIntentionLine {
@@ -64,12 +65,21 @@ export function resolveIntentionCart(
 ): ResolveCartResult {
   for (const item of items) {
     const product = productById.get(item.productId);
+    // Checkout defense in depth for the product-launch gate (item 4 of the
+    // fulfillment-foundation corrective pass): a zakhnook_fulfilled brand's
+    // product with no first_stocked_at yet is never purchasable, mirroring
+    // storefront_products' own WHERE clause (supabase/migrations/
+    // 20260814000006_storefront_launch_gate_view.sql) — this lookup can't
+    // source from that view directly (it needs the brands!...!inner embed
+    // the view can't expose), so the same condition is checked explicitly.
+    const isLaunched = product?.brands?.fulfillment_mode !== "zakhnook_fulfilled" || product?.first_stocked_at != null;
     if (
       !product ||
       product.status !== "published" ||
       product.paused_by_brand ||
       !isPublishDateLive(product.publish_date, now) ||
-      !product.brands?.is_active
+      !product.brands?.is_active ||
+      !isLaunched
     ) {
       return { ok: false, status: 400, error: "An item in your cart is no longer available" };
     }

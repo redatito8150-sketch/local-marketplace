@@ -14,6 +14,40 @@
 alter table public.products add column if not exists first_stocked_at timestamptz;
 create index if not exists products_first_stocked_at_idx on public.products (first_stocked_at);
 
+-- Backfill (item 5): the launch gate below only excludes zakhnook_fulfilled
+-- products, so this only needs to run for those brands — a
+-- zakhnook_fulfilled product that already has legitimate stock (currently
+-- sellable, OR historically received a warehouse_transfer_received
+-- movement even if since sold through to 0) must not vanish from the
+-- storefront the moment this gate goes live. Uses the earliest qualifying
+-- evidence as the stamped date (first receipt if any movement history
+-- exists, else now() for the rare case of live stock with no matching
+-- movement row) — never a fabricated/guessed date, and never re-run
+-- destructively (only ever sets a currently-null column, `coalesce`-guarded).
+update public.products p
+set first_stocked_at = coalesce(
+  (
+    select min(im.created_at)
+    from public.inventory_movements im
+    where im.product_id = p.id and im.movement_type = 'warehouse_transfer_received'
+  ),
+  now()
+)
+from public.brands b
+where b.id = p.brand_id
+  and b.fulfillment_mode = 'zakhnook_fulfilled'
+  and p.first_stocked_at is null
+  and (
+    exists (
+      select 1 from public.inventory_movements im
+      where im.product_id = p.id and im.movement_type = 'warehouse_transfer_received'
+    )
+    or exists (
+      select 1 from public.product_variants pv
+      where pv.product_id = p.id and pv.is_archived = false and pv.quantity > 0
+    )
+  );
+
 -- Same signature as the current version (20260809000001) — purely additive
 -- body change.
 create or replace function public.create_variant_with_opening_stock(

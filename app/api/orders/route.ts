@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
   const [{ data: products, error: productsError }, variantsByProduct] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, brands!products_brand_slug_fkey!inner(is_active)")
+      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)")
       .in("id", productIds),
     getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
       logError("Order variant lookup failed", error.message);
@@ -161,13 +161,22 @@ export async function POST(request: NextRequest) {
 
   for (const item of items) {
     const product = productById.get(item.productId);
-    const brand = product?.brands as unknown as { is_active: boolean } | null;
+    const brand = product?.brands as unknown as { is_active: boolean; fulfillment_mode: string } | null;
+    // Checkout defense in depth for the product-launch gate (item 4): a
+    // zakhnook_fulfilled brand's product with no first_stocked_at yet is
+    // never purchasable, mirroring storefront_products' own WHERE clause
+    // (supabase/migrations/20260814000006_storefront_launch_gate_view.sql)
+    // — this query can't source from that view directly (it needs the
+    // brands!...!inner embed the view can't expose), so the same condition
+    // is checked explicitly here instead.
+    const isLaunched = brand?.fulfillment_mode !== "zakhnook_fulfilled" || product?.first_stocked_at != null;
     if (
       !product ||
       product.status !== "published" ||
       product.paused_by_brand ||
       !isPublishDateLive(product.publish_date) ||
-      !brand?.is_active
+      !brand?.is_active ||
+      !isLaunched
     ) {
       return NextResponse.json(
         { error: "An item in your cart is no longer available" },

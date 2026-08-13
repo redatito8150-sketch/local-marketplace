@@ -55,7 +55,7 @@ async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
   if (ids.length === 0) return [];
 
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .in("id", ids)
     .eq("status", "published")
@@ -98,7 +98,7 @@ async function getTopSellingProductIdsForBrand(
   limit: number
 ): Promise<string[]> {
   const { data: brandProducts, error: brandProductsError } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select("id")
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
@@ -148,7 +148,7 @@ export async function getBestSellingProductsForBrand(
   }
 
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", brandSlug)
     .eq("status", "published")

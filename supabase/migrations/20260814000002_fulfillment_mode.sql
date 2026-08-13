@@ -152,6 +152,20 @@ grant select on public.brand_fulfillment_transitions to authenticated;
 grant all on public.brand_fulfillment_transitions to service_role;
 revoke insert, update, delete on public.brand_fulfillment_transitions from anon, authenticated;
 
+-- Links a warehouse document to the transition that (indirectly) caused it
+-- — set by request_warehouse_transfer (supabase/migrations/
+-- 20260814000003_warehouse_documents.sql) when a brand_fulfilled brand with
+-- an open brand->zakhnook transition declares a shipment. Lets
+-- cancel_fulfillment_transition below tell "nothing has physically moved
+-- yet, safe to fully revert" apart from "some of this stock already
+-- reached Zakhnook — a plain revert would silently lose track of it."
+alter table public.warehouse_transfers
+  add column if not exists related_fulfillment_transition_id uuid
+    references public.brand_fulfillment_transitions(id) on delete set null;
+create index if not exists warehouse_transfers_related_fulfillment_transition_idx
+  on public.warehouse_transfers (related_fulfillment_transition_id)
+  where related_fulfillment_transition_id is not null;
+
 -- ============================================================================
 -- Blocker computation — shared by request/revalidate/activate so the three
 -- entry points can never disagree about what's still open. Returns a jsonb
@@ -224,6 +238,15 @@ $$;
 -- unsafe adjustments during cutover") and into `brand_stock_quantity` (so
 -- the existing request_warehouse_transfer/receive flow can move it to
 -- Zakhnook exactly like an ordinary partner-brand transfer).
+--
+-- Idempotency: the brand row is locked FIRST (establishes the brand-then-
+-- everything-else lock order every transition/adjustment RPC now follows),
+-- THEN the operation_key is checked — and a match only counts as a safe
+-- replay if it belongs to the SAME brand and targets the SAME mode; any
+-- other match (a reused key against a different brand/target) is an
+-- explicit IDEMPOTENCY_CONFLICT, never silently treated as a replay. A
+-- concurrent request for a different brand racing on the same key is
+-- caught by the table's own unique constraint and re-checked the same way.
 -- ============================================================================
 create or replace function public.request_fulfillment_mode_transition(
   p_brand_id uuid,
@@ -246,6 +269,7 @@ declare
   v_status text;
   v_snapshot jsonb;
   v_lock record;
+  v_original_quantity integer;
 begin
   if p_to_mode not in ('brand_fulfilled', 'zakhnook_fulfilled') then
     raise exception 'INVALID_FULFILLMENT_MODE';
@@ -254,15 +278,19 @@ begin
     raise exception 'INVALID_OPERATION_KEY';
   end if;
 
-  select id, operation_key into v_existing
+  select fulfillment_mode into v_from_mode from public.brands where id = p_brand_id for update;
+  if v_from_mode is null then raise exception 'BRAND_NOT_FOUND'; end if;
+
+  select id, brand_id, to_mode into v_existing
   from public.brand_fulfillment_transitions
   where operation_key = p_operation_key;
   if v_existing.id is not null then
-    return jsonb_build_object('transition_id', v_existing.id, 'replayed', true);
+    if v_existing.brand_id = p_brand_id and v_existing.to_mode = p_to_mode then
+      return jsonb_build_object('transition_id', v_existing.id, 'replayed', true);
+    end if;
+    raise exception 'IDEMPOTENCY_CONFLICT';
   end if;
 
-  select fulfillment_mode into v_from_mode from public.brands where id = p_brand_id for update;
-  if v_from_mode is null then raise exception 'BRAND_NOT_FOUND'; end if;
   if v_from_mode = p_to_mode then raise exception 'BRAND_ALREADY_IN_TARGET_MODE'; end if;
 
   if exists (
@@ -280,28 +308,45 @@ begin
   join public.products p on p.id = pv.product_id
   where p.brand_id = p_brand_id and pv.is_archived = false;
 
-  insert into public.brand_fulfillment_transitions (
-    brand_id, from_mode, to_mode, status, requested_by, effective_date,
-    notes, stock_snapshot, operation_key
-  ) values (
-    p_brand_id, v_from_mode, p_to_mode, 'validating', p_actor_id, p_effective_date,
-    nullif(pg_catalog.btrim(p_notes), ''), coalesce(v_snapshot, '[]'::jsonb), p_operation_key
-  ) returning id into v_transition_id;
+  begin
+    insert into public.brand_fulfillment_transitions (
+      brand_id, from_mode, to_mode, status, requested_by, effective_date,
+      notes, stock_snapshot, operation_key
+    ) values (
+      p_brand_id, v_from_mode, p_to_mode, 'validating', p_actor_id, p_effective_date,
+      nullif(pg_catalog.btrim(p_notes), ''), coalesce(v_snapshot, '[]'::jsonb), p_operation_key
+    ) returning id into v_transition_id;
+  exception when unique_violation then
+    -- Lost a genuine concurrent race on operation_key — re-check exactly
+    -- like the pre-check above rather than assuming it's safe.
+    select id, brand_id, to_mode into v_existing
+    from public.brand_fulfillment_transitions
+    where operation_key = p_operation_key;
+    if v_existing.id is not null and v_existing.brand_id = p_brand_id and v_existing.to_mode = p_to_mode then
+      return jsonb_build_object('transition_id', v_existing.id, 'replayed', true);
+    end if;
+    raise exception 'IDEMPOTENCY_CONFLICT';
+  end;
 
   if p_to_mode = 'zakhnook_fulfilled' then
     -- Cutover snapshot: brand-held sellable stock stops being sellable and
     -- becomes "declared, awaiting inbound transfer" — deterministic variant
-    -- lock order avoids deadlocks against any concurrent adjustment.
+    -- lock order avoids deadlocks against any concurrent adjustment. The
+    -- original quantity is captured from the locking cursor itself
+    -- (v_lock.quantity) BEFORE the UPDATE zeroes it — the ledger row must
+    -- record what the balance actually was, not re-read it afterward.
     for v_lock in
-      select pv.id
+      select pv.id, pv.quantity
       from public.product_variants pv
       join public.products p on p.id = pv.product_id
       where p.brand_id = p_brand_id and pv.is_archived = false and pv.quantity > 0
       order by pv.id
       for update of pv
     loop
+      v_original_quantity := v_lock.quantity;
+
       update public.product_variants
-      set brand_stock_quantity = brand_stock_quantity + quantity,
+      set brand_stock_quantity = brand_stock_quantity + v_original_quantity,
           quantity = 0,
           updated_at = now()
       where id = v_lock.id;
@@ -312,16 +357,12 @@ begin
         source_operation_key, from_location, to_location,
         related_entity_type, related_entity_id
       )
-      select pv.id, pv.product_id, p_brand_id, pv.quantity + 0, -(pv.quantity), 0,
+      select pv.id, pv.product_id, p_brand_id, v_original_quantity, -v_original_quantity, 0,
         'fulfillment_transition_snapshot', 'Fulfillment mode transition — cutover snapshot',
         nullif(pg_catalog.btrim(p_notes), ''), p_actor_id, 'fulfillment_transition',
         'fulfillment-transition-snapshot:' || v_transition_id::text || ':' || v_lock.id::text,
         'brand_location', 'in_transit_to_zakhnook', 'fulfillment_transition', v_transition_id
-      from public.product_variants pv join public.products p on p.id = pv.product_id
-      where pv.id = v_lock.id
-      -- previous_quantity must reflect the value *before* this statement's
-      -- own update above; re-derive it from the just-recorded delta instead
-      -- of re-reading the now-updated row.
+      from public.product_variants pv where pv.id = v_lock.id
       on conflict (variant_id, source_operation_key) do nothing;
     end loop;
   end if;
@@ -387,6 +428,9 @@ $$;
 -- — moves any residual brand_stock_quantity (credited back by a received
 -- return) into `quantity`, since that's the column brand_fulfilled brands'
 -- storefront stock is read from.
+--
+-- effective_date is enforced here, not just stored: activation before it is
+-- rejected outright rather than silently ignoring the scheduling request.
 create or replace function public.activate_fulfillment_mode_transition(
   p_transition_id uuid,
   p_actor_id uuid
@@ -401,13 +445,16 @@ declare
   v_blockers jsonb;
   v_lock record;
 begin
-  select id, brand_id, from_mode, to_mode, status into v_transition
+  select id, brand_id, from_mode, to_mode, status, effective_date into v_transition
   from public.brand_fulfillment_transitions
   where id = p_transition_id
   for update;
   if v_transition.id is null then raise exception 'TRANSITION_NOT_FOUND'; end if;
   if v_transition.status in ('completed', 'cancelled', 'failed') then
     raise exception 'TRANSITION_ALREADY_TERMINAL';
+  end if;
+  if v_transition.effective_date is not null and v_transition.effective_date > now() then
+    raise exception 'EFFECTIVE_DATE_NOT_REACHED';
   end if;
 
   v_blockers := private.compute_fulfillment_transition_blockers(v_transition.brand_id, v_transition.to_mode);
@@ -476,6 +523,7 @@ as $$
 declare
   v_transition record;
   v_lock record;
+  v_progressed_count integer;
 begin
   select id, brand_id, status into v_transition
   from public.brand_fulfillment_transitions
@@ -484,6 +532,21 @@ begin
   if v_transition.id is null then raise exception 'TRANSITION_NOT_FOUND'; end if;
   if v_transition.status in ('completed', 'cancelled', 'failed') then
     raise exception 'TRANSITION_ALREADY_TERMINAL';
+  end if;
+
+  -- Refuse to cancel once any of this transition's own inbound documents
+  -- has ALREADY delivered stock to Zakhnook (received/partially_received)
+  -- — that stock is now physically at the wrong location for a reverted
+  -- brand_fulfilled brand, and a plain brand_stock_quantity->quantity
+  -- revert would silently lose track of it. Only resolvable by an
+  -- auditable reverse transfer (a Stock Return Note, direction 'to_brand')
+  -- bringing it back first.
+  select count(*) into v_progressed_count
+  from public.warehouse_transfers
+  where related_fulfillment_transition_id = p_transition_id
+    and status in ('received', 'partially_received');
+  if v_progressed_count > 0 then
+    raise exception 'FULFILLMENT_TRANSITION_CANNOT_CANCEL_STOCK_ALREADY_RECEIVED';
   end if;
 
   -- Undo the brand_fulfilled -> zakhnook_fulfilled cutover snapshot (if any

@@ -236,7 +236,7 @@ export async function getProductsByCategory(
   category: CategorySlug
 ): Promise<Product[]> {
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
@@ -257,7 +257,7 @@ export async function getProductCountLabel(
   category: CategorySlug
 ): Promise<number> {
   const { count, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select("id", { count: "exact", head: true })
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
@@ -279,7 +279,7 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -314,7 +314,7 @@ export async function getAllActiveProducts(
   // purchasable-in-stock products in memory once variants are attached,
   // since "in stock" can only be known from the live variant set.
   let query = supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -340,7 +340,7 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
   const selected = [...new Set(ids.filter(Boolean))].slice(0, Math.max(1, Math.min(limit, 20)));
   if (!selected.length) return [];
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .in("id", selected)
     .eq("status", "published")
@@ -406,21 +406,6 @@ async function resolveProductIdsByVariantOptionLabel(optionKey: "size" | "color"
   return [...new Set(rows.map((r) => r.product_variants.product_id))];
 }
 
-// A zakhnook_fulfilled brand's brand-new product must stay absent from the
-// storefront until its first accepted warehouse receipt
-// (products.first_stocked_at, see supabase/migrations/
-// 20260814000004_product_launch_state.sql) — a brand_fulfilled brand's
-// products are never affected (their opening stock is entered directly at
-// creation, so first_stocked_at is set immediately). Returns the brand ids
-// this filter actually needs to exclude from, or an empty array if there
-// are none (in which case the caller should skip adding the filter clause
-// entirely — an empty `not.in.()` is malformed PostgREST syntax).
-async function resolveZakhnookFulfilledBrandIds(): Promise<string[]> {
-  const { data, error } = await supabase.from("brands").select("id").eq("fulfillment_mode", "zakhnook_fulfilled");
-  if (error) throw new Error(`resolveZakhnookFulfilledBrandIds failed: ${error.message}`);
-  return (data ?? []).map((row) => row.id as string);
-}
-
 async function resolveProductIdsByAvailability(inStock: boolean): Promise<string[]> {
   const { data, error } = await supabase
     .from("product_variants")
@@ -442,7 +427,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
   const needsCollectionLookup = Boolean(filters.collection?.length);
-  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds, unlaunchedBrandIds] = await Promise.all([
+  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds] = await Promise.all([
     needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
     needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
     filters.size?.length ? resolveProductIdsByVariantOptionLabel("size", filters.size) : Promise.resolve<string[] | null>(null),
@@ -450,21 +435,20 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     filters.availability?.length === 1
       ? resolveProductIdsByAvailability(filters.availability[0] === "in-stock")
       : Promise.resolve<string[] | null>(null),
-    resolveZakhnookFulfilledBrandIds(),
   ]);
 
+  // storefront_products (supabase/migrations/
+  // 20260814000006_storefront_launch_gate_view.sql) is a security_invoker
+  // view over `products` that adds the product-launch gate (a
+  // zakhnook_fulfilled brand's product stays hidden until first_stocked_at
+  // is set) on top of the same RLS/publish-visibility rules `products`
+  // itself already enforces — never a client-built brand-id list.
   let query = supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT, { count: "exact" })
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
-  // Product launch state: a zakhnook_fulfilled brand's product stays out of
-  // the storefront until first_stocked_at is set (first accepted receipt).
-  // brand_fulfilled brands are never excluded by this clause.
-  if (unlaunchedBrandIds.length) {
-    query = query.or(`first_stocked_at.not.is.null,brand_id.not.in.(${unlaunchedBrandIds.join(",")})`);
-  }
 
   const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
   if (search) query = query.or(`name.ilike.%${search}%,brand_name.ilike.%${search}%`);
@@ -546,7 +530,7 @@ export interface MarketplaceCatalogFacetRow {
 
 export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogFacetRow[]> {
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select("id, brand_name, audience, product_type_id, collection_id, material, fit, discount_percent, discount_ends_at, price")
     .eq("status", "published")
     .eq("paused_by_brand", false)
@@ -607,7 +591,7 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
 
 export async function getProductById(id: string): Promise<ProductDetail | null> {
   const { data, error } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("id", id)
     .maybeSingle();
@@ -702,7 +686,7 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   }
 
   const { data: relatedRows, error: relatedError } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select("id")
     .neq("id", id)
     .eq("status", "published")
@@ -741,7 +725,7 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
 
   const [byName, byBrand] = await Promise.all([
     supabase
-      .from("products")
+      .from("storefront_products")
       .select(PRODUCT_PUBLIC_SELECT)
       .ilike("name", pattern)
       .eq("status", "published")
@@ -749,7 +733,7 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
       .or(publishDateLiveFilter())
       .limit(limit),
     supabase
-      .from("products")
+      .from("storefront_products")
       .select(PRODUCT_PUBLIC_SELECT)
       .ilike("brand_name", pattern)
       .eq("status", "published")

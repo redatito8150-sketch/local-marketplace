@@ -87,7 +87,7 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
   } | null;
 
   const { data: productRows, error: productsError } = await supabase
-    .from("products")
+    .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", slug)
     .eq("status", "published")

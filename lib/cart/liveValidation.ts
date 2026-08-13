@@ -50,8 +50,14 @@ export async function getCartValidationData(
   if (ids.length === 0) return result;
 
   const [{ data: rows, error }, variantsByProduct, mediaResult] = await Promise.all([
+    // storefront_products (supabase/migrations/
+    // 20260814000006_storefront_launch_gate_view.sql) applies the same
+    // product-launch gate here as everywhere else on the storefront — a
+    // cart line for a not-yet-launched zakhnook_fulfilled product simply
+    // won't come back as a row, so productAvailable below correctly falls
+    // through to "not found at all" -> unavailable.
     supabase
-      .from("products")
+      .from("storefront_products")
       .select("id, status, paused_by_brand, price, currency, image, discount_percent, discount_ends_at")
       .in("id", ids),
     getVariantsForProducts(ids),
