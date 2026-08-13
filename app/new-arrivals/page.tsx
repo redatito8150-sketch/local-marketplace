@@ -1,7 +1,7 @@
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import NewArrivalsExperience from "@/components/new-arrivals/NewArrivalsExperience";
-import { getMarketplaceCatalogPage, getNewArrivals } from "@/lib/data/products";
+import { getNewArrivals } from "@/lib/data/products";
 
 export const revalidate = 60;
 
@@ -11,10 +11,7 @@ export const metadata = {
 };
 
 export default async function NewArrivalsPage() {
-  const newArrivals = await getNewArrivals();
-  const products = newArrivals.length
-    ? newArrivals
-    : (await getMarketplaceCatalogPage({ pageSize: 24, sort: "newest" })).products;
+  const products = await getNewArrivals();
 
   return (
     <main className="flex min-h-screen flex-col [&>*]:w-full bg-cream">
