@@ -189,7 +189,7 @@ export default function VariantTable({
   return (
     <div>
       <h3 className="text-[13px] font-semibold text-ink">Variants (Matrix)</h3>
-      <p className="mt-1 text-[12px] text-ink-soft/55">Create and manage variants for this product. Add opening stock and price for each variant.</p>
+      <p className="mt-1 text-[12px] text-ink-soft/55">{isPartnerBrand ? "Create the sellable combinations now; stock will be added after Zakhnook receives a shipment." : "Create and manage variants, then add the initial available quantity and price for each one."}</p>
 
       {colorsMissingImages.length > 0 && (
         <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
@@ -254,7 +254,7 @@ export default function VariantTable({
               <tr className="border-b border-stone-150 bg-stone-50 text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
                 <th className="min-w-[200px] px-3 py-2.5">Color / Size</th>
                 <th className="px-3 py-2.5">SKU<br /><span className="font-normal normal-case text-ink-soft/40">(Auto)</span></th>
-                <th className="px-3 py-2.5">Stock<br /><span className="font-normal normal-case text-ink-soft/40">(Opening Stock)</span></th>
+                <th className="px-3 py-2.5">Stock<br /><span className="font-normal normal-case text-ink-soft/40">{isPartnerBrand ? "(Added after receiving)" : "(Initial available quantity)"}</span></th>
                 <th className="px-3 py-2.5" title="Applies from the product default unless overridden here.">Low Stock Alert</th>
                 <th className="px-3 py-2.5">
                   Variant Price ({currency})<br /><span className="font-normal normal-case text-ink-soft/40">(Leave empty for base price)</span>
@@ -402,13 +402,13 @@ export default function VariantTable({
                             ) : isPartnerBrand ? (
                               <span
                                 className="text-[12px] font-semibold text-amber-700"
-                                title="This brand is a Zakhnook Partner — stock only comes from a confirmed Local Warehouse transfer, never from Opening Stock. This variant will be created with 0 stock."
+                                title="This is a Zakhnook Fulfilled brand. The variant starts at 0 and becomes available after Zakhnook receives a shipment."
                               >
-                                0 — via Local Warehouse
+                                0 — ready for shipment
                               </span>
                             ) : (
                               <input
-                                aria-label={`Opening stock for ${color.label} ${size.label}`}
+                                aria-label={`Initial available quantity for ${color.label} ${size.label}`}
                                 type="number"
                                 min={0}
                                 step={1}

@@ -5,7 +5,7 @@ import { DashboardPageHeader, DashboardEmptyState } from "@/components/dashboard
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import WarehouseExperience from "@/components/brand-portal/warehouse/WarehouseExperience";
 
-export default async function BrandPortalWarehousePage(props: { searchParams: Promise<{ brand?: string }> }) {
+export default async function BrandPortalWarehousePage(props: { searchParams: Promise<{ brand?: string; variant?: string; qty?: string }> }) {
   const params = await props.searchParams;
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
@@ -14,11 +14,11 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
   if (!owner.isMahalyPartner) {
     return (
       <div>
-        <DashboardPageHeader eyebrow="Catalog" title="Local Warehouse" />
+        <DashboardPageHeader eyebrow="Fulfillment" title="Shipments & Transfers" />
         <div className="mt-6">
           <DashboardEmptyState
             title="Not available for this brand"
-            description="Local Warehouse is only available to Zakhnook Partner brands, whose stock is held and fulfilled from Zakhnook's own warehouse. Contact an admin if you believe this should be enabled."
+            description="Shipments & Transfers is available to Zakhnook Fulfilled brands. Brand Fulfilled sellers manage their available quantities directly from Inventory."
           />
         </div>
       </div>
@@ -34,12 +34,18 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
       <DashboardPageHeader
-        eyebrow="Catalog"
-        title="Local Warehouse"
-        description="Declare how much of each variant you actually hold, then request a transfer (اذن صرف مخزن) to hand it to Zakhnook's warehouse. Your storefront stock only rises once Zakhnook confirms receipt — it can never exceed what's actually been received."
+        eyebrow="Zakhnook fulfilled"
+        title="Shipments & Transfers"
+        description="Send stock to Zakhnook, follow receiving progress, and keep every outbound return documented in one place."
       />
       <div className="mt-6">
-        <WarehouseExperience variants={variants} transfers={transfers} brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined} />
+        <WarehouseExperience
+          variants={variants}
+          transfers={transfers}
+          brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined}
+          initialVariantId={params.variant}
+          initialQuantity={params.qty ? Number(params.qty) : undefined}
+        />
       </div>
     </div>
   );

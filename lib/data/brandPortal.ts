@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
 import type { SellingStatus, StockStatus } from "@/types";
 
 // Every query here uses the cookie-aware anon client by default (never
@@ -199,6 +200,9 @@ export interface BrandVariant {
   lowStockThreshold: number;
   sellingStatus: SellingStatus;
   stockStatus: StockStatus;
+  soldLast30Days: number;
+  estimatedDaysRemaining?: number;
+  suggestedRestock: number;
 }
 
 export interface InventoryMovement {
@@ -261,13 +265,44 @@ export async function getVariantsForBrand(
   }
 
   const rows = ((data as unknown as BrandVariantRow[]) ?? []).filter((row) => row.products);
-  const variantsByProduct = await getVariantsForProducts(
-    [...new Set(rows.map((row) => row.product_id))],
-    impersonating ? supabaseAdmin : supabase
-  );
+  const productIds = [...new Set(rows.map((row) => row.product_id))];
+  const dataClient = impersonating ? supabaseAdmin : supabase;
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [variantsByProduct, mediaResult, salesResult] = await Promise.all([
+    getVariantsForProducts(productIds, dataClient),
+    productIds.length
+      ? dataClient
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+        .not("color_option_value_id", "is", null)
+        .order("display_order", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    supabaseAdmin
+      .from("order_items")
+      .select("variant_id, quantity, orders!inner(status, created_at)")
+      .eq("brand_slug", brandSlug)
+      .gte("orders.created_at", since)
+      .neq("orders.status", "cancelled"),
+  ]);
+  if (mediaResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
+  if (salesResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) sales failed: ${salesResult.error.message}`);
+
   const optionValuesByVariant = new Map(
     [...variantsByProduct.values()].flat().map((v) => [v.id, v.optionValues])
   );
+  const mediaByColor = new Map<string, string>();
+  for (const media of mediaResult.data ?? []) {
+    if (!media.color_option_value_id) continue;
+    const key = `${media.product_id}:${media.color_option_value_id}`;
+    if (!mediaByColor.has(key)) mediaByColor.set(key, media.storage_reference);
+  }
+  const soldByVariant = new Map<string, number>();
+  for (const sale of salesResult.data ?? []) {
+    if (!sale.variant_id) continue;
+    soldByVariant.set(sale.variant_id, (soldByVariant.get(sale.variant_id) ?? 0) + Number(sale.quantity));
+  }
 
   return rows.map((row) => {
     const threshold = effectiveLowStockThreshold(
@@ -275,11 +310,14 @@ export async function getVariantsForBrand(
       row.products!.default_low_stock_threshold
     );
     const optionValues = optionValuesByVariant.get(row.id) ?? [];
+    const colorValue = optionValues.find((option) => option.optionTypeName === "Color");
+    const soldLast30Days = soldByVariant.get(row.id) ?? 0;
+    const daysRemaining = estimateDaysRemaining(row.quantity, soldLast30Days);
     return {
       variantId: row.id,
       productId: row.product_id,
       productName: row.products!.name,
-      image: row.products!.image,
+      image: (colorValue ? mediaByColor.get(`${row.product_id}:${colorValue.optionValueId}`) : undefined) ?? row.products!.image,
       sku: row.sku,
       optionSummary: optionValues.map((option) => `${option.optionTypeName}: ${option.label}`).join(" / ") || "Default",
       color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
@@ -288,6 +326,9 @@ export async function getVariantsForBrand(
       lowStockThreshold: threshold,
       sellingStatus: row.selling_status,
       stockStatus: calculateStockStatus(row.quantity, threshold),
+      soldLast30Days,
+      estimatedDaysRemaining: daysRemaining ?? undefined,
+      suggestedRestock: suggestedRestockQuantity(row.quantity, threshold, soldLast30Days),
     };
   });
 }
