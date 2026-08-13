@@ -30,6 +30,7 @@ export interface ProductLookupRow {
   paused_by_brand: boolean;
   brands: { is_active: boolean; fulfillment_mode: string } | null;
   image: string;
+  color_images_by_option_value_id?: Record<string, string>;
   first_stocked_at: string | null;
 }
 
@@ -152,7 +153,12 @@ export function resolveIntentionCart(
       size: item.size,
       color: item.color ?? "",
       quantity: item.quantity,
-      image: product.image,
+      image:
+        product.color_images_by_option_value_id?.[
+          variant.optionValues.find(
+            (value) => value.optionTypeName.trim().toLowerCase() === "color"
+          )?.optionValueId ?? ""
+        ] ?? product.image,
       originalUnitPrice: effective.base,
       discountPercentSnapshot: effective.source === "none" ? null : (effective.percent ?? null),
       discountSource: effective.source,

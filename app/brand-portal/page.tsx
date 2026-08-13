@@ -17,7 +17,7 @@ import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getOrdersForBrand, getProductsForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin, getAuditLogsForBrand } from "@/lib/data/admin";
 import { getBestSellingColorsWithStatsForBrand } from "@/lib/data/collections";
-import { formatDateOnly, formatDateTime, formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import { describeAuditLog } from "@/lib/auditLogDescribe";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
@@ -27,7 +27,7 @@ import {
   DashboardPanel,
   dashboardButtonSecondary,
 } from "@/components/dashboard/DashboardUI";
-import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import BrandPerformanceAnalytics from "@/components/brand-portal/BrandPerformanceAnalytics";
 
 export default async function BrandPortalOverviewPage(props: { searchParams: Promise<{ brand?: string }> }) {
   const searchParams = await props.searchParams;
@@ -79,36 +79,32 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
       <DashboardPageHeader
         eyebrow="Overview"
         title={`Welcome back${owner.brandName ? `, ${owner.brandName}` : ""}`}
-        description="Track your business, handle urgent work, and keep your catalog ready for customers."
+        description="Track this month’s performance, handle urgent work, and keep your catalog ready for customers."
         actions={
-          <Link
-            href={`/brands/${owner.brandSlug}`}
-            target="_blank"
-            rel="noreferrer"
-            className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
-          >
-            <Eye className="mr-2 h-4 w-4" />
-            View storefront
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={attentionHref}
+              aria-label={pendingActions ? `${pendingActions} items need attention` : "Everything is up to date"}
+              className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${pendingActions ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
+            >
+              {pendingActions ? <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} /> : <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />}
+              <span className="tabular-nums">{pendingActions ? `${pendingActions} need attention` : "All up to date"}</span>
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href={`/brands/${owner.brandSlug}`}
+              target="_blank"
+              rel="noreferrer"
+              className={`${dashboardButtonSecondary} border-[#ddd6cd] bg-[#fffdf9] text-[#51473f] hover:bg-[#f7f0e8] active:translate-y-px`}
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              View storefront
+            </Link>
+          </div>
         }
       />
 
-      <section aria-labelledby="performance-heading">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 id="performance-heading" className="text-[17px] font-bold tracking-[-0.02em] text-[#332c27]">Business performance</h2>
-            <p className="mt-1 text-[13px] text-[#81746a]">A concise view of this month and today.</p>
-          </div>
-          <Link
-            href={attentionHref}
-            aria-label={pendingActions ? `${pendingActions} items need attention` : "Everything is up to date"}
-            className={`inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-[11.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${pendingActions ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"}`}
-          >
-            {pendingActions ? <AlertTriangle className="h-3.5 w-3.5" strokeWidth={2} /> : <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={2} />}
-            <span className="tabular-nums">{pendingActions ? `${pendingActions} need attention` : "All up to date"}</span>
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
+      <section aria-label="Business performance">
         <div className="grid gap-4 tabular-nums sm:grid-cols-2 xl:grid-cols-[1.25fr_repeat(3,minmax(0,1fr))]">
           <OverviewMetricCard
             label="Sales this month"
@@ -144,37 +140,7 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.45fr)]">
-        <DashboardPanel
-          title="Recent orders"
-          description="The latest orders containing products from your brand"
-          action={<Link href={`/brand-portal/orders${brandParam}`} className="text-[12.5px] font-semibold text-mahalyred hover:underline">View all orders</Link>}
-          className="border-[#e3dcd3] bg-[#fffdf9] shadow-[0_10px_30px_rgba(67,45,29,0.045)]"
-        >
-          {orders.length ? (
-            <div className="divide-y divide-[#eee7de]">
-              {orders.slice(0, 4).map((order) => (
-                <article key={order.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-[#fbf8f4] sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                  <div className="min-w-0">
-                    <p className="text-[13.5px] font-bold tabular-nums text-[#332c27]">#{order.orderNumber}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#81746a]">
-                      <span>{order.shippingName}</span>
-                      <span>{order.shippingCity}</span>
-                      <time dateTime={order.createdAt}>{formatDateOnly(order.createdAt)}</time>
-                    </div>
-                  </div>
-                  <div className="flex flex-none items-center justify-between gap-3 sm:justify-end">
-                    <p className="text-[13.5px] font-bold tabular-nums text-[#332c27]">{formatPrice(orderRevenue(order), "EGP")}</p>
-                    <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${orderStatusBadgeClass(order.status as never)}`}>
-                      {ORDER_STATUS_LABELS[order.status as keyof typeof ORDER_STATUS_LABELS] ?? order.status}
-                    </span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <DashboardEmptyState title="No orders yet" description="Orders containing your products will appear here." />
-          )}
-        </DashboardPanel>
+        <BrandPerformanceAnalytics orders={orders} />
 
         <DashboardPanel
           title="Inventory health"

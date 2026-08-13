@@ -72,14 +72,37 @@ export async function POST(request: NextRequest) {
       // app/api/orders/route.ts does — the client only ever sends
       // productId/size/color/quantity, never a price this trusts directly.
       fetchProducts: async (productIds) => {
-        const { data, error } = await supabaseAdmin
-          .from("products")
-          .select(
-            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)"
-          )
-          .in("id", productIds);
+        const [{ data, error }, mediaResult] = await Promise.all([
+          supabaseAdmin
+            .from("products")
+            .select(
+              "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)"
+            )
+            .in("id", productIds),
+          supabaseAdmin
+            .from("product_media")
+            .select("product_id, storage_reference, color_option_value_id")
+            .in("product_id", productIds)
+            .eq("is_archived", false)
+            .not("color_option_value_id", "is", null)
+            .order("display_order", { ascending: true }),
+        ]);
         if (error) return { ok: false };
-        return { ok: true, rows: (data ?? []) as unknown as ProductLookupRow[] };
+        if (mediaResult.error) return { ok: false };
+        const colorsByProduct = new Map<string, Record<string, string>>();
+        for (const media of mediaResult.data ?? []) {
+          if (!media.color_option_value_id) continue;
+          const colors = colorsByProduct.get(media.product_id) ?? {};
+          colors[media.color_option_value_id] ??= media.storage_reference;
+          colorsByProduct.set(media.product_id, colors);
+        }
+        return {
+          ok: true,
+          rows: ((data ?? []) as unknown as ProductLookupRow[]).map((row) => ({
+            ...row,
+            color_images_by_option_value_id: colorsByProduct.get(row.id) ?? {},
+          })),
+        };
       },
       fetchVariants: (productIds) => getVariantsForProducts(productIds, supabaseAdmin).catch(() => null),
       fetchBrandFlags: (slugs) => getBrandFulfillmentFlags(slugs),
