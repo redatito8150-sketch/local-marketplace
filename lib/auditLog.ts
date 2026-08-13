@@ -54,7 +54,8 @@ export type AuditEntityType =
   | "inventory"
   | "warehouse_transfer"
   | "role"
-  | "payment_attempt";
+  | "payment_attempt"
+  | "fulfillment_transition";
 
 // Which Discord channel each entity type's activity mirrors to — see
 // lib/discord.ts for the channel keys and their env vars. #notifications
@@ -69,6 +70,7 @@ const CHANNEL_BY_ENTITY: Record<AuditEntityType, DiscordChannel> = {
   collection: "auditCollections",
   inventory: "auditInventory",
   warehouse_transfer: "auditInventory",
+  fulfillment_transition: "auditInventory",
   option_type: "auditProductOptions",
   option_value: "auditProductOptions",
   review: "auditReviews",

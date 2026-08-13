@@ -10,6 +10,12 @@ type Update = { variantId: string; brandStockQuantity: number };
 // own warehouse right now" — never read by the storefront/checkout. Not
 // audited/notified like a real inventory change; it's closer to editing a
 // draft field than a consequential write.
+//
+// DEPRECATED (kept functional for backward compatibility — see
+// supabase/migrations/20260814000005_inventory_permission_boundaries.sql's
+// comment on set_warehouse_brand_stock): new development should prefer
+// declaring an actual shipment via POST /api/brand-portal/warehouse/transfers
+// (request_warehouse_transfer) instead of freely overwriting a total here.
 export async function PATCH(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
@@ -47,5 +53,5 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, deprecated: true });
 }

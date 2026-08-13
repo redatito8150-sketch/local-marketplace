@@ -406,6 +406,21 @@ async function resolveProductIdsByVariantOptionLabel(optionKey: "size" | "color"
   return [...new Set(rows.map((r) => r.product_variants.product_id))];
 }
 
+// A zakhnook_fulfilled brand's brand-new product must stay absent from the
+// storefront until its first accepted warehouse receipt
+// (products.first_stocked_at, see supabase/migrations/
+// 20260814000004_product_launch_state.sql) — a brand_fulfilled brand's
+// products are never affected (their opening stock is entered directly at
+// creation, so first_stocked_at is set immediately). Returns the brand ids
+// this filter actually needs to exclude from, or an empty array if there
+// are none (in which case the caller should skip adding the filter clause
+// entirely — an empty `not.in.()` is malformed PostgREST syntax).
+async function resolveZakhnookFulfilledBrandIds(): Promise<string[]> {
+  const { data, error } = await supabase.from("brands").select("id").eq("fulfillment_mode", "zakhnook_fulfilled");
+  if (error) throw new Error(`resolveZakhnookFulfilledBrandIds failed: ${error.message}`);
+  return (data ?? []).map((row) => row.id as string);
+}
+
 async function resolveProductIdsByAvailability(inStock: boolean): Promise<string[]> {
   const { data, error } = await supabase
     .from("product_variants")
@@ -427,7 +442,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
 
   const needsTaxonomyLookup = Boolean(filters.mainCategory?.length || filters.productType?.length);
   const needsCollectionLookup = Boolean(filters.collection?.length);
-  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds] = await Promise.all([
+  const [taxonomyTree, collectionIds, sizeProductIds, colorProductIds, availabilityProductIds, unlaunchedBrandIds] = await Promise.all([
     needsTaxonomyLookup ? getFullTaxonomyTree() : Promise.resolve<TaxonomyNode[]>([]),
     needsCollectionLookup ? resolveCollectionIdsByName(filters.collection!) : Promise.resolve<string[] | null>(null),
     filters.size?.length ? resolveProductIdsByVariantOptionLabel("size", filters.size) : Promise.resolve<string[] | null>(null),
@@ -435,6 +450,7 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     filters.availability?.length === 1
       ? resolveProductIdsByAvailability(filters.availability[0] === "in-stock")
       : Promise.resolve<string[] | null>(null),
+    resolveZakhnookFulfilledBrandIds(),
   ]);
 
   let query = supabase
@@ -443,6 +459,12 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     .eq("status", "published")
     .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
+  // Product launch state: a zakhnook_fulfilled brand's product stays out of
+  // the storefront until first_stocked_at is set (first accepted receipt).
+  // brand_fulfilled brands are never excluded by this clause.
+  if (unlaunchedBrandIds.length) {
+    query = query.or(`first_stocked_at.not.is.null,brand_id.not.in.(${unlaunchedBrandIds.join(",")})`);
+  }
 
   const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
   if (search) query = query.or(`name.ilike.%${search}%,brand_name.ilike.%${search}%`);
