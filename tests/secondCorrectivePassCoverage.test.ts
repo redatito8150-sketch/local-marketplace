@@ -36,6 +36,7 @@ const DOCS_MIGRATION = read("supabase/migrations/20260814000003_warehouse_docume
 const DOCS_SQL = compact(DOCS_MIGRATION);
 const PRODUCT_LAUNCH_MIGRATION = read("supabase/migrations/20260814000004_product_launch_state.sql");
 const PERMISSIONS_MIGRATION = read("supabase/migrations/20260814000005_inventory_permission_boundaries.sql");
+const PAYMENT_COORDINATION_MIGRATION = read("supabase/migrations/20260814000007_payment_transition_coordination.sql");
 
 // ---------------------------------------------------------------------------
 // 1. Direct anon/authenticated access to public.products
@@ -143,8 +144,8 @@ function makeDeps(overrides: Partial<CreateIntentionDeps> = {}): CreateIntention
     fetchProducts: async () => ({ ok: true as const, rows: [product()] }),
     fetchVariants: async () => new Map([["prod-1", [variant()]]]),
     fetchBrandFlags: async () => [{ slug: "zakhnook-studio", isMahalyPartner: false }],
-    fetchOpenTransitionBrandSlugs: async () => [],
     fetchShippingSettings: async () => SHIPPING_SETTINGS,
+    fetchCoupon: async () => null,
     createPaymentAttempt,
     markIntentionCreated: async () => {},
     markIntentionFailed: async () => {},
@@ -154,10 +155,14 @@ function makeDeps(overrides: Partial<CreateIntentionDeps> = {}): CreateIntention
   };
 }
 
-test("item 8 / card race (item 3, pre-emptive side): createPaymobIntentionForCart rejects outright when the cart's brand has an open fulfillment transition, before ever calling Paymob", async () => {
+test("item 8 / card race: the atomic create-payment RPC rejection stops the flow before Paymob", async () => {
   let paymobCalled = false;
   const deps = makeDeps({
-    fetchOpenTransitionBrandSlugs: async () => ["zakhnook-studio"],
+    createPaymentAttempt: async () => ({
+      ok: false,
+      status: 409,
+      error: "An item in your cart is temporarily unavailable while its brand updates fulfillment.",
+    }),
     createIntention: async () => {
       paymobCalled = true;
       return { clientSecret: "egy_csk_test_success", intentionId: "pi_1", paymobOrderId: 1 };
@@ -165,14 +170,13 @@ test("item 8 / card race (item 3, pre-emptive side): createPaymobIntentionForCar
   });
   const outcome = await createPaymobIntentionForCart(validBody, AUTH, IDEMPOTENCY_KEY, ENV, deps);
   assert.equal(outcome.ok, false);
-  if (!outcome.ok) assert.equal(outcome.status, 400);
-  assert.equal(paymobCalled, false, "Paymob must never be reached once an open transition is detected");
+  if (!outcome.ok) assert.equal(outcome.status, 409);
+  assert.equal(paymobCalled, false, "Paymob must never be reached after the atomic RPC rejects the attempt");
 });
 
-test("item 8 / card race (item 3, pre-emptive side): an empty openTransitionBrandSlugs list does not block a normal intention", async () => {
+test("item 8 / card race: an accepted atomic payment attempt proceeds to Paymob", async () => {
   let paymobCalled = false;
   const deps = makeDeps({
-    fetchOpenTransitionBrandSlugs: async () => [],
     createIntention: async () => {
       paymobCalled = true;
       return { clientSecret: "egy_csk_test_success", intentionId: "pi_1", paymobOrderId: 1 };
@@ -185,7 +189,8 @@ test("item 8 / card race (item 3, pre-emptive side): an empty openTransitionBran
 
 test("item 8 / card race (item 3, in-flight side): compute_fulfillment_transition_blockers reports OPEN_PAYMENT_ATTEMPT_PENDING for a payment_attempts row in a nonterminal status whose cart_snapshot references the brand, for BOTH transition directions", () => {
   const fn = MODE_MIGRATION.match(/create or replace function private\.compute_fulfillment_transition_blockers\([\s\S]*?\$\$;/i)![0];
-  assert.match(fn, /where pa\.status in \('created', 'pending', 'paid', 'reflecting'\)/);
+  assert.match(fn, /pa\.status in \('processing', 'paid', 'reflecting'\)/);
+  assert.match(fn, /pa\.status in \('created', 'pending'\)[\s\S]*?pa\.expires_at > pg_catalog\.now\(\)/);
   assert.match(fn, /where item ->> 'brandSlug' = v_brand_slug/);
   assert.match(fn, /if v_open_payment_attempts > 0 then\s*\n\s*v_blockers := v_blockers \|\| jsonb_build_array\('OPEN_PAYMENT_ATTEMPT_PENDING'\);/);
   // This check runs before the if/else direction branch, so it applies
@@ -193,6 +198,15 @@ test("item 8 / card race (item 3, in-flight side): compute_fulfillment_transitio
   const checkIndex = fn.indexOf("if v_open_payment_attempts > 0 then");
   const directionBranchIndex = fn.indexOf("if p_to_mode = 'zakhnook_fulfilled' then");
   assert.ok(checkIndex !== -1 && directionBranchIndex !== -1 && checkIndex < directionBranchIndex);
+});
+
+test("item 8 / card race: create_payment_attempt and transition requests coordinate on ordered brand-row locks", () => {
+  assert.match(PAYMENT_COORDINATION_MIGRATION, /from public\.brands b[\s\S]*?order by b\.id[\s\S]*?for update of b/);
+  assert.match(PAYMENT_COORDINATION_MIGRATION, /from public\.brand_fulfillment_transitions bft[\s\S]*?bft\.status not in \('completed', 'cancelled', 'failed'\)/);
+  assert.match(PAYMENT_COORDINATION_MIGRATION, /raise exception 'FULFILLMENT_TRANSITION_BLOCKS_PAYMENT';/);
+  const lockIndex = PAYMENT_COORDINATION_MIGRATION.indexOf("for update of b");
+  const insertIndex = PAYMENT_COORDINATION_MIGRATION.indexOf("insert into public.payment_attempts");
+  assert.ok(lockIndex !== -1 && insertIndex !== -1 && lockIndex < insertIndex);
 });
 
 test("item 8 / card race (item 3, last resort): place_order and place_paid_order raise a distinct FULFILLMENT_TRANSITION_BLOCKS_ORDER exception (not the generic INSUFFICIENT_STOCK) when a brand's transition opened between intention creation and payment completion", () => {

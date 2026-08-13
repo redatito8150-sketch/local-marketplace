@@ -201,7 +201,13 @@ begin
   select slug into v_brand_slug from public.brands where id = p_brand_id;
   select count(*) into v_open_payment_attempts
   from public.payment_attempts pa
-  where pa.status in ('created', 'pending', 'paid', 'reflecting')
+  where (
+      pa.status in ('processing', 'paid', 'reflecting')
+      or (
+        pa.status in ('created', 'pending')
+        and pa.expires_at > pg_catalog.now()
+      )
+    )
     and exists (
       select 1 from jsonb_array_elements(coalesce(pa.cart_snapshot, '[]'::jsonb)) as item
       where item ->> 'brandSlug' = v_brand_slug

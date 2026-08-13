@@ -100,6 +100,15 @@ declare
   v_results jsonb := '[]'::jsonb;
   v_bucket_count int;
   v_bucket_index int := 0;
+  v_bucket_egp_item_count int;
+  v_bucket_egp_item_seen int;
+  v_bucket_discount_assigned numeric(10, 2);
+  v_bucket_subtotal_egp numeric(10, 2);
+  v_item_coupon_discount numeric(10, 2);
+  v_original_unit_price numeric(10, 2);
+  v_discount_percent_snapshot numeric(5, 2);
+  v_discount_source text;
+  v_last_discount_bucket_key text;
 begin
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'EMPTY_CART: no items to order';
@@ -152,6 +161,9 @@ begin
         v_subtotal_egp := v_subtotal_egp + (v_item ->> 'price')::numeric * (v_item ->> 'quantity')::int;
       end if;
     end loop;
+    if v_subtotal_egp > 0 then
+      v_last_discount_bucket_key := v_bucket_key;
+    end if;
     v_total_subtotal_egp := v_total_subtotal_egp + v_subtotal_egp;
   end loop;
 
@@ -184,10 +196,42 @@ begin
   for v_bucket_key in select unnest(v_bucket_keys)
   loop
     v_bucket_index := v_bucket_index + 1;
-    v_subtotal_usd := 0;
     v_subtotal_egp := 0;
     v_bucket_fulfillment_type := case when v_bucket_key = '__mahaly_pool__' then 'mahaly_pool' else 'brand_direct' end;
     v_bucket_brand_slug := case when v_bucket_key = '__mahaly_pool__' then null else v_bucket_key end;
+
+    -- Compute this bucket's EGP subtotal and line count before writing its
+    -- items so the coupon can be allocated down to each line exactly.
+    v_bucket_egp_item_count := 0;
+    for v_item in select * from jsonb_array_elements(p_items)
+    loop
+      v_brand_slug := nullif(v_item ->> 'brand_slug', '');
+      v_is_partner := false;
+      if v_brand_slug is not null then
+        select coalesce(is_mahaly_partner, false) into v_is_partner from brands where slug = v_brand_slug;
+      end if;
+      if (case when v_is_partner or v_brand_slug is null then '__mahaly_pool__' else v_brand_slug end) <> v_bucket_key then
+        continue;
+      end if;
+      if (v_item ->> 'currency') = 'EGP' then
+        v_subtotal_egp := v_subtotal_egp + (v_item ->> 'price')::numeric * (v_item ->> 'quantity')::int;
+        v_bucket_egp_item_count := v_bucket_egp_item_count + 1;
+      end if;
+    end loop;
+
+    if v_total_discount_egp > 0 then
+      if v_bucket_key = v_last_discount_bucket_key then
+        v_bucket_discount := v_total_discount_egp - v_discount_assigned;
+      elsif v_subtotal_egp > 0 and v_total_subtotal_egp > 0 then
+        v_bucket_discount := round(v_total_discount_egp * v_subtotal_egp / v_total_subtotal_egp, 2);
+      else
+        v_bucket_discount := 0;
+      end if;
+      v_discount_assigned := v_discount_assigned + v_bucket_discount;
+    else
+      v_bucket_discount := 0;
+    end if;
+    v_bucket_subtotal_egp := v_subtotal_egp;
 
     v_attempt := 0;
     loop
@@ -212,6 +256,10 @@ begin
       end;
     end loop;
 
+    v_subtotal_usd := 0;
+    v_subtotal_egp := 0;
+    v_bucket_egp_item_seen := 0;
+    v_bucket_discount_assigned := 0;
     for v_item in select * from jsonb_array_elements(p_items)
     loop
       v_brand_slug := nullif(v_item ->> 'brand_slug', '');
@@ -227,6 +275,9 @@ begin
       v_price := (v_item ->> 'price')::numeric;
       v_currency := v_item ->> 'currency';
       v_variant_id := nullif(v_item ->> 'variant_id', '')::uuid;
+      v_original_unit_price := nullif(v_item ->> 'original_unit_price', '')::numeric;
+      v_discount_percent_snapshot := nullif(v_item ->> 'discount_percent_snapshot', '')::numeric;
+      v_discount_source := nullif(v_item ->> 'discount_source', '');
 
       if v_variant_id is not null then
         -- Checked SEPARATELY from the stock-availability WHERE clause
@@ -252,12 +303,26 @@ begin
         end if;
       end if;
 
+      if v_currency = 'EGP' and v_bucket_discount > 0 then
+        v_bucket_egp_item_seen := v_bucket_egp_item_seen + 1;
+        if v_bucket_egp_item_seen = v_bucket_egp_item_count then
+          v_item_coupon_discount := v_bucket_discount - v_bucket_discount_assigned;
+        else
+          v_item_coupon_discount := round(v_bucket_discount * (v_price * v_quantity) / v_bucket_subtotal_egp, 2);
+        end if;
+        v_bucket_discount_assigned := v_bucket_discount_assigned + v_item_coupon_discount;
+      else
+        v_item_coupon_discount := 0;
+      end if;
+
       insert into order_items (
-        order_id, product_id, variant_id, name, brand, brand_slug, price, currency, size, color, quantity, image
+        order_id, product_id, variant_id, name, brand, brand_slug, price, currency, size, color, quantity, image,
+        original_unit_price, discount_percent_snapshot, discount_source, item_coupon_discount_egp
       ) values (
         v_order_id, v_item ->> 'product_id', v_variant_id, v_item ->> 'name', v_item ->> 'brand',
         v_brand_slug, v_price, v_currency, v_item ->> 'size',
-        nullif(v_item ->> 'color', ''), v_quantity, v_item ->> 'image'
+        nullif(v_item ->> 'color', ''), v_quantity, v_item ->> 'image',
+        v_original_unit_price, v_discount_percent_snapshot, v_discount_source, v_item_coupon_discount
       );
 
       v_line_total := v_price * v_quantity;
@@ -267,19 +332,6 @@ begin
         v_subtotal_usd := v_subtotal_usd + v_line_total;
       end if;
     end loop;
-
-    if v_total_discount_egp > 0 then
-      if v_bucket_index = v_bucket_count then
-        v_bucket_discount := v_total_discount_egp - v_discount_assigned;
-      elsif v_total_subtotal_egp > 0 then
-        v_bucket_discount := round(v_total_discount_egp * v_subtotal_egp / v_total_subtotal_egp, 2);
-      else
-        v_bucket_discount := 0;
-      end if;
-      v_discount_assigned := v_discount_assigned + v_bucket_discount;
-    else
-      v_bucket_discount := 0;
-    end if;
 
     if p_free_shipping_threshold_egp is not null and v_subtotal_egp >= p_free_shipping_threshold_egp then
       v_shipping_fee := 0;
@@ -355,6 +407,13 @@ declare
   v_attempt_no int;
   v_any_fulfilled boolean;
   v_any_failed boolean;
+  v_had_prior_fulfillment boolean;
+  v_original_unit_price numeric(10, 2);
+  v_discount_percent_snapshot numeric(5, 2);
+  v_discount_source text;
+  v_item_coupon_discount numeric(10, 2);
+  v_bucket_discount_egp numeric(10, 2);
+  v_coupon_code text;
 begin
   select * into v_attempt from public.payment_attempts where id = p_payment_attempt_id for update;
   if not found then
@@ -379,6 +438,12 @@ begin
   end if;
 
   v_group_id := v_attempt.master_order_id;
+  v_coupon_code := nullif(v_attempt.coupon_snapshot ->> 'code', '');
+
+  select exists (
+    select 1 from private.payment_attempt_fulfillments
+    where payment_attempt_id = p_payment_attempt_id and status = 'fulfilled'
+  ) into v_had_prior_fulfillment;
 
   select value into v_shipping_settings from public.site_content where key = 'shipping_settings';
   v_flat_fee := coalesce((v_shipping_settings ->> 'flatDeliveryFeeEgp')::numeric, 50);
@@ -440,6 +505,7 @@ begin
 
       v_subtotal_usd := 0;
       v_subtotal_egp := 0;
+      v_bucket_discount_egp := 0;
 
       v_attempt_no := 0;
       loop
@@ -484,6 +550,10 @@ begin
         v_price := (v_item ->> 'price')::numeric;
         v_currency := v_item ->> 'currency';
         v_variant_id := nullif(v_item ->> 'variantId', '')::uuid;
+        v_original_unit_price := nullif(v_item ->> 'originalUnitPrice', '')::numeric;
+        v_discount_percent_snapshot := nullif(v_item ->> 'discountPercentSnapshot', '')::numeric;
+        v_discount_source := nullif(v_item ->> 'discountSource', '');
+        v_item_coupon_discount := coalesce(nullif(v_item ->> 'itemCouponDiscountEgp', '')::numeric, 0);
 
         if v_variant_id is not null then
           -- Card-payment race, item 3: the customer has ALREADY been
@@ -515,16 +585,19 @@ begin
         end if;
 
         insert into public.order_items (
-          order_id, product_id, variant_id, name, brand, brand_slug, price, currency, size, color, quantity, image
+          order_id, product_id, variant_id, name, brand, brand_slug, price, currency, size, color, quantity, image,
+          original_unit_price, discount_percent_snapshot, discount_source, item_coupon_discount_egp
         ) values (
           v_order_id, v_item ->> 'productId', v_variant_id, v_item ->> 'name', v_item ->> 'brand',
           v_brand_slug, v_price, v_currency, v_item ->> 'size', nullif(v_item ->> 'color', ''), v_quantity,
-          coalesce(v_item ->> 'image', '')
+          coalesce(v_item ->> 'image', ''),
+          v_original_unit_price, v_discount_percent_snapshot, v_discount_source, v_item_coupon_discount
         );
 
         v_line_total := v_price * v_quantity;
         if v_currency = 'EGP' then
           v_subtotal_egp := v_subtotal_egp + v_line_total;
+          v_bucket_discount_egp := v_bucket_discount_egp + v_item_coupon_discount;
         else
           v_subtotal_usd := v_subtotal_usd + v_line_total;
         end if;
@@ -537,7 +610,11 @@ begin
       end if;
 
       update public.orders
-      set subtotal_usd = v_subtotal_usd, subtotal_egp = v_subtotal_egp, shipping_fee_egp = v_shipping_fee
+      set subtotal_usd = v_subtotal_usd,
+          subtotal_egp = v_subtotal_egp,
+          shipping_fee_egp = v_shipping_fee,
+          coupon_code = case when v_bucket_discount_egp > 0 then v_coupon_code else null end,
+          discount_amount_egp = v_bucket_discount_egp
       where id = v_order_id;
 
       insert into public.order_status_history (order_id, status, note)
@@ -547,7 +624,7 @@ begin
         payment_attempt_id, bucket_key, brand_id, status, order_id, expected_amount_cents, fulfilled_at
       ) values (
         p_payment_attempt_id, v_bucket_key, v_bucket_brand_id, 'fulfilled', v_order_id,
-        round((v_subtotal_egp + v_shipping_fee) * 100)::int, now()
+        round((v_subtotal_egp - v_bucket_discount_egp + v_shipping_fee) * 100)::int, now()
       )
       on conflict (payment_attempt_id, bucket_key) do update set
         status = 'fulfilled',
@@ -576,6 +653,10 @@ begin
   into v_any_fulfilled, v_any_failed
   from private.payment_attempt_fulfillments
   where payment_attempt_id = p_payment_attempt_id;
+
+  if v_coupon_code is not null and v_any_fulfilled and not v_had_prior_fulfillment then
+    update public.coupons set used_count = used_count + 1 where code = v_coupon_code;
+  end if;
 
   if v_any_fulfilled then
     update public.payment_attempts

@@ -168,8 +168,10 @@ test("item 7 (second corrective pass): resolve_warehouse_quarantine's idempotenc
 
   assert.match(
     fn,
-    /select variant_id, related_entity_id, reason into v_existing_movement\s*\n\s*from public\.inventory_movements\s*\n\s*where variant_id = v_item\.variant_id\s*\n\s*and source_operation_key = p_operation_key\s*\n\s*and movement_type = 'warehouse_quarantine_release'\s*\n\s*limit 1;/
+    /select variant_id, related_entity_id, reason into v_existing_movement\s*\n\s*from public\.inventory_movements\s*\n\s*where source_operation_key = p_operation_key\s*\n\s*and movement_type = 'warehouse_quarantine_release'\s*\n\s*limit 1;/
   );
+  assert.match(fn, /pg_catalog\.pg_advisory_xact_lock\([\s\S]*?'warehouse_quarantine:' \|\| p_operation_key/);
+  assert.match(docsMigration, /create unique index if not exists inventory_movements_quarantine_operation_key_idx/);
   assert.match(
     fn,
     /if v_existing_movement\.variant_id is not null then\s*\n\s*if v_existing_movement\.related_entity_id = p_transfer_item_id and v_item\.quarantine_resolution = p_resolution then\s*\n\s*return jsonb_build_object\('transfer_item_id', v_item\.id, 'resolution', p_resolution, 'replayed', true\);\s*\n\s*end if;/

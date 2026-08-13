@@ -842,6 +842,11 @@ $$;
 -- already-succeeded call would otherwise always hit that check first and
 -- never reach the replay path at all.
 -- ============================================================================
+create unique index if not exists inventory_movements_quarantine_operation_key_idx
+  on public.inventory_movements (source_operation_key)
+  where movement_type = 'warehouse_quarantine_release'
+    and source_operation_key is not null;
+
 create or replace function public.resolve_warehouse_quarantine(
   p_transfer_item_id uuid,
   p_actor_id uuid,
@@ -871,6 +876,13 @@ begin
     raise exception 'QUARANTINE_RESOLUTION_NOTE_REQUIRED';
   end if;
 
+  -- Serialize this operation key globally. Different transfer items lock
+  -- different rows, so an item-row lock alone cannot prevent concurrent
+  -- reuse of the same idempotency key on two separate items.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('warehouse_quarantine:' || p_operation_key, 0)
+  );
+
   select id, variant_id, transfer_id, damaged_qty, missing_qty, quarantine_resolved_at, quarantine_resolution into v_item
   from public.warehouse_transfer_items
   where id = p_transfer_item_id
@@ -882,8 +894,7 @@ begin
   -- rather than erroring, even though the item is now marked resolved.
   select variant_id, related_entity_id, reason into v_existing_movement
   from public.inventory_movements
-  where variant_id = v_item.variant_id
-    and source_operation_key = p_operation_key
+  where source_operation_key = p_operation_key
     and movement_type = 'warehouse_quarantine_release'
   limit 1;
 

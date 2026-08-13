@@ -246,7 +246,7 @@ export async function createPaymobIntentionForCart(
   }
 
   const idempotencyActor = buildOrderIdempotencyActor(auth.userId, "");
-  const requestHash = hashOrderRequest({ items, shipping });
+  const requestHash = hashOrderRequest({ items, shipping, couponCode });
 
   const attemptResult = await deps.createPaymentAttempt({
     userId: auth.userId,

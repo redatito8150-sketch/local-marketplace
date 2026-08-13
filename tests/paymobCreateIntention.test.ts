@@ -160,7 +160,6 @@ function makeDeps(overrides: Partial<CreateIntentionDeps> = {}) {
     fetchProducts: async () => ({ ok: true as const, rows: [product()] }),
     fetchVariants: async () => new Map([["prod-1", [variant()]]]),
     fetchBrandFlags: async () => [{ slug: "zakhnook-studio", isMahalyPartner: false }],
-    fetchOpenTransitionBrandSlugs: async () => [],
     fetchShippingSettings: async () => SHIPPING_SETTINGS,
     fetchCoupon: async () => null,
     createPaymentAttempt: store.createPaymentAttempt,

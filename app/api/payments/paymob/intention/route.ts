@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await supabaseAdmin
           .from("products")
           .select(
-            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, brands!products_brand_slug_fkey!inner(is_active)"
+            "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)"
           )
           .in("id", productIds);
         if (error) return { ok: false };
@@ -118,6 +118,13 @@ export async function POST(request: NextRequest) {
               ok: false,
               status: 409,
               error: "This checkout key was already used with different order details.",
+            };
+          }
+          if (error.message?.startsWith("FULFILLMENT_TRANSITION_BLOCKS_PAYMENT")) {
+            return {
+              ok: false,
+              status: 409,
+              error: "An item in your cart is temporarily unavailable while its brand updates fulfillment. Please try again shortly.",
             };
           }
           logError("Payment attempt creation failed", error.message);
