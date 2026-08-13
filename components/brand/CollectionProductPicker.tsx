@@ -90,28 +90,31 @@ export default function CollectionProductPicker({
   const filtered = (products ?? []).filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
-      <div className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-[#eee5dc] px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#2f2824]/35 p-4 backdrop-blur-[2px]" role="dialog" aria-modal="true">
+      <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-[24px] border border-white/70 bg-[#fffdfb] shadow-[0_28px_90px_rgba(55,37,27,0.24)]">
+        <div className="flex items-center justify-between border-b border-[#eee5dc] px-5 py-5 sm:px-6">
           <div>
-            <h2 className="font-serif text-lg text-[#261f1b]">Choose products</h2>
-            <p className="text-xs text-[#8b8078]">For &quot;{collectionName}&quot; — {selected.size} selected</p>
+            <p className="text-[9.5px] font-bold uppercase tracking-[.17em] text-[#C85956]">Collection products</p>
+            <h2 className="mt-1 font-serif text-xl text-[#261f1b]">{collectionName}</h2>
+            <p className="mt-1 text-xs text-[#8b8078]">
+              {products ? `${selected.size} products selected` : "Loading products…"}
+            </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-black/5">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="border-b border-[#eee5dc] px-5 py-3">
+        <div className="border-b border-[#eee5dc] px-5 py-3.5 sm:px-6">
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search your products"
-            className="w-full rounded-full border border-[#ddd2c8] px-4 py-2 text-sm outline-none focus:border-[#C85956]"
+            className="h-10 w-full rounded-xl border border-[#ddd2c8] bg-white px-4 text-sm outline-none transition focus:border-[#C85956] focus:ring-2 focus:ring-[#C85956]/10"
           />
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-3">
+        <div className="flex-1 overflow-y-auto px-5 py-3 sm:px-6">
           {!products ? (
             <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-[#C85956]" /></div>
           ) : filtered.length === 0 ? (
@@ -125,8 +128,8 @@ export default function CollectionProductPicker({
                     <button
                       type="button"
                       onClick={() => toggle(product.id)}
-                      className={`flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                        checked ? "border-[#C85956] bg-[#fff2f2]" : "border-transparent hover:bg-[#f8f2ec]"
+                      className={`flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                        checked ? "border-[#dba4a1] bg-[#fff3f1]" : "border-transparent hover:bg-[#f8f2ec]"
                       }`}
                     >
                       <span className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md bg-[#f1e9e1]">
@@ -155,17 +158,17 @@ export default function CollectionProductPicker({
           )}
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-t border-[#eee5dc] px-5 py-4">
+        <div className="flex items-center justify-between gap-3 border-t border-[#eee5dc] px-5 py-4 sm:px-6">
           {error && <span className="text-xs text-red-600">{error}</span>}
           <div className="ml-auto flex gap-2">
-            <button type="button" onClick={onClose} className="rounded-full border border-[#ddd2c8] px-4 py-2 text-xs font-semibold text-[#4c433e]">
+            <button type="button" onClick={onClose} className="h-10 rounded-full border border-[#ddd2c8] px-5 text-xs font-semibold text-[#4c433e] hover:bg-white">
               Cancel
             </button>
             <button
               type="button"
               onClick={save}
               disabled={loading}
-              className="rounded-full bg-[#3fae6a] px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
+              className="h-10 rounded-full bg-[#C85956] px-5 text-xs font-bold text-white transition hover:bg-[#b94f4c] active:scale-[.98] disabled:opacity-60"
             >
               {loading ? "Saving..." : "Save products"}
             </button>

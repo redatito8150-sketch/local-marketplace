@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { BrandEditProvider } from "@/components/brand/BrandEditContext";
-import CollectionsManager from "@/components/brand/CollectionsManager";
+import CollectionsStudio from "@/components/brand/CollectionsStudio";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 
 // The one place a brand creates/edits/deletes a collection (cover photos,
@@ -22,18 +22,10 @@ export default async function BrandCollectionsPage({
   if (!owner?.brandId || !owner.brandSlug) redirect("/brand-portal");
 
   return (
-    <section className="max-w-3xl rounded-xl3 border border-stone-150 bg-white p-6 shadow-sm">
-      <h1 className="text-xl font-bold text-ink">Collections</h1>
-      <p className="mt-1 text-[13px] text-ink-soft/60">
-        Create, edit, and manage your collections here — cover photos, name, tag, description, which products belong
-        in each, pausing, and scheduling a future reveal. Their display order on your public profile is set from
-        there instead.
-      </p>
-      <div className="mt-6">
-        <BrandEditProvider brandSlug={owner.brandSlug}>
-          <CollectionsManager brandSlug={owner.brandSlug} />
-        </BrandEditProvider>
-      </div>
+    <section className="max-w-5xl">
+      <BrandEditProvider brandSlug={owner.brandSlug}>
+        <CollectionsStudio brandSlug={owner.brandSlug} />
+      </BrandEditProvider>
     </section>
   );
 }

@@ -568,6 +568,9 @@ export interface CollectionRecord {
   // position 0 is treated as the "featured" collection everywhere the
   // public experience distinguishes one, no separate flag needed.
   sortOrder: number;
+  // Owner-workspace display helpers populated by the management query.
+  productCount?: number;
+  productPreviewImages?: string[];
 }
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────

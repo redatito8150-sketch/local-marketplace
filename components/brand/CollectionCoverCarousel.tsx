@@ -157,7 +157,7 @@ export default function CollectionCoverCarousel({
       )}
 
       {editable && (
-        <div className="absolute right-2 top-2 flex gap-1.5">
+        <div className="absolute right-2 top-2 flex gap-1.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover/carousel:opacity-100 sm:group-focus-within/carousel:opacity-100">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
