@@ -48,6 +48,10 @@ const env = loadEnv();
 const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
 const hasCredentials = Boolean(supabaseUrl && serviceRoleKey);
+// Never infer that a real credentialed project is disposable just because
+// its schema is current. Live write tests require an explicit opt-in and are
+// intended for an isolated Supabase branch/local database only.
+const integrationTestsEnabled = env.RUN_FULFILLMENT_INTEGRATION === "1";
 
 let admin: SupabaseClient | null = null;
 let schemaReady = false;
@@ -62,7 +66,7 @@ async function probeSchemaReady(): Promise<boolean> {
 // node:test evaluates `skip` synchronously at test-registration time, so
 // the schema probe has to run once, up front, via a top-level await.
 schemaReady = await probeSchemaReady();
-const runLive = hasCredentials && schemaReady;
+const runLive = integrationTestsEnabled && hasCredentials && schemaReady;
 
 async function createThrowawayBrand(mode: "brand_fulfilled" | "zakhnook_fulfilled" = "brand_fulfilled") {
   const slug = `test-fulfillment-${randomUUID()}`;
@@ -71,14 +75,54 @@ async function createThrowawayBrand(mode: "brand_fulfilled" | "zakhnook_fulfille
     .insert({
       slug,
       name: slug,
+      category: "Test",
+      story_body: "Integration-test brand",
       is_active: true,
-      sku_prefix: slug.slice(0, 8).toUpperCase().replace(/-/g, ""),
+      sku_prefix: randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase(),
       fulfillment_mode: mode,
     })
     .select("id, slug")
     .single();
   if (error) throw new Error(`createThrowawayBrand failed: ${error.message}`);
   return data as { id: string; slug: string };
+}
+
+async function createThrowawayProduct(
+  brand: { id: string; slug: string },
+  overrides: Record<string, unknown> = {}
+) {
+  const { data: productType, error: productTypeError } = await admin!
+    .from("taxonomy_nodes")
+    .select("id")
+    .eq("level", 3)
+    .limit(1)
+    .single();
+  if (productTypeError || !productType) {
+    throw new Error(`createThrowawayProduct taxonomy lookup failed: ${productTypeError?.message ?? "missing level-3 node"}`);
+  }
+
+  const productId = `test-prod-${randomUUID()}`;
+  const { data, error } = await admin!
+    .from("products")
+    .insert({
+      id: productId,
+      brand_id: brand.id,
+      brand_slug: brand.slug,
+      name: "Integration test product",
+      brand_name: brand.slug,
+      status: "draft",
+      price: 100,
+      currency: "EGP",
+      image: "/images/placeholder-product.webp",
+      sku: `IT-${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`,
+      product_type_id: productType.id,
+      audience: "women",
+      ...overrides,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw new Error(`createThrowawayProduct failed: ${error?.message ?? "no row returned"}`);
+  return data as { id: string };
 }
 
 async function cleanupBrand(brandId: string) {
@@ -140,14 +184,10 @@ test("item 2: cutover ledger entry records the real previous quantity and negati
   const brand = await createThrowawayBrand("brand_fulfilled");
   try {
     await t.test("previous_quantity/quantity_delta/new_quantity are correct after the cutover snapshot", async () => {
-      const { data: product } = await admin!
-        .from("products")
-        .insert({ id: `test-prod-${randomUUID()}`, brand_id: brand.id, brand_slug: brand.slug, name: "Test", brand_name: brand.slug, status: "draft", price: 100, currency: "EGP" })
-        .select("id")
-        .single();
+      const product = await createThrowawayProduct(brand);
       const { data: variant } = await admin!
         .from("product_variants")
-        .insert({ product_id: product!.id, sku: `TP-${randomUUID().slice(0, 8)}`, quantity: 7, combo_key: "default" })
+        .insert({ product_id: product.id, sku: `TP-${randomUUID().slice(0, 8)}`, quantity: 7, combo_key: "default" })
         .select("id")
         .single();
 
@@ -289,17 +329,17 @@ test("second pass / anon access: a direct anon-key query against public.products
   await t.test("RLS on products itself excludes the row for the anon role", { skip: !anonKey }, async () => {
     const brand = await createThrowawayBrand("zakhnook_fulfilled");
     try {
-      const { data: product } = await admin!
-        .from("products")
-        .insert({ id: `test-prod-${randomUUID()}`, brand_id: brand.id, brand_slug: brand.slug, name: "Unlaunched", brand_name: brand.slug, status: "published", price: 100, currency: "EGP", first_stocked_at: null })
-        .select("id")
-        .single();
+      const product = await createThrowawayProduct(brand, {
+        name: "Unlaunched",
+        status: "published",
+        first_stocked_at: null,
+      });
 
       const anonClient = createClient(supabaseUrl!, anonKey!);
-      const { data: anonRows } = await anonClient.from("products").select("id").eq("id", product!.id);
+      const { data: anonRows } = await anonClient.from("products").select("id").eq("id", product.id);
       assert.equal((anonRows ?? []).length, 0, "an unlaunched zakhnook_fulfilled product must not be readable via the anon key, even by direct table id");
 
-      await admin!.from("products").delete().eq("id", product!.id);
+      await admin!.from("products").delete().eq("id", product.id);
     } finally {
       await cleanupBrand(brand.id);
     }
@@ -310,11 +350,11 @@ test("second pass / open-transition storefront visibility: storefront_products e
   const brand = await createThrowawayBrand("brand_fulfilled");
   try {
     await t.test("view row disappears while the transition is open", async () => {
-      const { data: product } = await admin!
-        .from("products")
-        .insert({ id: `test-prod-${randomUUID()}`, brand_id: brand.id, brand_slug: brand.slug, name: "Mid-transition", brand_name: brand.slug, status: "published", price: 100, currency: "EGP", first_stocked_at: new Date().toISOString() })
-        .select("id")
-        .single();
+      const product = await createThrowawayProduct(brand, {
+        name: "Mid-transition",
+        status: "published",
+        first_stocked_at: new Date().toISOString(),
+      });
 
       const { data: requestResult, error } = await admin!.rpc("request_fulfillment_mode_transition", {
         p_brand_id: brand.id, p_to_mode: "zakhnook_fulfilled", p_actor_id: null, p_notes: null, p_effective_date: null, p_operation_key: randomUUID(),
@@ -322,11 +362,11 @@ test("second pass / open-transition storefront visibility: storefront_products e
       assert.equal(error, null, error?.message);
       const transitionId = (requestResult as { transition_id: string }).transition_id;
 
-      const { data: viewRows } = await admin!.from("storefront_products").select("id").eq("id", product!.id);
+      const { data: viewRows } = await admin!.from("storefront_products").select("id").eq("id", product.id);
       assert.equal((viewRows ?? []).length, 0, "storefront_products must exclude a product whose brand has an open transition, launch state notwithstanding");
 
       await admin!.rpc("cancel_fulfillment_transition", { p_transition_id: transitionId, p_actor_id: null, p_notes: "cleanup" });
-      await admin!.from("products").delete().eq("id", product!.id);
+      await admin!.from("products").delete().eq("id", product.id);
     });
   } finally {
     await cleanupBrand(brand.id);

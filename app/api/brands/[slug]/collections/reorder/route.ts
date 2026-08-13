@@ -25,6 +25,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ slu
   if (!orderedIds || orderedIds.length === 0) {
     return NextResponse.json({ error: "Invalid order" }, { status: 400 });
   }
+  if (new Set(orderedIds).size !== orderedIds.length) {
+    return NextResponse.json({ error: "Each collection must appear exactly once" }, { status: 400 });
+  }
 
   const { data: owned, error: ownedError } = await supabaseAdmin
     .from("collections")

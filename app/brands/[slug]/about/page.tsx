@@ -6,7 +6,7 @@ import InlineEditableImage from "@/components/brand/InlineEditableImage";
 import InlineEditableText from "@/components/brand/InlineEditableText";
 import RichTextEditableField from "@/components/brand/RichTextEditableField";
 import { getBrandContent } from "@/lib/data/brands";
-import { stripRichText } from "@/lib/sanitizeRichText";
+import { sanitizeRichText, stripRichText } from "@/lib/sanitizeRichText";
 
 export async function generateMetadata({
   params,
@@ -40,7 +40,12 @@ export default async function AboutPage({
   // is retired from this page (story_body itself is untouched; still used
   // by the admin BrandForm/brand-portal/mobile app).
   const introFallback = `<p>${brand.name} was born in ${brand.city} from a love of thoughtful design, honest materials, and the city it calls home — creating effortless pieces made for real life. From the sea breeze to ${brand.city}'s golden light, everything we create is inspired by our surroundings and made to move with you, wherever the day takes you.</p>`;
-  const introduction = stripRichText(brand.aboutDescription).length > 40 ? brand.aboutDescription : introFallback;
+  const introductionSource = stripRichText(brand.aboutDescription).length > 40 ? brand.aboutDescription : introFallback;
+  // Sanitize on read as well as on write. New edits are already sanitized by
+  // the API, but this protects the public renderer from historical/imported
+  // database values created before that boundary existed. The fallback also
+  // interpolates brand fields, so it passes through the same allowlist.
+  const introduction = sanitizeRichText(introductionSource);
   const aboutImage = brand.aboutImage;
   const headlineFallback = `Designed in ${brand.city}.\nMade for everywhere.`;
   const quoteFallback = `We started ${brand.name} to make everyday pieces feel personal again.`;
