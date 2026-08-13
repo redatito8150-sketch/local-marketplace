@@ -163,12 +163,22 @@ test("private.is_brand_fulfillment_transition_open exists, is a stable SQL funct
   );
 });
 
-test("private.place_order (COD) is re-declared with the extra guard on its stock-decrement WHERE clause — byte-identical to the master_orders.sql version otherwise, same signature", () => {
+test("private.place_order (COD) is re-declared with the extra guard checked SEPARATELY before its stock-decrement WHERE clause — a distinct FULFILLMENT_TRANSITION_BLOCKS_ORDER exception, not folded into the generic INSUFFICIENT_STOCK condition — byte-identical to the master_orders.sql version otherwise, same signature", () => {
   const fn = permMigration.match(/create or replace function private\.place_order\([\s\S]*?\n\$\$;/i)![0];
   assert.match(
     fn,
-    /where id = v_variant_id\s*\n\s*and quantity >= v_quantity\s*\n\s*and selling_status = 'active'\s*\n\s*and not private\.is_brand_fulfillment_transition_open\(v_brand_slug\);/
+    /if private\.is_brand_fulfillment_transition_open\(v_brand_slug\) then\s*\n\s*raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';\s*\n\s*end if;/
   );
+  assert.match(
+    fn,
+    /where id = v_variant_id\s*\n\s*and quantity >= v_quantity\s*\n\s*and selling_status = 'active';/
+  );
+  // The guard runs BEFORE the stock-decrement UPDATE, so a stuck-in-transition
+  // brand never reaches (and never misattributes its failure to) the plain
+  // stock-availability check.
+  const guardIndex = fn.indexOf("raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';");
+  const updateIndex = fn.indexOf("set quantity = quantity - v_quantity, updated_at = now()\n        where id = v_variant_id");
+  assert.ok(guardIndex !== -1 && updateIndex !== -1 && guardIndex < updateIndex);
   // The signature (parameter list) must match the original exactly — this
   // is a re-declaration, not a new function.
   assert.match(
@@ -177,12 +187,19 @@ test("private.place_order (COD) is re-declared with the extra guard on its stock
   );
 });
 
-test("public.place_paid_order (card/Paymob) is re-declared with the identical extra guard on its own stock-decrement WHERE clause, same signature", () => {
+test("public.place_paid_order (card/Paymob) is re-declared with the identical separately-checked guard before its own stock-decrement WHERE clause — the customer is already charged by this point, so the distinct exception avoids misattributing the failure to a plain stockout — same signature", () => {
   const fn = permMigration.match(/create or replace function public\.place_paid_order\(p_payment_attempt_id uuid\)[\s\S]*?\n\$\$;/i)![0];
   assert.match(
     fn,
-    /where id = v_variant_id and quantity >= v_quantity and selling_status = 'active'\s*\n\s*and not private\.is_brand_fulfillment_transition_open\(v_brand_slug\);/
+    /if private\.is_brand_fulfillment_transition_open\(v_brand_slug\) then\s*\n\s*raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';\s*\n\s*end if;/
   );
+  assert.match(
+    fn,
+    /where id = v_variant_id and quantity >= v_quantity and selling_status = 'active';/
+  );
+  const guardIndex = fn.indexOf("raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';");
+  const updateIndex = fn.indexOf("set quantity = quantity - v_quantity, updated_at = now()\n          where id = v_variant_id");
+  assert.ok(guardIndex !== -1 && updateIndex !== -1 && guardIndex < updateIndex);
   assert.ok(permSql.includes("revokeallonfunctionpublic.place_paid_order(uuid)frompublic,anon,authenticated;"));
   assert.ok(permSql.includes("grantexecuteonfunctionpublic.place_paid_order(uuid)toservice_role;"));
 });

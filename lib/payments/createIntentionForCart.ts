@@ -73,6 +73,17 @@ export interface CreateIntentionDeps {
   fetchVariants: (productIds: string[]) => Promise<Map<string, ProductVariant[]> | null>;
   fetchBrandFlags: (brandSlugs: string[]) => Promise<{ slug: string; isMahalyPartner: boolean }[]>;
   fetchShippingSettings: () => Promise<ShippingSettingsContent>;
+  // Card-payment race fix (second corrective pass, item 3): a Paymob
+  // intention created for a brand that already has an open fulfillment
+  // transition must be refused outright — if it were allowed, the payment
+  // could complete Paymob-side AFTER the transition finishes cutting the
+  // brand's stock over, and the order-placement RPC (which already refuses
+  // to sell a brand's stock during an open transition — see
+  // 20260814000005_inventory_permission_boundaries.sql) would then charge
+  // the customer without ever being able to fulfill the order. Returns the
+  // subset of the given slugs that currently have a non-terminal
+  // brand_fulfillment_transitions row.
+  fetchOpenTransitionBrandSlugs: (brandSlugs: string[]) => Promise<string[]>;
   // Idempotent insert — see create_payment_attempt in the Phase 1 migration.
   // The database's own unique constraint is what actually prevents two rows
   // for the same idempotency key, even under real concurrency; this is just
@@ -169,11 +180,20 @@ export async function createPaymobIntentionForCart(
   }
 
   const brandSlugs = [...new Set(resolved.lineItems.map((line) => line.brandSlug).filter(Boolean))];
-  const [brandFlags, shippingSettings] = await Promise.all([
+  const [brandFlags, shippingSettings, openTransitionBrandSlugs] = await Promise.all([
     deps.fetchBrandFlags(brandSlugs),
     deps.fetchShippingSettings(),
+    deps.fetchOpenTransitionBrandSlugs(brandSlugs),
   ]);
   const partnerFlagsBySlug = new Map(brandFlags.map((flag) => [flag.slug, flag.isMahalyPartner]));
+
+  if (openTransitionBrandSlugs.length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "An item in your cart is temporarily unavailable for card payment. Please try again shortly or use Cash on Delivery.",
+    };
+  }
 
   const amount = computeIntentionAmount(resolved.lineItems, partnerFlagsBySlug, shippingSettings);
   const amountCents = amount.totalAmountCents;

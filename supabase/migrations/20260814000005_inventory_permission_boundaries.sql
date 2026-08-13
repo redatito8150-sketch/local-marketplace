@@ -229,16 +229,22 @@ begin
       v_variant_id := nullif(v_item ->> 'variant_id', '')::uuid;
 
       if v_variant_id is not null then
-        -- Extra condition vs. the original: refuse the decrement outright
-        -- (same INSUFFICIENT_STOCK path as a real stockout) while this
-        -- item's brand has an open fulfillment transition — see this
-        -- migration's header comment.
+        -- Checked SEPARATELY from the stock-availability WHERE clause
+        -- (not folded into one combined condition) so the two failure
+        -- modes raise distinct, non-silent exceptions — see this
+        -- migration's header comment. COD has no equivalent of the
+        -- "already-charged" card-payment race (nothing is charged until
+        -- the order is placed), but the same distinct-reason principle
+        -- keeps this consistent with place_paid_order below.
+        if private.is_brand_fulfillment_transition_open(v_brand_slug) then
+          raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';
+        end if;
+
         update product_variants
         set quantity = quantity - v_quantity, updated_at = now()
         where id = v_variant_id
           and quantity >= v_quantity
-          and selling_status = 'active'
-          and not private.is_brand_fulfillment_transition_open(v_brand_slug);
+          and selling_status = 'active';
 
         get diagnostics v_updated = row_count;
         if v_updated = 0 then
@@ -480,11 +486,27 @@ begin
         v_variant_id := nullif(v_item ->> 'variantId', '')::uuid;
 
         if v_variant_id is not null then
-          -- Same extra condition as private.place_order above.
+          -- Card-payment race, item 3: the customer has ALREADY been
+          -- charged by Paymob by the time this runs — a bare
+          -- INSUFFICIENT_STOCK here would misattribute the failure to a
+          -- stock problem and bury the real cause. Checked separately so
+          -- the recorded failure_reason (private.payment_attempt_fulfillments,
+          -- surfaced in the admin Payments UI) is unambiguous:
+          -- FULFILLMENT_TRANSITION_BLOCKS_ORDER means "the brand started a
+          -- transition after this payment began — this charge needs manual
+          -- review/refund," never silently folded into an ordinary stockout.
+          -- request_fulfillment_mode_transition's OPEN_PAYMENT_ATTEMPT_PENDING
+          -- blocker (20260814000002_fulfillment_mode.sql) and the intention
+          -- route's own pre-charge rejection are what make this rare in
+          -- practice; this is the last-resort safety net for the residual
+          -- true-concurrency window between the two.
+          if private.is_brand_fulfillment_transition_open(v_brand_slug) then
+            raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';
+          end if;
+
           update public.product_variants
           set quantity = quantity - v_quantity, updated_at = now()
-          where id = v_variant_id and quantity >= v_quantity and selling_status = 'active'
-            and not private.is_brand_fulfillment_transition_open(v_brand_slug);
+          where id = v_variant_id and quantity >= v_quantity and selling_status = 'active';
 
           get diagnostics v_updated = row_count;
           if v_updated = 0 then

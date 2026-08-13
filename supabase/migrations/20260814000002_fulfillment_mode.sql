@@ -184,7 +184,32 @@ declare
   v_blockers jsonb := '[]'::jsonb;
   v_open_stock numeric;
   v_open_transfers integer;
+  v_brand_slug text;
+  v_open_payment_attempts integer;
 begin
+  -- Card-payment race (second corrective pass, item 3): a Paymob intention
+  -- created just before this transition started can still be sitting
+  -- in-flight (created/pending/paid/reflecting — not yet fulfilled,
+  -- fulfillment_failed, failed, expired, or cancelled). Activating while
+  -- one exists risks the exact "charged but place_paid_order refuses to
+  -- fulfill" scenario the intention route's own new
+  -- fetchOpenTransitionBrandSlugs check prevents from starting fresh — this
+  -- blocker instead protects an attempt that was already in flight the
+  -- moment this transition was requested. Applies to BOTH directions: the
+  -- ambiguity is about which physical location fulfills the order, which
+  -- is unresolved regardless of which way the brand is switching.
+  select slug into v_brand_slug from public.brands where id = p_brand_id;
+  select count(*) into v_open_payment_attempts
+  from public.payment_attempts pa
+  where pa.status in ('created', 'pending', 'paid', 'reflecting')
+    and exists (
+      select 1 from jsonb_array_elements(coalesce(pa.cart_snapshot, '[]'::jsonb)) as item
+      where item ->> 'brandSlug' = v_brand_slug
+    );
+  if v_open_payment_attempts > 0 then
+    v_blockers := v_blockers || jsonb_build_array('OPEN_PAYMENT_ATTEMPT_PENDING');
+  end if;
+
   if p_to_mode = 'zakhnook_fulfilled' then
     -- Remaining brand-held sellable stock must be fully declared/shipped
     -- and received by Zakhnook before this brand can go live as partner.
@@ -510,6 +535,40 @@ begin
 end;
 $$;
 
+-- Direction-aware cancellation (second corrective pass, item 4):
+--
+-- brand_fulfilled -> zakhnook_fulfilled (to_mode = 'zakhnook_fulfilled'):
+--   This direction's request step snapshots brand-held quantity INTO
+--   brand_stock_quantity (see request_fulfillment_mode_transition above),
+--   so cancellation reverting brand_stock_quantity back onto quantity is
+--   the correct undo — but only for the portion that hasn't already moved:
+--   a linked inbound document (Stock Transfer Note) that's already
+--   in_transit/receiving/partially_received/received represents stock that
+--   has genuinely started moving or already arrived, so cancellation is
+--   blocked outright for those. A linked document still in an early,
+--   nothing-has-shipped-yet state (draft/pending/submitted/approved) is
+--   instead atomically auto-cancelled here — otherwise it would be left
+--   orphaned, pointing at a transition that no longer exists, backed by
+--   brand_stock_quantity that this same call is about to revert out from
+--   under it.
+--
+-- zakhnook_fulfilled -> brand_fulfilled (to_mode = 'brand_fulfilled'):
+--   This direction's request step never snapshots anything — the brand
+--   stays a full partner (is_mahaly_partner/fulfillment_mode untouched)
+--   for the whole transition, and any brand_stock_quantity present is
+--   ordinary, pre-existing partner-brand consignment bookkeeping wholly
+--   UNRELATED to this transition. Moving it into sellable `quantity` here
+--   would be a real bug: it would make stock that isn't physically at
+--   Zakhnook sellable, for a brand that is still zakhnook_fulfilled after
+--   this cancellation. So this direction never touches
+--   brand_stock_quantity/quantity at all. It only needs the same linked-
+--   document handling, applied to this transition's own outbound Stock
+--   Return Note(s) (direction 'to_brand', linked via
+--   related_fulfillment_transition_id — see request_warehouse_return's own
+--   updated linking logic) instead of inbound transfers: block cancellation
+--   once any linked return has been partially or fully received by the
+--   brand, auto-cancel (releasing any reservation) the ones still safely
+--   cancellable.
 create or replace function public.cancel_fulfillment_transition(
   p_transition_id uuid,
   p_actor_id uuid,
@@ -523,9 +582,11 @@ as $$
 declare
   v_transition record;
   v_lock record;
+  v_doc record;
   v_progressed_count integer;
+  v_in_transit_count integer;
 begin
-  select id, brand_id, status into v_transition
+  select id, brand_id, status, to_mode into v_transition
   from public.brand_fulfillment_transitions
   where id = p_transition_id
   for update;
@@ -534,13 +595,10 @@ begin
     raise exception 'TRANSITION_ALREADY_TERMINAL';
   end if;
 
-  -- Refuse to cancel once any of this transition's own inbound documents
-  -- has ALREADY delivered stock to Zakhnook (received/partially_received)
-  -- — that stock is now physically at the wrong location for a reverted
-  -- brand_fulfilled brand, and a plain brand_stock_quantity->quantity
-  -- revert would silently lose track of it. Only resolvable by an
-  -- auditable reverse transfer (a Stock Return Note, direction 'to_brand')
-  -- bringing it back first.
+  -- Shared by both directions: any linked document already
+  -- received/partially_received means real stock has already moved —
+  -- only resolvable by an auditable reverse movement first, never by this
+  -- cancellation.
   select count(*) into v_progressed_count
   from public.warehouse_transfers
   where related_fulfillment_transition_id = p_transition_id
@@ -549,37 +607,69 @@ begin
     raise exception 'FULFILLMENT_TRANSITION_CANNOT_CANCEL_STOCK_ALREADY_RECEIVED';
   end if;
 
-  -- Undo the brand_fulfilled -> zakhnook_fulfilled cutover snapshot (if any
-  -- of it is still sitting un-shipped in brand_stock_quantity — anything
-  -- already moved into an open/received transfer stays exactly where it
-  -- physically is; only the un-transferred remainder reverts to sellable).
-  for v_lock in
-    select pv.id
-    from public.product_variants pv
-    join public.products p on p.id = pv.product_id
-    where p.brand_id = v_transition.brand_id and pv.is_archived = false and pv.brand_stock_quantity > 0
-    order by pv.id
-    for update of pv
-  loop
-    insert into public.inventory_movements (
-      variant_id, product_id, brand_id, previous_quantity, quantity_delta,
-      new_quantity, movement_type, reason, note, created_by, source,
-      source_operation_key, from_location, to_location,
-      related_entity_type, related_entity_id
-    )
-    select pv.id, pv.product_id, v_transition.brand_id, pv.quantity, pv.brand_stock_quantity,
-      pv.quantity + pv.brand_stock_quantity, 'fulfillment_transition_snapshot',
-      'Fulfillment mode transition cancelled — stock reverted',
-      nullif(pg_catalog.btrim(p_notes), ''), p_actor_id, 'fulfillment_transition',
-      'fulfillment-transition-cancel:' || p_transition_id::text || ':' || v_lock.id::text,
-      'in_transit_to_zakhnook', 'brand_location', 'fulfillment_transition', p_transition_id
-    from public.product_variants pv where pv.id = v_lock.id
-    on conflict (variant_id, source_operation_key) do nothing;
+  -- Also shared: a linked document that's in_transit/receiving represents
+  -- goods physically moving right now — not safely auto-cancellable, and
+  -- not yet "received" either, so the check above alone wouldn't catch it.
+  select count(*) into v_in_transit_count
+  from public.warehouse_transfers
+  where related_fulfillment_transition_id = p_transition_id
+    and status in ('in_transit', 'receiving');
+  if v_in_transit_count > 0 then
+    raise exception 'FULFILLMENT_TRANSITION_CANNOT_CANCEL_DOCUMENT_IN_TRANSIT';
+  end if;
 
-    update public.product_variants
-    set quantity = quantity + brand_stock_quantity, brand_stock_quantity = 0, updated_at = now()
-    where id = v_lock.id;
+  -- Auto-cancel every linked document still in an early, nothing-has-
+  -- shipped-yet state — for either direction, cancel_warehouse_document
+  -- already knows how to safely release a to_brand reservation (a to_local
+  -- document never reserves anything at request time, so that release is
+  -- simply a no-op for this direction). Locked in a deterministic order
+  -- (by id) to avoid deadlocking against a concurrent cancellation of the
+  -- same set of documents.
+  for v_doc in
+    select id from public.warehouse_transfers
+    where related_fulfillment_transition_id = p_transition_id
+      and status in ('draft', 'pending', 'submitted', 'approved')
+    order by id
+  loop
+    perform public.cancel_warehouse_document(v_doc.id, p_actor_id, 'Auto-cancelled: fulfillment transition cancelled');
   end loop;
+
+  if v_transition.to_mode = 'zakhnook_fulfilled' then
+    -- Undo the brand_fulfilled -> zakhnook_fulfilled cutover snapshot —
+    -- everything still sitting un-shipped in brand_stock_quantity (the
+    -- linked documents just handled above are now all terminal, so
+    -- whatever remains here genuinely never left the brand).
+    for v_lock in
+      select pv.id
+      from public.product_variants pv
+      join public.products p on p.id = pv.product_id
+      where p.brand_id = v_transition.brand_id and pv.is_archived = false and pv.brand_stock_quantity > 0
+      order by pv.id
+      for update of pv
+    loop
+      insert into public.inventory_movements (
+        variant_id, product_id, brand_id, previous_quantity, quantity_delta,
+        new_quantity, movement_type, reason, note, created_by, source,
+        source_operation_key, from_location, to_location,
+        related_entity_type, related_entity_id
+      )
+      select pv.id, pv.product_id, v_transition.brand_id, pv.quantity, pv.brand_stock_quantity,
+        pv.quantity + pv.brand_stock_quantity, 'fulfillment_transition_snapshot',
+        'Fulfillment mode transition cancelled — stock reverted',
+        nullif(pg_catalog.btrim(p_notes), ''), p_actor_id, 'fulfillment_transition',
+        'fulfillment-transition-cancel:' || p_transition_id::text || ':' || v_lock.id::text,
+        'in_transit_to_zakhnook', 'brand_location', 'fulfillment_transition', p_transition_id
+      from public.product_variants pv where pv.id = v_lock.id
+      on conflict (variant_id, source_operation_key) do nothing;
+
+      update public.product_variants
+      set quantity = quantity + brand_stock_quantity, brand_stock_quantity = 0, updated_at = now()
+      where id = v_lock.id;
+    end loop;
+  end if;
+  -- to_mode = 'brand_fulfilled': deliberately no stock movement at all —
+  -- see this function's header comment for why touching brand_stock_quantity
+  -- here would be a bug, not a fix.
 
   update public.brand_fulfillment_transitions
   set status = 'cancelled', cancelled_at = now(), processed_by = p_actor_id,

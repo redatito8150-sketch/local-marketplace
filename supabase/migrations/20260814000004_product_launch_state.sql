@@ -303,7 +303,7 @@ begin
       );
     end if;
 
-    if v_damaged > 0 then
+    if v_damaged > 0 or v_missing > 0 then
       insert into public.inventory_movements (
         variant_id, product_id, brand_id, previous_quantity, quantity_delta,
         new_quantity, movement_type, reason, note, created_by, source,

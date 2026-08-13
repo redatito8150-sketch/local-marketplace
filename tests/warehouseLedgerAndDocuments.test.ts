@@ -111,8 +111,18 @@ test("item 1: request_warehouse_transfer no longer deadlocks a brand mid-cutover
   assert.match(fn, /document_number, document_type, related_fulfillment_transition_id\s*\n\s*\) values \(/);
   assert.match(fn, /p_operation_key, 'to_local', p_items, v_document_number, 'stock_transfer_note', v_open_transition_id/);
   // The brand is NEVER exposed as a partner anywhere else by this fix —
-  // is_mahaly_partner/fulfillment_mode are untouched by this function.
-  assert.doesNotMatch(fn, /is_mahaly_partner\s*=|fulfillment_mode\s*=/);
+  // is_mahaly_partner/fulfillment_mode are never written by this function
+  // (checked against the comment-stripped SQL, since item 5's corrective
+  // fix added an explanatory comment that mentions is_mahaly_partner by
+  // name without assigning it).
+  const fnSql = compact(fn);
+  assert.doesNotMatch(fnSql, /setis_mahaly_partner\s*=|setfulfillment_mode\s*=/);
+  // Item 5 (second corrective pass): a reverse-direction (zakhnook->brand)
+  // open transition must block a brand-new inbound transfer outright.
+  assert.match(
+    fn,
+    /if exists \(\s*\n\s*select 1 from public\.brand_fulfillment_transitions\s*\n\s*where brand_id = p_brand_id and to_mode = 'brand_fulfilled'\s*\n\s*and status not in \('completed', 'cancelled', 'failed'\)\s*\n\s*\) then\s*\n\s*raise exception 'FULFILLMENT_TRANSITION_IN_PROGRESS/
+  );
 });
 
 test("item 9: allocated-but-not-yet-reconciled quantity is computed across EVERY nonterminal document status (not just 'pending'), counting only unreconciled lines — prevents over-allocation once a document moves past 'pending'", () => {
@@ -146,10 +156,38 @@ test("item 13: resolve_warehouse_quarantine exists (written_off/returned_to_bran
   const fn = docsMigration.match(/create or replace function public\.resolve_warehouse_quarantine\([\s\S]*?\n\$\$;/i)![0];
   assert.match(fn, /if p_resolution not in \('written_off', 'returned_to_brand', 'restored_to_sellable'\) then\s*\n\s*raise exception 'INVALID_QUARANTINE_RESOLUTION';\s*\n\s*end if;/);
   assert.match(fn, /if v_item\.quarantine_resolved_at is not null then raise exception 'QUARANTINE_ALREADY_RESOLVED'; end if;/);
-  assert.match(fn, /if exists \(\s*\n\s*select 1 from public\.inventory_movements\s*\n\s*where variant_id = v_item\.variant_id and source_operation_key = p_operation_key\s*\n\s*\) then\s*\n\s*return jsonb_build_object\('transfer_item_id', v_item\.id, 'replayed', true\);/);
   assert.match(fn, /set quarantine_resolved_at = now\(\), quarantine_resolved_by = p_actor_id, quarantine_resolution = p_resolution/);
   assert.ok(docsSql.includes("revokeallonfunctionpublic.resolve_warehouse_quarantine(uuid,uuid,text,text,text)frompublic,anon,authenticated;"));
   assert.ok(docsSql.includes("grantexecuteonfunctionpublic.resolve_warehouse_quarantine(uuid,uuid,text,text,text)toservice_role;"));
+});
+
+test("item 7 (second corrective pass): resolve_warehouse_quarantine's idempotency replay is scoped to the exact transfer item AND resolution, checked BEFORE the already-resolved terminal check, with cross-item/cross-resolution reuse rejected as IDEMPOTENCY_CONFLICT — and a resolution note is mandatory", () => {
+  const fn = docsMigration.match(/create or replace function public\.resolve_warehouse_quarantine\([\s\S]*?\n\$\$;/i)![0];
+
+  assert.match(fn, /if nullif\(pg_catalog\.btrim\(p_note\), ''\) is null then\s*\n\s*raise exception 'QUARANTINE_RESOLUTION_NOTE_REQUIRED';\s*\n\s*end if;/);
+
+  assert.match(
+    fn,
+    /select variant_id, related_entity_id, reason into v_existing_movement\s*\n\s*from public\.inventory_movements\s*\n\s*where variant_id = v_item\.variant_id\s*\n\s*and source_operation_key = p_operation_key\s*\n\s*and movement_type = 'warehouse_quarantine_release'\s*\n\s*limit 1;/
+  );
+  assert.match(
+    fn,
+    /if v_existing_movement\.variant_id is not null then\s*\n\s*if v_existing_movement\.related_entity_id = p_transfer_item_id and v_item\.quarantine_resolution = p_resolution then\s*\n\s*return jsonb_build_object\('transfer_item_id', v_item\.id, 'resolution', p_resolution, 'replayed', true\);\s*\n\s*end if;/
+  );
+  assert.match(fn, /raise exception 'IDEMPOTENCY_CONFLICT';/);
+
+  // Replay validation runs BEFORE the already-resolved terminal check —
+  // a genuine retry of an already-succeeded call must return replayed:true
+  // rather than erroring, even though the item is now marked resolved.
+  const replayIndex = fn.indexOf("select variant_id, related_entity_id, reason into v_existing_movement");
+  const alreadyResolvedIndex = fn.indexOf("if v_item.quarantine_resolved_at is not null then raise exception 'QUARANTINE_ALREADY_RESOLVED'; end if;");
+  assert.ok(replayIndex !== -1 && alreadyResolvedIndex !== -1 && replayIndex < alreadyResolvedIndex);
+
+  // related_entity_id is set to the transfer ITEM id (not the parent
+  // transfer/document id) in all three resolution branches, so idempotency
+  // scoping is precise to the exact line being resolved.
+  const relatedEntityIdInserts = fn.match(/'warehouse_document', v_item\.id/g) ?? [];
+  assert.equal(relatedEntityIdInserts.length, 3);
 });
 
 test("warehouse_transfer_items gains quarantine_resolved_at/by/resolution, constrained to the three known resolutions", () => {

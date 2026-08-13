@@ -18,10 +18,47 @@ const viewMigration = read(VIEW_PATH);
 
 test("storefront_products is a security_invoker view — RLS/grants on the underlying products/brands tables still apply as the querying role, this only adds the launch-gate condition on top", () => {
   assert.match(viewMigration, /create or replace view public\.storefront_products\s*\nwith \(security_invoker = true\)/);
+  // Item 1 (second corrective pass): the launch-gate condition now lives in
+  // the shared private.is_product_storefront_launch_gated() helper so the
+  // exact same check also backs the products table's own RLS SELECT policy
+  // — a security_invoker view is not itself an access boundary, so relying
+  // on an inline view-only WHERE clause here would leave direct table
+  // access to public.products ungated.
   assert.match(
     viewMigration,
-    /where b\.fulfillment_mode <> 'zakhnook_fulfilled' or p\.first_stocked_at is not null;/
+    /where private\.is_product_storefront_launch_gated\(p\.brand_id, p\.first_stocked_at\);/
   );
+});
+
+test("the shared launch-gate helper is SECURITY DEFINER (brand_fulfillment_transitions has no public RLS read policy, so an invoker-rights check would be vacuously true for anon/authenticated) and excludes brands with any nonterminal fulfillment transition, in addition to the original zakhnook_fulfilled/first_stocked_at rule", () => {
+  const fn = viewMigration.match(/create or replace function private\.is_product_storefront_launch_gated\([\s\S]*?\n\$\$;/i)![0];
+  assert.match(fn, /security definer/);
+  assert.match(fn, /set search_path = ''/);
+  assert.match(
+    fn,
+    /not exists \(\s*\n\s*select 1 from public\.brands b\s*\n\s*where b\.id = p_brand_id and b\.fulfillment_mode = 'zakhnook_fulfilled'\s*\n\s*\)\s*\n\s*or p_first_stocked_at is not null/
+  );
+  assert.match(
+    fn,
+    /and not exists \(\s*\n\s*select 1 from public\.brand_fulfillment_transitions bft\s*\n\s*where bft\.brand_id = p_brand_id\s*\n\s*and bft\.status not in \('completed', 'cancelled', 'failed'\)\s*\n\s*\);/
+  );
+  assert.match(viewMigration, /revoke all on function private\.is_product_storefront_launch_gated\(uuid, timestamptz\) from public;/);
+  assert.match(
+    viewMigration,
+    /grant execute on function private\.is_product_storefront_launch_gated\(uuid, timestamptz\)\s*\n\s*to anon, authenticated, service_role;/
+  );
+});
+
+test("item 1: the real access boundary is the products table's own RLS SELECT policy, not just the view — it reuses the same shared helper so direct anon/authenticated access to public.products cannot bypass the launch gate", () => {
+  const policy = viewMigration.match(/create policy "Public can read published products"\s*\n\s*on public\.products for select[\s\S]*?;/i)![0];
+  assert.match(policy, /to anon, authenticated/);
+  assert.match(policy, /status = 'published'/);
+  assert.match(policy, /private\.is_product_storefront_launch_gated\(products\.brand_id, products\.first_stocked_at\)/);
+});
+
+test("item 2: storefront_products also excludes brands with any nonterminal fulfillment transition — checkout already rejects these, so the view/RLS must not still advertise them as available", () => {
+  const fn = viewMigration.match(/create or replace function private\.is_product_storefront_launch_gated\([\s\S]*?\n\$\$;/i)![0];
+  assert.match(fn, /bft\.status not in \('completed', 'cancelled', 'failed'\)/);
 });
 
 test("the view never does `select p.*` — only the same explicit public column allowlist PRODUCT_PUBLIC_SELECT already uses, plus first_stocked_at", () => {

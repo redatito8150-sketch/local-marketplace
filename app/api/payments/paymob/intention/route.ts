@@ -84,6 +84,16 @@ export async function POST(request: NextRequest) {
       fetchBrandFlags: (slugs) => getBrandFulfillmentFlags(slugs),
       fetchShippingSettings: () =>
         getSiteContentWithFallback<ShippingSettingsContent>("shipping_settings", DEFAULT_SHIPPING_SETTINGS),
+      fetchOpenTransitionBrandSlugs: async (slugs) => {
+        if (!slugs.length) return [];
+        const { data, error } = await supabaseAdmin
+          .from("brand_fulfillment_transitions")
+          .select("brands!inner(slug)")
+          .in("brands.slug", slugs)
+          .not("status", "in", "(completed,cancelled,failed)");
+        if (error) return [];
+        return [...new Set((data ?? []).map((row) => (row.brands as unknown as { slug: string }).slug))];
+      },
 
       // The database's own unique (idempotency_actor, client_request_id)
       // index is what actually prevents two rows for the same

@@ -209,6 +209,7 @@ declare
   v_distinct_count integer;
   v_matched_count integer;
   v_document_number text;
+  v_open_transition_id uuid;
 begin
   if nullif(pg_catalog.btrim(p_operation_key), '') is null
      or length(p_operation_key) > 160 then
@@ -236,6 +237,17 @@ begin
   from public.brands where id = p_brand_id for update;
   if v_is_partner is null then raise exception 'BRAND_NOT_FOUND'; end if;
   if not v_is_partner then raise exception 'BRAND_NOT_PARTNER'; end if;
+
+  -- Item 4 (second corrective pass): if this brand has an open
+  -- zakhnook_fulfilled -> brand_fulfilled transition, link the resulting
+  -- return document back to it — cancel_fulfillment_transition needs this
+  -- to know which outbound returns are "this transition's own" versus
+  -- ordinary, unrelated partner-brand consignment activity.
+  select id into v_open_transition_id
+  from public.brand_fulfillment_transitions
+  where brand_id = p_brand_id and to_mode = 'brand_fulfilled'
+    and status not in ('completed', 'cancelled', 'failed')
+  limit 1;
 
   select id, brand_id, direction, request_payload into v_existing
   from public.warehouse_transfers
@@ -274,10 +286,12 @@ begin
 
   insert into public.warehouse_transfers (
     brand_id, requested_by, brand_note, operation_key, direction,
-    stock_reserved_at, request_payload, document_number, document_type
+    stock_reserved_at, request_payload, document_number, document_type,
+    related_fulfillment_transition_id
   ) values (
     p_brand_id, p_actor_id, nullif(pg_catalog.btrim(p_note), ''),
-    p_operation_key, 'to_brand', now(), p_items, v_document_number, 'stock_return_note'
+    p_operation_key, 'to_brand', now(), p_items, v_document_number, 'stock_return_note',
+    v_open_transition_id
   ) returning id into v_transfer_id;
 
   for v_item in
@@ -401,6 +415,21 @@ begin
   select is_mahaly_partner into v_is_partner
   from public.brands where id = p_brand_id for update;
   if v_is_partner is null then raise exception 'BRAND_NOT_FOUND'; end if;
+
+  -- Item 5 (second corrective pass): a brand mid zakhnook_fulfilled ->
+  -- brand_fulfilled transition is still is_mahaly_partner = true (that
+  -- only flips at activation), but creating a NEW inbound Stock Transfer
+  -- Note during that window actively works against the transition — it
+  -- adds MORE stock that must then be resolved (sold through or returned)
+  -- before the brand can actually leave partner mode. Blocked outright,
+  -- regardless of is_mahaly_partner.
+  if exists (
+    select 1 from public.brand_fulfillment_transitions
+    where brand_id = p_brand_id and to_mode = 'brand_fulfilled'
+      and status not in ('completed', 'cancelled', 'failed')
+  ) then
+    raise exception 'FULFILLMENT_TRANSITION_IN_PROGRESS: cannot request a new inbound transfer while leaving Zakhnook fulfillment';
+  end if;
 
   select id into v_open_transition_id
   from public.brand_fulfillment_transitions
@@ -733,7 +762,7 @@ begin
       );
     end if;
 
-    if v_damaged > 0 then
+    if v_damaged > 0 or v_missing > 0 then
       insert into public.inventory_movements (
         variant_id, product_id, brand_id, previous_quantity, quantity_delta,
         new_quantity, movement_type, reason, note, created_by, source,
@@ -790,17 +819,28 @@ $$;
 
 -- ============================================================================
 -- resolve_warehouse_quarantine — the real quarantine-resolution RPC (item
--- 13). A damaged/missing line's quantity sits in 'zakhnook_quarantine'
--- (see the warehouse_quarantine_hold movement written by
--- receive_warehouse_document_canonical above) until this is called.
--- 'written_off' simply closes it out (goods destroyed/discarded, nothing
--- moves); 'returned_to_brand' credits it back onto brand_stock_quantity
--- (matches a brand pickup of the damaged goods) with a
--- warehouse_quarantine_release ledger row; 'restored_to_sellable' is for a
--- damaged-flag-corrected-on-inspection case and credits the quantity back
--- onto sellable `quantity` instead. Mandatory reason, warehouse/admin only
--- (gated at the route layer by requireWarehouseReceiver(), same as every
--- other warehouse RPC) — never callable by a brand-portal actor.
+-- 13, original pass). A damaged/missing line's quantity sits in
+-- 'zakhnook_quarantine' (see the warehouse_quarantine_hold movement
+-- written by receive_warehouse_document_canonical above — now also fired
+-- for a missing-only discrepancy, item 6 of the second corrective pass)
+-- until this is called. 'written_off' simply closes it out (goods
+-- destroyed/discarded, nothing moves); 'returned_to_brand' credits it back
+-- onto brand_stock_quantity (matches a brand pickup of the damaged goods)
+-- with a warehouse_quarantine_release ledger row; 'restored_to_sellable' is
+-- for a damaged-flag-corrected-on-inspection case and credits the quantity
+-- back onto sellable `quantity` instead. Mandatory non-empty note, gated at
+-- the route layer by requireWarehouseReceiver() (see
+-- app/api/admin/warehouse/quarantine/resolve/route.ts) — never callable by
+-- a brand-portal actor.
+--
+-- Idempotency (item 7, second corrective pass, rewritten): the ledger row
+-- this writes now points related_entity_id at the TRANSFER ITEM itself
+-- (not the whole transfer, which could have several discrepant lines) —
+-- the correct granularity for "is this a replay of THIS exact resolution."
+-- A replay is validated BEFORE the QUARANTINE_ALREADY_RESOLVED check (the
+-- opposite order from the original version), since a genuine retry of an
+-- already-succeeded call would otherwise always hit that check first and
+-- never reach the replay path at all.
 -- ============================================================================
 create or replace function public.resolve_warehouse_quarantine(
   p_transfer_item_id uuid,
@@ -819,6 +859,7 @@ declare
   v_variant record;
   v_transfer record;
   v_quarantine_qty integer;
+  v_existing_movement record;
 begin
   if p_resolution not in ('written_off', 'returned_to_brand', 'restored_to_sellable') then
     raise exception 'INVALID_QUARANTINE_RESOLUTION';
@@ -826,23 +867,40 @@ begin
   if nullif(pg_catalog.btrim(p_operation_key), '') is null or length(p_operation_key) > 160 then
     raise exception 'INVALID_OPERATION_KEY';
   end if;
+  if nullif(pg_catalog.btrim(p_note), '') is null then
+    raise exception 'QUARANTINE_RESOLUTION_NOTE_REQUIRED';
+  end if;
 
-  select id, variant_id, transfer_id, damaged_qty, missing_qty, quarantine_resolved_at into v_item
+  select id, variant_id, transfer_id, damaged_qty, missing_qty, quarantine_resolved_at, quarantine_resolution into v_item
   from public.warehouse_transfer_items
   where id = p_transfer_item_id
   for update;
   if v_item.id is null then raise exception 'TRANSFER_ITEM_NOT_FOUND'; end if;
+
+  -- Replay validation FIRST — before the already-resolved check, so a
+  -- genuine retry of a call that already succeeded returns replayed:true
+  -- rather than erroring, even though the item is now marked resolved.
+  select variant_id, related_entity_id, reason into v_existing_movement
+  from public.inventory_movements
+  where variant_id = v_item.variant_id
+    and source_operation_key = p_operation_key
+    and movement_type = 'warehouse_quarantine_release'
+  limit 1;
+
+  if v_existing_movement.variant_id is not null then
+    if v_existing_movement.related_entity_id = p_transfer_item_id and v_item.quarantine_resolution = p_resolution then
+      return jsonb_build_object('transfer_item_id', v_item.id, 'resolution', p_resolution, 'replayed', true);
+    end if;
+    -- Same operation_key reused against a different transfer item, or
+    -- against the same item but claiming a different resolution than what
+    -- actually got recorded — never treated as a safe replay.
+    raise exception 'IDEMPOTENCY_CONFLICT';
+  end if;
+
   if v_item.quarantine_resolved_at is not null then raise exception 'QUARANTINE_ALREADY_RESOLVED'; end if;
 
   v_quarantine_qty := coalesce(v_item.damaged_qty, 0) + coalesce(v_item.missing_qty, 0);
   if v_quarantine_qty <= 0 then raise exception 'NO_UNRESOLVED_QUARANTINE_QUANTITY'; end if;
-
-  if exists (
-    select 1 from public.inventory_movements
-    where variant_id = v_item.variant_id and source_operation_key = p_operation_key
-  ) then
-    return jsonb_build_object('transfer_item_id', v_item.id, 'replayed', true);
-  end if;
 
   select id, brand_id into v_transfer from public.warehouse_transfers where id = v_item.transfer_id;
   select id, quantity, product_id, brand_stock_quantity into v_variant
@@ -860,7 +918,7 @@ begin
       v_variant.id, v_variant.product_id, v_transfer.brand_id, 0, 0, 0,
       'warehouse_quarantine_release', 'Quarantine resolved: returned to brand',
       nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
-      'zakhnook_quarantine', 'returned_to_brand', 'warehouse_document', v_transfer.id
+      'zakhnook_quarantine', 'returned_to_brand', 'warehouse_document', v_item.id
     );
   elsif p_resolution = 'restored_to_sellable' then
     update public.product_variants
@@ -875,7 +933,7 @@ begin
       v_variant.quantity + v_quarantine_qty,
       'warehouse_quarantine_release', 'Quarantine resolved: restored to sellable stock',
       nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
-      'zakhnook_quarantine', 'zakhnook_available', 'warehouse_document', v_transfer.id
+      'zakhnook_quarantine', 'zakhnook_available', 'warehouse_document', v_item.id
     );
   else
     insert into public.inventory_movements (
@@ -886,7 +944,7 @@ begin
       v_variant.id, v_variant.product_id, v_transfer.brand_id, 0, 0, 0,
       'warehouse_quarantine_release', 'Quarantine resolved: written off',
       nullif(pg_catalog.btrim(p_note), ''), p_actor_id, 'warehouse_transfer', p_operation_key,
-      'zakhnook_quarantine', 'sold_or_removed', 'warehouse_document', v_transfer.id
+      'zakhnook_quarantine', 'sold_or_removed', 'warehouse_document', v_item.id
     );
   end if;
 
