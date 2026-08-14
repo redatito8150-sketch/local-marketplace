@@ -237,6 +237,15 @@ export async function getOrdersForBrand(
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+export interface BrandVariantLatestRequest {
+  transferId: string;
+  documentNumber: string | null;
+  status: string;
+  requestedAt: string;
+  requestedQty: number;
+  isOpen: boolean;
+}
+
 export interface BrandVariant {
   variantId: string;
   productId: string;
@@ -254,6 +263,12 @@ export interface BrandVariant {
   soldLast30Days: number;
   estimatedDaysRemaining?: number;
   suggestedRestock: number;
+  // The single most relevant (open, else most recent) replenishment
+  // document referencing this variant — only populated by
+  // getInventoryPageForBrand (the paginated read model); getVariantsForBrand
+  // (used by the Overview snapshot) never sets this, since that view has no
+  // per-row request-status UI to show it in.
+  latestRequest?: BrandVariantLatestRequest;
 }
 
 export interface InventoryMovement {
@@ -398,6 +413,135 @@ export async function getVariantsForBrand(
       suggestedRestock: suggestedRestockQuantity(row.quantity, threshold, soldLast30Days),
     };
   });
+}
+
+export interface InventoryPageSummary {
+  totalVariantCount: number;
+  totalAvailableUnits: number;
+  healthyCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  matchingResultCount: number;
+}
+
+export interface InventoryPageOptions {
+  search?: string;
+  stockStatus?: "all" | "in_stock" | "low_stock" | "out_of_stock";
+  sort?: "risk" | "sales" | "name" | "stock_asc" | "stock_desc";
+  cursor?: string | null;
+  pageSize?: number;
+  productId?: string;
+}
+
+export interface InventoryPageResult {
+  variants: BrandVariant[];
+  summary: InventoryPageSummary;
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+interface InventoryPageRpcItem {
+  variantId: string;
+  productId: string;
+  productName: string;
+  image: string | null;
+  color: string | null;
+  size: string | null;
+  sku: string;
+  availableAtZakhnook: number;
+  incomingQuantity: number;
+  lowStockThreshold: number;
+  stockStatus: StockStatus;
+  soldLast30Days: number;
+  estimatedDaysRemaining: number | null;
+  suggestedRestock: number;
+  sellingStatus: SellingStatus;
+  latestRequest: BrandVariantLatestRequest | null;
+}
+
+function decodeInventoryCursor(cursor: string | null | undefined): { productId: string; sortValue: string } | null {
+  if (!cursor) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    if (
+      typeof parsed === "object" && parsed !== null &&
+      typeof (parsed as { productId?: unknown }).productId === "string" &&
+      typeof (parsed as { sortValue?: unknown }).sortValue === "string"
+    ) {
+      return parsed as { productId: string; sortValue: string };
+    }
+  } catch {
+    // Falls through to null below — an invalid/tampered cursor silently
+    // restarts from the first page, the same forgiving behavior the old
+    // OFFSET-based `?page=` param already had when clamped out of range.
+  }
+  return null;
+}
+
+// The paginated, product-group-cursor-safe read model behind the grouped
+// Inventory page (app/brand-portal/stock/page.tsx +
+// components/brand-portal/InventoryManager.tsx). Unlike getVariantsForBrand
+// above (which still loads a brand's ENTIRE active catalog — kept for the
+// Overview snapshot, which only needs coarse totals, not a rendered,
+// paginated table), every filter/sort/pagination decision here happens
+// inside supabase/migrations/20260814010500_partner_replenishment_request.sql's
+// brand_portal_inventory_page RPC. Only callable via supabaseAdmin — the
+// RPC is service_role-only (see its grants), never reachable by the
+// anon/authenticated cookie client even under RLS, so this function always
+// uses supabaseAdmin regardless of impersonation (the brandId itself is
+// already a trusted value from requireBrandOwner()'s own verified context,
+// exactly like every other supabaseAdmin.rpc() call in this codebase).
+export async function getInventoryPageForBrand(
+  brandId: string,
+  options: InventoryPageOptions = {}
+): Promise<InventoryPageResult> {
+  const { data, error } = await supabaseAdmin.rpc("brand_portal_inventory_page", {
+    p_brand_id: brandId,
+    p_search: options.search?.trim() || null,
+    p_stock_status: options.stockStatus ?? "all",
+    p_sort: options.sort ?? "risk",
+    p_cursor: decodeInventoryCursor(options.cursor),
+    p_page_size: options.pageSize ?? 10,
+    p_product_id: options.productId ?? null,
+  } as never);
+  if (error) throw new Error(`getInventoryPageForBrand(${brandId}) failed: ${error.message}`);
+
+  const result = data as unknown as {
+    items: InventoryPageRpcItem[];
+    nextCursor: { productId: string; sortValue: string } | null;
+    hasMore: boolean;
+    summary: InventoryPageSummary;
+  };
+
+  return {
+    variants: result.items.map((item) => ({
+      variantId: item.variantId,
+      productId: item.productId,
+      productName: item.productName,
+      image: item.image ?? "",
+      sku: item.sku,
+      optionSummary: [
+        item.color ? `Color: ${item.color}` : null,
+        item.size ? `Size: ${item.size}` : null,
+      ].filter(Boolean).join(" / ") || "Default",
+      color: item.color ?? undefined,
+      size: item.size ?? undefined,
+      quantity: item.availableAtZakhnook,
+      incomingQuantity: item.incomingQuantity,
+      lowStockThreshold: item.lowStockThreshold,
+      sellingStatus: item.sellingStatus,
+      stockStatus: item.stockStatus,
+      soldLast30Days: item.soldLast30Days,
+      estimatedDaysRemaining: item.estimatedDaysRemaining ?? undefined,
+      suggestedRestock: item.suggestedRestock,
+      latestRequest: item.latestRequest ?? undefined,
+    })),
+    summary: result.summary,
+    nextCursor: result.nextCursor
+      ? Buffer.from(JSON.stringify(result.nextCursor), "utf8").toString("base64url")
+      : null,
+    hasMore: result.hasMore,
+  };
 }
 
 export interface BrandProductListItem {

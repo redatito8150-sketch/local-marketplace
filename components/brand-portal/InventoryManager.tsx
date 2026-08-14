@@ -189,9 +189,16 @@ function GroupStatus({ summary, className = "" }: { summary: ReturnType<typeof s
   return <td className={className}>{summary.issueCount ? <span className="text-[9.5px] font-bold text-[#C85956]">{summary.issueCount} need restock</span> : <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${summary.status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${summary.status.dot}`} />Healthy</span>}</td>;
 }
 
-export default function InventoryManager({ variants, allVariants, history, brandSlug, isMahalyPartner, readOnly, view, totalMatching }: {
+export default function InventoryManager({ variants, activityVariants, history, brandSlug, isMahalyPartner, readOnly, view, totalMatching }: {
+  // The current page's variants only (server-paginated — see
+  // lib/data/brandPortal.ts's getInventoryPageForBrand) when view is
+  // "inventory"; ignored when view is "activity".
   variants: BrandVariant[];
-  allVariants: BrandVariant[];
+  // A brand's full active catalog, fetched ONLY when view is "activity" —
+  // used solely to label each of the (at most 100) recent movement rows
+  // with a product name/SKU. Empty on an "inventory" view; never used for
+  // rendering the Inventory grid itself, which relies entirely on `variants`.
+  activityVariants: BrandVariant[];
   history: InventoryMovement[];
   brandSlug?: string;
   isMahalyPartner: boolean;
@@ -216,7 +223,7 @@ export default function InventoryManager({ variants, allVariants, history, brand
   const [activityQuery, setActivityQuery] = useState("");
   const [activitySource, setActivitySource] = useState("");
   const operationKey = useRef<string | null>(null);
-  const variantById = useMemo(() => new Map(allVariants.map((variant) => [variant.variantId, variant])), [allVariants]);
+  const variantById = useMemo(() => new Map(activityVariants.map((variant) => [variant.variantId, variant])), [activityVariants]);
   const selectableVariantById = useMemo(() => new Map(variants.map((variant) => [variant.variantId, variant])), [variants]);
   const selectedRows = useMemo(() => selected.map((id) => selectableVariantById.get(id)).filter(Boolean) as BrandVariant[], [selected, selectableVariantById]);
   const canAdjustStock = !readOnly && !isMahalyPartner;

@@ -2,19 +2,28 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
-import { getInventoryHistoryForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
+import { getInventoryHistoryForBrand, getInventoryPageForBrand, getVariantsForBrand } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
-import { inventoryRiskScore } from "@/lib/inventory/brandInventoryInsights";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import { DashboardEmptyState, DashboardPageHeader } from "@/components/dashboard/DashboardUI";
 import InventoryManager from "@/components/brand-portal/InventoryManager";
 
-type StockParams = { brand?: string; q?: string; level?: string; sort?: string; product?: string; view?: string; page?: string };
+type StockParams = {
+  brand?: string; q?: string; level?: string; sort?: string; product?: string; view?: string;
+  cursor?: string; back?: string;
+};
 type StockLevel = "all" | "healthy" | "low" | "out";
-const INVENTORY_PAGE_SIZE = 24;
+const INVENTORY_PAGE_SIZE = 10;
 
 const filterControl = "h-11 min-w-0 rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12.5px] text-[#51473f] outline-none transition-colors focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8";
+
+const LEVEL_TO_STOCK_STATUS = { all: "all", healthy: "in_stock", low: "low_stock", out: "out_of_stock" } as const;
+const SORT_TO_RPC_SORT = { risk: "risk", sales: "sales", "": "name", "stock-asc": "stock_asc", "stock-desc": "stock_desc" } as const;
+
+function parseBackStack(raw?: string): string[] {
+  return raw ? raw.split(",").filter(Boolean) : [];
+}
 
 export default async function BrandPortalStockPage(props: { searchParams: Promise<StockParams> }) {
   const params = await props.searchParams;
@@ -25,41 +34,35 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
     return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />;
   }
 
-  const [allVariants, history] = await Promise.all([
-    getVariantsForBrand(owner.brandSlug, owner.isImpersonating),
-    getInventoryHistoryForBrand(owner.brandId!, owner.isImpersonating),
-  ]);
-  const query = params.q?.trim().toLocaleLowerCase();
+  const query = params.q?.trim();
   const activeLevel = (["healthy", "low", "out"].includes(params.level ?? "") ? params.level : "all") as StockLevel;
   const view = params.view === "activity" ? "activity" : "inventory";
-  const activeSort = params.sort ?? "risk";
-  const variants = allVariants.filter((variant) => {
-    if (query && !`${variant.productName} ${variant.color ?? ""} ${variant.size ?? ""} ${variant.sku}`.toLocaleLowerCase().includes(query)) return false;
-    if (activeLevel === "healthy" && variant.stockStatus !== "in_stock") return false;
-    if (activeLevel === "low" && variant.stockStatus !== "low_stock") return false;
-    if (activeLevel === "out" && variant.stockStatus !== "out_of_stock") return false;
-    if (params.product && variant.productId !== params.product) return false;
-    return true;
-  });
-  variants.sort((a, b) => {
-    if (activeSort === "stock-asc") return a.quantity - b.quantity;
-    if (activeSort === "stock-desc") return b.quantity - a.quantity;
-    if (activeSort === "risk") return inventoryRiskScore(a) - inventoryRiskScore(b);
-    if (activeSort === "sales") return b.soldLast30Days - a.soldLast30Days;
-    return a.productName.localeCompare(b.productName) || a.optionSummary.localeCompare(b.optionSummary);
-  });
-  const pageCount = Math.max(1, Math.ceil(variants.length / INVENTORY_PAGE_SIZE));
-  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
-  const currentPage = Math.min(requestedPage, pageCount);
-  const visibleVariants = variants.slice((currentPage - 1) * INVENTORY_PAGE_SIZE, currentPage * INVENTORY_PAGE_SIZE);
+  const activeSort = (params.sort ?? "risk") as keyof typeof SORT_TO_RPC_SORT;
+  const backStack = parseBackStack(params.back);
 
-  const counts = {
-    all: allVariants.length,
-    healthy: allVariants.filter((variant) => variant.stockStatus === "in_stock").length,
-    low: allVariants.filter((variant) => variant.stockStatus === "low_stock").length,
-    out: allVariants.filter((variant) => variant.stockStatus === "out_of_stock").length,
-  };
-  const totalUnits = allVariants.reduce((sum, variant) => sum + variant.quantity, 0);
+  // Bounded regardless of catalog size (getInventoryHistoryForBrand caps at
+  // the most recent 100 movements) — safe to always fetch, since the
+  // Activity tab's own unread badge count needs it even while viewing
+  // Inventory. getVariantsForBrand (the brand's ENTIRE active catalog) is
+  // only fetched when the Activity tab is actually open, to label each
+  // movement row with a product name/SKU — never on an Inventory view.
+  const [history, inventoryResult, activityLabelVariants] = await Promise.all([
+    getInventoryHistoryForBrand(owner.brandId!, owner.isImpersonating),
+    view === "inventory"
+      ? getInventoryPageForBrand(owner.brandId!, {
+          search: query,
+          stockStatus: LEVEL_TO_STOCK_STATUS[activeLevel],
+          sort: SORT_TO_RPC_SORT[activeSort] ?? "risk",
+          cursor: params.cursor ?? null,
+          pageSize: INVENTORY_PAGE_SIZE,
+          productId: params.product,
+        })
+      : Promise.resolve(null),
+    view === "activity" ? getVariantsForBrand(owner.brandSlug, owner.isImpersonating) : Promise.resolve([]),
+  ]);
+
+  const variants = inventoryResult?.variants ?? [];
+  const summary = inventoryResult?.summary;
   const activeFilterCount = [params.q, activeLevel !== "all" ? activeLevel : undefined, params.sort, params.product].filter(Boolean).length;
 
   const href = (changes: Partial<StockParams>) => {
@@ -69,7 +72,8 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
     if (activeLevel !== "all") next.set("level", activeLevel);
     if (params.sort) next.set("sort", params.sort);
     if (params.product) next.set("product", params.product);
-    if (params.page && params.page !== "1") next.set("page", params.page);
+    if (params.cursor) next.set("cursor", params.cursor);
+    if (params.back) next.set("back", params.back);
     if (view === "activity") next.set("view", "activity");
     for (const [key, value] of Object.entries(changes)) value ? next.set(key, value) : next.delete(key);
     return `/brand-portal/stock${next.size ? `?${next}` : ""}`;
@@ -80,13 +84,26 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
     if (nextView === "activity") next.set("view", "activity");
     return `/brand-portal/stock${next.size ? `?${next}` : ""}`;
   };
+  // Filters/search/sort always land back on page 1 — same semantics as the
+  // old OFFSET pager's `page: undefined` reset, just expressed as clearing
+  // the cursor/back-stack instead of a page number.
+  const filterHref = (changes: Partial<StockParams>) => href({ ...changes, cursor: undefined, back: undefined });
+  const nextHref = inventoryResult?.nextCursor
+    ? href({ cursor: inventoryResult.nextCursor, back: (params.cursor ? [...backStack, params.cursor] : backStack).join(",") || undefined })
+    : undefined;
+  const previousHref = params.cursor
+    ? href({
+        cursor: backStack.length ? backStack[backStack.length - 1] : undefined,
+        back: backStack.slice(0, -1).join(",") || undefined,
+      })
+    : undefined;
 
-  const levels: Array<{ key: StockLevel; label: string; count: number; note: string; tone: string }> = [
-    { key: "all", label: "All variants", count: counts.all, note: owner.isMahalyPartner ? `${totalUnits} units at Zakhnook` : `${totalUnits} units available`, tone: "bg-[#C85956]" },
-    { key: "healthy", label: "Healthy", count: counts.healthy, note: "Above alert level", tone: "bg-emerald-500" },
-    { key: "low", label: "Low stock", count: counts.low, note: "Plan a restock", tone: "bg-amber-500" },
-    { key: "out", label: "Out of stock", count: counts.out, note: "Unavailable to shoppers", tone: "bg-red-500" },
-  ];
+  const levels: Array<{ key: StockLevel; label: string; count: number; note: string; tone: string }> = summary ? [
+    { key: "all", label: "All variants", count: summary.totalVariantCount, note: owner.isMahalyPartner ? `${summary.totalAvailableUnits} units at Zakhnook` : `${summary.totalAvailableUnits} units available`, tone: "bg-[#C85956]" },
+    { key: "healthy", label: "Healthy", count: summary.healthyCount, note: "Above alert level", tone: "bg-emerald-500" },
+    { key: "low", label: "Low stock", count: summary.lowStockCount, note: "Plan a restock", tone: "bg-amber-500" },
+    { key: "out", label: "Out of stock", count: summary.outOfStockCount, note: "Unavailable to shoppers", tone: "bg-red-500" },
+  ] : [];
 
   return (
     <div>
@@ -109,7 +126,7 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
           <div className="grid grid-cols-2 xl:grid-cols-4">
             {levels.map((level) => {
               const active = activeLevel === level.key;
-              return <Link key={level.key} href={href({ level: level.key === "all" ? undefined : level.key, view: undefined, page: undefined })} aria-current={active ? "page" : undefined} className={`group relative min-h-[104px] border-b border-r border-[#eee7e1] px-4 py-4 transition-colors [&:nth-child(2n)]:border-r-0 [&:nth-child(n+3)]:border-b-0 xl:border-b-0 xl:px-5 xl:[&:nth-child(2n)]:border-r xl:last:border-r-0 ${active ? "bg-[#fff8f6]" : "hover:bg-[#fcfaf8]"}`}>
+              return <Link key={level.key} href={filterHref({ level: level.key === "all" ? undefined : level.key, view: undefined })} aria-current={active ? "page" : undefined} className={`group relative min-h-[104px] border-b border-r border-[#eee7e1] px-4 py-4 transition-colors [&:nth-child(2n)]:border-r-0 [&:nth-child(n+3)]:border-b-0 xl:border-b-0 xl:px-5 xl:[&:nth-child(2n)]:border-r xl:last:border-r-0 ${active ? "bg-[#fff8f6]" : "hover:bg-[#fcfaf8]"}`}>
                 <span className={`absolute inset-y-4 left-0 w-[3px] rounded-r-full ${level.tone} ${active ? "opacity-100" : "opacity-0 transition-opacity group-hover:opacity-40"}`} />
                 <div className="flex items-start justify-between gap-4"><div><p className={`text-[10.5px] font-bold uppercase tracking-[0.1em] ${active ? "text-[#C85956]" : "text-[#8d8076]"}`}>{level.label}</p><p className="mt-1 text-[25px] font-extrabold tabular-nums tracking-[-0.04em] text-[#242424]">{level.count}</p></div><span className={`mt-1 h-2.5 w-2.5 rounded-full ${level.tone}`} /></div>
                 <p className="mt-1 text-[10.5px] text-[#91837a]">{level.note}</p>
@@ -125,20 +142,19 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
           <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_190px_auto] lg:items-end">
             <label className="min-w-0"><span className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#8d8076]">Search inventory</span><span className="relative mt-1.5 block"><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2948a]" /><input name="q" defaultValue={params.q ?? ""} autoComplete="off" placeholder="Product, color, size or SKU…" className={`${filterControl} w-full pl-10`} /></span></label>
             <label><span className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#8d8076]">Sort by</span><select name="sort" defaultValue={activeSort} className={`${filterControl} mt-1.5 w-full`}><option value="risk">Running out soon</option><option value="sales">Best selling</option><option value="">Product name</option><option value="stock-asc">Lowest stock</option><option value="stock-desc">Highest stock</option></select></label>
-            <div className="flex gap-2"><button type="submit" className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20">Apply</button>{activeFilterCount > 0 && <Link href={href({ q: undefined, level: undefined, sort: undefined, product: undefined, view: undefined, page: undefined })} className="inline-flex h-11 items-center px-2 text-[11px] font-bold text-[#8d8076] hover:text-[#C85956]">Clear</Link>}</div>
+            <div className="flex gap-2"><button type="submit" className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20">Apply</button>{activeFilterCount > 0 && <Link href={filterHref({ q: undefined, level: undefined, sort: undefined, product: undefined, view: undefined })} className="inline-flex h-11 items-center px-2 text-[11px] font-bold text-[#8d8076] hover:text-[#C85956]">Clear</Link>}</div>
           </div>
         </form>
       </>}
 
       <div className="mt-4">
-        {view === "inventory" && !variants.length ? <DashboardEmptyState title="No matching inventory" description={activeFilterCount ? "Try another stock level or clear the current search." : "Product variants will appear here after catalog setup."} /> : <InventoryManager variants={view === "inventory" ? visibleVariants : variants} allVariants={allVariants} history={history} brandSlug={owner.brandSlug} isMahalyPartner={owner.isMahalyPartner} readOnly={owner.isImpersonating} view={view} totalMatching={variants.length} />}
+        {view === "inventory" && !variants.length ? <DashboardEmptyState title="No matching inventory" description={activeFilterCount ? "Try another stock level or clear the current search." : "Product variants will appear here after catalog setup."} /> : <InventoryManager variants={variants} activityVariants={activityLabelVariants} history={history} brandSlug={owner.brandSlug} isMahalyPartner={owner.isMahalyPartner} readOnly={owner.isImpersonating} view={view} totalMatching={summary?.matchingResultCount} />}
       </div>
-      {view === "inventory" && pageCount > 1 && <nav aria-label="Inventory pages" className="mt-4 flex items-center justify-between rounded-2xl border border-[#eadfd7] bg-white px-4 py-3">
-        <p className="text-[10.5px] text-[#8d8076]">Showing <strong className="tabular-nums text-[#51473f]">{(currentPage - 1) * INVENTORY_PAGE_SIZE + 1}–{Math.min(currentPage * INVENTORY_PAGE_SIZE, variants.length)}</strong> of {variants.length} variants</p>
+      {view === "inventory" && (previousHref || nextHref) && <nav aria-label="Inventory pages" className="mt-4 flex items-center justify-between rounded-2xl border border-[#eadfd7] bg-white px-4 py-3">
+        <p className="text-[10.5px] text-[#8d8076]"><strong className="tabular-nums text-[#51473f]">{variants.length}</strong> {variants.length === 1 ? "variant" : "variants"} shown of <strong className="tabular-nums text-[#51473f]">{summary?.matchingResultCount ?? variants.length}</strong> matching, grouped by product</p>
         <div className="flex items-center gap-2">
-          {currentPage > 1 ? <Link href={href({ page: currentPage === 2 ? undefined : String(currentPage - 1) })} className="inline-flex h-9 items-center rounded-xl border border-[#e4d9d1] px-3 text-[10.5px] font-bold text-[#5d5148] hover:border-[#C85956]/30 hover:text-[#C85956]">Previous</Link> : <span className="inline-flex h-9 items-center px-3 text-[10.5px] font-bold text-[#b3a69d]">Previous</span>}
-          <span className="min-w-16 text-center text-[10.5px] font-bold tabular-nums text-[#51473f]">{currentPage} / {pageCount}</span>
-          {currentPage < pageCount ? <Link href={href({ page: String(currentPage + 1) })} className="inline-flex h-9 items-center rounded-xl bg-[#242424] px-3 text-[10.5px] font-bold text-white hover:bg-[#3a332e]">Next</Link> : <span className="inline-flex h-9 items-center px-3 text-[10.5px] font-bold text-[#b3a69d]">Next</span>}
+          {previousHref ? <Link href={previousHref} className="inline-flex h-9 items-center rounded-xl border border-[#e4d9d1] px-3 text-[10.5px] font-bold text-[#5d5148] hover:border-[#C85956]/30 hover:text-[#C85956]">Previous</Link> : <span className="inline-flex h-9 items-center px-3 text-[10.5px] font-bold text-[#b3a69d]">Previous</span>}
+          {nextHref ? <Link href={nextHref} className="inline-flex h-9 items-center rounded-xl bg-[#242424] px-3 text-[10.5px] font-bold text-white hover:bg-[#3a332e]">Next</Link> : <span className="inline-flex h-9 items-center px-3 text-[10.5px] font-bold text-[#b3a69d]">Next</span>}
         </div>
       </nav>}
     </div>

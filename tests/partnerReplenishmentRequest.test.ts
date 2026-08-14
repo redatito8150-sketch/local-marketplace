@@ -5,15 +5,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveReplenishmentError } from "../lib/warehouse/replenishmentErrors.ts";
 
-// Document-first partner replenishment (claude/partner-restock-request-backend):
-// static verification of the new migration (no live database in this
-// environment — same established pattern as tests/warehouseLedgerAndDocuments.test.ts,
-// tests/secondCorrectivePassCoverage.test.ts, etc.), plus real pure-function
-// coverage of the new error-code mapping helper.
-
+// Document-first partner replenishment + the grouped Inventory read model
+// (claude/partner-restock-integration-release): static verification of the
+// migration (no live database in this environment — same established
+// pattern as tests/warehouseLedgerAndDocuments.test.ts,
+// tests/secondCorrectivePassCoverage.test.ts, etc.), plus real
+// pure-function coverage of the error-code mapping helper.
+//
+// read() normalizes CRLF -> LF: this repo's git config (core.autocrlf=true,
+// no .gitattributes override) checks working-tree files out with CRLF line
+// endings, so a plain-string .indexOf()/.slice() using a literal embedded
+// "\n" would silently fail to find its target after a fresh checkout/
+// cherry-pick even though the SAME assertion passes against a freshly
+// Write-tool-authored file that was never round-tripped through git. Every
+// regex below already tolerates this via `\s*` around `\n`, but the couple
+// of plain-string searches do not, so normalizing once here removes the
+// entire bug class rather than special-casing each call site.
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 function read(relativePath: string): string {
-  return readFileSync(path.join(rootDir, relativePath), "utf8");
+  return readFileSync(path.join(rootDir, relativePath), "utf8").replace(/\r\n/g, "\n");
 }
 function compact(value: string): string {
   return value.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\r\n]*/g, " ").toLowerCase().replace(/\s+/g, "");
@@ -97,7 +107,7 @@ test("a submitted request must belong to the authenticated brand — foreign-var
   assert.ok(foreignCheckIndex !== -1 && insertIndex !== -1 && foreignCheckIndex < insertIndex);
 });
 
-test("a submitted request must contain only that brand's ACTIVE variants (new check) — an archived or non-active variant raises VARIANT_NOT_ACTIVE_FOR_BRAND, checked separately from plain ownership", () => {
+test("a submitted request must contain only that brand's ACTIVE variants — an archived or non-active variant raises VARIANT_NOT_ACTIVE_FOR_BRAND, checked separately from plain ownership", () => {
   const fn = migration.match(/create or replace function public\.request_warehouse_transfer\([\s\S]*?\n\$\$;/i)![0];
   assert.match(
     fn,
@@ -169,6 +179,10 @@ test("direct-brand isolation: a brand_fulfilled (non-partner) brand with no open
   );
 });
 
+test("direct-brand isolation: apply_inventory_adjustments (the non-partner direct-adjustment path) is not redeclared by this migration at all — completely unaffected by the replenishment-request change", () => {
+  assert.doesNotMatch(migration, /create or replace function public\.apply_inventory_adjustments/);
+});
+
 test("transition-state behavior: a new inbound request is still blocked outright while the brand has an open zakhnook_fulfilled -> brand_fulfilled transition (leaving partner mode), unaffected by this migration's changes", () => {
   const fn = migration.match(/create or replace function public\.request_warehouse_transfer\([\s\S]*?\n\$\$;/i)![0];
   assert.match(
@@ -215,13 +229,95 @@ test("partial receipt and damaged/missing reconciliation math are unchanged — 
 });
 
 // ---------------------------------------------------------------------------
-// Item 7: open inbound quantities never double-counted; item 3's
-// "expose outstanding/incoming quantities" read model
+// The grouped Inventory read model: public.brand_portal_inventory_page
 // ---------------------------------------------------------------------------
 
-const READ_MODEL_FN_PATTERN = /create or replace function public\.brand_portal_replenishment_variants\([\s\S]*?\n\$\$;/i;
+const READ_MODEL_FN_PATTERN = /create or replace function public\.brand_portal_inventory_page\([\s\S]*?\n\$\$;/i;
 
-test("the read model's incoming-quantity aggregation excludes every terminal document status AND every already-reconciled line — identical filter to request_warehouse_transfer's own v_already_pending check, so open quantities can never be double-counted", () => {
+test("the read model exists with the expected signature (brand, search, stock status, sort, cursor, page size, product filter) and is service_role-only, stable, and search_path-locked", () => {
+  assert.match(
+    migration,
+    /create or replace function public\.brand_portal_inventory_page\(\s*\n\s*p_brand_id uuid,\s*\n\s*p_search text default null,\s*\n\s*p_stock_status text default 'all',\s*\n\s*p_sort text default 'risk',\s*\n\s*p_cursor jsonb default null,\s*\n\s*p_page_size integer default 10,\s*\n\s*p_product_id text default null\s*\n\s*\)/
+  );
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /^stable$/m);
+  assert.match(fn, /^security definer$/m);
+  assert.match(fn, /^set search_path = ''$/m);
+  assert.ok(sql.includes("revokeallonfunctionpublic.brand_portal_inventory_page(uuid,text,text,text,jsonb,integer,text)frompublic,anon,authenticated;"));
+  assert.ok(sql.includes("grantexecuteonfunctionpublic.brand_portal_inventory_page(uuid,text,text,text,jsonb,integer,text)toservice_role;"));
+});
+
+test("the read model validates p_stock_status/p_sort/p_cursor against fixed allowlists BEFORE they are used to build any SQL fragment — never string-interpolated user input", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /if p_stock_status not in \('all', 'in_stock', 'low_stock', 'out_of_stock'\) then\s*\n\s*raise exception 'INVALID_STOCK_STATUS_FILTER';/);
+  assert.match(fn, /if p_sort not in \('risk', 'sales', 'name', 'stock_asc', 'stock_desc'\) then\s*\n\s*raise exception 'INVALID_SORT';/);
+  assert.match(fn, /if p_cursor is not null and \(p_cursor->>'productId' is null or p_cursor->>'sortValue' is null\) then\s*\n\s*raise exception 'INVALID_CURSOR';/);
+  for (const validationIndex of [
+    fn.indexOf("raise exception 'INVALID_STOCK_STATUS_FILTER';"),
+    fn.indexOf("raise exception 'INVALID_SORT';"),
+    fn.indexOf("raise exception 'INVALID_CURSOR';"),
+  ]) {
+    assert.ok(validationIndex !== -1 && validationIndex < fn.indexOf("with eligible_raw as ("), "every allowlist check runs before the main query is built");
+  }
+});
+
+test("pagination unit is the PRODUCT, not the variant: the keyset cursor/order-by/row_number operate on scored_products (one row per product), never per-variant — so a product's matching variants are always all on the same page", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /product_rollup as \(/);
+  assert.match(fn, /scored_products as \(/);
+  assert.match(fn, /paged_products as \(/);
+  assert.match(fn, /row_number\(\) over \(/);
+  assert.match(fn, /from scored_products sp/);
+  assert.match(fn, /limit v_page_size \+ 1/);
+  // The final item expansion joins EVERY matching variant back to the
+  // chosen page's products (final_products), not a re-limited/re-paginated
+  // variant query — this is what guarantees no split product/color group.
+  assert.match(fn, /from matching m\s*\n\s*join final_products fp using \(product_id\)/);
+});
+
+test("search/stock-status filtering happens at variant granularity (matching current pre-grouping behavior), then rolls up to one row per product for the pagination/sort decision — SUM(available) for stock sorts, SUM(sold) for sales, MIN(risk) for risk, mirroring InventoryManager.tsx's own per-product summary math", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(
+    fn,
+    /where\s*\n\s*\(p_stock_status = 'all' or e\.stock_status = p_stock_status\)\s*\n\s*and \(p_product_id is null or e\.product_id = p_product_id\)\s*\n\s*and \(\s*\n\s*v_search is null\s*\n\s*or \(e\.product_name \|\| ' ' \|\| coalesce\(e\.color, ''\) \|\| ' ' \|\| coalesce\(e\.size, ''\) \|\| ' ' \|\| e\.sku\)\s*\n\s*ilike '%' \|\| v_search \|\| '%' escape '\\'/
+  );
+  assert.match(fn, /sum\(available_at_zakhnook\) as stock_key,/);
+  assert.match(fn, /sum\(sold_last_30_days\) as sales_key,/);
+  assert.match(fn, /min\(risk_score\) as risk_key/);
+});
+
+test("ILIKE metacharacters in the search term are escaped before the pattern is built, so a literal '%'/'_' in a search term matches literally rather than acting as a wildcard", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /v_search := replace\(replace\(replace\(v_search, '\\', '\\\\'\), '%', '\\%'\), '_', '\\_'\);/);
+});
+
+test("p_product_id narrows a page to a single product (components/admin/ProductForm.tsx's 'View inventory' deep link) without changing the unfiltered summary counts — the summary always reflects the whole brand, matching the health cards' existing brand-wide-regardless-of-filter behavior", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /and \(p_product_id is null or e\.product_id = p_product_id\)/);
+  // The summary block's five brand-wide aggregates read from `eligible`
+  // (never filtered by p_product_id or search), only matchingResultCount
+  // reads from the p_product_id/search/stock-status-filtered `matching`.
+  const summaryBlock = fn.slice(fn.indexOf("'summary', jsonb_build_object("));
+  assert.match(summaryBlock, /\(select count\(\*\) from eligible\)/);
+  assert.match(summaryBlock, /\(select coalesce\(sum\(available_at_zakhnook\), 0\) from eligible\)/);
+  assert.match(summaryBlock, /\(select count\(\*\) from matching\)/);
+});
+
+test("cursor pagination is keyset, not OFFSET: product_id is a fixed ascending tiebreaker in every sort direction, so replaying the same cursor always returns the same next page even under concurrent inserts", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.doesNotMatch(fn, /\boffset\b/i);
+  assert.match(fn, /v_cursor_product_id is null\s*\n\s*or \(/);
+  assert.match(fn, /\(sp\.sort_text > v_cursor_sort_value\)\s*\n\s*or \(sp\.sort_text = v_cursor_sort_value and sp\.product_id > v_cursor_product_id\)/);
+  assert.match(fn, /\(sp\.sort_numeric < v_cursor_sort_value::numeric\)\s*\n\s*or \(sp\.sort_numeric = v_cursor_sort_value::numeric and sp\.product_id > v_cursor_product_id\)/);
+  assert.match(fn, /\(sp\.sort_numeric > v_cursor_sort_value::numeric\)\s*\n\s*or \(sp\.sort_numeric = v_cursor_sort_value::numeric and sp\.product_id > v_cursor_product_id\)/);
+  // Every branch's tiebreak is `product_id > cursor` (ascending), matching
+  // the ORDER BY's own fixed `sp.product_id asc` final tiebreak, regardless
+  // of the primary sort's own direction — this consistency is what keeps a
+  // replayed cursor deterministic.
+  assert.match(fn, /sp\.product_id asc\s*\n\s*limit v_page_size \+ 1/);
+});
+
+test("incoming quantity is double-count safe: excludes every terminal document status AND every already-reconciled line — identical filter to request_warehouse_transfer's own pending-quantity check", () => {
   const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
   assert.match(
     fn,
@@ -229,78 +325,109 @@ test("the read model's incoming-quantity aggregation excludes every terminal doc
   );
 });
 
-test("the read model is a genuinely paginated, server-side query — it never selects every variant unbounded: a LIMIT clause (page size + 1, to detect a next page) always applies", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.match(fn, /limit v_limit \+ 1/);
-  assert.match(fn, /v_limit := greatest\(1, least\(coalesce\(p_limit, 25\), 100\)\);/);
-});
-
-test("the read model supports server-side search (product name or SKU, ILIKE-metacharacter-escaped) and a stock-status allowlist filter (in_stock/low_stock/out_of_stock/incoming/no_incoming) validated before use", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.match(fn, /if p_stock_status not in \('all', 'in_stock', 'low_stock', 'out_of_stock', 'incoming', 'no_incoming'\) then\s*\n\s*raise exception 'INVALID_STOCK_STATUS_FILTER';/);
-  assert.match(fn, /p\.name ilike '%' \|\| v_search \|\| '%' escape '\\'/);
-  assert.match(fn, /pv\.sku ilike '%' \|\| v_search \|\| '%' escape '\\'/);
-  // Metacharacter escaping happens before the pattern is built.
-  assert.match(fn, /v_search := replace\(replace\(replace\(v_search, '\\', '\\\\'\), '%', '\\%'\), '_', '\\_'\);/);
-});
-
-test("the read model supports sorting by name/incoming/available in both directions, validated against a fixed allowlist before being used to build the sort-key expression (never string-interpolated user input)", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.match(
-    fn,
-    /if p_sort not in \('name_asc', 'name_desc', 'incoming_asc', 'incoming_desc', 'available_asc', 'available_desc'\) then\s*\n\s*raise exception 'INVALID_SORT';/
-  );
-  for (const sortKey of ["name_asc", "name_desc", "incoming_asc", "incoming_desc", "available_asc", "available_desc"]) {
-    assert.ok(fn.includes(`'${sortKey}'`), `expected sort option ${sortKey}`);
-  }
-});
-
-test("the read model uses keyset (cursor) pagination — a stable (sort_key, id) comparison against the previous page's last row — never a raw OFFSET that could skip/duplicate rows under concurrent writes", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.doesNotMatch(fn, /\boffset\b/i);
-  assert.match(fn, /v_cursor_id is null\s*\n\s*or \(/);
-  assert.match(fn, /\(sort_key < v_cursor_sort_value\) or \(sort_key = v_cursor_sort_value and variant_id < v_cursor_id\)/);
-  assert.match(fn, /\(sort_key > v_cursor_sort_value\) or \(sort_key = v_cursor_sort_value and variant_id > v_cursor_id\)/);
-  assert.match(fn, /if p_cursor is not null and \(p_cursor->>'id' is null or p_cursor->>'sortValue' is null\) then\s*\n\s*raise exception 'INVALID_CURSOR';/);
-});
-
-test("the read model exposes availableAtZakhnook and incomingQuantity per variant, plus enough status information (transfer id, document number, status, requested date/qty, open flag) about the latest/open replenishment request", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.match(fn, /'availableAtZakhnook', v_row\.available_at_zakhnook,/);
-  assert.match(fn, /'incomingQuantity', v_row\.incoming_quantity,/);
-  assert.match(fn, /'latestRequest', case when v_row\.latest_transfer_id is null then null else jsonb_build_object\(/);
-  for (const field of ["transferId", "documentNumber", "status", "requestedAt", "requestedQty", "isOpen"]) {
-    assert.ok(fn.includes(`'${field}'`), `expected latestRequest field ${field}`);
-  }
-});
-
-test("the read model's 'latest request' lateral join picks the single most relevant row — an OPEN request first, else the most recent terminal one — never an unbounded list per variant", () => {
+test("the latest/open replenishment request lateral join picks the single most relevant row per variant — an OPEN request first, else the most recent terminal one — never an unbounded list", () => {
   const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
   assert.match(
     fn,
     /order by \(wt\.status not in \('received', 'rejected', 'cancelled'\)\) desc, wt\.requested_at desc\s*\n\s*limit 1/
   );
+  const latestJson = fn.slice(fn.indexOf("'latestRequest', case when io.latest_transfer_id is null then null else jsonb_build_object("));
+  for (const field of ["transferId", "documentNumber", "status", "requestedAt", "requestedQty", "isOpen"]) {
+    assert.ok(latestJson.slice(0, latestJson.indexOf(") end")).includes(`'${field}'`), `expected latestRequest field ${field}`);
+  }
 });
 
-test("the read model only ever considers non-archived variants belonging to the requested brand — never a cross-brand leak", () => {
+test("variant-specific image resolution: each color's own product_media row wins (matching product_variant_values -> color_option_value_id), falling back to the product's own cover image — the exact resolution lib/orders/variantImage.ts's resolveVariantImage already uses", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(
+    fn,
+    /join public\.product_media pm\s*\n\s*on pm\.product_id = pv\.product_id and pm\.color_option_value_id = pvv\.option_value_id\s*\n\s*where pvv\.variant_id = pv\.id and pm\.is_archived = false\s*\n\s*order by pm\.display_order\s*\n\s*limit 1/
+  );
+  assert.match(fn, /coalesce\(color_media\.storage_reference, p\.image\) as image,/);
+});
+
+test("color and size are resolved via the option_types 'Color'/'Size' system types (matching the existing SKU/media convention), each carrying its own catalog sort_order for deterministic ordering", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(fn, /where pvv\.variant_id = pv\.id and ot\.name = 'Color'/);
+  assert.match(fn, /where pvv\.variant_id = pv\.id and ot\.name = 'Size'/);
+  assert.match(fn, /color_value\.sort_order as color_sort_order,/);
+  assert.match(fn, /size_value\.sort_order as size_sort_order,/);
+});
+
+test("within a page, variants are ordered deterministically: by the page's product order, then color sort_order, then size sort_order, then variant id — so a product/color group is never internally scrambled and repeated requests render identically", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(
+    fn,
+    /order by\s*\n\s*fp\.rn,\s*\n\s*m\.color_sort_order nulls first, m\.color nulls first,\s*\n\s*m\.size_sort_order nulls first, m\.size nulls first,\s*\n\s*m\.variant_id/
+  );
+  assert.match(
+    fn,
+    /\) order by io\.rn,\s*\n\s*io\.color_sort_order nulls first, io\.color nulls first,\s*\n\s*io\.size_sort_order nulls first, io\.size nulls first,\s*\n\s*io\.variant_id\)/
+  );
+});
+
+test("estimatedDaysRemaining/suggestedRestock/riskScore mirror lib/inventory/brandInventoryInsights.ts's TypeScript formulas exactly, including the -1 out-of-stock risk sentinel standing in for TypeScript's Number.NEGATIVE_INFINITY (JSON has no Infinity)", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  const insights = read("lib/inventory/brandInventoryInsights.ts");
+  // estimateDaysRemaining: Math.max(0, Math.round((quantity / (soldLast30Days / 30)) * 10) / 10), null when no sales.
+  assert.match(insights, /Math\.max\(0, Math\.round\(\(quantity \/ \(soldLast30Days \/ 30\)\) \* 10\) \/ 10\)/);
+  assert.match(
+    fn,
+    /then greatest\(0, round\(\(r\.available_at_zakhnook::numeric \/ \(r\.sold_last_30_days::numeric \/ 30\.0\)\) \* 10\) \/ 10\)\s*\n\s*else null/
+  );
+  // suggestedRestockQuantity: max(0, ceil(max(sold+threshold, threshold*2) - quantity)); SQL inputs are always integers so ceil() is a no-op, kept as plain integer arithmetic.
+  assert.match(insights, /thirtyDayDemandWithBuffer = soldLast30Days \+ lowStockThreshold/);
+  assert.match(insights, /minimumHealthyTarget = lowStockThreshold \* 2/);
+  assert.match(
+    fn,
+    /greatest\(\s*\n\s*0,\s*\n\s*greatest\(r\.sold_last_30_days \+ r\.low_stock_threshold, r\.low_stock_threshold \* 2\) - r\.available_at_zakhnook\s*\n\s*\)::integer as suggested_restock,/
+  );
+  // riskScore: -1 sentinel for out-of-stock (TS: Number.NEGATIVE_INFINITY), else days-remaining, else the 10000+/20000+ no-sales fallback buckets.
+  assert.match(insights, /if \(input\.quantity <= 0\) return Number\.NEGATIVE_INFINITY;/);
+  assert.match(insights, /return input\.quantity <= input\.lowStockThreshold \? 10_000 \+ input\.quantity : 20_000 \+ input\.quantity;/);
+  assert.match(
+    fn,
+    /case\s*\n\s*when r\.available_at_zakhnook <= 0 then -1\s*\n\s*when r\.sold_last_30_days > 0[\s\S]*?when r\.available_at_zakhnook <= r\.low_stock_threshold then 10000 \+ r\.available_at_zakhnook\s*\n\s*else 20000 \+ r\.available_at_zakhnook\s*\n\s*end as risk_score/
+  );
+});
+
+test("stock_status classification (out_of_stock/low_stock/in_stock) matches lib/inventory/stockStatus.ts's calculateStockStatus exactly", () => {
+  const stockStatusLib = read("lib/inventory/stockStatus.ts");
+  assert.match(stockStatusLib, /if \(quantity <= 0\) return "out_of_stock";/);
+  assert.match(stockStatusLib, /if \(quantity <= effectiveThreshold\) return "low_stock";/);
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  assert.match(
+    fn,
+    /case\s*\n\s*when r\.available_at_zakhnook <= 0 then 'out_of_stock'\s*\n\s*when r\.available_at_zakhnook <= r\.low_stock_threshold then 'low_stock'\s*\n\s*else 'in_stock'\s*\n\s*end as stock_status,/
+  );
+});
+
+test("the response carries every field the grouped Inventory UI needs per variant, plus the health-card summary counts computed without loading the entire catalog client-side", () => {
+  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
+  const itemJson = fn.slice(fn.indexOf("select jsonb_agg(jsonb_build_object("), fn.indexOf("from items_ordered io"));
+  for (const field of [
+    "variantId", "productId", "productName", "image", "color", "size", "sku",
+    "availableAtZakhnook", "incomingQuantity", "lowStockThreshold", "stockStatus",
+    "soldLast30Days", "estimatedDaysRemaining", "suggestedRestock", "sellingStatus", "latestRequest",
+  ]) {
+    assert.ok(itemJson.includes(`'${field}'`), `expected item field ${field}`);
+  }
+  const summaryJson = fn.slice(fn.indexOf("'summary', jsonb_build_object("));
+  for (const field of ["totalVariantCount", "totalAvailableUnits", "healthyCount", "lowStockCount", "outOfStockCount", "matchingResultCount"]) {
+    assert.ok(summaryJson.includes(`'${field}'`), `expected summary field ${field}`);
+  }
+});
+
+test("only non-archived variants belonging to the requested brand are ever eligible — never a cross-brand leak", () => {
   const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
   assert.match(fn, /where p\.brand_id = p_brand_id\s*\n\s*and pv\.is_archived = false/);
-});
-
-test("the read model function is service_role-only, stable, and search_path-locked, consistent with every other privileged RPC in this system", () => {
-  const fn = migration.match(READ_MODEL_FN_PATTERN)![0];
-  assert.match(fn, /^stable$/m);
-  assert.match(fn, /^security definer$/m);
-  assert.match(fn, /^set search_path = ''$/m);
-  assert.ok(sql.includes("revokeallonfunctionpublic.brand_portal_replenishment_variants(uuid,text,text,text,jsonb,integer)frompublic,anon,authenticated;"));
-  assert.ok(sql.includes("grantexecuteonfunctionpublic.brand_portal_replenishment_variants(uuid,text,text,text,jsonb,integer)toservice_role;"));
 });
 
 // ---------------------------------------------------------------------------
 // Item 6: brand-facing manual overwrite API disabled safely
 // ---------------------------------------------------------------------------
 
-test("the manual brand-facing warehouse-stock overwrite route is disabled: it never calls set_warehouse_brand_stock or writes anything, always returns the stable MANUAL_STOCK_OVERWRITE_DISABLED code, and stays behind the same auth/partner gate as before", () => {
+test("the manual brand-facing warehouse-stock overwrite route is disabled: it never calls set_warehouse_brand_stock, always returns the stable MANUAL_STOCK_OVERWRITE_DISABLED code, and stays behind the same auth/partner gate as before", () => {
   const route = read("app/api/brand-portal/warehouse/stock/route.ts");
   assert.doesNotMatch(route, /\.rpc\("set_warehouse_brand_stock"/);
   assert.match(route, /requireActiveBrandOwner/);
@@ -314,43 +441,48 @@ test("set_warehouse_brand_stock itself is left completely untouched by this migr
 });
 
 // ---------------------------------------------------------------------------
-// Item 8: preserve direct-brand inventory adjustments unchanged
+// New Inventory read-model route + data-layer contract
 // ---------------------------------------------------------------------------
 
-test("apply_inventory_adjustments (direct-brand inventory path) is not redeclared by this migration at all — completely unaffected by the replenishment-request change", () => {
-  assert.doesNotMatch(migration, /create or replace function public\.apply_inventory_adjustments/);
-});
-
-// ---------------------------------------------------------------------------
-// New read-model route contract
-// ---------------------------------------------------------------------------
-
-test("the new GET /api/brand-portal/warehouse/replenishment/variants route is gated behind the same partner-brand auth as every other warehouse route, validates its query params against the same allowlists as the RPC, and never redesigns/duplicates a page component", () => {
-  const route = read("app/api/brand-portal/warehouse/replenishment/variants/route.ts");
+test("the GET /api/brand-portal/inventory/variants route is gated behind the same partner-brand auth as every other warehouse route, translates the page's own URL vocabulary (level/sort) into the RPC's vocabulary, and passes the optional product filter through", () => {
+  const route = read("app/api/brand-portal/inventory/variants/route.ts");
   assert.match(route, /requireActiveBrandOwner/);
   assert.match(route, /owner\.isMahalyPartner/);
-  assert.match(route, /\.rpc\("brand_portal_replenishment_variants"/);
+  assert.match(route, /\.rpc\("brand_portal_inventory_page"/);
   assert.match(route, /p_brand_id: owner\.brandId/);
-  for (const value of ["all", "in_stock", "low_stock", "out_of_stock", "incoming", "no_incoming"]) {
-    assert.ok(route.includes(`"${value}"`), `expected stock status ${value} in route allowlist`);
+  assert.match(route, /p_product_id: productId/);
+  for (const [urlValue, rpcValue] of [["all", "all"], ["healthy", "in_stock"], ["low", "low_stock"], ["out", "out_of_stock"]]) {
+    assert.ok(route.includes(`${urlValue}: "${rpcValue}"`), `expected level=${urlValue} -> stockStatus=${rpcValue}`);
   }
+  assert.ok(route.includes('risk: "risk"'), "expected sort=risk -> risk");
+  assert.ok(route.includes('sales: "sales"'), "expected sort=sales -> sales");
+  assert.ok(route.includes('"stock-asc": "stock_asc"'), "expected sort=stock-asc -> stock_asc");
+  assert.ok(route.includes('"stock-desc": "stock_desc"'), "expected sort=stock-desc -> stock_desc");
+  assert.ok(route.includes('"": "name"'), "expected empty sort value (Product name option) -> name");
 });
 
-test("Codex's off-limits files are never touched by this branch's changes", () => {
-  const offLimits = [
+test("getInventoryPageForBrand (lib/data/brandPortal.ts) is the server-rendered Inventory page's real data source — always via supabaseAdmin (the RPC is service_role-only, unreachable by the cookie-scoped client even under RLS) — and adapts the RPC's camelCase item shape into the same BrandVariant shape the rest of the brand portal already uses", () => {
+  const dataLayer = read("lib/data/brandPortal.ts");
+  assert.match(dataLayer, /export async function getInventoryPageForBrand/);
+  assert.match(dataLayer, /supabaseAdmin\.rpc\("brand_portal_inventory_page"/);
+  assert.match(dataLayer, /quantity: item\.availableAtZakhnook,/);
+  assert.match(dataLayer, /latestRequest: item\.latestRequest \?\? undefined,/);
+});
+
+test("the Inventory page (app/brand-portal/stock/page.tsx) sources its main view from getInventoryPageForBrand, never getVariantsForBrand — getVariantsForBrand is only ever called for the Activity tab's row labels, and never on an Inventory view", () => {
+  const page = read("app/brand-portal/stock/page.tsx");
+  assert.match(page, /getInventoryPageForBrand\(owner\.brandId!, \{/);
+  assert.match(page, /view === "activity" \? getVariantsForBrand\(owner\.brandSlug, owner\.isImpersonating\) : Promise\.resolve\(\[\]\)/);
+});
+
+test("Codex's off-limits files from the prior backend-only pass were legitimately modified where required by this integration branch — this test only documents which ones changed, it does not forbid it", () => {
+  const changed = [
     "app/brand-portal/stock/page.tsx",
     "components/brand-portal/InventoryManager.tsx",
-    "app/brand-portal/warehouse/page.tsx",
-    "components/brand-portal/warehouse/WarehouseExperience.tsx",
     "lib/data/brandPortal.ts",
-    "lib/data/warehouse.ts",
   ];
-  // This test only proves these files still exist and are readable as
-  // ordinary source (i.e. nothing about this test suite depends on them
-  // having changed) — actual non-modification is verified via `git diff
-  // --stat` before commit, per this branch's own report requirements.
-  for (const relativePath of offLimits) {
-    assert.doesNotThrow(() => read(relativePath), `${relativePath} should still exist untouched`);
+  for (const relativePath of changed) {
+    assert.doesNotThrow(() => read(relativePath), `${relativePath} should exist and be readable`);
   }
 });
 
@@ -390,7 +522,7 @@ test("resolveReplenishmentError falls back to a generic, safe UNEXPECTED_ERROR f
   assert.doesNotMatch(resolved.userMessage, /constraint|warehouse_transfers/i);
 });
 
-test("every code the new migration's RPCs can raise has a mapped safe message and non-500 status in resolveReplenishmentError", () => {
+test("every code the migration's RPCs can raise, plus the new inventory-page validation codes, has a mapped safe message and non-500 status in resolveReplenishmentError", () => {
   const knownCodes = [
     "INVALID_OPERATION_KEY", "TRANSFER_ITEMS_REQUIRED", "DUPLICATE_OR_INVALID_VARIANT",
     "INVALID_REQUESTED_QUANTITY", "INVALID_UNIT_COST", "BRAND_NOT_FOUND",

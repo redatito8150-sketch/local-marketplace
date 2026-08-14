@@ -488,39 +488,72 @@ revoke all on function private.receive_warehouse_document_canonical(uuid, uuid, 
   from public, anon, authenticated, service_role;
 
 -- ============================================================================
--- New read model: public.brand_portal_replenishment_variants
+-- Read model: public.brand_portal_inventory_page
 --
--- The Local Warehouse page previously loaded every one of a brand's
--- variants unpaginated (lib/data/warehouse.ts's getBrandWarehouseVariants)
--- to show declared/pending numbers. This RPC is the server-side,
--- paginated/filterable/sortable replacement query the brand-portal
--- warehouse read path can move onto: it computes, per variant,
--- availableAtZakhnook (live product_variants.quantity — for a
--- zakhnook_fulfilled/partner brand this genuinely is "what's sellable
--- right now, physically at Zakhnook"), incomingQuantity (the sum of
--- requested_qty across every still-open, not-yet-reconciled 'to_local'
--- document line — the exact same "allocated but not yet reconciled"
--- filter already used by request_warehouse_transfer/set_warehouse_brand_stock,
--- so open quantities are never double-counted here either), and enough
--- status information about the single most relevant (open, else most
--- recent) replenishment request to render a status chip without a second
--- round trip.
+-- Supersedes the narrower brand_portal_replenishment_variants draft this
+-- migration originally shipped with (never applied to any database, so
+-- freely replaced in place rather than layered — see this migration's own
+-- file header). The grouped partner Inventory UI (Product -> Color -> Size,
+-- components/brand-portal/InventoryManager.tsx) needs far more per-variant
+-- context than a bare replenishment-request helper: sales/insight fields,
+-- resolved images, and health-card summary counts, all without loading a
+-- brand's entire catalog into the Next.js server or the browser.
 --
--- Cursor pagination: p_cursor is a small jsonb object {"id": uuid,
--- "sortValue": text} — opaque to the caller, echoed back verbatim from the
--- previous page's last row. Never a raw OFFSET (which would rescan/skip
--- rows as concurrent inserts happen) — a keyset (id, sort key) comparison,
--- so the page boundary stays stable page to page. p_sort/p_stock_status are
--- validated against a fixed allowlist BEFORE being used to build the
--- sort-key expression below — never string-interpolated into SQL text.
+-- PAGINATION UNIT IS THE PRODUCT, NOT THE VARIANT. Search/stock-status
+-- filtering still happens at variant granularity (matches the prior
+-- unpaginated getVariantsForBrand behavior exactly — a filtered view can
+-- legitimately show only some of a product's variants), but the page
+-- boundary always falls on a product edge: every matching variant of any
+-- product included on a page is present on that SAME page, so a product
+-- (and therefore every color/size group inside it) is never split across
+-- two pages. This is what "product group" cursor pagination means here —
+-- concretely: variants are matched/filtered first, matching variants are
+-- rolled up by product for sort-key computation and page-boundary
+-- decisions, then every matching variant belonging to a page's chosen
+-- products is expanded back out as this response's flat `items` list (an
+-- "equivalent contract" to returning products with nested groups — the
+-- client already re-nests a flat variant list into Product -> Color -> Size
+-- groups via InventoryManager.tsx's buildVariantGroups, so a flat,
+-- completely-grouped list is both correct and avoids a UI rewrite).
+--
+-- Cursor: p_cursor is a small jsonb object {"productId": text, "sortValue":
+-- text} — opaque to the caller, echoed back verbatim from the previous
+-- page's last PRODUCT. Never OFFSET (would rescan/skip rows under
+-- concurrent writes) — a keyset (sort value, product_id) comparison, with
+-- product_id as a fixed ascending tiebreaker regardless of the primary
+-- sort's own direction, so replaying the same cursor always yields the
+-- same next page. p_sort/p_stock_status are validated against a fixed
+-- allowlist BEFORE being used to select a sort branch below — never
+-- string-interpolated into SQL text.
+--
+-- Sort semantics mirror the five concrete options the Inventory page's own
+-- <select> already offers (no arbitrary asc/desc matrix): 'risk' (most
+-- urgent first — the MINIMUM per-variant risk score among a product's
+-- matching variants), 'sales' (best-selling first — SUM of soldLast30Days
+-- across a product's matching variants), 'name' (product name, A-Z),
+-- 'stock_asc'/'stock_desc' (SUM of availableAtZakhnook across a product's
+-- matching variants). Summing/MIN-ing per product mirrors exactly what the
+-- UI's own per-product aggregate row already displays (stockGroupSummary in
+-- InventoryManager.tsx), so the sort order matches what a user actually
+-- sees on each product's own summary row.
+--
+-- estimatedDaysRemaining/suggestedRestock/riskScore mirror
+-- lib/inventory/brandInventoryInsights.ts's TypeScript formulas exactly
+-- (kept in sync by hand — that file remains the source of truth for any
+-- future formula change, since the brand-adjustment UI paths still compute
+-- these client-side from raw numbers in other views). riskScore's
+-- "out of stock" sentinel (TypeScript: Number.NEGATIVE_INFINITY) is
+-- represented here as -1, a value strictly below every other possible
+-- finite score (which is always >= 0), since JSON has no Infinity.
 -- ============================================================================
-create or replace function public.brand_portal_replenishment_variants(
+create or replace function public.brand_portal_inventory_page(
   p_brand_id uuid,
   p_search text default null,
   p_stock_status text default 'all',
-  p_sort text default 'name_asc',
+  p_sort text default 'risk',
   p_cursor jsonb default null,
-  p_limit integer default 25
+  p_page_size integer default 10,
+  p_product_id text default null
 )
 returns jsonb
 language plpgsql
@@ -529,163 +562,313 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_limit integer;
+  v_page_size integer;
   v_search text;
-  v_cursor_id uuid;
+  v_cursor_product_id text;
   v_cursor_sort_value text;
-  v_row record;
-  v_items jsonb := '[]'::jsonb;
-  v_seen integer := 0;
-  v_has_more boolean := false;
-  v_next_cursor jsonb := null;
+  v_result jsonb;
 begin
   if p_brand_id is null then raise exception 'BRAND_ID_REQUIRED'; end if;
-  if p_stock_status not in ('all', 'in_stock', 'low_stock', 'out_of_stock', 'incoming', 'no_incoming') then
+  if p_stock_status not in ('all', 'in_stock', 'low_stock', 'out_of_stock') then
     raise exception 'INVALID_STOCK_STATUS_FILTER';
   end if;
-  if p_sort not in ('name_asc', 'name_desc', 'incoming_asc', 'incoming_desc', 'available_asc', 'available_desc') then
+  if p_sort not in ('risk', 'sales', 'name', 'stock_asc', 'stock_desc') then
     raise exception 'INVALID_SORT';
   end if;
-  if p_cursor is not null and (p_cursor->>'id' is null or p_cursor->>'sortValue' is null) then
+  if p_cursor is not null and (p_cursor->>'productId' is null or p_cursor->>'sortValue' is null) then
     raise exception 'INVALID_CURSOR';
   end if;
 
-  v_limit := greatest(1, least(coalesce(p_limit, 25), 100));
+  v_page_size := greatest(1, least(coalesce(p_page_size, 10), 50));
   -- Escape ILIKE metacharacters in the search term so a literal '%'/'_'
   -- searches for that literal character rather than acting as a wildcard.
   v_search := nullif(pg_catalog.btrim(coalesce(p_search, '')), '');
   if v_search is not null then
     v_search := replace(replace(replace(v_search, '\', '\\'), '%', '\%'), '_', '\_');
   end if;
-  v_cursor_id := nullif(p_cursor->>'id', '')::uuid;
+  v_cursor_product_id := p_cursor->>'productId';
   v_cursor_sort_value := p_cursor->>'sortValue';
 
-  for v_row in
-    with base as (
+  with eligible_raw as (
+    -- Every active, non-archived variant for this brand, with every field
+    -- the grouped Inventory UI needs, computed ONCE and reused for both
+    -- the UNFILTERED summary counts (health cards) and the filtered/
+    -- paginated page — a large brand's catalog is scanned here at most
+    -- once per request, never once per page navigation click on top of a
+    -- separate unbounded load.
+    select
+      pv.id as variant_id,
+      pv.product_id,
+      p.name as product_name,
+      pv.sku,
+      pv.selling_status,
+      pv.quantity as available_at_zakhnook,
+      coalesce(pv.low_stock_threshold_override, p.default_low_stock_threshold) as low_stock_threshold,
+      coalesce(incoming.incoming_quantity, 0)::integer as incoming_quantity,
+      color_value.label as color,
+      color_value.sort_order as color_sort_order,
+      size_value.label as size,
+      size_value.sort_order as size_sort_order,
+      coalesce(color_media.storage_reference, p.image) as image,
+      coalesce(sales.sold_last_30_days, 0)::integer as sold_last_30_days,
+      latest.transfer_id as latest_transfer_id,
+      latest.document_number as latest_document_number,
+      latest.status as latest_status,
+      latest.requested_at as latest_requested_at,
+      latest.requested_qty as latest_requested_qty,
+      latest.is_open as latest_is_open
+    from public.product_variants pv
+    join public.products p on p.id = pv.product_id
+    left join lateral (
+      select ov.label, ov.sort_order
+      from public.product_variant_values pvv
+      join public.option_values ov on ov.id = pvv.option_value_id
+      join public.option_types ot on ot.id = ov.option_type_id
+      where pvv.variant_id = pv.id and ot.name = 'Color'
+      limit 1
+    ) color_value on true
+    left join lateral (
+      select ov.label, ov.sort_order
+      from public.product_variant_values pvv
+      join public.option_values ov on ov.id = pvv.option_value_id
+      join public.option_types ot on ot.id = ov.option_type_id
+      where pvv.variant_id = pv.id and ot.name = 'Size'
+      limit 1
+    ) size_value on true
+    left join lateral (
+      select pm.storage_reference
+      from public.product_variant_values pvv
+      join public.product_media pm
+        on pm.product_id = pv.product_id and pm.color_option_value_id = pvv.option_value_id
+      where pvv.variant_id = pv.id and pm.is_archived = false
+      order by pm.display_order
+      limit 1
+    ) color_media on true
+    left join lateral (
+      select coalesce(sum(oi.quantity), 0) as sold_last_30_days
+      from public.order_items oi
+      join public.orders o on o.id = oi.order_id
+      where oi.variant_id = pv.id
+        and o.created_at >= now() - interval '30 days'
+        and o.status <> 'cancelled'
+    ) sales on true
+    left join lateral (
+      select coalesce(sum(wti.requested_qty), 0) as incoming_quantity
+      from public.warehouse_transfer_items wti
+      join public.warehouse_transfers wt on wt.id = wti.transfer_id
+      where wti.variant_id = pv.id
+        and wt.direction = 'to_local'
+        and wt.status not in ('received', 'rejected', 'cancelled')
+        and wti.received_ok_qty is null
+    ) incoming on true
+    left join lateral (
       select
-        pv.id as variant_id,
-        pv.product_id,
-        p.name as product_name,
-        pv.sku,
-        pv.quantity as available_at_zakhnook,
-        coalesce(inc.incoming_quantity, 0)::integer as incoming_quantity,
-        p.default_low_stock_threshold,
-        pv.low_stock_threshold_override,
-        latest.transfer_id as latest_transfer_id,
-        latest.document_number as latest_document_number,
-        latest.status as latest_status,
-        latest.requested_at as latest_requested_at,
-        latest.requested_qty as latest_requested_qty,
-        latest.is_open as latest_is_open
-      from public.product_variants pv
-      join public.products p on p.id = pv.product_id
-      left join lateral (
-        select coalesce(sum(wti.requested_qty), 0) as incoming_quantity
-        from public.warehouse_transfer_items wti
-        join public.warehouse_transfers wt on wt.id = wti.transfer_id
-        where wti.variant_id = pv.id
-          and wt.direction = 'to_local'
-          and wt.status not in ('received', 'rejected', 'cancelled')
-          and wti.received_ok_qty is null
-      ) inc on true
-      left join lateral (
-        select
-          wt.id as transfer_id,
-          wt.document_number,
-          wt.status,
-          wt.requested_at,
-          sum(wti.requested_qty) as requested_qty,
-          (wt.status not in ('received', 'rejected', 'cancelled')) as is_open
-        from public.warehouse_transfers wt
-        join public.warehouse_transfer_items wti on wti.transfer_id = wt.id
-        where wti.variant_id = pv.id and wt.direction = 'to_local'
-        group by wt.id, wt.document_number, wt.status, wt.requested_at
-        order by (wt.status not in ('received', 'rejected', 'cancelled')) desc, wt.requested_at desc
-        limit 1
-      ) latest on true
-      where p.brand_id = p_brand_id
-        and pv.is_archived = false
-        and (
-          v_search is null
-          or p.name ilike '%' || v_search || '%' escape '\'
-          or pv.sku ilike '%' || v_search || '%' escape '\'
-        )
-    ),
-    scored as (
-      select
-        b.*,
-        case
-          when p_sort in ('name_asc', 'name_desc') then lower(b.product_name) || chr(1) || b.sku
-          when p_sort in ('incoming_asc', 'incoming_desc') then lpad(greatest(b.incoming_quantity, 0)::text, 12, '0')
-          else lpad(greatest(b.available_at_zakhnook, 0)::text, 12, '0')
-        end as sort_key
-      from base b
-      where
-        p_stock_status = 'all'
-        or (p_stock_status = 'out_of_stock' and b.available_at_zakhnook <= 0)
-        or (
-          p_stock_status = 'low_stock'
-          and b.available_at_zakhnook > 0
-          and b.available_at_zakhnook <= coalesce(b.low_stock_threshold_override, b.default_low_stock_threshold)
-        )
-        or (
-          p_stock_status = 'in_stock'
-          and b.available_at_zakhnook > coalesce(b.low_stock_threshold_override, b.default_low_stock_threshold)
-        )
-        or (p_stock_status = 'incoming' and b.incoming_quantity > 0)
-        or (p_stock_status = 'no_incoming' and b.incoming_quantity = 0)
-    )
-    select *
-    from scored
+        wt.id as transfer_id,
+        wt.document_number,
+        wt.status,
+        wt.requested_at,
+        wti.requested_qty,
+        (wt.status not in ('received', 'rejected', 'cancelled')) as is_open
+      from public.warehouse_transfer_items wti
+      join public.warehouse_transfers wt on wt.id = wti.transfer_id
+      where wti.variant_id = pv.id and wt.direction = 'to_local'
+      order by (wt.status not in ('received', 'rejected', 'cancelled')) desc, wt.requested_at desc
+      limit 1
+    ) latest on true
+    where p.brand_id = p_brand_id
+      and pv.is_archived = false
+  ),
+  eligible as (
+    -- Second pass: derive stock_status/estimatedDaysRemaining/
+    -- suggestedRestock/riskScore from eligible_raw's own columns (a SELECT
+    -- list cannot reference its own sibling aliases, hence the two-step
+    -- CTE) — every formula here is the SQL mirror of
+    -- lib/inventory/brandInventoryInsights.ts, see this section's header.
+    select
+      r.*,
+      case
+        when r.available_at_zakhnook <= 0 then 'out_of_stock'
+        when r.available_at_zakhnook <= r.low_stock_threshold then 'low_stock'
+        else 'in_stock'
+      end as stock_status,
+      case when r.sold_last_30_days > 0
+        then greatest(0, round((r.available_at_zakhnook::numeric / (r.sold_last_30_days::numeric / 30.0)) * 10) / 10)
+        else null
+      end as estimated_days_remaining,
+      greatest(
+        0,
+        greatest(r.sold_last_30_days + r.low_stock_threshold, r.low_stock_threshold * 2) - r.available_at_zakhnook
+      )::integer as suggested_restock,
+      case
+        when r.available_at_zakhnook <= 0 then -1
+        when r.sold_last_30_days > 0
+          then greatest(0, round((r.available_at_zakhnook::numeric / (r.sold_last_30_days::numeric / 30.0)) * 10) / 10)
+        when r.available_at_zakhnook <= r.low_stock_threshold then 10000 + r.available_at_zakhnook
+        else 20000 + r.available_at_zakhnook
+      end as risk_score
+    from eligible_raw r
+  ),
+  matching as (
+    -- Search/stock-status filtering happens at VARIANT granularity, exactly
+    -- like the unpaginated view it replaces — a search or "Low stock" filter
+    -- can legitimately show only some of a product's variants.
+    -- p_product_id narrows to a single product (components/admin/ProductForm.tsx's
+    -- "View inventory" deep link, `?product=<id>`) — kept as a plain equality
+    -- filter here rather than a separate RPC, so that deep link still gets
+    -- the exact same computed fields/summary shape as every other view.
+    select e.*
+    from eligible e
     where
-      v_cursor_id is null
+      (p_stock_status = 'all' or e.stock_status = p_stock_status)
+      and (p_product_id is null or e.product_id = p_product_id)
+      and (
+        v_search is null
+        or (e.product_name || ' ' || coalesce(e.color, '') || ' ' || coalesce(e.size, '') || ' ' || e.sku)
+          ilike '%' || v_search || '%' escape '\'
+      )
+  ),
+  product_rollup as (
+    -- The PAGINATION/sort unit: one row per product that still has at
+    -- least one matching variant, with the aggregate values that decide
+    -- sort order (mirroring InventoryManager.tsx's own per-product summary
+    -- row math exactly, so sort order matches what a user sees).
+    select
+      product_id,
+      min(product_name) as product_name,
+      sum(available_at_zakhnook) as stock_key,
+      sum(sold_last_30_days) as sales_key,
+      min(risk_score) as risk_key
+    from matching
+    group by product_id
+  ),
+  scored_products as (
+    select
+      product_id,
+      product_name,
+      case p_sort
+        when 'risk' then risk_key
+        when 'sales' then sales_key
+        when 'stock_asc' then stock_key
+        when 'stock_desc' then stock_key
+        else null
+      end as sort_numeric,
+      case when p_sort = 'name' then product_name else null end as sort_text
+    from product_rollup
+  ),
+  paged_products as (
+    select
+      sp.*,
+      coalesce(sp.sort_text, sp.sort_numeric::text) as cursor_sort_value,
+      row_number() over (
+        order by
+          case when p_sort = 'name' then sp.sort_text end asc,
+          case when p_sort = 'sales' then sp.sort_numeric end desc,
+          case when p_sort = 'stock_desc' then sp.sort_numeric end desc,
+          case when p_sort in ('risk', 'stock_asc') then sp.sort_numeric end asc,
+          sp.product_id asc
+      ) as rn
+    from scored_products sp
+    where
+      v_cursor_product_id is null
       or (
-        case when p_sort like '%\_desc' escape '\'
-          then (sort_key < v_cursor_sort_value) or (sort_key = v_cursor_sort_value and variant_id < v_cursor_id)
-          else (sort_key > v_cursor_sort_value) or (sort_key = v_cursor_sort_value and variant_id > v_cursor_id)
+        case
+          when p_sort = 'name' then
+            (sp.sort_text > v_cursor_sort_value)
+            or (sp.sort_text = v_cursor_sort_value and sp.product_id > v_cursor_product_id)
+          when p_sort in ('sales', 'stock_desc') then
+            (sp.sort_numeric < v_cursor_sort_value::numeric)
+            or (sp.sort_numeric = v_cursor_sort_value::numeric and sp.product_id > v_cursor_product_id)
+          else
+            (sp.sort_numeric > v_cursor_sort_value::numeric)
+            or (sp.sort_numeric = v_cursor_sort_value::numeric and sp.product_id > v_cursor_product_id)
         end
       )
     order by
-      (case when p_sort like '%\_desc' escape '\' then sort_key end) desc,
-      (case when p_sort like '%\_desc' escape '\' then variant_id end) desc,
-      (case when p_sort not like '%\_desc' escape '\' then sort_key end) asc,
-      (case when p_sort not like '%\_desc' escape '\' then variant_id end) asc
-    limit v_limit + 1
-  loop
-    v_seen := v_seen + 1;
-    if v_seen > v_limit then
-      v_has_more := true;
-      exit;
-    end if;
+      case when p_sort = 'name' then sp.sort_text end asc,
+      case when p_sort = 'sales' then sp.sort_numeric end desc,
+      case when p_sort = 'stock_desc' then sp.sort_numeric end desc,
+      case when p_sort in ('risk', 'stock_asc') then sp.sort_numeric end asc,
+      sp.product_id asc
+    limit v_page_size + 1
+  ),
+  final_products as (
+    select * from paged_products where rn <= v_page_size
+  ),
+  page_meta as (
+    select
+      exists(select 1 from paged_products where rn = v_page_size + 1) as has_more,
+      (select cursor_sort_value from final_products order by rn desc limit 1) as last_sort_value,
+      (select product_id from final_products order by rn desc limit 1) as last_product_id
+  ),
+  items_ordered as (
+    -- Deterministic within-product order: color by its own catalog
+    -- sort_order (falls back to label so an unconfigured sort_order of 0
+    -- for every color still yields a stable alphabetical order), then size
+    -- the same way, then variant id as a final tiebreaker — so repeated
+    -- requests for the same page always render identically.
+    select m.*, fp.rn
+    from matching m
+    join final_products fp using (product_id)
+    order by
+      fp.rn,
+      m.color_sort_order nulls first, m.color nulls first,
+      m.size_sort_order nulls first, m.size nulls first,
+      m.variant_id
+  )
+  select jsonb_build_object(
+    'items', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'variantId', io.variant_id,
+        'productId', io.product_id,
+        'productName', io.product_name,
+        'image', nullif(io.image, ''),
+        'color', io.color,
+        'size', io.size,
+        'sku', io.sku,
+        'availableAtZakhnook', io.available_at_zakhnook,
+        'incomingQuantity', io.incoming_quantity,
+        'lowStockThreshold', io.low_stock_threshold,
+        'stockStatus', io.stock_status,
+        'soldLast30Days', io.sold_last_30_days,
+        'estimatedDaysRemaining', io.estimated_days_remaining,
+        'suggestedRestock', io.suggested_restock,
+        'sellingStatus', io.selling_status,
+        'latestRequest', case when io.latest_transfer_id is null then null else jsonb_build_object(
+          'transferId', io.latest_transfer_id,
+          'documentNumber', io.latest_document_number,
+          'status', io.latest_status,
+          'requestedAt', io.latest_requested_at,
+          'requestedQty', io.latest_requested_qty,
+          'isOpen', io.latest_is_open
+        ) end
+      ) order by io.rn,
+        io.color_sort_order nulls first, io.color nulls first,
+        io.size_sort_order nulls first, io.size nulls first,
+        io.variant_id)
+      from items_ordered io
+    ), '[]'::jsonb),
+    'nextCursor', case
+      when (select has_more from page_meta) and (select last_product_id from page_meta) is not null
+        then jsonb_build_object('productId', (select last_product_id from page_meta), 'sortValue', (select last_sort_value from page_meta))
+      else null
+    end,
+    'hasMore', coalesce((select has_more from page_meta), false),
+    'summary', jsonb_build_object(
+      'totalVariantCount', (select count(*) from eligible),
+      'totalAvailableUnits', (select coalesce(sum(available_at_zakhnook), 0) from eligible),
+      'healthyCount', (select count(*) from eligible where stock_status = 'in_stock'),
+      'lowStockCount', (select count(*) from eligible where stock_status = 'low_stock'),
+      'outOfStockCount', (select count(*) from eligible where stock_status = 'out_of_stock'),
+      'matchingResultCount', (select count(*) from matching)
+    )
+  )
+  into v_result;
 
-    v_items := v_items || jsonb_build_array(jsonb_build_object(
-      'variantId', v_row.variant_id,
-      'productId', v_row.product_id,
-      'productName', v_row.product_name,
-      'sku', v_row.sku,
-      'availableAtZakhnook', v_row.available_at_zakhnook,
-      'incomingQuantity', v_row.incoming_quantity,
-      'latestRequest', case when v_row.latest_transfer_id is null then null else jsonb_build_object(
-        'transferId', v_row.latest_transfer_id,
-        'documentNumber', v_row.latest_document_number,
-        'status', v_row.latest_status,
-        'requestedAt', v_row.latest_requested_at,
-        'requestedQty', v_row.latest_requested_qty,
-        'isOpen', v_row.latest_is_open
-      ) end
-    ));
-    v_next_cursor := jsonb_build_object('id', v_row.variant_id, 'sortValue', v_row.sort_key);
-  end loop;
-
-  return jsonb_build_object(
-    'items', v_items,
-    'nextCursor', case when v_has_more then v_next_cursor else null end,
-    'hasMore', v_has_more
-  );
+  return v_result;
 end;
 $$;
 
-revoke all on function public.brand_portal_replenishment_variants(uuid, text, text, text, jsonb, integer)
+revoke all on function public.brand_portal_inventory_page(uuid, text, text, text, jsonb, integer, text)
   from public, anon, authenticated;
-grant execute on function public.brand_portal_replenishment_variants(uuid, text, text, text, jsonb, integer)
+grant execute on function public.brand_portal_inventory_page(uuid, text, text, text, jsonb, integer, text)
   to service_role;

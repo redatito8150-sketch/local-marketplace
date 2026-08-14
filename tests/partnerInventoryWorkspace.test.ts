@@ -36,11 +36,23 @@ test("variant stock is grouped by product, then color, with group selection", ()
   assert.doesNotMatch(inventory, /if \(!open\) onToggleVariants/);
 });
 
-test("large inventories render in bounded pages instead of one unbounded table", () => {
+test("large inventories render in bounded pages — Inventory pagination now happens in Postgres (product-group cursor), never by loading every variant and slicing in React; Warehouse's own returns tab still bounds itself client-side over its own already-small active-variant list", () => {
   const page = read("app/brand-portal/stock/page.tsx");
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
-  assert.match(page, /const INVENTORY_PAGE_SIZE = 24/);
-  assert.match(page, /visibleVariants = variants\.slice/);
+  const dataLayer = read("lib/data/brandPortal.ts");
+
+  // The Inventory page no longer loads a brand's full catalog or slices it
+  // client-side — it calls the paginated read model and only ever holds one
+  // page's worth of variants in memory.
+  assert.doesNotMatch(page, /getVariantsForBrand\(owner\.brandSlug, owner\.isImpersonating\),\s*\n\s*getInventoryHistoryForBrand/);
+  assert.match(page, /getInventoryPageForBrand\(owner\.brandId!, \{/);
+  assert.match(page, /cursor: params\.cursor \?\? null/);
+  assert.doesNotMatch(page, /\.slice\(\(currentPage - 1\)/);
+  assert.match(dataLayer, /export async function getInventoryPageForBrand/);
+  assert.match(dataLayer, /brand_portal_inventory_page/);
+
+  // Warehouse's Returns tab is a separate, smaller concern (not the grouped
+  // Inventory page) — its own bounded client list is unchanged.
   assert.match(warehouse, /const PAGE_SIZE = 12/);
   assert.match(warehouse, /useDeferredValue/);
   assert.match(warehouse, /visibleVariants = filteredVariants\.slice/);
