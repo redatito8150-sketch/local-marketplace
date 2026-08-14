@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Archive, ArrowLeft, ArrowRight, Check, ChevronLeft, Clock3, Eye, EyeOff, Loader2, Save } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowRight, Check, ChevronLeft, Clock3, Eye, EyeOff, Loader2, PackageCheck, Save } from "lucide-react";
 import type { ProductStatus } from "@/types";
 import type { ProductEditorSectionId, ProductValidationIssue } from "@/lib/admin/productValidation";
 
@@ -52,6 +52,8 @@ export function ProductEditorHeader({
   previewOpen = false,
   onTogglePreview,
   hasPersistedProduct = true,
+  fulfillmentLabel,
+  showFulfillmentBadge = false,
 }: {
   title: string;
   status: ProductStatus;
@@ -75,6 +77,8 @@ export function ProductEditorHeader({
   previewOpen?: boolean;
   onTogglePreview?: () => void;
   hasPersistedProduct?: boolean;
+  fulfillmentLabel?: string;
+  showFulfillmentBadge?: boolean;
 }) {
   const statusStyles: Record<ProductStatus, string> = {
     draft: "bg-amber-50 text-amber-800",
@@ -116,6 +120,7 @@ export function ProductEditorHeader({
         </div>
         <div className="mt-2 flex min-w-0 items-center gap-2">
           <h1 className="min-w-0 flex-1 truncate text-[17px] font-bold tracking-tight text-ink">{title || "New Product"}</h1>
+          {showFulfillmentBadge && fulfillmentLabel ? <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#e1d7ce] bg-white px-2 py-1 text-[9.5px] font-bold text-[#6d5f55]"><PackageCheck className="h-3 w-3 text-[#C85956]" />{fulfillmentLabel}</span> : null}
           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusStyles[status]}`}>{status}</span>
         </div>
         <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-ink-soft/55">
@@ -131,6 +136,7 @@ export function ProductEditorHeader({
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-[18px] font-bold tracking-tight text-ink">{title || "New Product"}</h1>
             <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold capitalize ${statusStyles[status]}`}>{status}</span>
+            {showFulfillmentBadge && fulfillmentLabel ? <span className="inline-flex items-center gap-1.5 rounded-full border border-[#e1d7ce] bg-white px-2.5 py-1 text-[10px] font-bold text-[#6d5f55]"><PackageCheck className="h-3 w-3 text-[#C85956]" />{fulfillmentLabel}</span> : null}
           </div>
           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft/55" aria-live="polite">
             {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" /> : saveState === "failed" ? <AlertCircle className="h-3 w-3 text-red-600" /> : saveState === "saved" ? <Check className="h-3 w-3 text-emerald-700" /> : <Clock3 className="h-3 w-3" />}
@@ -298,6 +304,38 @@ export function ProductEditorBottomBar({
     </button>
     <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-mahalyred px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{publishLabel}</button>
   </div>;
+}
+
+export function UnsavedChangesDialog({
+  open,
+  saving,
+  canSaveDraft,
+  onStay,
+  onLeave,
+  onSaveAndLeave,
+}: {
+  open: boolean;
+  saving: boolean;
+  canSaveDraft: boolean;
+  onStay: () => void;
+  onLeave: () => void;
+  onSaveAndLeave: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-[#241d18]/35 p-4 backdrop-blur-[2px]" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onStay(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="unsaved-product-title" className="w-full max-w-[460px] rounded-[20px] border border-[#ded4ca] bg-[#fffdf9] p-5 shadow-[0_28px_80px_rgba(49,34,24,0.22)] sm:p-6">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#C85956]/10 text-[#C85956]"><Clock3 className="h-5 w-5" /></div>
+        <h2 id="unsaved-product-title" className="mt-4 text-[20px] font-bold tracking-tight text-[#2f2823]">Keep your product changes?</h2>
+        <p className="mt-2 max-w-[42ch] text-[12.5px] leading-5 text-[#796d64]">{canSaveDraft ? "You have changes that are not saved to your account. Save a draft before returning to Products, or leave without them." : "You have unsaved changes. Complete the required Product basics to save a draft, or leave without these changes."}</p>
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" disabled={saving} onClick={onStay} className="min-h-10 rounded-lg px-4 text-[12px] font-bold text-[#6d5f55] transition-colors hover:bg-[#f3ece5] disabled:opacity-50">Keep editing</button>
+          <button type="button" disabled={saving} onClick={onLeave} className="min-h-10 rounded-lg border border-[#ddd3ca] bg-white px-4 text-[12px] font-bold text-[#6d5f55] transition-colors hover:border-[#C85956]/45 hover:text-[#C85956] disabled:opacity-50">Leave without saving</button>
+          <button type="button" disabled={saving || !canSaveDraft} title={canSaveDraft ? undefined : "Complete Product basics before saving a draft"} onClick={onSaveAndLeave} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#C85956] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-40">{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{canSaveDraft ? "Save draft & leave" : "Complete basics to save"}</button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export function ProductWizardBottomBar({

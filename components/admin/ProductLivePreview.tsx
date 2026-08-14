@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ExternalLink, EyeOff, ImageOff, Monitor, RefreshCw, Smartphone } from "lucide-react";
@@ -48,6 +48,8 @@ export default function ProductLivePreview({
   const [mounted, setMounted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [featuredImage, setFeaturedImage] = useState<string | undefined>();
+  const [variantPreview, setVariantPreview] = useState<{ variantId?: string; sku?: string; color?: string; size?: string; quantity?: number; displayPrice: number }>();
+  const handleVariantPreviewChange = useCallback((selection: { variantId?: string; sku?: string; color?: string; size?: string; quantity?: number; displayPrice: number }) => setVariantPreview(selection), []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -177,6 +179,13 @@ export default function ProductLivePreview({
           </div>
         </div>
 
+        {previewProduct.variants?.length ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-stone-150 bg-[#fffaf5] px-4 py-2.5 text-[10.5px] sm:px-5">
+            <span className="font-extrabold text-[#4c4139]">Variant preview</span>
+            {variantPreview?.variantId ? <><span className="text-[#75685f]">{[variantPreview.color, variantPreview.size].filter(Boolean).join(" · ") || "Default variant"}</span><span className="font-mono text-[#8a7c72]">{variantPreview.sku}</span><span className={`font-bold ${(variantPreview.quantity ?? 0) > 0 ? "text-emerald-700" : "text-[#C85956]"}`}>{variantPreview.quantity ?? 0} in stock</span><span className="font-extrabold tabular-nums text-[#332c27]">{variantPreview.displayPrice.toLocaleString()} EGP</span></> : <span className="text-[#8a7c72]">Choose a color and size below to inspect its exact image, price and stock.</span>}
+          </div>
+        ) : null}
+
         {/* Content */}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto bg-stone-50 p-4">
           {!mounted ? (
@@ -225,6 +234,7 @@ export default function ProductLivePreview({
                       disableActions
                       disabledActionReason="Preview only — cart and wishlist actions are disabled."
                       onColorImageChange={setFeaturedImage}
+                      onVariantPreviewChange={handleVariantPreviewChange}
                     />
                   </div>
 

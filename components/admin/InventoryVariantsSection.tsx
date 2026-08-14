@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Boxes, ImageIcon, Loader2, PackageOpen, RefreshCw, Tags } from "lucide-react";
 import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
@@ -116,6 +116,12 @@ export default function InventoryVariantsSection({
   const colorValues = colorValueIds
     .map((id) => availableOptionValues.find((v) => v.id === id))
     .filter((v): v is OptionValueOption => Boolean(v));
+  const activeVariants = value.variants.filter((variant) => variant.sellingStatus === "active");
+  const openingUnits = value.variants.reduce((sum, variant) => sum + Math.max(0, variant.openingStock ?? variant.quantity), 0);
+  const zeroStockVariants = activeVariants.filter((variant) => (variant.openingStock ?? variant.quantity) === 0).length;
+  const customPricedVariants = value.variants.filter((variant) => variant.variantPrice != null || variant.variantDiscountPercent != null).length;
+  const missingColorImages = colorValueIds.length >= 2 ? colorValueIds.filter((id) => !value.colorImages[id]).length : 0;
+  const attentionCount = (isPartnerBrand ? 0 : zeroStockVariants) + missingColorImages + (value.variants.length - activeVariants.length);
 
   const availableColorValues = colorType
     ? availableOptionValues.filter((v) => v.optionTypeId === colorType.id && (!v.isArchived || colorValueIds.includes(v.id)))
@@ -270,6 +276,19 @@ export default function InventoryVariantsSection({
           <p className="mt-1 text-[11.5px] text-ink-soft/50">
             Default: 5. Applies to every variant without its own custom threshold.
           </p>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-[16px] border border-[#e4dcd4] bg-[#fbf8f4]">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e9e1d9] px-4 py-3.5">
+          <div><p className="text-[12px] font-extrabold text-[#352e29]">Variant summary</p><p className="mt-0.5 text-[10.5px] text-[#897b71]">Updates instantly as colors and sizes change.</p></div>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${attentionCount ? "bg-[#fff0eb] text-[#a24e4b]" : "bg-emerald-50 text-emerald-700"}`}>{attentionCount ? `${attentionCount} need attention` : value.variants.length ? "Ready" : "Start with a color"}</span>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-[#e9e1d9] sm:grid-cols-4 sm:divide-y-0">
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Boxes className="mt-0.5 h-4 w-4 text-[#C85956]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{value.variants.length}</p><p className="text-[10px] text-[#897b71]">sellable combinations</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Tags className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{colorValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">colors</span> · {sizeValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">sizes</span></p><p className="text-[10px] text-[#897b71]">option coverage</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{isPartnerBrand ? activeVariants.length : openingUnits}</p><p className="text-[10px] text-[#897b71]">{isPartnerBrand ? "active · stock after receipt" : "opening units"}</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><ImageIcon className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{missingColorImages || customPricedVariants}</p><p className="text-[10px] text-[#897b71]">{missingColorImages ? "color photos missing" : `${customPricedVariants} custom prices`}</p></div></div>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { validateProductSections, type ProductInput } from "../lib/admin/productValidation.ts";
+import { assessProductImageDimensions } from "../lib/admin/productImageQuality.ts";
 
 const validProduct: ProductInput = {
   name: "Structured Shirt",
@@ -218,7 +219,7 @@ test("the 'Complete' badge reflects true publish-readiness, not just the current
   // it while still in Draft, or the badge lies about readiness.
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.match(source, /publishReadinessIssues\s*=\s*validateProductSections\(buildPayload\("published"\)\)/);
-  assert.match(source, /completedSections[\s\S]{0,120}publishReadinessIssues/);
+  assert.match(source, /completedSections[\s\S]{0,220}publishReadinessIssues/);
 });
 
 test("issue count only counts required issues, and each section shows a hoverable '!' with the missing items", () => {
@@ -288,4 +289,46 @@ test("option loading distinguishes progress, retryable failure, and missing admi
   assert.match(inventorySource, /Colors and sizes could not be loaded/);
   assert.match(inventorySource, /Try again/);
   assert.match(inventorySource, /need administrator setup/);
+});
+
+test("product image guidance distinguishes sharp 4:5 assets, crop warnings and unusably small files", () => {
+  assert.equal(assessProductImageDimensions(1200, 1500).level, "good");
+  assert.equal(assessProductImageDimensions(1600, 900).label, "Check crop");
+  assert.equal(assessProductImageDimensions(400, 500).level, "error");
+});
+
+test("the final step is an actionable readiness checklist with a clear storefront outcome", () => {
+  const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  assert.match(source, /required item/);
+  assert.match(source, /Fix now/);
+  assert.match(source, /Storefront state after publish/);
+  assert.match(source, /Hidden until warehouse receipt/);
+  assert.match(source, /Visible to shoppers immediately/);
+});
+
+test("fulfillment guidance collapses into the editor header after the first step", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
+  assert.match(formSource, /activeSection !== "basic"/);
+  assert.match(chromeSource, /showFulfillmentBadge/);
+  assert.match(chromeSource, /fulfillmentLabel/);
+});
+
+test("leaving with unsaved changes offers save, discard and keep-editing choices", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
+  assert.match(formSource, /<UnsavedChangesDialog/);
+  assert.match(formSource, /saveDraftAndLeave/);
+  assert.match(formSource, /onLeave=\{\(\) => \{ clearLocalDraft\(\); router\.push\(cancelHref\); \}\}/);
+  assert.match(chromeSource, /Save draft & leave/);
+  assert.match(chromeSource, /Leave without saving/);
+});
+
+test("inventory and customer preview expose live variant-level insight", () => {
+  const inventorySource = readFileSync(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
+  const previewSource = readFileSync(new URL("../components/admin/ProductLivePreview.tsx", import.meta.url), "utf8");
+  assert.match(inventorySource, /Variant summary/);
+  assert.match(inventorySource, /sellable combinations/);
+  assert.match(previewSource, /Variant preview/);
+  assert.match(previewSource, /exact image, price and stock/);
 });

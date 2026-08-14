@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, Store, Warehouse } from "lucide-react";
+import { AlertCircle, ArrowUpRight, CalendarClock, Check, CircleAlert, Eye, PackageCheck, Store, Warehouse } from "lucide-react";
 import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, ProductVariant, TaxonomyNode } from "@/types";
 import {
   validateProductInput,
@@ -39,6 +39,7 @@ import {
   ProductEditorHeader,
   ProductErrorSummary,
   ProductWizardBottomBar,
+  UnsavedChangesDialog,
   type EditorSaveState,
 } from "@/components/admin/ProductEditorChrome";
 
@@ -292,6 +293,8 @@ export default function ProductForm({
   // Closed by default — the live preview is opt-in via the floating eye
   // button rather than always claiming half the screen.
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [leaveDialogOpen, setLeaveDialogOpen] = useState(false);
+  const [savingBeforeLeave, setSavingBeforeLeave] = useState(false);
 
   const [optionTypes, setOptionTypes] = useState<OptionTypeOption[]>([]);
   const [optionValues, setOptionValues] = useState<OptionValueOption[]>([]);
@@ -540,7 +543,7 @@ export default function ProductForm({
     isPartnerBrand,
   });
 
-  const submit = async (targetStatus: ProductStatus) => {
+  const submit = async (targetStatus: ProductStatus): Promise<boolean> => {
     const payload = buildPayload(targetStatus);
     const issues = validateProductSections(payload);
     const validationError = validateProductInput(payload);
@@ -549,7 +552,7 @@ export default function ProductForm({
       setSubmittedIssues(issues);
       const first = issues[0];
       if (first) requestAnimationFrame(() => navigateToIssue(first));
-      return;
+      return false;
     }
 
     setSubmittingStatus(targetStatus);
@@ -571,7 +574,7 @@ export default function ProductForm({
       if (!res.ok) {
         setError(data.error ?? "Something went wrong");
         setSaveFailed(true);
-        return;
+        return false;
       }
 
       // Stay on the page — a first-time create switches to editing the
@@ -595,16 +598,29 @@ export default function ProductForm({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
       router.refresh();
+      return true;
     } catch {
       setError("Something went wrong. Please try again.");
       setSaveFailed(true);
+      return false;
     } finally {
       setSubmittingStatus(null);
     }
   };
 
   const handleCancel = () => {
-    if (!hasUnsavedChanges || window.confirm("You have unsaved changes. Leave this product editor?")) router.push(cancelHref);
+    if (!hasUnsavedChanges) {
+      router.push(cancelHref);
+      return;
+    }
+    setLeaveDialogOpen(true);
+  };
+
+  const saveDraftAndLeave = async () => {
+    setSavingBeforeLeave(true);
+    const saved = await submit("draft");
+    setSavingBeforeLeave(false);
+    if (saved) router.push(cancelHref);
   };
 
   const submitting = submittingStatus !== null;
@@ -617,6 +633,7 @@ export default function ProductForm({
   );
   const productDiscountPercent = form.discountPercent ? Number(form.discountPercent) : undefined;
   const currentIssues = validateProductSections(buildPayload(form.status));
+  const draftReadinessIssues = validateProductSections(buildPayload("draft"));
   // The green "Complete" badge means "actually ready to publish", not just
   // "no errors for the current Draft/Published status" — some rules (e.g.
   // every Color needs an image once there are 2+) only turn into a real
@@ -713,8 +730,10 @@ export default function ProductForm({
         previewOpen={previewOpen}
         onTogglePreview={() => setPreviewOpen((value) => !value)}
         hasPersistedProduct={Boolean(currentProductId)}
+        fulfillmentLabel={isPartnerBrand ? "Zakhnook fulfilled" : "Brand fulfilled"}
+        showFulfillmentBadge={isCreateExperience && activeSection !== "basic"}
       />
-      <div className={`mb-6 flex items-start gap-3 rounded-xl border px-4 py-3.5 ${isPartnerBrand ? "border-[#e4cfc0] bg-[#fff7f1]" : "border-[#d9ddd4] bg-[#f5f7f1]"}`}>
+      {(!isCreateExperience || activeSection === "basic") ? <div className={`mb-6 flex items-start gap-3 rounded-xl border px-4 py-3.5 ${isPartnerBrand ? "border-[#e4cfc0] bg-[#fff7f1]" : "border-[#d9ddd4] bg-[#f5f7f1]"}`}>
         <div className={`mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg ${isPartnerBrand ? "bg-[#C85956]/10 text-[#C85956]" : "bg-[#5d6c55]/10 text-[#5d6c55]"}`}>
           {isPartnerBrand ? <Warehouse className="h-4 w-4" /> : <Store className="h-4 w-4" />}
         </div>
@@ -726,7 +745,7 @@ export default function ProductForm({
               : "Add the quantity available for each Variant. Once the required product information is complete, publishing makes it available to shoppers immediately."}
           </p>
         </div>
-      </div>
+      </div> : null}
       <div
         className={`grid min-w-0 grid-cols-1 gap-6 xl:items-start ${
           previewOpen ? "xl:grid-cols-[minmax(460px,1.08fr)_minmax(400px,0.92fr)] 2xl:grid-cols-[minmax(560px,1.08fr)_minmax(500px,0.92fr)]" : ""
@@ -975,39 +994,48 @@ export default function ProductForm({
             require the full product info below to be complete; Draft never
             does — that's the entire point of a draft. */}
         {(!isCreateExperience || activeSection === "visibility") ? <FormSection sectionId="visibility" sectionRef={(node) => { sectionRefs.current.visibility = node ?? undefined; }} number="06" title="Review & publish" description="Review readiness and choose whether to publish now or keep the product hidden." complete={completedSections.has("visibility")} issues={currentIssues.filter((issue) => issue.section === "visibility")}>
-          {publishReadinessIssues.length > 0 ? (
-            <p className="rounded-md border border-amber-200 bg-amber-50 px-3.5 py-3 text-[12.5px] leading-relaxed text-amber-800">
-              This product still has required info missing above, so it can only be saved as a <strong>Draft</strong> for now
-              {" "}— {DRAFT_EXPIRY_DAYS} days from when it first became one, after which it&apos;s automatically removed if still
-              incomplete. Complete every section to unlock <strong>Archive</strong> (kept hidden, ready to reveal later) or{" "}
-              <strong>Publish Product</strong> ({isPartnerBrand
-                ? "the listing stays off the storefront until Zakhnook receives its first stock"
-                : "it becomes available to shoppers immediately"}).
-            </p>
-          ) : (
-            <>
-              <TextField
-                label="Publish Date (optional)"
-                type="datetime-local"
-                value={form.publishDate}
-                onChange={(v) => set("publishDate", v)}
-              />
-              <div className={`mt-4 rounded-xl border px-4 py-3.5 ${isPartnerBrand ? "border-[#e4cfc0] bg-[#fff7f1]" : "border-[#d9ddd4] bg-[#f5f7f1]"}`}>
-                <p className="text-[12px] font-extrabold text-[#332c27]">
-                  {isPartnerBrand ? "What happens after publishing" : "Ready for the storefront"}
-                </p>
-                <p className="mt-1 text-[12px] leading-relaxed text-ink-soft/70">
-                  {isPartnerBrand
-                    ? "The listing is prepared now, but remains hidden from shoppers until your first warehouse shipment is received and stock becomes available at Zakhnook."
-                    : "Publishing makes this product available immediately because your brand controls fulfillment and opening stock."}
-                </p>
+          <div className={`rounded-[16px] border p-4 sm:p-5 ${publishReadinessIssues.length ? "border-[#ead3bb] bg-[#fffaf3]" : "border-[#cfe0d0] bg-[#f7fbf5]"}`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${publishReadinessIssues.length ? "bg-[#e8a65c]/12 text-[#a85e24]" : "bg-emerald-100 text-emerald-700"}`}>
+                  {publishReadinessIssues.length ? <CircleAlert className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                </div>
+                <div>
+                  <p className="text-[13px] font-extrabold text-[#332c27]">{publishReadinessIssues.length ? `${publishReadinessIssues.length} required item${publishReadinessIssues.length === 1 ? "" : "s"} left` : "Ready to publish"}</p>
+                  <p className="mt-1 text-[11.5px] leading-5 text-[#75685f]">{publishReadinessIssues.length ? `Fix the items below. You can still save this as a Draft for up to ${DRAFT_EXPIRY_DAYS} days.` : "Every required section is complete. Review the storefront outcome before publishing."}</p>
+                </div>
               </div>
-              <p className="mt-3 text-[11px] leading-relaxed text-ink-soft/45">
-                Keep it archived if you want a complete listing to remain hidden. Published products are marked New and
-                included in New Arrivals for their first 20 days. Featured placement is managed by Admin from the products list.
-              </p>
-            </>
-          )}
+              <button type="button" onClick={() => setPreviewOpen(true)} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-[#ded4ca] bg-white px-3 text-[11px] font-bold text-[#62564e] transition-colors hover:border-[#C85956]/45 hover:text-[#C85956]"><Eye className="h-3.5 w-3.5" />Open customer preview</button>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-hidden rounded-[16px] border border-[#e2dad2] bg-white">
+            {PRODUCT_EDITOR_SECTIONS.filter((section) => section.id !== "visibility").map((section, index, sections) => {
+              const sectionIssues = publishReadinessIssues.filter((issue) => issue.section === section.id);
+              const complete = sectionIssues.length === 0;
+              return (
+                <div key={section.id} className={`${index < sections.length - 1 ? "border-b border-[#eee7e0]" : ""} px-4 py-3.5 sm:px-5`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${complete ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-[#C85956]"}`}>{complete ? <Check className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}</span>
+                    <div className="min-w-0 flex-1"><p className="text-[12px] font-bold text-[#3b332d]">{section.label}</p><p className={`mt-0.5 text-[10.5px] ${complete ? "text-emerald-700" : "text-[#8b5d50]"}`}>{complete ? "Complete" : `${sectionIssues.length} item${sectionIssues.length === 1 ? "" : "s"} to fix`}</p></div>
+                    <button type="button" onClick={() => sectionIssues[0] ? navigateToIssue(sectionIssues[0]) : navigateToSection(section.id)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-2 text-[10.5px] font-bold text-[#7b6d63] transition-colors hover:bg-[#f5eee8] hover:text-[#C85956]">{complete ? "Review" : "Fix now"}<ArrowUpRight className="h-3 w-3" /></button>
+                  </div>
+                  {sectionIssues.length > 0 ? <div className="ml-9 mt-2 flex flex-wrap gap-1.5">{sectionIssues.map((issue, issueIndex) => <button key={`${issue.fieldId}-${issueIndex}`} type="button" onClick={() => navigateToIssue(issue)} className="rounded-md bg-[#fff1ed] px-2.5 py-1.5 text-left text-[10.5px] font-semibold text-[#9b4b48] transition-colors hover:bg-[#f9dfd8]">{issue.message}</button>)}</div> : null}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
+            <div><TextField label="Publish Date (optional)" type="datetime-local" value={form.publishDate} onChange={(v) => set("publishDate", v)} /><p className="mt-2 text-[10.5px] leading-4 text-[#8c7f75]">Leave empty to publish as soon as all storefront gates are satisfied.</p></div>
+            <div className={`rounded-[14px] border px-4 py-4 ${isPartnerBrand ? "border-[#e6d1c2] bg-[#fff7f1]" : "border-[#d9e0d4] bg-[#f6f8f3]"}`}>
+              <div className="flex items-start gap-3">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isPartnerBrand ? "bg-[#C85956]/10 text-[#C85956]" : "bg-[#5d6c55]/10 text-[#5d6c55]"}`}>{form.publishDate ? <CalendarClock className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}</div>
+                <div><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#8c7f75]">Storefront state after publish</p><p className="mt-1.5 text-[13px] font-extrabold text-[#332c27]">{form.publishDate ? "Scheduled listing" : isPartnerBrand ? "Hidden until warehouse receipt" : "Visible to shoppers immediately"}</p><p className="mt-1 text-[11.5px] leading-5 text-[#75685f]">{form.publishDate ? `The listing waits until ${new Date(form.publishDate).toLocaleString("en-GB", { timeZone: "Africa/Cairo", dateStyle: "medium", timeStyle: "short" })}. ${isPartnerBrand ? "It will still require received Zakhnook stock." : "It then becomes purchasable if stock is available."}` : isPartnerBrand ? "Publishing prepares the listing. It becomes visible only after Zakhnook receives the first shipment and an active Variant has available stock." : "The product enters the storefront and New Arrivals after publishing because your brand owns fulfillment and has sellable opening stock."}</p></div>
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-[10.5px] leading-4 text-ink-soft/45">Keep it archived if you want a complete listing to remain hidden. Published products are included in New Arrivals for their first 20 days; featured placement remains Admin-managed.</p>
         </FormSection> : null}
 
         {isCreateExperience ? (
@@ -1078,6 +1106,15 @@ export default function ProductForm({
         </div>
       )}
       </div>
+
+      <UnsavedChangesDialog
+        open={leaveDialogOpen}
+        saving={savingBeforeLeave}
+        canSaveDraft={draftReadinessIssues.length === 0}
+        onStay={() => setLeaveDialogOpen(false)}
+        onLeave={() => { clearLocalDraft(); router.push(cancelHref); }}
+        onSaveAndLeave={() => { void saveDraftAndLeave(); }}
+      />
 
     </div>
   );

@@ -1,13 +1,32 @@
 "use client";
 
 import { useRef, useState } from "react";
-import Image from "next/image";
-import { ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Upload } from "lucide-react";
+import NextImage from "next/image";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Loader2, Plus, Trash2, Upload } from "lucide-react";
 import ColorSwatch from "./ColorSwatch";
 import { storagePathFromPublicUrl } from "./ImageUploader";
 import type { OptionSwatchType } from "@/types";
+import { assessProductImageDimensions, PRODUCT_IMAGE_MAX_BYTES, type ProductImageQuality } from "@/lib/admin/productImageQuality";
 
 const GALLERY_CAP = 3;
+
+async function inspectProductImage(file: File): Promise<ProductImageQuality> {
+  if (file.size > PRODUCT_IMAGE_MAX_BYTES) throw new Error("Image is larger than 5MB.");
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const image = new window.Image();
+      image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("We could not read this image."));
+      image.src = objectUrl;
+    });
+    const quality = assessProductImageDimensions(dimensions.width, dimensions.height);
+    if (quality.level === "error") throw new Error(`${quality.label}. ${quality.detail}`);
+    return quality;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
 export interface MediaGalleryColor {
   id: string;
@@ -74,6 +93,7 @@ export default function MediaGallery({
   // doesn't flip every other box's spinner/disabled state on too.
   const [uploadingSlot, setUploadingSlot] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [qualityByUrl, setQualityByUrl] = useState<Record<string, ProductImageQuality>>({});
   const coverInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const colorInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -89,9 +109,14 @@ export default function MediaGallery({
     setUploadingSlot("cover");
     setError("");
     try {
+      const quality = await inspectProductImage(file);
       const url = await uploadOne(file, folderId);
-      if (coverUrl) await deleteOne(coverUrl);
+      if (coverUrl) {
+        await deleteOne(coverUrl);
+        setQualityByUrl((current) => { const next = { ...current }; delete next[coverUrl]; return next; });
+      }
       onCoverChange(url);
+      setQualityByUrl((current) => ({ ...current, [url]: quality }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -103,6 +128,7 @@ export default function MediaGallery({
     if (!coverUrl) return;
     const url = coverUrl;
     onCoverChange("");
+    setQualityByUrl((current) => { const next = { ...current }; delete next[url]; return next; });
     await deleteOne(url);
   };
 
@@ -114,8 +140,13 @@ export default function MediaGallery({
     setError("");
     try {
       const uploaded: string[] = [];
-      for (const file of list) uploaded.push(await uploadOne(file, folderId));
+      const inspected: ProductImageQuality[] = [];
+      for (const file of list) {
+        inspected.push(await inspectProductImage(file));
+        uploaded.push(await uploadOne(file, folderId));
+      }
       onImagesChange([...images, ...uploaded]);
+      setQualityByUrl((current) => ({ ...current, ...Object.fromEntries(uploaded.map((url, index) => [url, inspected[index]])) }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -129,6 +160,7 @@ export default function MediaGallery({
     setUploadingSlot(`color:${colorId}`);
     setError("");
     try {
+      const quality = await inspectProductImage(file);
       // Was hardcoded to the literal string "color-images" — never a real
       // product id, so the server's ownership check (isUuid(folderId) /
       // the product actually existing) always rejected it with "Not
@@ -139,10 +171,12 @@ export default function MediaGallery({
       if (existing) {
         await deleteOne(existing);
         onImagesChange(images.map((u) => (u === existing ? url : u)));
+        setQualityByUrl((current) => { const next = { ...current }; delete next[existing]; return next; });
       } else {
         onImagesChange([...images, url]);
       }
       onColorImagesChange({ ...colorImages, [colorId]: url });
+      setQualityByUrl((current) => ({ ...current, [url]: quality }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
@@ -159,6 +193,7 @@ export default function MediaGallery({
       delete next[colorId];
       onColorImagesChange(next);
     }
+    setQualityByUrl((current) => { const next = { ...current }; delete next[url]; return next; });
     await deleteOne(url);
   };
 
@@ -179,7 +214,8 @@ export default function MediaGallery({
           <div className="group relative mt-1 h-24 w-24 overflow-hidden rounded-lg border border-stone-150 bg-stone-50">
             {coverUrl ? (
               <>
-                <Image src={coverUrl} alt="" fill sizes="96px" className="object-cover" />
+                <NextImage src={coverUrl} alt="Product cover preview" fill sizes="96px" className="object-cover" />
+                <ImageQualityBadge quality={qualityByUrl[coverUrl]} />
                 <button
                   type="button"
                   onClick={removeCover}
@@ -230,7 +266,8 @@ export default function MediaGallery({
                 )}
               </span>
               <div className="group relative mt-1 h-24 w-24 overflow-hidden rounded-lg border border-stone-150 bg-stone-50">
-                <Image src={url} alt="" fill sizes="96px" className="object-cover" />
+                <NextImage src={url} alt={color ? `${color.label} product preview` : "Product gallery preview"} fill sizes="96px" className="object-cover" />
+                <ImageQualityBadge quality={qualityByUrl[url]} />
                 <button
                   type="button"
                   onClick={() => removeAt(i)}
@@ -321,7 +358,19 @@ export default function MediaGallery({
         ))}
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-[#f7f2ed] px-3 py-2.5 text-[10.5px] text-[#7f7167]">
+        <span className="font-bold text-[#544941]">Image guide</span>
+        <span>Best: 1200 × 1500px (4:5)</span>
+        <span>Minimum: 600 × 750px</span>
+        <span>Maximum: 5MB</span>
+      </div>
+      {Object.entries(qualityByUrl).some(([, quality]) => quality.level === "warning") ? <div className="mt-2 space-y-1">{Object.entries(qualityByUrl).filter(([, quality]) => quality.level === "warning").map(([url, quality]) => <p key={url} className="flex items-center gap-1.5 text-[10.5px] font-medium text-amber-700"><AlertTriangle className="h-3 w-3 shrink-0" />{quality.width} × {quality.height}px — {quality.detail}</p>)}</div> : null}
       {error && <p className="mt-2 text-[12px] font-medium text-red-600">{error}</p>}
     </div>
   );
+}
+
+function ImageQualityBadge({ quality }: { quality?: ProductImageQuality }) {
+  if (!quality) return null;
+  return <span title={`${quality.width} × ${quality.height}px — ${quality.detail}`} className={`absolute bottom-1 right-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-white/70 shadow-sm ${quality.level === "good" ? "bg-emerald-600 text-white" : "bg-amber-500 text-white"}`}>{quality.level === "good" ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}</span>;
 }
