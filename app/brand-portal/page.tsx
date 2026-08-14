@@ -28,7 +28,7 @@ import {
   dashboardButtonSecondary,
 } from "@/components/dashboard/DashboardUI";
 import BrandPerformanceAnalytics from "@/components/brand-portal/BrandPerformanceAnalytics";
-import { belongsToBrandOrderQueue } from "@/lib/orders/brandOrderFilters";
+import { needsBrandProductAttention } from "@/lib/brand-portal/productAttention";
 
 export default async function BrandPortalOverviewPage(props: { searchParams: Promise<{ brand?: string }> }) {
   const searchParams = await props.searchParams;
@@ -61,21 +61,14 @@ export default async function BrandPortalOverviewPage(props: { searchParams: Pro
   const salesMonth = monthOrders.reduce((sum, order) => sum + orderRevenue(order), 0);
   const averageOrderValue = monthOrders.length ? salesMonth / monthOrders.length : 0;
   const ordersToday = validOrders.filter((order) => new Date(order.createdAt) >= startOfToday).length;
-  const pendingOrders = orders.filter((order) =>
-    belongsToBrandOrderQueue(order, "attention")
-  );
   const lowStock = variants.filter((variant) => variant.quantity > 0 && variant.quantity <= variant.lowStockThreshold);
   const outOfStock = variants.filter((variant) => variant.quantity <= 0);
   const healthyStock = Math.max(variants.length - lowStock.length - outOfStock.length, 0);
-  const pendingProducts = products.filter(
-    (product) => product.status === "pending_review" || product.status === "changes_requested" || product.hasPendingEdit
-  );
+  const attentionProducts = products.filter(needsBrandProductAttention);
   const publishedProducts = products.filter((product) => product.status === "published").length;
   const brandParam = owner.isImpersonating ? `?brand=${owner.brandSlug}` : "";
-  const pendingActions = pendingOrders.length + lowStock.length + outOfStock.length + pendingProducts.length;
-  const attentionHref = pendingOrders.length
-    ? `/brand-portal/orders${brandParam ? `${brandParam}&queue=attention` : "?queue=attention"}`
-    : `/brand-portal/products${brandParam ? `${brandParam}&attention=1` : "?attention=1"}`;
+  const pendingActions = attentionProducts.length;
+  const attentionHref = `/brand-portal/products${brandParam ? `${brandParam}&attention=1` : "?attention=1"}`;
 
   return (
     <div className="mx-auto max-w-[1540px] space-y-7 pb-3 text-[#242424] sm:space-y-8">

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { safeErrorResponse } from "@/lib/apiError";
+import { replenishmentErrorResponse } from "@/lib/warehouse/replenishmentErrorResponse";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     p_note: body.note ?? null,
     p_operation_key: operationKey,
   } as never);
-  if (error) return safeErrorResponse("brand-portal.warehouse.transfers.request", error, "Failed to submit the transfer request", 400);
+  if (error) return replenishmentErrorResponse("brand-portal.warehouse.transfers.request", error);
 
   const requestedSummary = body.items
     .map((item) => `${skuByVariantId.get(item.variantId) ?? item.variantId}: requested ${item.requestedQty}`)

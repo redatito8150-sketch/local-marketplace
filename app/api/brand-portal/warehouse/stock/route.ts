@@ -1,57 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
-import { supabaseAdmin } from "@/lib/supabase/admin";
-import { checkRateLimit } from "@/lib/rateLimit";
-import { safeErrorResponse } from "@/lib/apiError";
 
-type Update = { variantId: string; brandStockQuantity: number };
-
-// Purely informational bookkeeping — "how much of this do you have in your
-// own warehouse right now" — never read by the storefront/checkout. Not
-// audited/notified like a real inventory change; it's closer to editing a
-// draft field than a consequential write.
+// DISABLED (this branch's document-first replenishment change — see
+// supabase/migrations/20260814010500_partner_replenishment_request.sql's
+// header comment). This endpoint let a brand freely overwrite its own
+// declared product_variants.brand_stock_quantity — the exact "held by your
+// brand" prerequisite that used to gate request_warehouse_transfer and has
+// now been removed from that RPC. Since nothing checks brand_stock_quantity
+// as a prerequisite for ordinary partner replenishment anymore, letting
+// brands keep editing it here would be a dead, misleading write (the number
+// would no longer mean anything to the workflow) — safer to refuse the
+// write outright than to silently accept it into a field nothing reads.
 //
-// DEPRECATED (kept functional for backward compatibility — see
-// supabase/migrations/20260814000005_inventory_permission_boundaries.sql's
-// comment on set_warehouse_brand_stock): new development should prefer
-// declaring an actual shipment via POST /api/brand-portal/warehouse/transfers
-// (request_warehouse_transfer) instead of freely overwriting a total here.
+// The underlying RPC (public.set_warehouse_brand_stock) is left fully
+// intact and reachable by service_role — only this brand-facing HTTP route
+// is turned off — so it remains available for any other legitimate
+// service_role-side reconciliation path without a migration change, and
+// existing historical brand_stock_quantity values and open documents are
+// completely unaffected by disabling this route.
+//
+// Returns a stable machine-readable code (MANUAL_STOCK_OVERWRITE_DISABLED)
+// so a caller can distinguish "this feature is gone" from an ordinary
+// validation/auth failure. Kept behind the same auth/partner gate as
+// before (rather than 404ing) so the safe, specific message is what a
+// legitimate brand owner actually sees.
 export async function PATCH(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
   if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
   if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Zakhnook Partner" }, { status: 403 });
-  if (!checkRateLimit(`warehouse-stock:${owner.user.id}`, 60, 10 * 60 * 1000)) {
-    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
-  }
 
-  const body = await request.json().catch(() => null) as { updates?: Update[] } | null;
-  if (!body?.updates?.length) return NextResponse.json({ error: "Select at least one variant" }, { status: 400 });
-  for (const update of body.updates) {
-    if (!Number.isInteger(update.brandStockQuantity) || update.brandStockQuantity < 0) {
-      return NextResponse.json({ error: "Quantity must be a whole, non-negative number" }, { status: 400 });
-    }
-  }
-
-  if (new Set(body.updates.map((update) => update.variantId)).size !== body.updates.length) {
-    return NextResponse.json({ error: "Each variant can appear only once" }, { status: 400 });
-  }
-
-  const { error } = await supabaseAdmin.rpc("set_warehouse_brand_stock", {
-    p_brand_id: owner.brandId,
-    p_actor_id: owner.user.id,
-    p_updates: body.updates.map((update) => ({
-      variant_id: update.variantId,
-      brand_stock_quantity: update.brandStockQuantity,
-    })),
-  });
-  if (error) {
-    return safeErrorResponse(
-      "brand-portal.warehouse.stock",
-      error,
-      "Failed to save your warehouse stock",
-      400
-    );
-  }
-
-  return NextResponse.json({ ok: true, deprecated: true });
+  return NextResponse.json(
+    {
+      error: "Manually editing warehouse stock is no longer supported — submit a replenishment request instead.",
+      code: "MANUAL_STOCK_OVERWRITE_DISABLED",
+    },
+    { status: 410 }
+  );
 }

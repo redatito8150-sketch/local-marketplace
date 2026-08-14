@@ -138,9 +138,12 @@ test("brand_stock_quantity / set_warehouse_brand_stock are documented as depreca
   assert.match(permMigration, /comment on function public\.set_warehouse_brand_stock\(uuid, uuid, jsonb\) is\s*\n\s*'DEPRECATED/);
 });
 
-test("the brand-portal warehouse stock route flags its response as deprecated without changing its existing { ok: true } shape", () => {
+test("the brand-portal warehouse stock route is disabled (claude/partner-restock-request-backend): it no longer accepts writes, returning a stable MANUAL_STOCK_OVERWRITE_DISABLED code instead of ever flagging a deprecated { ok: true } success", () => {
   const route = read("app/api/brand-portal/warehouse/stock/route.ts");
-  assert.match(route, /NextResponse\.json\(\{ ok: true, deprecated: true \}\);/);
+  assert.doesNotMatch(route, /\{ ok: true, deprecated: true \}/);
+  assert.doesNotMatch(route, /\.rpc\("set_warehouse_brand_stock"/);
+  assert.match(route, /"MANUAL_STOCK_OVERWRITE_DISABLED"/);
+  assert.match(route, /status: 410/);
 });
 
 test("apply_inventory_adjustments stays service_role-only after this rewrite", () => {

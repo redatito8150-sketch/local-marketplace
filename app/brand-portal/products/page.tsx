@@ -13,6 +13,7 @@ import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import ProductFilters from "@/components/brand-portal/ProductFilters";
 import ProductRowActions from "@/components/brand-portal/ProductRowActions";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
+import { needsBrandProductAttention } from "@/lib/brand-portal/productAttention";
 
 const PAGE_SIZE = 25;
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -52,7 +53,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   }
 
   const allProducts = await getProductsForBrand(owner.brandId, owner.isImpersonating);
-  const attentionProducts = allProducts.filter(needsAttention);
+  const attentionProducts = allProducts.filter(needsBrandProductAttention);
   const query = params.q?.trim().toLowerCase();
   const filteredProducts = allProducts.filter((product) => {
     if (query && !product.name.toLowerCase().includes(query)) return false;
@@ -62,7 +63,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     if (params.collection && product.collection !== params.collection) return false;
     if (params.inventory === "in" && !product.inStock) return false;
     if (params.inventory === "out" && product.inStock) return false;
-    if (params.attention && !needsAttention(product)) return false;
+    if (params.attention && !needsBrandProductAttention(product)) return false;
     return true;
   });
   filteredProducts.sort((a, b) => params.attention
@@ -88,6 +89,8 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
       ? "published"
       : params.status === "draft"
         ? "drafts"
+        : params.status === "archived"
+          ? "archived"
         : params.status
           ? null
           : "all";
@@ -122,6 +125,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
           all: allProducts.length,
           published: allProducts.filter((product) => product.status === "published").length,
           drafts: allProducts.filter((product) => product.status === "draft").length,
+          archived: allProducts.filter((product) => product.status === "archived").length,
           attention: attentionProducts.length,
         }}
       />
@@ -275,14 +279,15 @@ function QuickViews({
   brandParams,
   counts,
 }: {
-  activeView: "all" | "published" | "drafts" | "attention" | null;
+  activeView: "all" | "published" | "drafts" | "archived" | "attention" | null;
   brandParams: { brand?: string };
-  counts: Record<"all" | "published" | "drafts" | "attention", number>;
+  counts: Record<"all" | "published" | "drafts" | "archived" | "attention", number>;
 }) {
   const views = [
     { id: "all" as const, label: "All products", params: {} },
     { id: "published" as const, label: "Published", params: { status: "published" } },
     { id: "drafts" as const, label: "Drafts", params: { status: "draft" } },
+    { id: "archived" as const, label: "Archived", params: { status: "archived" } },
     { id: "attention" as const, label: "Needs attention", params: { attention: "1" } },
   ];
   return (
@@ -339,13 +344,6 @@ function getStatusInfo(product: BrandProductListItem) {
   if (daysLeft != null) return { label: `Draft: ${Math.max(daysLeft, 0)}d left`, className: daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800" };
   if (isScheduled) return { label: `Scheduled: ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(product.publishDate!))}`, className: "bg-[#eef3f5] text-[#4e6876]" };
   return baseStatusInfo;
-}
-
-function needsAttention(product: BrandProductListItem) {
-  const draftDays = product.status === "draft" ? draftDaysRemaining(product.draftStartedAt) : null;
-  return product.status === "changes_requested"
-    || (product.status === "published" && product.stockStatus !== "in_stock")
-    || (draftDays != null && draftDays <= 3);
 }
 
 function attentionPriority(product: BrandProductListItem) {

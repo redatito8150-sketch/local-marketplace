@@ -5,7 +5,7 @@ import { DashboardPageHeader, DashboardEmptyState } from "@/components/dashboard
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import WarehouseExperience from "@/components/brand-portal/warehouse/WarehouseExperience";
 
-export default async function BrandPortalWarehousePage(props: { searchParams: Promise<{ brand?: string; variant?: string; qty?: string }> }) {
+export default async function BrandPortalWarehousePage(props: { searchParams: Promise<{ brand?: string }> }) {
   const params = await props.searchParams;
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
@@ -36,15 +36,13 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
       <DashboardPageHeader
         eyebrow="Zakhnook fulfilled"
         title="Shipments & Transfers"
-        description="Send stock to Zakhnook, follow receiving progress, and keep every outbound return documented in one place."
+        description="Follow incoming stock, receiving progress, discrepancies, and returns. Create new restock requests directly from Inventory."
       />
       <div className="mt-6">
         <WarehouseExperience
           variants={variants}
           transfers={transfers}
           brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined}
-          initialVariantId={params.variant}
-          initialQuantity={params.qty ? Number(params.qty) : undefined}
         />
       </div>
     </div>
