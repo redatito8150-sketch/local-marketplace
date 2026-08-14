@@ -1,5 +1,7 @@
 import type { BrandOrder } from "@/lib/data/brandPortal";
 import { normalizeReference, normalizeSearchText } from "../search/normalize.ts";
+import { brandOrderNeedsAction, normalizeOrderStatus } from "./lifecycle.ts";
+import type { OrderStatus } from "@/types";
 
 export type BrandOrderQueue = "all" | "attention" | "active" | "fulfilled" | "cancelled";
 export type BrandOrderFilters = { q?: string; queue?: string; from?: string; to?: string; sort?: string };
@@ -9,10 +11,11 @@ export function normalizeBrandOrderQueue(value?: string): BrandOrderQueue {
 }
 
 export function belongsToBrandOrderQueue(order: Pick<BrandOrder, "status" | "fulfillmentType">, queue: BrandOrderQueue) {
-  if (queue === "attention") return order.fulfillmentType === "brand_direct" && ["paid", "preparing"].includes(order.status);
-  if (queue === "active") return ["pending", "paid", "preparing", "shipped"].includes(order.status);
-  if (queue === "fulfilled") return order.status === "fulfilled";
-  if (queue === "cancelled") return order.status === "cancelled";
+  const status = normalizeOrderStatus(order.status as OrderStatus);
+  if (queue === "attention") return brandOrderNeedsAction(order);
+  if (queue === "active") return ["confirmed", "preparing", "ready_for_pickup", "shipped"].includes(status);
+  if (queue === "fulfilled") return status === "fulfilled";
+  if (queue === "cancelled") return status === "cancelled";
   return true;
 }
 

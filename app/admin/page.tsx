@@ -50,7 +50,7 @@ export default async function AdminOverviewPage() {
       canViewAuditLog ? getAllAuditLogsForAdmin(8) : Promise.resolve([]),
     ]);
 
-  const pendingOrders = orders.filter((order) => order.status === "pending");
+  const pendingOrders = orders.filter((order) => ["confirmed", "pending", "paid"].includes(order.status));
   const newApplications = applications.filter((application) => application.status === "new");
   const recentOrders = orders.slice(0, 5);
   const alertCount = pendingOrders.length + newApplications.length + lowStock.length;
@@ -71,7 +71,7 @@ export default async function AdminOverviewPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <DashboardStatCard label="Revenue today" value={formatPrice(revenue.today, "EGP")} detail={`${formatPrice(revenue.week, "EGP")} in 7 days`} icon={CircleDollarSign} tone="success" href="/admin/analytics" />
-        <DashboardStatCard label="Orders" value={orders.length} detail={`${pendingOrders.length} pending`} icon={ShoppingBag} tone={pendingOrders.length ? "warning" : "neutral"} href="/admin/orders" />
+        <DashboardStatCard label="Orders" value={orders.length} detail={`${pendingOrders.length} confirmed`} icon={ShoppingBag} tone={pendingOrders.length ? "warning" : "neutral"} href="/admin/orders" />
         <DashboardStatCard label="Products" value={products.length} detail={`${lowStock.length} low-stock variants`} icon={Package} tone={lowStock.length ? "warning" : "info"} href="/admin/products" />
         <DashboardStatCard label="Brands" value={brands.length} detail={`${newApplications.length} new applications`} icon={Store} tone="brand" href="/admin/brands" />
         <DashboardStatCard label="New applications" value={newApplications.length} detail="Brand applications awaiting a decision" icon={Clock3} tone="warning" href="/admin/applications" />
@@ -85,7 +85,7 @@ export default async function AdminOverviewPage() {
 
         <DashboardPanel title="Important alerts" description="Live operational signals">
           <div className="divide-y divide-slate-100">
-            <AlertRow label="Pending orders" value={pendingOrders.length} href="/admin/orders?status=pending" tone="warning" />
+            <AlertRow label="Confirmed orders" value={pendingOrders.length} href="/admin/orders?status=confirmed" tone="warning" />
             <AlertRow label="Low-stock variants" value={lowStock.length} href="/admin/low-stock" tone="danger" />
             <AlertRow label="New brand applications" value={newApplications.length} href="/admin/applications" tone="info" />
           </div>

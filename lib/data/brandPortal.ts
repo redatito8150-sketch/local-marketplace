@@ -192,7 +192,7 @@ export async function getOrdersForBrand(
     }
     const now = Date.now();
     for (const order of orders) {
-      if (order.fulfillmentType !== "brand_direct" || !["paid", "preparing"].includes(order.status)) continue;
+      if (order.fulfillmentType !== "brand_direct" || !["confirmed", "pending", "paid", "preparing"].includes(order.status)) continue;
       const currentStatusStartedAt = [...order.history].reverse().find((entry) => entry.status === order.status)?.createdAt ?? order.createdAt;
       order.isOverdue = now - new Date(currentStatusStartedAt).getTime() > 24 * 60 * 60 * 1000;
     }

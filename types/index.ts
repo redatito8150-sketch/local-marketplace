@@ -575,7 +575,15 @@ export interface CollectionRecord {
 
 // ── Orders (Supabase `orders` / `order_items` tables) ───────────────────────
 
-export type OrderStatus = "pending" | "paid" | "preparing" | "shipped" | "fulfilled" | "cancelled";
+export type OrderStatus =
+  | "confirmed"
+  | "preparing"
+  | "ready_for_pickup"
+  | "shipped"
+  | "fulfilled"
+  | "cancelled"
+  | "pending"
+  | "paid";
 
 export type OrderFulfillmentType = "mahaly_pool" | "brand_direct";
 
