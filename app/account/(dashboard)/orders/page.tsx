@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase/accountAuth";
-import { getOrdersForUser } from "@/lib/data/orders";
+import { claimGuestOrdersForVerifiedUser, getOrdersForUser } from "@/lib/data/orders";
 import OrdersTabs from "@/components/account/OrdersTabs";
 import { AccountPageHeader } from "@/components/account/AccountUI";
 
@@ -8,6 +8,7 @@ export default async function AccountOrdersPage() {
   const user = await requireUser();
   if (!user) redirect("/account");
 
+  await claimGuestOrdersForVerifiedUser(user);
   const orders = await getOrdersForUser(user.id);
 
   return (

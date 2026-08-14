@@ -67,13 +67,29 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
                   Purchase {groupOrders[0].masterOrderNumber} · {groupOrders.length} shipments
                 </p>
                 <div className="space-y-4">
-                  {groupOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} />
+                  {groupOrders.map((order, index) => (
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      showCancel={index === 0 && groupOrders.every((candidate) =>
+                        candidate.paymentMethod === "cash_on_delivery" &&
+                        candidate.paymentStatus === "unpaid" &&
+                        (candidate.status === "pending" || candidate.status === "preparing")
+                      )}
+                    />
                   ))}
                 </div>
               </div>
             ) : (
-              <OrderCard key={groupOrders[0].id} order={groupOrders[0]} />
+              <OrderCard
+                key={groupOrders[0].id}
+                order={groupOrders[0]}
+                showCancel={
+                  groupOrders[0].paymentMethod === "cash_on_delivery" &&
+                  groupOrders[0].paymentStatus === "unpaid" &&
+                  (groupOrders[0].status === "pending" || groupOrders[0].status === "preparing")
+                }
+              />
             )
           )}
         </div>

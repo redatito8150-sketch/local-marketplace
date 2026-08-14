@@ -4,40 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { AddressLabel, AddressRecord } from "@/types";
 import { accountInputClass, accountPrimaryButton } from "@/components/account/AccountUI";
-
-interface FormState {
-  label: AddressLabel;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  addressLine: string;
-  city: string;
-  governorate: string;
-  buildingNumber: string;
-  floor: string;
-  apartment: string;
-  landmark: string;
-  deliveryInstructions: string;
-  postalCode: string;
-}
-
-function toFormState(address?: AddressRecord): FormState {
-  return {
-    label: address?.label ?? "Home",
-    firstName: address?.firstName ?? "",
-    lastName: address?.lastName ?? "",
-    phone: address?.phone ?? "",
-    addressLine: address?.addressLine ?? "",
-    city: address?.city ?? "",
-    governorate: address?.governorate ?? "",
-    buildingNumber: address?.buildingNumber ?? "",
-    floor: address?.floor ?? "",
-    apartment: address?.apartment ?? "",
-    landmark: address?.landmark ?? "",
-    deliveryInstructions: address?.deliveryInstructions ?? "",
-    postalCode: address?.postalCode ?? "",
-  };
-}
+import { addressRecordToForm, type AddressFormValues } from "@/lib/addresses/form";
 
 export default function AddressForm({
   mode,
@@ -47,11 +14,11 @@ export default function AddressForm({
   initial?: AddressRecord;
 }) {
   const router = useRouter();
-  const [form, setForm] = useState<FormState>(() => toFormState(initial));
+  const [form, setForm] = useState<AddressFormValues>(() => addressRecordToForm(initial));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
+  const set = <K extends keyof AddressFormValues>(key: K, value: AddressFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
   const handleSubmit = async (e: React.FormEvent) => {

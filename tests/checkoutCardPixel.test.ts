@@ -27,7 +27,7 @@ test("Card payment posts only to the Paymob intention endpoint, with an Idempote
 });
 
 test("Card payment never calls the orders endpoint or COD's order-placement functions", () => {
-  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/);
+  const startCardAttemptMatch = checkoutPage.match(/const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[[^\]]*\]\);/);
   assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
   const body = startCardAttemptMatch![0];
   assert.doesNotMatch(body, /\/api\/orders/);
@@ -191,7 +191,7 @@ test("the polling and cart-clearing effects are the only places CARD flow ever m
     /useEffect\(\(\) => \{\s*if \(!pixelActive\)[\s\S]*?\n {2}\}, \[pixelActive\]\);/
   )![0];
   const startCardAttemptMatch = checkoutPage.match(
-    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[[^\]]*\]\);/
   )![0];
   assert.doesNotMatch(pixelEffectMatch, /clearCart/);
   assert.doesNotMatch(pixelEffectMatch, /removePurchasedItems/);
@@ -267,7 +267,7 @@ test("a pending-attempt marker is written the moment the intention succeeds — 
     /import \{\s*clearPendingCardAttempt,\s*writePendingCardAttempt,\s*\} from "@\/lib\/payments\/pendingCardAttempt"/
   );
   const startCardAttemptMatch = checkoutPage.match(
-    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[cardState\.phase, items, shipping, appliedCoupon, user\]\);/
+    /const startCardAttempt = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[[^\]]*\]\);/
   );
   assert.ok(startCardAttemptMatch, "expected to find the startCardAttempt function");
   const body = startCardAttemptMatch![0];

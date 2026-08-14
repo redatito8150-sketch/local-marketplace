@@ -25,6 +25,7 @@ export interface ValidatedOrderRequest {
   shipping: ValidatedShipping;
   couponCode?: string;
   addressId?: string;
+  accountCheckout: boolean;
 }
 
 type ValidationResult =
@@ -125,6 +126,10 @@ export function validateOrderRequest(input: unknown): ValidationResult {
     addressId = input.addressId;
   }
 
+  if (input.accountCheckout != null && typeof input.accountCheckout !== "boolean") {
+    return { ok: false, error: "Invalid checkout mode" };
+  }
+
   return {
     ok: true,
     value: {
@@ -140,6 +145,7 @@ export function validateOrderRequest(input: unknown): ValidationResult {
       },
       couponCode,
       addressId,
+      accountCheckout: input.accountCheckout === true,
     },
   };
 }

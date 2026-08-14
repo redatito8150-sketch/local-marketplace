@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
   }
-  const { items, shipping, couponCode, addressId } = validation.value;
+  const { items, shipping, couponCode, addressId, accountCheckout } = validation.value;
 
   const identity = await getRequestIdentity(request);
   if (identity.status === "invalid_credentials") {
@@ -102,6 +102,13 @@ export async function POST(request: NextRequest) {
     );
   }
   const user = identity.status === "authenticated" ? identity.user : null;
+  if (accountCheckout && !user) {
+    return NextResponse.json(
+      { error: "Your signed-in session could not be verified. Sign in again before placing the order." },
+      { status: 401 }
+    );
+  }
+  if (user?.email) shipping.email = user.email;
   const idempotencyActor = buildOrderIdempotencyActor(user?.id ?? null, shipping.email);
   const requestHash = hashOrderRequest(validation.value);
 
