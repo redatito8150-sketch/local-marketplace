@@ -134,6 +134,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // `before` snapshot (product row + its variants) is kept in full so the
   // Audit Log page can always show exactly what changed, field by field.
   const productBody = body as ProductInput;
+
+  // Closes the restore bypass this generic full-form-save route otherwise
+  // offered: an archived product must only come back through
+  // restore_product's canonical revalidation, never by editing status
+  // back to "published" here directly. Archived -> draft stays allowed.
+  if (existing.status === "archived" && productBody.status === "published") {
+    return NextResponse.json(
+      { error: "This product is archived. Use Restore product from the products list — editing status directly is not allowed for archived products." },
+      { status: 409 }
+    );
+  }
+
   // Brand is immutable after creation — whatever the client sends is
   // ignored, always the caller's own brand.
   productBody.brandId = owner.brandId;

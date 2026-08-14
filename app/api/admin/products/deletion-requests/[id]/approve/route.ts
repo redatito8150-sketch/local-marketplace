@@ -5,6 +5,8 @@ import { logAudit } from "@/lib/auditLog";
 import { notifyUser, notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { adminApproveProductDeletion } from "@/lib/admin/productDeletion";
+import { extractOwnedStorageTargets } from "@/lib/admin/productMediaStorage";
+import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
 
 // The one and only endpoint that can permanently delete a product. Gated
 // at the "admin" rank (not just "manager"), matching this codebase's
@@ -50,18 +52,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     });
     await notify(
       "product_deletion_requested",
-      `Deletion blocked by new activity: ${product?.name ?? before.product_id}`,
+      `Deletion blocked by new activity: ${product?.name ?? before.product_name}`,
       result.message,
       { relatedEntityType: "product", relatedEntityId: before.product_id, auditLogId, actorLabel: staff.user.email ?? staff.user.id }
     );
     return NextResponse.json({ error: result.message, code: result.code, blockers: result.blockers }, { status: 409 });
   }
 
+  if (result.mediaUrls?.length && before.product_id) {
+    const targets = extractOwnedStorageTargets(before.product_id, result.mediaUrls);
+    if (targets.length) await queueStorageCleanupTargets(staff.user.id, targets);
+  }
+
   const auditLogId = await logAudit({
     actorId: staff.user.id,
     actorLabel: staff.user.email ?? staff.user.id,
     entityType: "product",
-    entityId: before.product_id,
+    entityId: before.product_id ?? before.id,
     action: "product_permanently_deleted",
     before: result.before ?? before,
   });
@@ -71,13 +78,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       before.requested_by,
       "product_deletion_approved",
       "Deletion approved",
-      `${product?.name ?? before.product_id} has been permanently deleted.`,
+      `${product?.name ?? before.product_name} has been permanently deleted.`,
       { relatedEntityType: "product", relatedEntityId: before.product_id }
     );
   }
   await notify(
     "product_permanently_deleted",
-    `Product permanently deleted: ${product?.name ?? before.product_id}`,
+    `Product permanently deleted: ${product?.name ?? before.product_name}`,
     "",
     { relatedEntityType: "product", relatedEntityId: before.product_id, auditLogId, actorLabel: staff.user.email ?? staff.user.id }
   );

@@ -41,6 +41,13 @@ export default function ProductRowActions({
   const [error, setError] = useState("");
   const cancelRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDetailsElement>(null);
+  // Generated once when the "request permanent deletion" dialog opens and
+  // reused for every retry of that same attempt (a network error + resend
+  // must not mint a fresh key each time, or the server-side idempotency
+  // check in request_product_deletion never actually gets exercised) — a
+  // fresh dialog open (chooseAction) always gets a fresh key, since that's
+  // a genuinely new attempt, not a retry.
+  const requestIdempotencyKeyRef = useRef<string>("");
 
   const loadState = async () => {
     setLoading(true);
@@ -70,9 +77,13 @@ export default function ProductRowActions({
     setBusy(true);
     setError("");
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (pendingAction === "request") {
+        headers["Idempotency-Key"] = requestIdempotencyKeyRef.current;
+      }
       const response = await fetch(`/api/brand-portal/products/${productId}/deletion`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ action: pendingAction, reason }),
       });
       const data = await response.json().catch(() => ({}));
@@ -94,6 +105,9 @@ export default function ProductRowActions({
     setError("");
     setReason("");
     setConfirmText("");
+    if (action === "request") {
+      requestIdempotencyKeyRef.current = crypto.randomUUID();
+    }
     setPendingAction(action);
   };
 
@@ -121,7 +135,7 @@ export default function ProductRowActions({
     },
     request: {
       title: `Request permanent deletion of ${name}?`,
-      body: "This sends a request to Zakhnook staff to permanently delete this archived product. It stays archived (hidden from the storefront) until staff approve the request — and if it has real order, inventory, or warehouse history, it will remain archived permanently even if approved, since that history can never be deleted.",
+      body: "This sends a request to Zakhnook staff to permanently delete this archived product. It stays archived (hidden from the storefront) either way — if staff find open orders, stock, or warehouse activity still in progress when they review it, the request is blocked (not rejected) until that clears; if new order, review, inventory, or warehouse history appears before then, it will remain archived permanently instead.",
       confirmLabel: "Send request",
       tone: "danger",
     },

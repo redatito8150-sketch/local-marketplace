@@ -5,6 +5,8 @@ import { logAudit, type AuditAction } from "@/lib/auditLog";
 import { notify, type NotificationType } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
+import { extractOwnedStorageTargets } from "@/lib/admin/productMediaStorage";
+import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
 import {
   getProductDeletionEligibility,
   getDeletionRequestForProduct,
@@ -52,8 +54,12 @@ function statusForCode(code: string): number {
     case "DELETION_REQUEST_STATE_CONFLICT":
     case "DELETION_ELIGIBILITY_CHANGED":
     case "PRODUCT_MUST_BE_RETAINED":
+    case "IDEMPOTENCY_CONFLICT":
       return 409;
     case "PRODUCT_NOT_DRAFT":
+    case "PRODUCT_MISSING_REQUIRED_FIELDS":
+    case "PRODUCT_NO_SELLABLE_STOCK":
+    case "PRODUCT_NOT_LAUNCHED":
       return 422;
     default:
       return 400;
@@ -140,6 +146,19 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   if (!result.ok) {
     return NextResponse.json({ error: result.message, code: result.code, blockers: result.blockers }, { status: statusForCode(result.code) });
+  }
+
+  // Prevents orphaned Storage objects: delete_draft_product returns every
+  // media URL the just-deleted product owned (captured before the DB
+  // cascade removed the rows referencing them). Only genuinely owned
+  // paths make it through extractOwnedStorageTargets — never an arbitrary
+  // external/shared URL — and queueStorageCleanupTargets is the same
+  // durable job queue account deletion already uses
+  // (lib/account/storageCleanup.ts), consumed by the existing
+  // /api/cron/storage-cleanup sweep.
+  if (action === "delete_draft" && result.mediaUrls?.length) {
+    const targets = extractOwnedStorageTargets(params.id, result.mediaUrls);
+    if (targets.length) await queueStorageCleanupTargets(actorId, targets);
   }
 
   const auditLogId = await logAudit({

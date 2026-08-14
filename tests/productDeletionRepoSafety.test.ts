@@ -54,6 +54,24 @@ test("the admin bulk products route no longer offers a 'delete' action", () => {
   assert.match(bulkRoute, /delete_draft/);
 });
 
+// item 5 + item 13: an archived product must only come back through
+// restore_product's canonical revalidation — these three generic routes
+// each offered a bypass (edit the status field straight back to
+// "published") before the corrective pass.
+test("admin and brand-portal product PATCH routes refuse an archived -> published transition", () => {
+  const adminRoute = readFileSync(path.join(rootDir, "app/api/admin/products/[id]/route.ts"), "utf8");
+  const brandPortalRoute = readFileSync(path.join(rootDir, "app/api/brand-portal/products/[id]/route.ts"), "utf8");
+  for (const [name, content] of [["admin", adminRoute], ["brand-portal", brandPortalRoute]] as const) {
+    assert.match(content, /existing\.status === "archived" && (body|productBody)\.status === "published"/, `${name} route missing the restore-bypass guard`);
+  }
+});
+
+test("the admin bulk 'publish' action excludes currently-archived products instead of republishing them directly", () => {
+  const bulkRoute = readFileSync(path.join(rootDir, "app/api/admin/products/bulk/route.ts"), "utf8");
+  assert.match(bulkRoute, /RESTORE_REQUIRES_CANONICAL_RPC/);
+  assert.match(bulkRoute, /existingById\.get\(id\)\?\.status === "archived"/);
+});
+
 test("deletion_requested_at is only ever read for display, never as a workflow gate, outside the migration/data-layer mapping", () => {
   const allowedFiles = new Set([
     "supabase/migrations/20260814020000_product_deletion_lifecycle.sql",

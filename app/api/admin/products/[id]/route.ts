@@ -38,6 +38,21 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const { data: brandRow } = await supabaseAdmin.from("brands").select("is_mahaly_partner").eq("id", existing.brand_id).maybeSingle();
 
   const body: ProductInput = await request.json();
+
+  // Closes the restore bypass this generic full-form-save route otherwise
+  // offered: an archived product must only come back through
+  // restore_product's canonical revalidation (active brand, complete
+  // fields, active variant, direct-brand sellable stock, partner-brand
+  // launch gate — see supabase/migrations/
+  // 20260814020000_product_deletion_lifecycle.sql), never by simply
+  // editing status back to "published" here. Archived -> draft is still
+  // allowed (no bypass concern — draft never republishes automatically).
+  if (existing.status === "archived" && body.status === "published") {
+    return NextResponse.json(
+      { error: "This product is archived. Use Restore product to bring it back — editing status directly is not allowed for archived products." },
+      { status: 409 }
+    );
+  }
   // Brand and SKU are immutable after creation — whatever the client
   // sends is ignored, always the existing product's own values.
   body.brandId = existing.brand_id;

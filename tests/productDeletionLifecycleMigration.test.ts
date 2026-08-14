@@ -36,8 +36,24 @@ test("product_deletion_requests enforces at most one non-terminal request per pr
 test("product_deletion_requests has no RLS policy and is service_role-only", () => {
   assert.ok(sql.includes("altertablepublic.product_deletion_requestsenablerowlevelsecurity"));
   assert.ok(sql.includes("revokeallonpublic.product_deletion_requestsfrompublic,anon,authenticated"));
-  assert.ok(sql.includes("grantselect,insert,updateonpublic.product_deletion_requeststoservice_role"));
+  // Corrective pass: DELETE grant added — the original omitted it entirely,
+  // so nothing (including this project's own test cleanup helpers) could
+  // ever remove a row directly.
+  assert.ok(sql.includes("grantselect,insert,update,deleteonpublic.product_deletion_requeststoservice_role"));
   assert.doesNotMatch(migration, /create policy .* on public\.product_deletion_requests/i);
+});
+
+test("product_deletion_requests.product_id is nullable with ON DELETE SET NULL, and carries an immutable name/sku/image snapshot", () => {
+  // Corrective pass fix for the structural bug that made successful
+  // approval impossible: the original NOT NULL / ON DELETE RESTRICT
+  // column meant admin_approve_product_deletion's own `delete from
+  // products` could never succeed while the request row still referenced
+  // it.
+  assert.doesNotMatch(migration, /product_id text not null references public\.products/);
+  assert.ok(sql.includes("product_idtextreferencespublic.products(id)ondeletesetnull"));
+  assert.ok(sql.includes("product_nametextnotnulldefault''"));
+  assert.ok(sql.includes("product_skutext,"));
+  assert.ok(sql.includes("product_imagetext,"));
 });
 
 test("deletion_requested_at is documented as a display-only mirror, never authoritative", () => {
@@ -61,19 +77,24 @@ test("every required blocker code is implemented", () => {
   }
 });
 
-test("eligibility calculation is a single canonical function reused by every RPC", () => {
-  assert.ok(sql.includes("createorreplacefunctionprivate.compute_product_deletion_eligibility(p_product_idtext)"));
+test("eligibility calculation is a single canonical function reused by every RPC, accepting an ignore-request-id for self-exclusion", () => {
+  assert.ok(sql.includes("createorreplacefunctionprivate.compute_product_deletion_eligibility(p_product_idtext,p_ignore_request_iduuiddefaultnull)"));
   const occurrences = migration.match(/private\.compute_product_deletion_eligibility\(/g) ?? [];
   // Defined once, then called by get_product_deletion_eligibility,
   // delete_draft_product, request_product_deletion,
   // admin_update_deletion_request, and admin_approve_product_deletion —
   // never re-implemented.
   assert.ok(occurrences.length >= 6, `expected compute_product_deletion_eligibility to be defined once and called at least 5 times, saw ${occurrences.length} total occurrences`);
+  // admin_update_deletion_request and admin_approve_product_deletion must
+  // pass their own request id as the ignore param — the exact bug that
+  // made approval impossible was DELETION_REQUEST_ALREADY_OPEN firing
+  // against the very request being approved.
+  assert.ok(sql.includes("private.compute_product_deletion_eligibility(v_product_id,p_request_id)"));
 });
 
 test("every lifecycle RPC is security definer, search_path-locked, and service_role-only", () => {
   for (const signature of [
-    "public.get_product_deletion_eligibility(text)",
+    "public.get_product_deletion_eligibility(text,uuid)",
     "public.archive_product(text,uuid,uuid,text)",
     "public.restore_product(text,uuid,uuid,text)",
     "public.delete_draft_product(text,uuid,uuid,text)",
@@ -82,6 +103,7 @@ test("every lifecycle RPC is security definer, search_path-locked, and service_r
     "public.admin_update_deletion_request(uuid,uuid,text,text,text)",
     "public.admin_approve_product_deletion(uuid,uuid,text)",
     "public.admin_emergency_hide_product(text,uuid,text,text)",
+    "public.admin_search_deletion_requests(text,uuid,boolean,text,integer,integer)",
   ]) {
     assert.ok(sql.includes(`revokeallonfunction${signature}frompublic,anon,authenticated`), `missing revoke for ${signature}`);
     assert.ok(sql.includes(`grantexecuteonfunction${signature}toservice_role`), `missing grant for ${signature}`);
@@ -89,7 +111,7 @@ test("every lifecycle RPC is security definer, search_path-locked, and service_r
   // Every mutating function body carries `securitydefiner` + a locked
   // search_path, not just a bare `language plpgsql`.
   const definerCount = (sql.match(/securitydefinersetsearch_path=''/g) ?? []).length;
-  assert.ok(definerCount >= 9, `expected at least 9 security definer functions with a locked search_path, saw ${definerCount}`);
+  assert.ok(definerCount >= 10, `expected at least 10 security definer functions with a locked search_path, saw ${definerCount}`);
 });
 
 test("lock order is products -> product_variants -> product_deletion_requests everywhere a request row is also touched", () => {
@@ -112,7 +134,7 @@ test("lock order is products -> product_variants -> product_deletion_requests ev
 
 test("delete_draft_product and admin_approve_product_deletion never trust a stale eligibility snapshot", () => {
   assert.ok(sql.includes("v_eligibility:=private.compute_product_deletion_eligibility(p_product_id)"));
-  assert.ok(migration.includes("Always recompute — never trust the snapshot taken at request time."));
+  assert.ok(migration.includes("Always recompute — never trust the snapshot taken at request time"));
 });
 
 test("zero-row deletes are never reported as success", () => {
@@ -166,7 +188,65 @@ test("storefront_products excludes archived/paused/inactive-brand products at th
 test("pristine-draft eligibility never trusts a client-supplied flag — it is entirely database-derived", () => {
   const body = migration.match(/create or replace function private\.compute_product_deletion_eligibility[\s\S]*?\$\$;/)?.[0] ?? "";
   // No parameter besides the product id itself feeds v_pristine/v_can_delete_now.
-  assert.match(body, /v_can_delete_now := v_pristine and v_product\.status = 'draft' and not found;/);
+  assert.match(body, /v_can_delete_now := v_pristine and v_product\.status = 'draft' and v_open_request_id is null;/);
   assert.doesNotMatch(body, /p_force/i);
   assert.doesNotMatch(body, /p_override/i);
+});
+
+test("corrective pass: PRODUCT_NOT_DRAFT / PRODUCT_EVER_PUBLISHED never enter the shared blockers array", () => {
+  // The original bug: an archived, previously-published product being
+  // evaluated for a *request* (not an immediate draft-delete) always
+  // picked up PRODUCT_NOT_DRAFT, which made canRequestDeletion/approval
+  // impossible for any real product. Both codes must still exist (used
+  // elsewhere/documented) but never via append_deletion_blocker.
+  assert.doesNotMatch(migration, /append_deletion_blocker\([^)]*'PRODUCT_NOT_DRAFT'/);
+  assert.doesNotMatch(migration, /append_deletion_blocker\([^)]*'PRODUCT_EVER_PUBLISHED'/);
+});
+
+test("corrective pass: a request is refused outright (no row created) when the product must be retained forever", () => {
+  const body = migration.match(/create or replace function public\.request_product_deletion[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /mustRetainHistory'\)::boolean, false\) is true then/);
+  assert.match(body, /no deletion request was created/);
+});
+
+test("corrective pass: idempotency replay validates actor and reason, not just the key", () => {
+  const body = migration.match(/create or replace function public\.request_product_deletion[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /v_existing\.requested_by is distinct from p_actor_id or v_existing\.reason <> v_normalized_reason/);
+  assert.match(body, /'IDEMPOTENCY_CONFLICT'/);
+});
+
+test("corrective pass: restore_product checks required fields, direct-brand sellable stock, and the partner launch gate", () => {
+  const body = migration.match(/create or replace function public\.restore_product[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /'PRODUCT_MISSING_REQUIRED_FIELDS'/);
+  assert.match(body, /'PRODUCT_NO_SELLABLE_STOCK'/);
+  assert.match(body, /'PRODUCT_NOT_LAUNCHED'/);
+  assert.match(body, /v_brand\.is_mahaly_partner/);
+});
+
+test("corrective pass: delete_draft_product and admin_approve_product_deletion capture owned media URLs before the delete", () => {
+  const draftBody = migration.match(/create or replace function public\.delete_draft_product[\s\S]*?\$\$;/)?.[0] ?? "";
+  const approveBody = migration.match(/create or replace function public\.admin_approve_product_deletion[\s\S]*?\$\$;/)?.[0] ?? "";
+  for (const body of [draftBody, approveBody]) {
+    assert.match(body, /select storage_reference as url from public\.product_media/);
+    assert.match(body, /select image_url as url from public\.product_color_images/);
+    assert.match(body, /'mediaUrls'/);
+    // The select-into-array capture must appear before the delete statement.
+    const captureIndex = body.indexOf("array_agg(url)");
+    const deleteIndex = body.indexOf("delete from public.products");
+    assert.ok(captureIndex >= 0 && deleteIndex > captureIndex, "media URLs must be captured before the delete");
+  }
+});
+
+test("corrective pass: order_items trigger resolves the product through variant_id when product_id is null", () => {
+  const body = migration.match(/create or replace function private\.enforce_order_item_product_available[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /if v_product_id is null and new\.variant_id is not null then/);
+  assert.match(body, /select product_id into v_product_id from public\.product_variants where id = new\.variant_id/);
+});
+
+test("corrective pass: admin review queue search/pagination happens inside a single database-level RPC", () => {
+  assert.ok(sql.includes("createorreplacefunctionprivate.admin_search_deletion_requests("));
+  const body = migration.match(/create or replace function private\.admin_search_deletion_requests[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /limit v_limit offset v_offset/);
+  assert.match(body, /ilike '%' \|\| v_search \|\| '%'/);
+  assert.match(body, /least\(greatest\(coalesce\(p_limit, 25\), 1\), 100\)/);
 });

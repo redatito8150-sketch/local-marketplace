@@ -10,10 +10,12 @@ const NONTERMINAL = new Set(["requested", "under_review", "blocked"]);
 // Admin's review actions for one deletion request. "Approve" is the only
 // action that can permanently delete anything, and it is gated at the
 // "admin" staff rank server-side (app/api/admin/products/deletion-requests/
-// [id]/approve/route.ts) — a lower-ranked staff member sees the button but
-// gets a clear 403 if they try it, same as every other admin-rank-gated
-// action in this codebase.
-export default function DeletionRequestRowActions({ requestId, status }: { requestId: string; status: string }) {
+// [id]/approve/route.ts) — the authoritative boundary. `canApprove`
+// (computed server-side in page.tsx from the viewer's own staff role) just
+// keeps the button from being offered to a "manager" who would only ever
+// get a 403 clicking it — a UX nicety on top of, never a substitute for,
+// that server check.
+export default function DeletionRequestRowActions({ requestId, status, canApprove }: { requestId: string; status: string; canApprove: boolean }) {
   const router = useRouter();
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [adminNote, setAdminNote] = useState("");
@@ -80,9 +82,11 @@ export default function DeletionRequestRowActions({ requestId, status }: { reque
         <button type="button" onClick={() => open("reject")} className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-[11.5px] font-medium text-slate-700 hover:bg-slate-50">
           Reject
         </button>
-        <button type="button" onClick={() => open("approve")} className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-[11.5px] font-medium text-red-700 hover:bg-red-50">
-          Approve deletion
-        </button>
+        {canApprove && (
+          <button type="button" onClick={() => open("approve")} className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-[11.5px] font-medium text-red-700 hover:bg-red-50">
+            Approve deletion
+          </button>
+        )}
       </div>
 
       {pendingAction && (

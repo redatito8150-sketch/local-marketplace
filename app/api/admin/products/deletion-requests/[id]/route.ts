@@ -22,19 +22,28 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
 
   const { data: requestRow, error } = await supabaseAdmin
     .from("product_deletion_requests")
-    .select("*, products(*), brands(name, slug, is_mahaly_partner)")
+    .select("*, brands(name, slug, is_mahaly_partner)")
     .eq("id", params.id)
     .maybeSingle();
   if (error || !requestRow) {
     return NextResponse.json({ error: "Deletion request not found" }, { status: 404 });
   }
 
-  const currentEligibility = requestRow.product_id ? await getProductDeletionEligibility(requestRow.product_id) : null;
+  // Recomputed with this request's own id excluded — otherwise a still-
+  // open request would always show DELETION_REQUEST_ALREADY_OPEN against
+  // itself, which is confusing/wrong on that very request's own detail
+  // page (see the SQL function's corrective-pass comment).
+  const currentEligibility = requestRow.product_id
+    ? await getProductDeletionEligibility(requestRow.product_id, requestRow.id)
+    : null;
 
   return NextResponse.json({
     request: {
       id: requestRow.id,
       productId: requestRow.product_id,
+      productName: requestRow.product_name,
+      productSku: requestRow.product_sku,
+      productImage: requestRow.product_image,
       brandId: requestRow.brand_id,
       requestedByLabel: requestRow.requested_by_label,
       requestedAt: requestRow.requested_at,
@@ -45,10 +54,14 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ id: 
       completedAt: requestRow.completed_at,
       cancelledAt: requestRow.cancelled_at,
       blockerSnapshot: requestRow.blocker_snapshot ?? [],
-      product: requestRow.products,
       brand: requestRow.brands,
     },
     currentEligibility,
+    // The product row itself is gone once a request is 'completed' — the
+    // request row's own product_name/sku/image snapshot (above) is the
+    // only thing left to display at that point, which is exactly why
+    // those columns exist.
+    productDeleted: requestRow.status === "completed" && !requestRow.product_id,
   });
 }
 
@@ -93,13 +106,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "DELETION_REQUEST_NOT_FOUND" ? 404 : 409 });
   }
 
-  const { data: product } = await supabaseAdmin.from("products").select("name, brand_slug").eq("id", before.product_id).maybeSingle();
+  const productId: string | null = before.product_id;
+  const { data: product } = productId
+    ? await supabaseAdmin.from("products").select("name, brand_slug").eq("id", productId).maybeSingle()
+    : { data: null };
 
   const auditLogId = await logAudit({
     actorId: staff.user.id,
     actorLabel: staff.user.email ?? staff.user.id,
     entityType: "product",
-    entityId: before.product_id,
+    entityId: productId ?? before.id,
     action: AUDIT_ACTION_BY_STATUS[newStatus as "under_review" | "blocked" | "rejected"],
     before,
     after: { status: newStatus, adminNote },
@@ -114,16 +130,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       before.requested_by,
       newStatus === "rejected" ? "product_deletion_rejected" : "product_deletion_updated",
       newStatus === "rejected" ? "Deletion request rejected" : "Deletion request update",
-      adminNote || `Your deletion request for ${product?.name ?? before.product_id} is now ${newStatus.replace("_", " ")}.`,
-      { relatedEntityType: "product", relatedEntityId: before.product_id }
+      adminNote || `Your deletion request for ${product?.name ?? before.product_name} is now ${newStatus.replace("_", " ")}.`,
+      { relatedEntityType: "product", relatedEntityId: productId ?? undefined }
     );
   }
   if (newStatus === "rejected") {
     await notify(
       "product_deletion_rejected",
-      `Deletion request rejected: ${product?.name ?? before.product_id}`,
+      `Deletion request rejected: ${product?.name ?? before.product_name}`,
       adminNote,
-      { relatedEntityType: "product", relatedEntityId: before.product_id, auditLogId, actorLabel: staff.user.email ?? staff.user.id }
+      { relatedEntityType: "product", relatedEntityId: productId ?? undefined, auditLogId, actorLabel: staff.user.email ?? staff.user.id }
     );
   }
 

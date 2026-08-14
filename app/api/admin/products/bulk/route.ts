@@ -6,6 +6,8 @@ import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { archiveProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
+import { extractOwnedStorageTargets } from "@/lib/admin/productMediaStorage";
+import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
 
 // "delete" was removed from this route entirely — it used to run a single
 // unguarded `delete from products where id in (...)`, with no dependency
@@ -74,6 +76,10 @@ export async function POST(request: NextRequest) {
         failed.push({ productId: id, code: result.code, message: result.message });
         continue;
       }
+      if (action === "delete_draft" && result.mediaUrls?.length) {
+        const targets = extractOwnedStorageTargets(id, result.mediaUrls);
+        if (targets.length) await queueStorageCleanupTargets(staff.user.id, targets);
+      }
       succeeded.push(id);
       await logAudit({
         actorId: staff.user.id,
@@ -99,6 +105,7 @@ export async function POST(request: NextRequest) {
   }
 
   const isFeaturedAction = (FEATURED_ACTIONS as readonly string[]).includes(action);
+  const failed: { productId: string; code: string; message: string }[] = [];
 
   let affectedRows: { id: string }[] = [];
   if (isFeaturedAction) {
@@ -107,8 +114,21 @@ export async function POST(request: NextRequest) {
     if (error) return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
     affectedRows = data ?? [];
   } else {
+    // Closes the restore bypass this bulk action otherwise offered: a
+    // currently-archived product can't be flipped straight to "published"
+    // by this raw status update — it must go through restore_product's
+    // canonical revalidation (per-product, not batchable the same way).
+    const targetIds = action === "publish"
+      ? ids.filter((id) => {
+          const isArchived = existingById.get(id)?.status === "archived";
+          if (isArchived) failed.push({ productId: id, code: "RESTORE_REQUIRES_CANONICAL_RPC", message: "This product is archived — use Restore product instead of bulk publish." });
+          return !isArchived;
+        })
+      : ids;
     const status = STATUS_BY_ACTION[action];
-    const { data, error } = await supabaseAdmin.from("products").update({ status }).in("id", ids).select("id");
+    const { data, error } = targetIds.length
+      ? await supabaseAdmin.from("products").update({ status }).in("id", targetIds).select("id")
+      : { data: [], error: null };
     if (error) return safeErrorResponse("admin.products.bulk.status", error, "Failed to update products");
     affectedRows = data ?? [];
   }
@@ -137,5 +157,5 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ ok: true, affected: affectedIds.length, succeeded: affectedIds });
+  return NextResponse.json({ ok: true, affected: affectedIds.length, succeeded: affectedIds, failed });
 }

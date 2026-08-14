@@ -43,7 +43,10 @@ export interface ProductDeletionEligibility {
   blockers: DeletionBlocker[];
 }
 
-// Every mutating RPC returns this same envelope shape.
+// Every mutating RPC returns this same envelope shape. `mediaUrls` is only
+// ever populated by the two RPCs that actually hard-delete a product row
+// (delete_draft_product, admin_approve_product_deletion) — the caller is
+// responsible for handing these to queueOwnedProductMediaCleanup() below.
 export interface DeletionRpcResult {
   ok: boolean;
   code: string;
@@ -53,6 +56,7 @@ export interface DeletionRpcResult {
   requestState?: string;
   blockers?: DeletionBlocker[];
   before?: unknown;
+  mediaUrls?: string[];
 }
 
 function toEligibility(raw: unknown): ProductDeletionEligibility {
@@ -69,8 +73,16 @@ function toEligibility(raw: unknown): ProductDeletionEligibility {
   };
 }
 
-export async function getProductDeletionEligibility(productId: string): Promise<ProductDeletionEligibility> {
-  const { data, error } = await supabaseAdmin.rpc("get_product_deletion_eligibility", { p_product_id: productId });
+// `ignoreRequestId`: when computing eligibility on behalf of a specific
+// deletion request (the admin review/approve flows), pass that request's
+// own id so its own still-open status is never counted as a blocker
+// against itself — see the SQL function's own comment for the bug this
+// fixes.
+export async function getProductDeletionEligibility(productId: string, ignoreRequestId?: string): Promise<ProductDeletionEligibility> {
+  const { data, error } = await supabaseAdmin.rpc("get_product_deletion_eligibility", {
+    p_product_id: productId,
+    p_ignore_request_id: ignoreRequestId ?? null,
+  });
   if (error) throw new Error(`getProductDeletionEligibility(${productId}) failed: ${error.message}`);
   return toEligibility(data);
 }
@@ -135,9 +147,18 @@ export function adminEmergencyHideProduct(productId: string, actorId: string, ac
   return callDeletionRpc("admin_emergency_hide_product", { p_product_id: productId, p_actor_id: actorId, p_actor_label: actorLabel, p_reason: reason });
 }
 
+// `productId` is nullable — once a request reaches `completed`, the
+// product row it referred to has actually been permanently deleted
+// (product_id ON DELETE SET NULL). productName/productSku/productImage
+// are immutable snapshots captured at request time and refreshed right
+// before deletion at approval time, so a completed request's history
+// stays fully readable forever even though the live product is gone.
 export interface DeletionRequestRow {
   id: string;
-  productId: string;
+  productId: string | null;
+  productName: string;
+  productSku: string | null;
+  productImage: string | null;
   brandId: string;
   requestedBy: string | null;
   requestedByLabel: string;
@@ -150,8 +171,6 @@ export interface DeletionRequestRow {
   completedAt: string | null;
   cancelledAt: string | null;
   blockerSnapshot: DeletionBlocker[];
-  productName?: string;
-  productImage?: string;
   brandName?: string;
   brandSlug?: string;
   brandIsPartner?: boolean;
@@ -159,7 +178,10 @@ export interface DeletionRequestRow {
 
 interface DeletionRequestSelectRow {
   id: string;
-  product_id: string;
+  product_id: string | null;
+  product_name: string;
+  product_sku: string | null;
+  product_image: string | null;
   brand_id: string;
   requested_by: string | null;
   requested_by_label: string;
@@ -172,7 +194,6 @@ interface DeletionRequestSelectRow {
   completed_at: string | null;
   cancelled_at: string | null;
   blocker_snapshot: DeletionBlocker[] | null;
-  products?: { name: string; image: string } | null;
   brands?: { name: string; slug: string; is_mahaly_partner: boolean } | null;
 }
 
@@ -180,6 +201,9 @@ function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRo
   return {
     id: row.id,
     productId: row.product_id,
+    productName: row.product_name,
+    productSku: row.product_sku,
+    productImage: row.product_image,
     brandId: row.brand_id,
     requestedBy: row.requested_by,
     requestedByLabel: row.requested_by_label,
@@ -192,8 +216,6 @@ function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRo
     completedAt: row.completed_at,
     cancelledAt: row.cancelled_at,
     blockerSnapshot: row.blocker_snapshot ?? [],
-    productName: row.products?.name,
-    productImage: row.products?.image,
     brandName: row.brands?.name,
     brandSlug: row.brands?.slug,
     brandIsPartner: row.brands?.is_mahaly_partner,
@@ -203,11 +225,21 @@ function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRo
 export async function getDeletionRequestForProduct(productId: string): Promise<DeletionRequestRow | null> {
   const { data, error } = await supabaseAdmin
     .from("product_deletion_requests")
-    .select("*")
+    .select("*, brands(name, slug, is_mahaly_partner)")
     .eq("product_id", productId)
     .in("status", ["requested", "under_review", "blocked"])
     .maybeSingle();
   if (error) throw new Error(`getDeletionRequestForProduct(${productId}) failed: ${error.message}`);
+  return data ? mapDeletionRequestRow(data as DeletionRequestSelectRow) : null;
+}
+
+export async function getDeletionRequestById(requestId: string): Promise<DeletionRequestRow | null> {
+  const { data, error } = await supabaseAdmin
+    .from("product_deletion_requests")
+    .select("*, brands(name, slug, is_mahaly_partner)")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (error) throw new Error(`getDeletionRequestById(${requestId}) failed: ${error.message}`);
   return data ? mapDeletionRequestRow(data as DeletionRequestSelectRow) : null;
 }
 
@@ -216,33 +248,82 @@ export interface DeletionRequestListFilters {
   brandId?: string;
   isPartner?: boolean;
   search?: string;
+  limit?: number;
+  offset?: number;
 }
 
-// Admin review queue — filterable list, newest first.
-export async function listDeletionRequests(filters: DeletionRequestListFilters = {}): Promise<DeletionRequestRow[]> {
-  let query = supabaseAdmin
-    .from("product_deletion_requests")
-    .select("*, products(name, image), brands(name, slug, is_mahaly_partner)")
-    .order("requested_at", { ascending: false });
+export interface DeletionRequestListPage {
+  rows: DeletionRequestRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.brandId) query = query.eq("brand_id", filters.brandId);
+interface AdminSearchDeletionRequestsRow {
+  id: string;
+  productId: string | null;
+  productName: string;
+  productSku: string | null;
+  productImage: string | null;
+  brandId: string;
+  requestedByLabel: string;
+  requestedAt: string;
+  reason: string;
+  status: DeletionRequestRow["status"];
+  reviewedAt: string | null;
+  adminNote: string | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  blockerSnapshot: DeletionBlocker[] | null;
+  brandName: string;
+  brandSlug: string;
+  brandIsPartner: boolean;
+}
 
-  const { data, error } = await query;
+// Admin review queue — a single database-level paginated + filtered query
+// (private.admin_search_deletion_requests, supabase/migrations/
+// 20260814020000_product_deletion_lifecycle.sql). Status/brand/partner and
+// text search (product name/id, brand name, request id) are all applied
+// inside Postgres before LIMIT/OFFSET — this never loads more rows into
+// memory than the current page actually needs, unlike the original
+// implementation which fetched every row and filtered/paginated in JS.
+export async function listDeletionRequests(filters: DeletionRequestListFilters = {}): Promise<DeletionRequestListPage> {
+  const { data, error } = await supabaseAdmin.rpc("admin_search_deletion_requests", {
+    p_status: filters.status ?? null,
+    p_brand_id: filters.brandId ?? null,
+    p_is_partner: typeof filters.isPartner === "boolean" ? filters.isPartner : null,
+    p_search: filters.search ?? null,
+    p_limit: filters.limit ?? 25,
+    p_offset: filters.offset ?? 0,
+  });
   if (error) throw new Error(`listDeletionRequests() failed: ${error.message}`);
 
-  let rows = ((data ?? []) as DeletionRequestSelectRow[]).map(mapDeletionRequestRow);
-  if (typeof filters.isPartner === "boolean") {
-    rows = rows.filter((row) => row.brandIsPartner === filters.isPartner);
-  }
-  if (filters.search) {
-    const needle = filters.search.trim().toLowerCase();
-    rows = rows.filter((row) =>
-      row.productName?.toLowerCase().includes(needle) ||
-      row.productId.toLowerCase().includes(needle) ||
-      row.brandName?.toLowerCase().includes(needle) ||
-      row.id.toLowerCase().includes(needle)
-    );
-  }
-  return rows;
+  const result = data as { rows: AdminSearchDeletionRequestsRow[]; total: number; limit: number; offset: number };
+  return {
+    total: result.total,
+    limit: result.limit,
+    offset: result.offset,
+    rows: result.rows.map((row) => ({
+      id: row.id,
+      productId: row.productId,
+      productName: row.productName,
+      productSku: row.productSku,
+      productImage: row.productImage,
+      brandId: row.brandId,
+      requestedBy: null,
+      requestedByLabel: row.requestedByLabel,
+      requestedAt: row.requestedAt,
+      reason: row.reason,
+      status: row.status,
+      reviewedBy: null,
+      reviewedAt: row.reviewedAt,
+      adminNote: row.adminNote,
+      completedAt: row.completedAt,
+      cancelledAt: row.cancelledAt,
+      blockerSnapshot: row.blockerSnapshot ?? [],
+      brandName: row.brandName,
+      brandSlug: row.brandSlug,
+      brandIsPartner: row.brandIsPartner,
+    })),
+  };
 }
