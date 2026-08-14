@@ -5,20 +5,19 @@ import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
-import { retireProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
+import { archiveProduct } from "@/lib/admin/productDeletion";
 
 // "delete" was removed from this route entirely — it used to run a single
 // unguarded `delete from products where id in (...)`, with no dependency
 // checks and a blind `affected: ids.length` regardless of how many rows
 // actually matched. Permanent deletion of a product with real history is
 // never possible at all (mustRetainHistory forbids it outright); a
-// history-free Retired product goes through the automatic
-// schedule_product_deletion RPC (7-day grace period, no admin approval
-// required — see app/admin/products/deletion-schedules/); the only bulk
-// delete this route still offers is "delete_draft", which is per-product
+// Permanent deletion stays per-product and eligibility-checked. The only
+// bulk deletion action is for pristine Drafts; Archived deletion requires
+// the explicit typed-name confirmation on the Archived page.
 // eligibility-checked (via the same canonical RPC the single-product route
 // uses) and reports which ids actually succeeded vs. why each failure did.
-const BULK_ACTIONS = ["publish", "retire", "delete_draft", "feature", "unfeature"] as const;
+const BULK_ACTIONS = ["publish", "archive", "feature", "unfeature"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
 
 const STATUS_BY_ACTION: Partial<Record<BulkAction, string>> = {
@@ -55,10 +54,8 @@ export async function POST(request: NextRequest) {
   const existingById = new Map((existingRows ?? []).map((r) => [r.id, r]));
   const actorLabel = staff.user.email ?? staff.user.id;
 
-  // archive / delete_draft: per-product, eligibility-checked, transaction-
-  // safe RPC calls — structured {succeeded, failed} result, never a blind
-  // "all N affected."
-  if (action === "retire" || action === "delete_draft") {
+  // Archive is applied per product through the canonical, locked RPC.
+  if (action === "archive") {
     const succeeded: string[] = [];
     const failed: { productId: string; code: string; message: string }[] = [];
 
@@ -68,35 +65,28 @@ export async function POST(request: NextRequest) {
         failed.push({ productId: id, code: "PRODUCT_NOT_FOUND", message: "This product no longer exists." });
         continue;
       }
-      const result = action === "retire"
-        ? await retireProduct(id, null, staff.user.id, actorLabel)
-        : await deleteDraftProduct(id, null, staff.user.id, actorLabel);
+      const result = await archiveProduct(id, null, staff.user.id, actorLabel);
 
       if (!result.ok) {
         failed.push({ productId: id, code: result.code, message: result.message });
         continue;
       }
-      // Storage cleanup for a deleted draft is enqueued transactionally by
-      // delete_draft_product itself (private.queue_owned_product_media_cleanup)
-      // — nothing to do here per product, and one product's later failure
-      // in this loop can never undo an earlier product's already-committed
-      // cleanup jobs, since each RPC call is its own transaction.
       succeeded.push(id);
       await logAudit({
         actorId: staff.user.id,
         actorLabel,
         entityType: "product",
         entityId: id,
-        action: action === "retire" ? "bulk_archive" : "product_draft_deleted",
+        action: "bulk_archive",
         before: existing,
         brandSlug: existing.brand_slug ?? undefined,
       });
     }
 
-    if (action === "retire" && succeeded.length > 0) {
+    if (action === "archive" && succeeded.length > 0) {
       await notify(
-        "product_retired",
-        `Bulk retire: ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`,
+        "product_archived",
+        `Bulk Archive: ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`,
         succeeded.map((id) => existingById.get(id)?.name).filter(Boolean).join(", "),
         { actorLabel, detailLabel: "Products" }
       );
@@ -115,14 +105,11 @@ export async function POST(request: NextRequest) {
     if (error) return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
     affectedRows = data ?? [];
   } else {
-    // Closes the restore bypass this bulk action otherwise offered: a
-    // currently-archived product can't be flipped straight to "published"
-    // by this raw status update — it must go through restore_product's
-    // canonical revalidation (per-product, not batchable the same way).
+    // Archived is terminal and can never be bulk-published.
     const targetIds = action === "publish"
       ? ids.filter((id) => {
           const isArchived = existingById.get(id)?.status === "archived";
-          if (isArchived) failed.push({ productId: id, code: "RESTORE_REQUIRES_CANONICAL_RPC", message: "This product is archived — use Restore product instead of bulk publish." });
+          if (isArchived) failed.push({ productId: id, code: "PRODUCT_ARCHIVED_IS_TERMINAL", message: "Archived is final; this product cannot be published again." });
           return !isArchived;
         })
       : ids;

@@ -139,6 +139,20 @@ export async function POST(request: NextRequest) {
   }
 
   const { data } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
+  const folderAccess = await getProductFolderAccess(folderId, uploader);
+  const { error: registryError } = await supabaseAdmin.from("product_storage_assets").insert({
+    product_id: folderAccess.exists ? folderId : null,
+    bucket_id: BUCKET,
+    storage_path: path,
+    public_url: data.publicUrl,
+    uploaded_by: uploader.userId,
+    upload_folder_id: folderId,
+    claimed_at: folderAccess.exists ? new Date().toISOString() : null,
+  });
+  if (registryError) {
+    await supabaseAdmin.storage.from(BUCKET).remove([path]);
+    return safeErrorResponse("admin.products.images.register", registryError, "Upload could not be registered safely");
+  }
   return NextResponse.json({ url: data.publicUrl, path });
 }
 
@@ -168,5 +182,6 @@ export async function DELETE(request: NextRequest) {
   if (error) {
     return safeErrorResponse("admin.products.images.delete", error, "Delete failed");
   }
+  await supabaseAdmin.from("product_storage_assets").delete().eq("bucket_id", BUCKET).eq("storage_path", path);
   return NextResponse.json({ ok: true });
 }

@@ -46,7 +46,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     entityId: params.id,
     action: "product_deletion_hold_applied",
     before: existing,
-    after: { reason, scheduleStopped: result.scheduleStopped },
+    after: { reason, holdId: result.holdId },
     brandSlug: existing.brand_slug ?? undefined,
   });
   await notify(
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     { relatedEntityType: "product", relatedEntityId: params.id, auditLogId, actorLabel: staff.user.email ?? staff.user.id }
   );
 
-  return NextResponse.json({ ok: true, code: result.code, holdId: result.holdId, scheduleStopped: result.scheduleStopped });
+  return NextResponse.json({ ok: true, code: result.code, holdId: result.holdId });
 }
 
 export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {

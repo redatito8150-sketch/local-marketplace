@@ -539,7 +539,11 @@ export default function ProductForm({
         `${targetUrl}${brandQuery}`,
         {
           method: currentMode === "create" ? "POST" : "PATCH",
-          headers: { "Content-Type": "application/json", "Idempotency-Key": saveOperationKey.current },
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": saveOperationKey.current,
+            "X-Upload-Folder-Id": uploadFolderId,
+          },
           body: JSON.stringify(payload),
         }
       );
@@ -662,7 +666,7 @@ export default function ProductForm({
         onNavigateStep={navigateToSection}
         onSaveDraft={() => submit("draft")}
         onArchive={() => submit("archived")}
-        canArchive={publishReadinessIssues.length === 0}
+        canArchive={form.status === "published" && publishReadinessIssues.length === 0}
         onPublish={() => submit("published")}
         onBack={handleCancel}
       />

@@ -18,7 +18,7 @@ function StatusCell({ product }: { product: ProductRecord }) {
         className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
           daysLeft != null && daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
         }`}
-        title={daysLeft != null ? "Archived by daily maintenance if left incomplete; it can be restored" : undefined}
+        title={daysLeft != null ? "Draft review is due soon. Publish it or permanently delete it if it is still pristine." : undefined}
       >
         Draft{daysLeft != null ? ` — ${Math.max(daysLeft, 0)}d left` : ""}
       </span>
@@ -27,12 +27,7 @@ function StatusCell({ product }: { product: ProductRecord }) {
   if (product.status === "archived") {
     return (
       <div className="flex flex-col items-start gap-1">
-        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Retired</span>
-        {product.deletionRequestedAt && (
-          <Link href="/admin/products/deletion-schedules" className="rounded-full bg-red-50 px-2.5 py-1 text-[10.5px] font-semibold text-red-700 hover:underline">
-            Deletion scheduled
-          </Link>
-        )}
+        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>
       </div>
     );
   }
@@ -75,7 +70,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
 
   const [bulkResult, setBulkResult] = useState<{ succeeded: string[]; failed: { productId: string; message: string }[] } | null>(null);
 
-  const runBulkAction = async (action: "publish" | "retire" | "delete_draft") => {
+  const runBulkAction = async (action: "publish" | "archive") => {
     setBusy(true);
     setBulkResult(null);
     try {
@@ -92,7 +87,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
       // Structured per-product outcome — never a blind "N affected." A
       // publish/archive bulk update reports `succeeded` as every id whose
       // row was actually changed (see the route's .select("id") after the
-      // update); archive/delete_draft report a real per-product `failed`
+      // update); Archive reports a real per-product `failed`
       // list with the exact blocker reason for anything the database
       // refused (e.g. history that must be retained).
       setBulkResult({ succeeded: data.succeeded ?? [], failed: data.failed ?? [] });
@@ -141,26 +136,11 @@ export default function BulkProductActions({ products }: { products: ProductReco
             <button
               type="button"
               disabled={busy}
-              onClick={() => runBulkAction("retire")}
+              onClick={() => runBulkAction("archive")}
               className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50 disabled:opacity-60"
             >
-              Retire
+              Archive
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => runBulkAction("delete_draft")}
-              title="Only pristine, never-published/never-stocked drafts are actually deleted — each other selection reports why it was skipped"
-              className="rounded-md border border-red-100 bg-white px-3 py-1.5 text-[12px] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
-            >
-              Delete drafts
-            </button>
-            <Link
-              href="/admin/products/deletion-schedules"
-              className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50"
-            >
-              Deletion schedules
-            </Link>
           </div>
         </div>
       )}

@@ -18,6 +18,7 @@ import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
+import { archiveProduct } from "@/lib/admin/productDeletion";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -39,22 +40,23 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const body: ProductInput = await request.json();
 
-  // SECOND CORRECTIVE PASS: the original guard here only blocked
-  // archived -> published, which still let a caller do archived -> draft
-  // through this same route and then republish through the ordinary
-  // (unguarded, since it no longer sees "archived") publish flow — a
-  // two-step bypass around restore_product entirely. An archived product
-  // must only ever leave "archived" through restore_product itself (which
-  // targets draft — see that function's comment in supabase/migrations/
-  // 20260814020000_product_deletion_lifecycle.sql), so this route now
-  // rejects ANY status change away from "archived", not just to
-  // "published". The products_enforce_archived_transition trigger backs
-  // this up at the database level regardless of what this route does.
+  // Archived is terminal. The database trigger enforces the same rule for
+  // every caller, while this guard returns a clear application-level error.
   if (existing.status === "archived" && body.status !== "archived") {
     return NextResponse.json(
-      { error: "This product is archived. Use Restore product to bring it back — editing status directly is not allowed for archived products." },
+      { error: "This product is Archived permanently and can no longer be edited or returned to another status." },
       { status: 409 }
     );
+  }
+  if (body.status === "archived" && existing.status !== "published") {
+    return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
+  }
+  if (body.status === "archived") {
+    const result = await archiveProduct(params.id, null, admin.id, admin.email ?? admin.id);
+    if (!result.ok) return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
+    await logAudit({ actorId: admin.id, actorLabel: admin.email ?? admin.id, entityType: "product", entityId: params.id, action: "archive", before: existing });
+    await notify("product_archived", `Archived: ${existing.name}`, existing.brand_name, { actorLabel: admin.email ?? admin.id });
+    return NextResponse.json({ id: params.id, variants: await loadProductVariants(params.id) });
   }
   // Brand and SKU are immutable after creation — whatever the client
   // sends is ignored, always the existing product's own values.
@@ -146,9 +148,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (previousStatus !== body.status) {
     if (body.status === "published") {
       await notify("product_published", `Product published: ${body.name}`, existing.brand_name, notifyMeta);
-    } else if (body.status === "archived") {
-      const stockWarning = await getPartnerStockWarning(params.id, existing.brand_id);
-      await notify("product_archived", `Product archived: ${body.name}`, [existing.brand_name, stockWarning].filter(Boolean).join("\n\n"), notifyMeta);
     } else {
       await notify("product_updated", `Product updated: ${body.name}`, existing.brand_name, notifyMeta);
     }
@@ -176,13 +175,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 // would just bubble up as a generic 500), no per-row success verification
 // (Supabase's .delete() doesn't error on zero matched rows, so a delete
 // against an already-gone product still logged a "delete" audit entry and
-// reported {ok:true}). Replaced entirely by the automatic deletion-schedule
-// flow (app/api/admin/products/[id]/deletion-schedule/route.ts, and its
-// brand-portal equivalent) and the emergency hide action
-// (app/api/admin/products/[id]/emergency-hide/route.ts), both routed
-// through the canonical, transaction-safe lifecycle RPCs in
-// lib/admin/productDeletion.ts. There is intentionally no direct
-// "DELETE this product" admin route anymore — every permanent deletion
-// must go through the database's own eligibility check (immutable order/
-// inventory/warehouse/review history) via schedule_product_deletion /
-// execute_due_product_deletions, never a human approval step.
+// reported {ok:true}). Permanent deletion now uses the dedicated lifecycle
+// endpoint and the database-authoritative eligibility check. There is
+// intentionally no raw HTTP DELETE on this resource.

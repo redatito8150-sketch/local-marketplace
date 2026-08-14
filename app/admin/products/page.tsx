@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Archive, Download, Plus } from "lucide-react";
+import { Archive, Download, History, Plus } from "lucide-react";
 import { getAllProductsForAdmin } from "@/lib/data/admin";
-import { listRetiredProducts } from "@/lib/admin/productDeletion";
+import { listArchivedProducts } from "@/lib/admin/productDeletion";
 import BulkProductActions from "@/components/admin/BulkProductActions";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardPageHeader, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
@@ -13,16 +13,14 @@ type ProductSearchParams = {
 
 export default async function AdminProductsPage(props: { searchParams: Promise<ProductSearchParams> }) {
   const params = await props.searchParams;
-  // Retired (status = 'archived') products get their own dedicated,
-  // database-paginated page (/admin/products/retired) — this list is
-  // deliberately non-Retired by default so it never gets cluttered by
-  // discontinued products. A cheap count-only call (limit 1) drives the
-  // Retired link's badge without loading any of those rows here.
-  const [allProductsWithRetired, retiredCount] = await Promise.all([
+  // Archived products get their own database-paginated page. This list
+  // stays focused on products that can still be edited or published.
+  // The Archived badge count is loaded without the Archived rows.
+  const [allProductsWithArchived, archivedCount] = await Promise.all([
     getAllProductsForAdmin(),
-    listRetiredProducts({ limit: 1 }).then((page) => page.total).catch(() => 0),
+    listArchivedProducts({ limit: 1 }).then((page) => page.total).catch(() => 0),
   ]);
-  const allProducts = allProductsWithRetired.filter((product) => product.status !== "archived");
+  const allProducts = allProductsWithArchived.filter((product) => product.status !== "archived");
   const normalizedQuery = params.q?.trim().toLowerCase();
   const minPrice = params.minPrice ? Number(params.minPrice) : undefined;
   const maxPrice = params.maxPrice ? Number(params.maxPrice) : undefined;
@@ -58,7 +56,8 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
         title={`Products (${filteredProducts.length})`}
         description={`${allProducts.length} products in the full catalog. Search and filter without changing product data.`}
         actions={<>
-          <Link href="/admin/products/retired" className={dashboardButtonSecondary}><Archive className="mr-2 h-4 w-4" />Retired ({retiredCount})</Link>
+          <Link href="/admin/products/archived" className={dashboardButtonSecondary}><Archive className="mr-2 h-4 w-4" />Archived ({archivedCount})</Link>
+          <Link href="/admin/products/deletion-history" className={dashboardButtonSecondary}><History className="mr-2 h-4 w-4" />Deletion history</Link>
           {/* A file download endpoint, not a navigable page. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
           <a href="/api/admin/products/export" className={dashboardButtonSecondary}><Download className="mr-2 h-4 w-4" />Export CSV</a>
@@ -67,9 +66,8 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
       />
       <DashboardFilters action="/admin/products" clearHref="/admin/products" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Product, brand or SKU" className={`${dashboardFilterControl} w-full lg:min-w-[220px]`} /></DashboardFilterField>
-        {/* "archived" (Retired) intentionally excluded — Retired products
-            live on their own database-paginated page, never mixed into
-            this in-memory-filtered list. */}
+        {/* Archived products live on their own database-paginated page,
+            never mixed into this in-memory-filtered list. */}
         <DashboardFilterField label="Status"><select name="status" defaultValue={params.status ?? ""} className={dashboardFilterControl}><option value="">All statuses</option>{["draft","pending_review","changes_requested","published"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></DashboardFilterField>
         <DashboardFilterField label="Brand"><select name="brand" defaultValue={params.brand ?? ""} className={dashboardFilterControl}><option value="">All brands</option>{brands.map((value) => <option key={value} value={value}>{brandLabels.get(value) ?? value}</option>)}</select></DashboardFilterField>
         <DashboardFilterField label="Category"><select name="category" defaultValue={params.category ?? ""} className={dashboardFilterControl}><option value="">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>

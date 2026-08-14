@@ -5,7 +5,7 @@ import { AlertTriangle, ChevronLeft, ChevronRight, PackageOpen, Plus, Star } fro
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductsForBrand, type BrandProductListItem } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
-import { listRetiredProducts } from "@/lib/admin/productDeletion";
+import { listArchivedProducts } from "@/lib/admin/productDeletion";
 import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
 import { isPublishDateLive } from "@/lib/newArrivals";
 import { formatPrice } from "@/lib/format";
@@ -53,17 +53,14 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     return <BrandPicker brands={brands.map((brand) => ({ slug: brand.slug, name: brand.name }))} />;
   }
 
-  // Retired (status = 'archived') products get their own dedicated,
-  // database-paginated page (/brand-portal/products/retired) — the main
-  // list here is deliberately non-Retired-only by default so it never
-  // gets cluttered by discontinued products. A cheap count-only call
-  // (limit 1) drives the Retired tab's badge without loading any of those
-  // rows into this page.
-  const [allProductsWithRetired, retiredCount] = await Promise.all([
+  // Archived products get their own database-paginated page. The main
+  // list excludes them so permanent history never clutters active work.
+  // A count-only page drives the Archived tab badge without loading rows.
+  const [allProductsWithArchived, archivedCount] = await Promise.all([
     getProductsForBrand(owner.brandId, owner.isImpersonating),
-    listRetiredProducts({ brandId: owner.brandId, limit: 1 }).then((page) => page.total).catch(() => 0),
+    listArchivedProducts({ brandId: owner.brandId, limit: 1 }).then((page) => page.total).catch(() => 0),
   ]);
-  const allProducts = allProductsWithRetired.filter((product) => product.status !== "archived");
+  const allProducts = allProductsWithArchived.filter((product) => product.status !== "archived");
   const attentionProducts = allProducts.filter(needsBrandProductAttention);
   const query = params.q?.trim().toLowerCase();
   const filteredProducts = allProducts.filter((product) => {
@@ -130,7 +127,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
       <QuickViews
         activeView={activeView}
         brandParams={viewBaseParams}
-        retiredCount={retiredCount}
+        archivedCount={archivedCount}
         counts={{
           all: allProducts.length,
           published: allProducts.filter((product) => product.status === "published").length,
@@ -287,12 +284,12 @@ function QuickViews({
   activeView,
   brandParams,
   counts,
-  retiredCount,
+  archivedCount,
 }: {
   activeView: "all" | "published" | "drafts" | "attention" | null;
   brandParams: { brand?: string };
   counts: Record<"all" | "published" | "drafts" | "attention", number>;
-  retiredCount: number;
+  archivedCount: number;
 }) {
   const views = [
     { id: "all" as const, label: "All products", params: {} },
@@ -300,7 +297,7 @@ function QuickViews({
     { id: "drafts" as const, label: "Drafts", params: { status: "draft" } },
     { id: "attention" as const, label: "Needs attention", params: { attention: "1" } },
   ];
-  const retiredHref = `/brand-portal/products/retired${brandParams.brand ? `?brand=${brandParams.brand}` : ""}`;
+  const archivedHref = `/brand-portal/products/archived${brandParams.brand ? `?brand=${brandParams.brand}` : ""}`;
   return (
     <nav aria-label="Product quick views" className="mt-6 flex gap-2 overflow-x-auto pb-1">
       {views.map((view) => {
@@ -327,15 +324,15 @@ function QuickViews({
           </Link>
         );
       })}
-      {/* Retired products live on their own database-paginated page
+      {/* Archived products live on their own database-paginated page
           (never loaded into this in-memory list) — a real navigation
           link, not a filter within this page. */}
       <Link
-        href={retiredHref}
+        href={archivedHref}
         className="inline-flex h-10 flex-none items-center gap-2 rounded-xl border border-[#e3dcd3] bg-[#fffdf9] px-3.5 text-[12.5px] font-semibold text-[#62564d] transition-colors hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"
       >
-        Retired
-        <span className="min-w-5 rounded-md bg-[#eee7df] px-1.5 py-0.5 text-center text-[10.5px] tabular-nums text-[#75685f]">{retiredCount}</span>
+        Archived
+        <span className="min-w-5 rounded-md bg-[#eee7df] px-1.5 py-0.5 text-center text-[10.5px] tabular-nums text-[#75685f]">{archivedCount}</span>
       </Link>
     </nav>
   );
@@ -352,7 +349,6 @@ function ProductStatuses({ product }: { product: DisplayProduct }) {
       )}
       {product.hasPendingEdit && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Edit pending</span>}
       {product.pausedByBrand && <span className="rounded-lg bg-[#eee9e4] px-2.5 py-1 text-[10.5px] font-bold text-[#6f6259]">Paused</span>}
-      {product.deletionRequestedAt && <span className="rounded-lg bg-red-50 px-2.5 py-1 text-[10.5px] font-bold text-red-700">Deletion scheduled</span>}
       {product.reviewNotes && <p className="w-full max-w-xs pt-1 text-[11px] leading-4 text-red-700">{product.reviewNotes}</p>}
     </div>
   );

@@ -1,265 +1,151 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Archive, MoreHorizontal, Pencil, RotateCcw, Trash2, X } from "lucide-react";
+import { Archive, MoreHorizontal, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
-import { formatDateOnly } from "@/lib/format";
 
-type PendingAction = "retire" | "restore" | "delete_draft" | "schedule_delete" | "cancel_schedule" | null;
+type PendingAction = "archive" | "delete_draft" | "delete_archived" | null;
 
-interface ActiveSchedule {
-  status: string;
-  dueAt: string;
-  blockedReason: string | null;
-}
-
-// Deliberately calls each action by what it actually does — "retire"
-// never says "delete," and "delete_draft"/"schedule_delete" are never
-// conflated. Ordinary permanent deletion no longer waits on admin
-// approval: scheduling one either succeeds immediately (a 7-day grace
-// period starts) or fails outright with the current blockers — there is
-// no "pending review" state. Eligibility is fetched lazily when the menu
-// opens (GET .../deletion) rather than eagerly for every row in the list —
-// the database, not this component, decides what's actually allowed.
-export default function ProductRowActions({
-  productId,
-  name,
-  editHref,
-}: {
-  productId: string;
-  name: string;
-  editHref: string;
-}) {
+export default function ProductRowActions({ productId, name, editHref }: { productId: string; name: string; editHref: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  const operationKeyRef = useRef("");
   const [eligibility, setEligibility] = useState<ProductDeletionEligibility | null>(null);
-  const [activeSchedule, setActiveSchedule] = useState<ActiveSchedule | null>(null);
+  const [loading, setLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
+  const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDetailsElement>(null);
-  // Generated once when the "schedule permanent deletion" dialog opens and
-  // reused for every retry of that same attempt (a network error + resend
-  // must not mint a fresh key each time, or the server-side idempotency
-  // check in schedule_product_deletion never actually gets exercised) — a
-  // fresh dialog open (chooseAction) always gets a fresh key, since that's
-  // a genuinely new attempt, not a retry.
-  const scheduleIdempotencyKeyRef = useRef<string>("");
 
-  const loadState = async () => {
+  async function loadEligibility() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/brand-portal/products/${productId}/deletion`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setEligibility(data.eligibility);
-      setActiveSchedule(data.activeSchedule ? { status: data.activeSchedule.status, dueAt: data.activeSchedule.dueAt, blockedReason: data.activeSchedule.blockedReason } : null);
+      const response = await fetch(`/api/brand-portal/products/${productId}/deletion`, { cache: "no-store" });
+      const data = await response.json();
+      if (response.ok) setEligibility(data.eligibility);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  useEffect(() => {
-    if (!pendingAction) return;
-    cancelRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) setPendingAction(null);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [busy, pendingAction]);
+  async function togglePause() {
+    if (!eligibility) return;
+    setLoading(true);
+    try {
+      const query = editHref.includes("?") ? editHref.slice(editHref.indexOf("?")) : "";
+      const response = await fetch(`/api/brand-portal/products/${productId}${query}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-pause", pausedByBrand: eligibility.lifecycle !== "paused" }),
+      });
+      if (response.ok) {
+        menuRef.current?.removeAttribute("open");
+        setEligibility({ ...eligibility, lifecycle: eligibility.lifecycle === "paused" ? "published" : "paused" });
+        router.refresh();
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const confirmAction = async () => {
+  function open(action: Exclude<PendingAction, null>) {
+    setPendingAction(action);
+    setConfirmText("");
+    setReason("");
+    setError("");
+    operationKeyRef.current = action.startsWith("delete_") ? crypto.randomUUID() : "";
+    menuRef.current?.removeAttribute("open");
+  }
+
+  async function confirm() {
     if (!pendingAction) return;
     setBusy(true);
     setError("");
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (pendingAction === "schedule_delete") {
-        headers["Idempotency-Key"] = scheduleIdempotencyKeyRef.current;
-      }
       const response = await fetch(`/api/brand-portal/products/${productId}/deletion`, {
         method: "POST",
-        headers,
-        body: JSON.stringify({ action: pendingAction, reason }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: pendingAction, reason, operationKey: operationKeyRef.current, confirmationName: confirmText }),
       });
-      const data = await response.json().catch(() => ({}));
+      const data = await response.json();
       if (!response.ok) {
-        setError(data.error ?? "That didn't work — please try again.");
+        const details = Array.isArray(data.blockers)
+          ? data.blockers.map((blocker: { message: string; resolution?: string }) => `${blocker.message} ${blocker.resolution ?? ""}`).join(" ")
+          : "";
+        setError([data.error, details].filter(Boolean).join(" "));
         return;
       }
       setPendingAction(null);
-      setReason("");
-      setConfirmText("");
       router.refresh();
     } finally {
       setBusy(false);
     }
-  };
+  }
 
-  const chooseAction = (action: Exclude<PendingAction, null>) => {
-    if (menuRef.current) menuRef.current.open = false;
-    setError("");
-    setReason("");
-    setConfirmText("");
-    if (action === "schedule_delete") {
-      scheduleIdempotencyKeyRef.current = crypto.randomUUID();
-    }
-    setPendingAction(action);
-  };
-
-  const needsTypedConfirm = pendingAction === "delete_draft";
-  const canConfirm = !busy && (!needsTypedConfirm || confirmText.trim().toLowerCase() === name.trim().toLowerCase());
-
-  const dialogCopy: Record<Exclude<PendingAction, null>, { title: string; body: string; confirmLabel: string; tone: "neutral" | "danger" }> = {
-    retire: {
-      title: `Retire ${name}?`,
-      body: "This product is hidden from customers immediately. Its sales, review, and inventory history stays exactly as it is, and you can restore it to Draft later.",
-      confirmLabel: "Retire product",
-      tone: "neutral",
-    },
-    restore: {
-      title: `Restore ${name}?`,
-      body: "Brings this product back as a Draft — it doesn't go straight back to the storefront. Open it in the editor and publish when it's ready, so the normal publish checks run again.",
-      confirmLabel: "Restore to Draft",
-      tone: "neutral",
-    },
-    delete_draft: {
-      title: `Permanently delete ${name}?`,
-      body: "This draft has never been published or stocked, so it can be deleted right away. This cannot be undone — the product and its draft data will be gone for good. Type the product name below to confirm.",
-      confirmLabel: "Delete permanently",
-      tone: "danger",
-    },
-    schedule_delete: {
-      title: `Schedule permanent deletion of ${name}?`,
-      body: "This product will be permanently deleted in 7 days. It stays hidden the whole time, and you can cancel any time before the deletion date. If new order, review, inventory, or warehouse activity appears before then, the deletion is paused automatically instead of happening.",
-      confirmLabel: "Schedule deletion",
-      tone: "danger",
-    },
-    cancel_schedule: {
-      title: "Cancel this scheduled deletion?",
-      body: "The product stays retired. You can schedule permanent deletion again later.",
-      confirmLabel: "Cancel scheduled deletion",
-      tone: "neutral",
-    },
-  };
+  const isDelete = pendingAction === "delete_draft" || pendingAction === "delete_archived";
+  const canConfirm = !busy && (!isDelete || confirmText === name);
 
   return (
     <>
-      <div className="flex items-center justify-end gap-2">
-        <Link href={editHref} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#ddd6cd] bg-white px-3 text-[12px] font-semibold text-[#51473f] transition-colors hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-          <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Edit
-        </Link>
-        <details ref={menuRef} className="group relative" onToggle={(e) => { if ((e.target as HTMLDetailsElement).open) loadState(); }}>
-          <summary aria-label={`More actions for ${name}`} className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#ddd6cd] bg-white text-[#75685f] transition-colors hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 [&::-webkit-details-marker]:hidden">
-            <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-          </summary>
-          <div className="absolute right-0 top-11 z-20 w-72 rounded-xl border border-[#ddd6cd] bg-white p-1.5 shadow-[0_16px_40px_rgba(67,45,29,0.14)]">
-            {loading && <p className="px-3 py-2.5 text-[12px] text-[#9b8e84]">Loading…</p>}
-            {!loading && eligibility && (
-              <>
-                {eligibility.canRetire && (
-                  <button type="button" onClick={() => chooseAction("retire")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-                    <Archive className="h-4 w-4" aria-hidden="true" />Retire product
-                  </button>
-                )}
-                {eligibility.canRestore && (
-                  <button type="button" onClick={() => chooseAction("restore")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-                    <RotateCcw className="h-4 w-4" aria-hidden="true" />Restore to Draft
-                  </button>
-                )}
-                {eligibility.canDeleteImmediately && (
-                  <button type="button" onClick={() => chooseAction("delete_draft")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />Delete draft now
-                  </button>
-                )}
-                {activeSchedule ? (
-                  <div className="px-3 py-2.5 text-[12px] text-[#9b8e84]">
-                    <p className="font-semibold text-[#51473f]">
-                      {activeSchedule.status === "blocked"
-                        ? "Deletion paused"
-                        : `Deletion scheduled · ${formatDateOnly(activeSchedule.dueAt)}`}
-                    </p>
-                    {activeSchedule.status === "blocked" && activeSchedule.blockedReason && <p className="mt-1">{activeSchedule.blockedReason}</p>}
-                    {activeSchedule.status === "scheduled" && (
-                      <button type="button" onClick={() => chooseAction("cancel_schedule")} className="mt-1.5 font-semibold text-red-700 hover:underline">
-                        Cancel scheduled deletion
-                      </button>
-                    )}
-                  </div>
-                ) : eligibility.hasActiveHold ? (
-                  <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
-                    Deletion is on hold for this product. Contact Zakhnook staff for details.
-                  </p>
-                ) : eligibility.canScheduleDeletion ? (
-                  <button type="button" onClick={() => chooseAction("schedule_delete")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />Schedule permanent deletion
-                  </button>
-                ) : eligibility.mustRetainHistory ? (
-                  <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
-                    This product cannot be permanently deleted because it has order, review, inventory, or warehouse history. Its sales and inventory history will remain available.
-                  </p>
-                ) : eligibility.lifecycle === "archived" && eligibility.blockers.length > 0 ? (
-                  <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
-                    {eligibility.blockers[0].message}
-                  </p>
-                ) : null}
-              </>
-            )}
-          </div>
-        </details>
-      </div>
+      <details ref={menuRef} className="relative" onToggle={(event) => event.currentTarget.open && !eligibility && loadEligibility()}>
+        <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg text-[#75685f] hover:bg-[#f1eae2]" aria-label={`Actions for ${name}`}>
+          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+        </summary>
+        <div className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-[#e3dcd3] bg-white p-1.5 shadow-xl">
+          <Link href={editHref} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
+            <Pencil className="h-4 w-4" aria-hidden="true" /> Edit product
+          </Link>
+          {loading && <p className="px-3 py-2 text-[11.5px] text-[#8a7d73]">Checking product…</p>}
+          {(eligibility?.lifecycle === "published" || eligibility?.lifecycle === "paused") && (
+            <button type="button" onClick={togglePause} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
+              {eligibility.lifecycle === "paused" ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
+              {eligibility.lifecycle === "paused" ? "Resume" : "Pause temporarily"}
+            </button>
+          )}
+          {eligibility?.canArchive && (
+            <button type="button" onClick={() => open("archive")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
+              <Archive className="h-4 w-4" aria-hidden="true" /> Archive
+            </button>
+          )}
+          {eligibility?.canDeleteDraft && (
+            <button type="button" onClick={() => open("delete_draft")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50">
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete pristine Draft
+            </button>
+          )}
+        </div>
+      </details>
 
       {pendingAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="product-action-title" aria-describedby="product-action-description">
-          <button type="button" className="absolute inset-0 bg-[#242424]/35 backdrop-blur-[2px]" aria-label="Close confirmation" onClick={() => !busy && setPendingAction(null)} />
-          <div className="relative w-full max-w-md rounded-2xl border border-[#e3dcd3] bg-[#fffdf9] p-6 shadow-[0_24px_70px_rgba(36,36,36,0.22)]">
-            <button type="button" onClick={() => setPendingAction(null)} disabled={busy} aria-label="Close confirmation" className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-[#81746a] hover:bg-[#f1eae2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true" /></button>
-            <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${dialogCopy[pendingAction].tone === "danger" ? "bg-red-50 text-red-700" : "bg-[#f1eae2] text-[#75685f]"}`}>
-              {dialogCopy[pendingAction].tone === "danger" ? <Trash2 className="h-5 w-5" aria-hidden="true" /> : <Archive className="h-5 w-5" aria-hidden="true" />}
-            </div>
-            <h2 id="product-action-title" className="mt-4 pr-9 text-xl font-bold tracking-[-0.025em] text-[#242424]">{dialogCopy[pendingAction].title}</h2>
-            <p id="product-action-description" className="mt-2 text-[13px] leading-6 text-[#75685f]">{dialogCopy[pendingAction].body}</p>
-
-            {pendingAction === "schedule_delete" && (
-              <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">
-                Reason (optional)
-                <textarea
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  rows={2}
-                  className="mt-1.5 w-full rounded-xl border border-[#ddd6cd] bg-white p-2.5 text-[12.5px] text-[#242424] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"
-                />
-              </label>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="product-action-title">
+          <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="Close" onClick={() => !busy && setPendingAction(null)} />
+          <div className="relative w-full max-w-md rounded-2xl border border-[#e3dcd3] bg-white p-6 shadow-xl">
+            <button type="button" onClick={() => setPendingAction(null)} className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><X className="h-4 w-4" /></button>
+            <h2 id="product-action-title" className="pr-10 text-lg font-bold text-[#242424]">
+              {pendingAction === "archive" ? `Archive ${name}?` : `Permanently delete ${name}?`}
+            </h2>
+            <p className="mt-2 text-[13px] leading-6 text-[#75685f]">
+              {pendingAction === "archive"
+                ? "This hides the product immediately. Archived is final; it cannot be resumed or restored."
+                : "This cannot be undone. The product and its disposable catalog data will be permanently removed."}
+            </p>
+            {isDelete && (
+              <>
+                <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Reason (optional)
+                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-[#ddd6cd] p-2.5" />
+                </label>
+                <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Type <strong>{name}</strong> to confirm
+                  <input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} autoComplete="off" className="mt-1.5 w-full rounded-lg border border-[#ddd6cd] p-2.5" />
+                </label>
+              </>
             )}
-
-            {needsTypedConfirm && (
-              <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">
-                Type <span className="font-bold">{name}</span> to confirm
-                <input
-                  value={confirmText}
-                  onChange={(e) => setConfirmText(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-[#ddd6cd] bg-white p-2.5 text-[12.5px] text-[#242424] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200"
-                  autoComplete="off"
-                />
-              </label>
-            )}
-
-            {error && <p role="alert" className="mt-4 rounded-xl bg-red-50 px-3 py-2.5 text-[12.5px] text-red-700">{error}</p>}
+            {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] leading-5 text-red-700">{error}</p>}
             <div className="mt-6 flex justify-end gap-2">
-              <button ref={cancelRef} type="button" onClick={() => setPendingAction(null)} disabled={busy} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12.5px] font-semibold text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Cancel</button>
-              <button
-                type="button"
-                onClick={confirmAction}
-                disabled={!canConfirm}
-                className={`h-10 rounded-xl px-4 text-[12.5px] font-semibold text-white focus-visible:outline-none focus-visible:ring-2 disabled:opacity-60 ${dialogCopy[pendingAction].tone === "danger" ? "bg-red-700 hover:bg-red-800 focus-visible:ring-red-300" : "bg-[#332c27] hover:bg-[#4a4039] focus-visible:ring-[#332c27]/25"}`}
-              >
-                {busy ? "Working…" : dialogCopy[pendingAction].confirmLabel}
+              <button type="button" onClick={() => setPendingAction(null)} disabled={busy} className="h-10 rounded-lg border border-[#ddd6cd] px-4 text-[12.5px] font-semibold">Cancel</button>
+              <button type="button" onClick={confirm} disabled={!canConfirm} className="h-10 rounded-lg bg-[#C85956] px-4 text-[12.5px] font-semibold text-white disabled:opacity-50">
+                {busy ? "Working…" : pendingAction === "archive" ? "Archive" : "Delete permanently"}
               </button>
             </div>
           </div>

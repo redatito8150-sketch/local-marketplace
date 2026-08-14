@@ -23,7 +23,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
-import { retireProduct } from "@/lib/admin/productDeletion";
+import { archiveProduct } from "@/lib/admin/productDeletion";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -57,6 +57,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // validation, available to owner and assistant alike. Independent of
   // everything below.
   if (body.action === "toggle-pause") {
+    if (existing.status !== "published") {
+      return NextResponse.json({ error: "Only a Published product can be paused or resumed" }, { status: 409 });
+    }
     const paused = Boolean(body.pausedByBrand);
     const { error } = await supabaseAdmin
       .from("products")
@@ -99,7 +102,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // additional completeness check, unlike the full editor's own Archive
   // button. No review, available to owner and assistant alike.
   if (body.action === "archive") {
-    const result = await retireProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
+    const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
     if (!result.ok) {
       return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "PRODUCT_NOT_OWNED" ? 403 : result.code === "PRODUCT_NOT_FOUND" ? 404 : 409 });
     }
@@ -135,16 +138,23 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Audit Log page can always show exactly what changed, field by field.
   const productBody = body as ProductInput;
 
-  // SECOND CORRECTIVE PASS: blocks the full archived -> anything transition
-  // (not just -> published) — see the matching comment in
-  // app/api/admin/products/[id]/route.ts for the two-step bypass this
-  // closes. Only restore_product may move a product out of "archived",
-  // backed by the products_enforce_archived_transition DB trigger.
+  // Archived is terminal. The matching database trigger protects this
+  // rule even if a future route forgets the application-level guard.
   if (existing.status === "archived" && productBody.status !== "archived") {
     return NextResponse.json(
-      { error: "This product is archived. Use Restore product from the products list — editing status directly is not allowed for archived products." },
+      { error: "This product is Archived permanently and can no longer be edited or restored." },
       { status: 409 }
     );
+  }
+  if (productBody.status === "archived" && existing.status !== "published") {
+    return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
+  }
+  if (productBody.status === "archived") {
+    const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
+    if (!result.ok) return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
+    await logAudit({ actorId: owner.user.id, actorLabel: owner.user.email ?? owner.user.id, entityType: "product", entityId: params.id, action: "archive", before: existing, brandSlug: owner.brandSlug ?? undefined });
+    await notify("product_archived", `Archived: ${existing.name}`, owner.brandName ?? "", { actorLabel: owner.user.email ?? owner.user.id });
+    return NextResponse.json({ id: params.id, variants: await loadProductVariants(params.id) });
   }
 
   // Brand is immutable after creation — whatever the client sends is
@@ -160,7 +170,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // distinct from the DELETE action below (a quick "remove this" shortcut
   // regardless of completeness); this path is gated by the same
   // completeness bar as publishing (validateProductSections below).
-  productBody.status = productBody.status === "draft" || productBody.status === "archived" ? productBody.status : "published";
+  productBody.status = productBody.status === "draft" ? "draft" : "published";
 
   const validationError = validateProductInput(productBody);
   if (validationError) {
@@ -266,11 +276,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // un-publishing back to draft. A draft-to-draft save has no live
   // consequence to review, so it stays quiet.
   if (existing.status === "published" || productBody.status === "published") {
-    const stockWarning = productBody.status === "archived" ? await getPartnerStockWarning(params.id, owner.brandId) : null;
     await notify(
       "product_updated",
       `Product edited: ${productBody.name}`,
-      [describeProductUpdate(existing, productBody), stockWarning].filter(Boolean).join("\n\n"),
+      describeProductUpdate(existing, productBody),
       {
         relatedEntityType: "product",
         relatedEntityId: params.id,

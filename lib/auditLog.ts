@@ -34,12 +34,9 @@ export type AuditAction =
   // that whole review-queue model was removed): a schedule is either
   // created, cancelled by its owner, blocked by new activity or a hold,
   // or completes automatically when the cron executor runs it.
-  | "product_retired"
   | "product_restored"
   | "product_draft_deleted"
-  | "product_deletion_scheduled"
-  | "product_deletion_schedule_cancelled"
-  | "product_deletion_schedule_blocked"
+  | "product_deleted"
   | "product_permanently_deleted"
   | "product_emergency_hidden"
   | "product_deletion_hold_applied"
@@ -132,12 +129,9 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   convert_to_brand: DISCORD_COLORS.green,
   reject: DISCORD_COLORS.red,
   withdraw: DISCORD_COLORS.red,
-  product_retired: DISCORD_COLORS.red,
   product_restored: DISCORD_COLORS.green,
   product_draft_deleted: DISCORD_COLORS.red,
-  product_deletion_scheduled: DISCORD_COLORS.orange,
-  product_deletion_schedule_cancelled: DISCORD_COLORS.orange,
-  product_deletion_schedule_blocked: DISCORD_COLORS.orange,
+  product_deleted: DISCORD_COLORS.red,
   product_permanently_deleted: DISCORD_COLORS.red,
   product_emergency_hidden: DISCORD_COLORS.red,
   product_deletion_hold_applied: DISCORD_COLORS.orange,
@@ -174,12 +168,9 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   convert_to_brand: "converted to brand",
   reject: "rejected",
   withdraw: "withdrawn",
-  product_retired: "retired",
   product_restored: "restored to draft",
   product_draft_deleted: "draft permanently deleted",
-  product_deletion_scheduled: "deletion scheduled",
-  product_deletion_schedule_cancelled: "deletion schedule cancelled",
-  product_deletion_schedule_blocked: "deletion schedule blocked",
+  product_deleted: "permanently deleted",
   product_permanently_deleted: "permanently deleted",
   product_emergency_hidden: "hidden by admin",
   product_deletion_hold_applied: "deletion hold applied",

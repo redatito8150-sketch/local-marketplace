@@ -29,11 +29,11 @@ test("overview attention count does not count variants independently", () => {
 // paginated Retired page — the main product list now deliberately
 // excludes archived (Retired) products entirely, so they never clutter
 // the default catalog view.
-test("the main product list excludes retired products and links to a dedicated, database-paginated Retired page instead of an inline quick-view tile", () => {
+test("the main product list excludes Archived products and links to a dedicated database-paginated page", () => {
   const products = readFileSync(path.join(root, "app/brand-portal/products/page.tsx"), "utf8");
 
   assert.doesNotMatch(products, /id: "archived" as const, label: "Archived", params: \{ status: "archived" \}/);
-  assert.match(products, /allProductsWithRetired\.filter\(\(product\) => product\.status !== "archived"\)/);
-  assert.match(products, /listRetiredProducts\(/);
-  assert.match(products, /retiredCount/);
+  assert.match(products, /allProductsWithArchived\.filter\(\(product\) => product\.status !== "archived"\)/);
+  assert.match(products, /listArchivedProducts\(/);
+  assert.match(products, /archivedCount/);
 });

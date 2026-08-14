@@ -12,6 +12,7 @@ import {
   replaceProductMedia,
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
+import { claimProductStorageAssets } from "@/lib/admin/productDeletion";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
   }
 
   const body: ProductInput = await request.json();
+  if (body.status === "archived") {
+    return NextResponse.json({ error: "A new Draft must be published before it can be Archived" }, { status: 409 });
+  }
 
   // Fetched before validation (not after, as this used to be) so
   // isPartnerBrand can be set from the real brand row before
@@ -135,6 +139,11 @@ export async function POST(request: NextRequest) {
   }
   const mediaResult = await replaceProductMedia({ productId: id, coverUrl: body.image, galleryUrls: body.images ?? [], colorImages: body.colorImages });
   if (!mediaResult.ok) return NextResponse.json({ error: `Product created, but ${mediaResult.error}` }, { status: 500 });
+  const uploadFolderId = request.headers.get("x-upload-folder-id");
+  if (uploadFolderId) {
+    const { data: mediaRows } = await supabaseAdmin.from("product_media").select("storage_reference").eq("product_id", id);
+    await claimProductStorageAssets({ productId: id, uploadedBy: admin.id, uploadFolderId, publicUrls: (mediaRows ?? []).map((row) => row.storage_reference).filter(Boolean) });
+  }
 
   const variants = await loadProductVariants(id);
 
