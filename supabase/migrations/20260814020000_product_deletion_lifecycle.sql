@@ -1,160 +1,180 @@
 -- ============================================================================
--- Product archive/deletion lifecycle.
+-- Product lifecycle: Draft / Published / Paused / Retired / Scheduled-for-
+-- deletion / Deleted.
 --
--- Replaces two unsafe behaviors:
---   1. Brand Portal `DELETE /api/brand-portal/products/[id]` used to only
---      archive the product while the UI called it "Request deletion" and
---      promised staff review that never happened.
---   2. Admin `DELETE /api/admin/products/[id]` (and the bulk "delete"
---      action) did a raw, unguarded `delete from products` with no
---      dependency checks and no per-row success reporting.
+-- THIRD PASS — supersedes the admin-approval deletion-request model this
+-- migration used to implement. That model (product_deletion_requests,
+-- requested -> under_review/blocked -> approved/rejected/cancelled ->
+-- completed, with an admin having to click "Approve") is gone entirely.
+-- Ordinary deletion no longer waits on a human: eligibility is objective
+-- and database-authoritative, so a brand owner scheduling deletion of a
+-- history-free Retired product gets an automatic 7-day grace period and
+-- then automatic execution, not a queue for staff to review. There is
+-- nothing here for an admin to "approve" — only to cancel (if they want
+-- to stop it) or hold (to legally freeze a product first).
 --
--- This migration adds:
---   - `product_deletion_requests`, a real workflow table (requested ->
---     under_review/blocked -> approved/rejected/cancelled -> completed),
---     at most one non-terminal request per product (partial unique index),
---     `product_id` nullable/ON DELETE SET NULL with immutable name/sku/
---     image snapshot columns so a *completed* request's audit record
---     survives the product row it refers to actually being deleted.
---   - A canonical, database-authoritative eligibility calculation
---     (`private.compute_product_deletion_eligibility`) that separates
---     IMMUTABLE history (permanently blocks deletion, sets
---     mustRetainHistory) from OPERATIONAL state (blocks the current
---     action, resolvable) from pristine-draft-only checks (never leak
---     into the request/approval blocker set) — this is what makes
---     approval possible at all; see this file's own corrective-pass
---     comments below for the exact bug this replaced.
---   - Transaction-safe lifecycle RPCs (archive / restore / delete-pristine-
---     draft / request / cancel / admin review-reject-approve / emergency
---     hide), each locking the product row (and its variants, in the same
---     lock order every time) and recomputing blockers inside the same
---     transaction rather than trusting an earlier UI preflight.
---   - A defense-in-depth `order_items` insert guard, resolving the
---     product through `variant_id` when `product_id` is null, so an
---     archived/draft product can never gain a new order line even via a
---     direct RPC call that skips the app-layer cart/checkout checks.
---   - A `storefront_products` view fix so archived/paused/inactive-brand
---     products are excluded for *every* reader, including service-role
---     reads that bypass RLS (the view previously relied on the RLS
---     policy alone for that filtering).
---   - `private.admin_search_deletion_requests`, a single paginated,
---     filtered, database-level search RPC for the admin review queue —
---     status/brand/partner/text filters and LIMIT/OFFSET all applied
---     before any row leaves Postgres, never loaded into memory first.
+-- Internal representation: `products.status` keeps exactly the same three
+-- values it always has (`draft`, `published`, `archived`) — no new status
+-- value was technically necessary. `archived` is what this migration (and
+-- the rest of the codebase) has always called it internally; it is
+-- presented to users as "Retired" everywhere in the UI/API response
+-- shapes, per this pass's own instruction to keep the DB representation
+-- and only change the presentation layer. "Paused" is also not a new
+-- status — it's the pre-existing `products.paused_by_brand` boolean while
+-- status stays 'published' (already wired up before this migration ever
+-- existed); nothing here changes that mechanism, since pausing never
+-- touches `status` and is therefore untouched by the archived-transition
+-- trigger below.
 --
--- `products.deletion_requested_at` predates this migration and was never
--- read or written by any existing code path (confirmed dead column). It
--- is kept for backward-compatible display purposes only, kept in sync by
--- trigger from `product_deletion_requests` (set while a request is
--- non-terminal, cleared once resolved) — never treated as the source of
--- truth by anything new in this migration.
+-- This file replaces `product_deletion_requests` with two new tables:
+--   - `product_deletion_schedules` — an automatic 7-day grace-period
+--     schedule (scheduled -> cancelled / blocked / completed), not a
+--     request awaiting review. `product_id` nullable / ON DELETE SET NULL
+--     with an immutable name/sku/image snapshot, so a *completed*
+--     schedule's history record survives the product it refers to
+--     actually being hard-deleted.
+--   - `product_deletion_holds` — a real legal/admin hold (active/
+--     released), which blocks immediate deletion, scheduling, and
+--     execution of an existing schedule while active.
 --
--- CORRECTIVE PASS (on top of the original version of this same,
--- never-applied migration): the first version made successful approval
--- structurally impossible — `product_id` was NOT NULL with `ON DELETE
--- RESTRICT` (so the delete inside admin_approve_product_deletion would
--- always fail), and the eligibility calculation added `PRODUCT_NOT_DRAFT`
--- for every archived product and `DELETION_REQUEST_ALREADY_OPEN` for the
--- very request being approved, so approval always reported blockers
--- against itself. Fixed below by (a) making `product_id` nullable / ON
--- DELETE SET NULL with a name/sku/image snapshot, (b) splitting
--- eligibility into immutable-vs-operational-vs-pristine-only checks so
--- PRODUCT_NOT_DRAFT/PRODUCT_EVER_PUBLISHED never leak into the
--- request/approval blocker set, and (c) an explicit `p_ignore_request_id`
--- parameter so a request never counts itself as a blocker against its own
--- approval/review. See each function's own comment for the specific fix.
+-- Retained unchanged from the prior two passes (still correct, still
+-- needed): the canonical eligibility calculation's immutable/operational/
+-- pristine-draft-only blocker split, the `products_enforce_archived_
+-- transition` trigger (the database-level boundary against the
+-- archived -> draft -> published bypass — restore_product is still the
+-- only path out of 'archived'), the DB-association-based media-ownership
+-- capture + transactional storage_cleanup_jobs enqueue, the order_items
+-- availability guard (resolves via variant_id when product_id is null),
+-- and the storefront_products view's own publish/pause/active-brand
+-- predicate (not just RLS).
 -- ============================================================================
 
--- ----------------------------------------------------------------------------
--- 1. product_deletion_requests
--- ----------------------------------------------------------------------------
-
--- Needed up front for the product_name trigram index below, and reused by
--- private.admin_search_deletion_requests's ILIKE search (section 7).
 create extension if not exists pg_trgm;
 
-create table if not exists public.product_deletion_requests (
+-- Products has no timestamp recording when it entered 'archived' — needed
+-- for a real Retired tab (sort by most-recently-retired, not by
+-- created_at, which is when the product was first made). Nullable,
+-- cleared on restore, set on retire/emergency-hide.
+alter table public.products add column if not exists retired_at timestamptz;
+
+-- ----------------------------------------------------------------------------
+-- 1. product_deletion_holds — a real legal/admin hold, independent of any
+--    deletion schedule. An active hold blocks immediate hard deletion,
+--    scheduling, and execution of an existing schedule (checked inside the
+--    eligibility calculation and, redundantly, inside every RPC that
+--    actually deletes/schedules, so a hold applied mid-transaction can
+--    never be missed by a stale earlier read).
+-- ----------------------------------------------------------------------------
+
+create table if not exists public.product_deletion_holds (
   id uuid primary key default gen_random_uuid(),
-  -- Nullable + ON DELETE SET NULL (not the original NOT NULL / RESTRICT):
-  -- a *completed* request must outlive the product it refers to once that
-  -- product is actually, permanently deleted. The snapshot columns below
-  -- are what keep the record meaningful once product_id goes null.
+  product_id text not null references public.products(id) on delete cascade,
+  brand_id uuid not null references public.brands(id) on delete restrict,
+  status text not null default 'active' check (status in ('active', 'released')),
+  reason text not null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_by_label text not null,
+  created_at timestamptz not null default now(),
+  released_by uuid references auth.users(id) on delete set null,
+  released_by_label text,
+  released_at timestamptz
+);
+
+-- At most one active hold per product — release the existing one before a
+-- new one can be applied, rather than silently stacking holds.
+create unique index if not exists product_deletion_holds_one_active_per_product_idx
+  on public.product_deletion_holds (product_id)
+  where status = 'active';
+create index if not exists product_deletion_holds_product_status_idx
+  on public.product_deletion_holds (product_id, status);
+
+alter table public.product_deletion_holds enable row level security;
+revoke all on public.product_deletion_holds from public, anon, authenticated;
+grant select, insert, update, delete on public.product_deletion_holds to service_role;
+
+-- ----------------------------------------------------------------------------
+-- 2. product_deletion_schedules — the automatic 7-day grace-period
+--    schedule. Replaces product_deletion_requests entirely (that table
+--    was never applied to any real database, so this is a redesign in
+--    place, not an additive/compat change).
+-- ----------------------------------------------------------------------------
+
+create table if not exists public.product_deletion_schedules (
+  id uuid primary key default gen_random_uuid(),
+  -- Nullable + ON DELETE SET NULL: a *completed* schedule must outlive the
+  -- product it refers to once that product is actually, permanently
+  -- deleted. The snapshot columns below keep the record meaningful once
+  -- product_id goes null.
   product_id text references public.products(id) on delete set null,
   product_name text not null default '',
   product_sku text,
   product_image text,
   brand_id uuid not null references public.brands(id) on delete restrict,
-  requested_by uuid references auth.users(id) on delete set null,
-  requested_by_label text not null,
-  requested_at timestamptz not null default now(),
-  reason text not null,
-  status text not null default 'requested' check (status in (
-    'requested', 'under_review', 'blocked', 'approved', 'rejected', 'cancelled', 'completed'
+  initiated_by uuid references auth.users(id) on delete set null,
+  initiated_by_label text not null,
+  reason text,
+  status text not null default 'scheduled' check (status in (
+    'scheduled', 'cancelled', 'blocked', 'completed'
   )),
-  reviewed_by uuid references auth.users(id) on delete set null,
-  reviewed_at timestamptz,
-  admin_note text,
-  completed_at timestamptz,
+  scheduled_at timestamptz not null default now(),
+  due_at timestamptz not null,
   cancelled_at timestamptz,
-  -- Full ProductDeletionEligibility snapshot captured at request time, for
-  -- comparison against the recomputed-at-approval-time blockers — the
-  -- brand's original submission vs. what's actually blocking it now.
+  cancelled_by uuid references auth.users(id) on delete set null,
+  cancelled_by_label text,
+  blocked_at timestamptz,
+  blocked_reason text,
+  completed_at timestamptz,
+  -- Blocker snapshot from the moment the schedule was last evaluated
+  -- (creation, or the blocking evaluation at execution time) — for
+  -- display; the RPCs below always recompute fresh rather than trusting
+  -- this snapshot for any actual decision.
   blocker_snapshot jsonb not null default '[]'::jsonb,
-  -- Idempotency: a replayed identical request (same product, same actor,
-  -- same key, same reason) returns the existing open request instead of
-  -- creating a duplicate row. A replay with the same key but a different
-  -- actor/reason is a real conflict, not a safe no-op — see
-  -- request_product_deletion's own comment.
+  -- Idempotency: a replayed identical schedule call (same product, same
+  -- actor, same key, same reason) returns the existing schedule instead of
+  -- creating a duplicate. A replay with the same key but a different
+  -- actor/reason is a real conflict — see schedule_product_deletion.
   operation_key text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- At most one non-terminal request per product. product_id is only ever
--- null once status = 'completed' (a terminal state outside this partial
--- index's filter), so this constraint is unaffected by the nullable FK.
-create unique index if not exists product_deletion_requests_one_open_per_product_idx
-  on public.product_deletion_requests (product_id)
-  where status in ('requested', 'under_review', 'blocked');
+-- At most one active ('scheduled') schedule per product. Once a schedule
+-- resolves (cancelled/blocked/completed) it's terminal — trying again
+-- means calling schedule_product_deletion again, which creates a new row.
+create unique index if not exists product_deletion_schedules_one_active_per_product_idx
+  on public.product_deletion_schedules (product_id)
+  where status = 'scheduled';
 
-create index if not exists product_deletion_requests_brand_status_idx
-  on public.product_deletion_requests (brand_id, status, requested_at desc);
-create index if not exists product_deletion_requests_status_idx
-  on public.product_deletion_requests (status, requested_at desc);
-create unique index if not exists product_deletion_requests_operation_key_idx
-  on public.product_deletion_requests (product_id, operation_key)
+create index if not exists product_deletion_schedules_brand_status_idx
+  on public.product_deletion_schedules (brand_id, status, due_at);
+-- The cron executor's own working set: every row it ever queries is
+-- status = 'scheduled', ordered by due_at — a partial index scoped to
+-- exactly that predicate keeps the due-date scan cheap regardless of how
+-- much cancelled/blocked/completed history accumulates over time.
+create index if not exists product_deletion_schedules_due_idx
+  on public.product_deletion_schedules (due_at)
+  where status = 'scheduled';
+create unique index if not exists product_deletion_schedules_operation_key_idx
+  on public.product_deletion_schedules (product_id, operation_key)
   where operation_key is not null;
--- Trigram search support for the admin review queue's paginated search RPC
--- (private.admin_search_deletion_requests below) — pg_trgm's GIN opclass
--- accelerates ILIKE '%...%' directly against the plain column, so this is
--- deliberately NOT built on lower(product_name): that would only be used
--- by a query that also wraps its predicate in lower(...), which the
--- ILIKE-based search below does not.
-create index if not exists product_deletion_requests_product_name_trgm_idx
-  on public.product_deletion_requests using gin (product_name gin_trgm_ops);
+create index if not exists product_deletion_schedules_product_name_trgm_idx
+  on public.product_deletion_schedules using gin (product_name gin_trgm_ops);
 
-alter table public.product_deletion_requests enable row level security;
+alter table public.product_deletion_schedules enable row level security;
 -- No RLS policy is added on purpose, matching this codebase's established
 -- convention for `products`/`brands`/`orders` writes: every read and write
--- path goes through server-side code using the service_role key
--- (lib/data/brandPortal.ts, lib/data/admin.ts), never the browser anon
--- key. RLS-enabled-with-no-policy means "deny by default" for anon/
--- authenticated, which is the safe posture until/unless a client-side
--- read path is ever added.
-
--- Corrective pass: the original grant omitted DELETE entirely, so nothing
--- (including this project's own integration test cleanup helpers) could
--- ever remove a product_deletion_requests row directly. There's no
--- production feature that hard-deletes a request row today, but the
--- service_role should still be able to (e.g. a future data-retention
--- sweep, or test/staging cleanup) rather than being silently unable to.
-revoke all on public.product_deletion_requests from public, anon, authenticated;
-grant select, insert, update, delete on public.product_deletion_requests to service_role;
+-- path goes through server-side code using the service_role key, never
+-- the browser anon key. RLS-enabled-with-no-policy means "deny by
+-- default" for anon/authenticated.
+revoke all on public.product_deletion_schedules from public, anon, authenticated;
+grant select, insert, update, delete on public.product_deletion_schedules to service_role;
 
 -- ----------------------------------------------------------------------------
--- 2. deletion_requested_at compatibility mirror (display-only, never
---    authoritative — every RPC below reads/writes product_deletion_requests
---    directly, never this column).
+-- 3. deletion_requested_at compatibility mirror (display-only, never
+--    authoritative) — now mirrors "there is an active deletion schedule"
+--    instead of "there is an open deletion request." Nothing new reads
+--    this column for any real decision; every RPC below reads/writes
+--    product_deletion_schedules directly.
 -- ----------------------------------------------------------------------------
 
 create or replace function private.sync_product_deletion_requested_at()
@@ -169,9 +189,9 @@ begin
     end if;
     update public.products
       set deletion_requested_at = (
-        select requested_at from public.product_deletion_requests
-        where product_id = old.product_id and status in ('requested', 'under_review', 'blocked')
-        order by requested_at desc limit 1
+        select scheduled_at from public.product_deletion_schedules
+        where product_id = old.product_id and status = 'scheduled'
+        order by scheduled_at desc limit 1
       )
       where id = old.product_id;
     return old;
@@ -181,53 +201,49 @@ begin
     return new;
   end if;
   update public.products
-    set deletion_requested_at = case
-      when new.status in ('requested', 'under_review', 'blocked') then new.requested_at
-      else null
-    end
+    set deletion_requested_at = case when new.status = 'scheduled' then new.scheduled_at else null end
     where id = new.product_id;
   return new;
 end;
 $$;
 
-drop trigger if exists product_deletion_requests_sync_mirror on public.product_deletion_requests;
-create trigger product_deletion_requests_sync_mirror
-after insert or update of status or delete on public.product_deletion_requests
+drop trigger if exists product_deletion_requests_sync_mirror on public.product_deletion_schedules;
+drop trigger if exists product_deletion_schedules_sync_mirror on public.product_deletion_schedules;
+create trigger product_deletion_schedules_sync_mirror
+after insert or update of status or delete on public.product_deletion_schedules
 for each row execute function private.sync_product_deletion_requested_at();
 
 revoke all on function private.sync_product_deletion_requested_at() from public, anon, authenticated;
 
 comment on column public.products.deletion_requested_at is
-  'Display-only mirror of the current non-terminal product_deletion_requests row (if any), kept in sync by trigger. Never authoritative — read product_deletion_requests for real workflow state.';
+  'Display-only mirror of the current active (scheduled) product_deletion_schedules row for this product, if any, kept in sync by trigger. Never authoritative — read product_deletion_schedules for real workflow state.';
 
 -- ----------------------------------------------------------------------------
--- 3. Canonical eligibility calculation
+-- 4. Canonical eligibility calculation.
 --
--- CORRECTIVE PASS: blockers are now split into three disjoint groups so
--- they can never leak into the wrong decision:
---   - IMMUTABLE  (reviews / order history / inventory history / warehouse
---     history / return history): sets mustRetainHistory = true. Blocks
---     canRequestDeletion and approval FOREVER — request_product_deletion
---     refuses to even create a request when any of these are present
---     (item 4: never offer a deletion request that can never succeed).
+-- Blockers are split into three disjoint groups so they can never leak
+-- into the wrong decision:
+--   - IMMUTABLE (reviews / order history / inventory history / warehouse
+--     history / return history): sets mustRetainHistory = true. Permanently
+--     forbids hard deletion — schedule_product_deletion refuses to even
+--     create a schedule when any of these are present, and no impossible
+--     request/approval is ever generated.
 --   - OPERATIONAL (open orders / available or reserved or incoming stock /
 --     open warehouse document / quarantine / open return / open
---     fulfillment transition): does not set mustRetainHistory. Still
---     blocks canDeleteImmediately and canRequestDeletion, but a request
---     filed while one of these is present is created as 'blocked' (not
---     refused outright) since these can resolve over time.
+--     fulfillment transition / an active legal-admin hold / an already-
+--     active deletion schedule other than the one being evaluated):
+--     resolvable over time. Blocks canDeleteImmediately/canScheduleDeletion
+--     for now, but never sets mustRetainHistory.
 --   - PRISTINE-DRAFT-ONLY (PRODUCT_NOT_DRAFT / PRODUCT_EVER_PUBLISHED):
---     never added to the shared blockers array at all — they only feed
---     canDeleteImmediately's own boolean. The original bug added
---     PRODUCT_NOT_DRAFT for every archived product being evaluated for a
---     *request* (not an immediate-delete), which made mustRetainHistory-
---     style logic irrelevant since the generic "any blockers -> refuse"
---     checks downstream always tripped on this alone.
--- `p_ignore_request_id`: when recomputing eligibility on behalf of a
--- specific request (admin review/approve), that request's own
--- DELETION_REQUEST_ALREADY_OPEN state must never count against itself —
--- the original bug had no such exclusion, so admin_approve_product_deletion
--- always saw its own request as a blocker and could never succeed.
+--     never added to the shared blockers array — a Retired, previously-
+--     published, history-free product must never see these; they only
+--     feed canDeleteImmediately's own boolean (the pristine-draft path is
+--     a completely separate rule set from the Retired-product scheduling
+--     path).
+-- `p_ignore_schedule_id`: when recomputing eligibility on behalf of a
+-- specific schedule (its own creation-time check, or the cron executor
+-- evaluating it at due time), that schedule's own active-schedule state
+-- must never count against itself.
 -- ----------------------------------------------------------------------------
 
 create or replace function private.append_deletion_blocker(
@@ -249,7 +265,7 @@ revoke all on function private.append_deletion_blocker(jsonb, text, text, text, 
 
 create or replace function private.compute_product_deletion_eligibility(
   p_product_id text,
-  p_ignore_request_id uuid default null
+  p_ignore_schedule_id uuid default null
 )
 returns jsonb
 language plpgsql
@@ -261,26 +277,28 @@ declare
   v_blockers jsonb := '[]'::jsonb;
   v_must_retain boolean := false;
   v_pristine boolean := true;
-  v_open_request_id uuid;
-  v_open_request_excluding_self boolean;
+  v_has_hold boolean := false;
+  v_open_schedule_id uuid;
+  v_open_schedule_excluding_self boolean;
   v_cnt integer;
   v_qty numeric;
   v_lifecycle text;
-  v_can_archive boolean;
+  v_can_retire boolean;
   v_can_restore boolean;
   v_can_delete_now boolean;
-  v_can_request boolean;
+  v_can_schedule boolean;
 begin
   select * into v_product from public.products where id = p_product_id;
   if not found then
     return jsonb_build_object(
       'productId', p_product_id,
       'lifecycle', 'draft',
-      'canArchive', false,
+      'canRetire', false,
       'canRestore', false,
       'canDeleteImmediately', false,
-      'canRequestDeletion', false,
+      'canScheduleDeletion', false,
       'mustRetainHistory', false,
+      'hasActiveHold', false,
       'blockers', jsonb_build_array(jsonb_build_object(
         'code', 'PRODUCT_NOT_FOUND', 'category', 'other',
         'message', 'This product no longer exists.', 'count', null, 'quantity', null
@@ -410,24 +428,28 @@ begin
     v_blockers := private.append_deletion_blocker(v_blockers, 'PRODUCT_HAS_OPEN_FULFILLMENT_TRANSITION', 'transition', 'This product''s brand has an open fulfillment-mode transition in progress.', v_cnt, null);
   end if;
 
+  select exists(
+    select 1 from public.product_deletion_holds where product_id = p_product_id and status = 'active'
+  ) into v_has_hold;
+  if v_has_hold then
+    v_pristine := false;
+    v_blockers := private.append_deletion_blocker(v_blockers, 'PRODUCT_HAS_ACTIVE_HOLD', 'permissions', 'This product has an active legal/admin hold — deletion is not available until the hold is released.', null, null);
+  end if;
+
   -- ===== PRISTINE-DRAFT-ONLY (never added to the shared blockers array) =====
-  -- Purely local to canDeleteImmediately's own check — an archived,
-  -- previously-published product must never see PRODUCT_NOT_DRAFT or
-  -- PRODUCT_EVER_PUBLISHED in its blockers, since neither has any bearing
-  -- on whether it can be requested or approved for deletion.
   if v_product.status <> 'draft' or v_product.publish_date is not null or v_product.first_stocked_at is not null then
     v_pristine := false;
   end if;
 
-  -- ===== Open deletion request (excluding the request currently being
+  -- ===== Active deletion schedule (excluding the schedule currently being
   -- evaluated, if any) =====
-  select id into v_open_request_id from public.product_deletion_requests
-  where product_id = p_product_id and status in ('requested', 'under_review', 'blocked')
+  select id into v_open_schedule_id from public.product_deletion_schedules
+  where product_id = p_product_id and status = 'scheduled'
   limit 1;
-  v_open_request_excluding_self := v_open_request_id is not null
-    and (p_ignore_request_id is null or v_open_request_id <> p_ignore_request_id);
-  if v_open_request_excluding_self then
-    v_blockers := private.append_deletion_blocker(v_blockers, 'DELETION_REQUEST_ALREADY_OPEN', 'other', 'A deletion request is already open for this product.', null, null);
+  v_open_schedule_excluding_self := v_open_schedule_id is not null
+    and (p_ignore_schedule_id is null or v_open_schedule_id <> p_ignore_schedule_id);
+  if v_open_schedule_excluding_self then
+    v_blockers := private.append_deletion_blocker(v_blockers, 'DELETION_ALREADY_SCHEDULED', 'other', 'A deletion is already scheduled for this product.', null, null);
   end if;
 
   v_lifecycle := case
@@ -437,24 +459,28 @@ begin
     else 'draft'
   end;
 
-  v_can_archive := v_product.status <> 'archived';
-  v_can_restore := v_product.status = 'archived' and v_open_request_id is null;
-  v_can_delete_now := v_pristine and v_product.status = 'draft' and v_open_request_id is null;
-  -- Deliberately only excludes the ignored request, not "any open
-  -- request" — when recomputing on behalf of the very request being
-  -- approved/reviewed (p_ignore_request_id set), that request's own
-  -- still-open row must not make canRequestDeletion look false for
-  -- reasons unrelated to what's actually being decided.
-  v_can_request := v_product.status = 'archived' and not v_must_retain and not v_open_request_excluding_self;
+  v_can_retire := v_product.status <> 'archived';
+  v_can_restore := v_product.status = 'archived' and v_open_schedule_id is null;
+  v_can_delete_now := v_pristine and v_product.status = 'draft' and v_open_schedule_id is null and not v_has_hold;
+  -- Deliberately excludes only the ignored schedule's own self-reference,
+  -- not "any active schedule" — when recomputing on behalf of the very
+  -- schedule being created/executed (p_ignore_schedule_id set), that
+  -- schedule's own still-active row must not make canScheduleDeletion
+  -- look false for reasons unrelated to what's actually being decided.
+  -- Simplified to "no blockers of any kind and no immutable history" —
+  -- every operational condition (stock, warehouse state, hold, another
+  -- active schedule) is already represented in v_blockers by this point.
+  v_can_schedule := v_product.status = 'archived' and not v_must_retain and jsonb_array_length(v_blockers) = 0;
 
   return jsonb_build_object(
     'productId', p_product_id,
     'lifecycle', v_lifecycle,
-    'canArchive', v_can_archive,
+    'canRetire', v_can_retire,
     'canRestore', v_can_restore,
     'canDeleteImmediately', v_can_delete_now,
-    'canRequestDeletion', v_can_request,
+    'canScheduleDeletion', v_can_schedule,
     'mustRetainHistory', v_must_retain,
+    'hasActiveHold', v_has_hold,
     'blockers', v_blockers
   );
 end;
@@ -462,33 +488,32 @@ $$;
 
 revoke all on function private.compute_product_deletion_eligibility(text, uuid) from public, anon, authenticated;
 
-create or replace function public.get_product_deletion_eligibility(p_product_id text, p_ignore_request_id uuid default null)
+create or replace function public.get_product_deletion_eligibility(p_product_id text, p_ignore_schedule_id uuid default null)
 returns jsonb
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select private.compute_product_deletion_eligibility(p_product_id, p_ignore_request_id);
+  select private.compute_product_deletion_eligibility(p_product_id, p_ignore_schedule_id);
 $$;
 
 revoke all on function public.get_product_deletion_eligibility(text, uuid) from public, anon, authenticated;
 grant execute on function public.get_product_deletion_eligibility(text, uuid) to service_role;
 
 -- ----------------------------------------------------------------------------
--- 4. Lifecycle RPCs
+-- 5. Lifecycle RPCs
 --
 -- Every RPC below: locks the product row `for update` first (then variant
 -- rows `for update`, same order every time), recomputes eligibility inside
 -- the same transaction, never trusts a stale client-supplied eligibility
--- snapshot, and returns a stable jsonb envelope of the shape
--- {ok, code, message, lifecycle, requestState, blockers}. `p_brand_id`
--- non-null means "verify this product belongs to this brand" (brand-portal
--- callers); null means the caller has already been authorized as admin at
--- the application layer.
+-- snapshot, and returns a stable jsonb envelope `{ok, code, message, ...}`.
+-- `p_brand_id` non-null means "verify this product belongs to this brand"
+-- (brand-portal callers); null means the caller has already been
+-- authorized as admin at the application layer.
 -- ----------------------------------------------------------------------------
 
-create or replace function public.archive_product(
+create or replace function public.retire_product(
   p_product_id text,
   p_brand_id uuid,
   p_actor_id uuid,
@@ -513,45 +538,29 @@ begin
   perform id from public.product_variants where product_id = p_product_id for update;
 
   if v_product.status = 'archived' then
-    -- Idempotent: calling archive on an already-archived product is a
-    -- safe no-op, not an error.
-    return jsonb_build_object('ok', true, 'code', 'ALREADY_ARCHIVED', 'message', 'Already archived.', 'lifecycle', 'archived');
+    -- Idempotent: retiring an already-Retired product is a safe no-op.
+    return jsonb_build_object('ok', true, 'code', 'ALREADY_RETIRED', 'message', 'Already retired.', 'lifecycle', 'archived');
   end if;
 
-  update public.products set status = 'archived' where id = p_product_id;
+  update public.products set status = 'archived', retired_at = now() where id = p_product_id;
 
-  return jsonb_build_object('ok', true, 'code', 'ARCHIVED', 'message', 'Product archived.', 'lifecycle', 'archived', 'before', to_jsonb(v_product));
+  return jsonb_build_object('ok', true, 'code', 'RETIRED', 'message', 'Product retired.', 'lifecycle', 'archived', 'before', to_jsonb(v_product));
 end;
 $$;
 
-revoke all on function public.archive_product(text, uuid, uuid, text) from public, anon, authenticated;
-grant execute on function public.archive_product(text, uuid, uuid, text) to service_role;
+revoke all on function public.retire_product(text, uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.retire_product(text, uuid, uuid, text) to service_role;
 
--- SECOND CORRECTIVE PASS (item 1 + item 6 superseded): restore no longer
--- targets 'published' directly and no longer re-implements a partial copy
--- of publish-readiness validation in SQL. The prior version's approach —
--- restore straight to 'published' after checking a hand-picked subset of
--- fields/stock/launch-state — was both an incomplete re-implementation of
--- lib/admin/productValidation.ts's real rules and, combined with the
--- generic PATCH routes' original archived-> published-only guard, part of
--- what enabled the two-step archived -> draft -> published bypass (the
--- generic routes happily allowed archived -> draft, then the ordinary
--- publish flow — with its own full validation — took it the rest of the
--- way, never going through this function at all).
---
--- Restore now does exactly one thing: move an eligible archived product
--- back to 'draft', unconditionally on product completeness. Getting back
--- to 'published' from there is deliberately left to the same ordinary
--- edit-and-publish flow (full form save, validateProductInput) every
--- other draft already goes through — there is no second, parallel
--- publish-readiness implementation to keep in sync with the real one.
+-- Restore always targets 'draft', never 'published' directly — getting
+-- back to Published is deliberately left to the ordinary edit-and-publish
+-- flow (full form save, validateProductInput), which already does full
+-- validation; there is no second, parallel publish-readiness
+-- implementation here to keep in sync with the real one.
 --
 -- `perform set_config('app.product_restore_in_progress', 'on', true)`
 -- (local to this transaction, auto-clears at commit/rollback) is the only
--- way the new products_enforce_archived_transition trigger below ever
--- allows an archived row to leave 'archived' — see that trigger's own
--- comment for why this is the actual database-level boundary the bypass
--- required, not just an API-layer check.
+-- way the products_enforce_archived_transition trigger below ever allows
+-- an archived row to leave 'archived' — see that trigger's own comment.
 create or replace function public.restore_product(
   p_product_id text,
   p_brand_id uuid,
@@ -566,7 +575,7 @@ as $$
 declare
   v_product record;
   v_brand record;
-  v_open_request record;
+  v_open_schedule record;
 begin
   select * into v_product from public.products where id = p_product_id for update;
   if not found then
@@ -576,15 +585,15 @@ begin
     return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_OWNED', 'message', 'You do not have access to this product.');
   end if;
   if v_product.status <> 'archived' then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'Only an archived product can be restored.');
+    return jsonb_build_object('ok', false, 'code', 'RETIRE_STATE_CONFLICT', 'message', 'Only a retired product can be restored.');
   end if;
 
   perform id from public.product_variants where product_id = p_product_id for update;
 
-  select * into v_open_request from public.product_deletion_requests
-  where product_id = p_product_id and status in ('requested', 'under_review', 'blocked') for update;
+  select * into v_open_schedule from public.product_deletion_schedules
+  where product_id = p_product_id and status = 'scheduled' for update;
   if found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_ALREADY_OPEN', 'message', 'Cancel the open deletion request before restoring this product.');
+    return jsonb_build_object('ok', false, 'code', 'DELETION_SCHEDULE_ALREADY_ACTIVE', 'message', 'Cancel the scheduled deletion before restoring this product.');
   end if;
 
   select * into v_brand from public.brands where id = v_product.brand_id;
@@ -593,7 +602,7 @@ begin
   end if;
 
   perform set_config('app.product_restore_in_progress', 'on', true);
-  update public.products set status = 'draft', draft_started_at = now() where id = p_product_id;
+  update public.products set status = 'draft', draft_started_at = now(), retired_at = null where id = p_product_id;
 
   return jsonb_build_object('ok', true, 'code', 'RESTORED', 'message', 'Product restored to Draft — publish it from the editor when ready.', 'lifecycle', 'draft', 'before', to_jsonb(v_product));
 end;
@@ -602,16 +611,14 @@ $$;
 revoke all on function public.restore_product(text, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.restore_product(text, uuid, uuid, text) to service_role;
 
--- SECOND CORRECTIVE PASS (item 1): the database-level boundary for the
--- archived -> draft -> published two-step bypass. An archived product may
--- leave 'archived' ONLY inside restore_product (which sets this session-
--- local flag immediately before its own update) — any other UPDATE that
--- tries to move a row's status away from 'archived', from ANY caller
--- (a future admin route, a bulk script, a one-off service-role query run
--- by hand), is rejected outright. This is deliberately independent of the
--- API-layer guards in the PATCH routes below: those exist for a fast,
--- friendly error message; this trigger is what actually makes the bypass
--- impossible regardless of what application code does or forgets to do.
+-- The database-level boundary against the archived -> draft -> published
+-- two-step bypass. An archived (Retired) product may leave 'archived'
+-- ONLY inside restore_product (which sets this session-local flag
+-- immediately before its own update) — any other UPDATE that tries to
+-- move a row's status away from 'archived', from ANY caller (an admin
+-- route, a bulk script, a one-off service-role query run by hand), is
+-- rejected outright, independent of whatever the API-layer route guards
+-- do or forget to do.
 create or replace function private.enforce_archived_product_transition()
 returns trigger
 language plpgsql
@@ -633,23 +640,21 @@ for each row execute function private.enforce_archived_product_transition();
 
 revoke all on function private.enforce_archived_product_transition() from public, anon, authenticated;
 
--- SECOND CORRECTIVE PASS (item 2): media ownership is now proven by DB
--- association, not by guessing from the URL's path shape. The prior
--- version only recognized `products/{realProductId}/...` — but real
--- uploads commonly still live under the *temporary* folder used before
--- the product had a permanent id (`products/{tempFolderId}/...` for
--- admin, `product-drafts/{userId}/{tempFolderId}/...` for brand-portal —
--- see components/admin/ProductForm.tsx's `uploadFolderId`), which that
--- pattern silently missed. The moment a URL is written into
--- product_media.storage_reference/product_color_images.image_url (or
--- products.image/products.images) *for this product_id*, that row IS the
--- authoritative ownership record — regardless of which folder shape the
--- URL happens to use. The only remaining safety checks are: (a) it must
--- actually be one of our own Storage bucket's public URLs (matched by the
--- Supabase Storage public-URL path shape itself, not a hostname — never
--- deletes an arbitrary external URL), and (b) no OTHER live product's
--- rows/legacy fields reference the exact same URL (never deletes shared
--- media).
+-- Media ownership is proven by DB association (any URL actually stored
+-- against this product's own product_media/product_color_images/
+-- products.image/products.images rows), not by guessing from the URL's
+-- folder shape — real uploads commonly still live under the *temporary*
+-- folder used before the product had a permanent id (products/{tempId}/
+-- ... for admin, product-drafts/{userId}/{tempId}/... for brand-portal —
+-- see components/admin/ProductForm.tsx's uploadFolderId), which a
+-- path-prefix check would silently miss. The moment a URL is written
+-- into one of those columns for this product_id, that row IS the
+-- authoritative ownership record, regardless of folder shape. Safety
+-- checks: (a) must be one of our own Storage bucket's public URLs
+-- (matched by the Supabase Storage public-URL path shape itself, not a
+-- hostname — never deletes an arbitrary external URL), and (b) no OTHER
+-- live product's rows/legacy fields reference the exact same URL (never
+-- deletes shared media).
 create or replace function private.capture_owned_product_media_urls(
   p_product_id text, p_image text, p_images text[]
 )
@@ -673,16 +678,12 @@ $$;
 
 revoke all on function private.capture_owned_product_media_urls(text, text, text[]) from public, anon, authenticated;
 
--- SECOND CORRECTIVE PASS (item 2): enqueues cleanup jobs directly into
--- storage_cleanup_jobs (lib/account/storageCleanup.ts's own table) INSIDE
--- the caller's transaction — not as a separate step the API route
--- performs after the RPC returns. The prior version deleted the product
--- first and only queued cleanup afterward from application code; a crash
--- or error between those two steps permanently lost the cleanup targets
--- (the product was already gone, nothing left to re-derive them from).
--- Now the enqueue and the delete either both commit or both roll back
--- together — a failure inserting a job aborts the whole function, so the
--- product delete that follows never runs either.
+-- Enqueues cleanup jobs directly into storage_cleanup_jobs (lib/account/
+-- storageCleanup.ts's own table) INSIDE the caller's transaction — not as
+-- a separate step application code performs after the RPC returns. The
+-- enqueue and the delete either both commit or both roll back together —
+-- a failure inserting a job aborts the whole function, so the product
+-- delete that follows never runs either.
 create or replace function private.queue_owned_product_media_cleanup(
   p_product_id text, p_image text, p_images text[], p_actor_id uuid
 )
@@ -713,6 +714,10 @@ $$;
 
 revoke all on function private.queue_owned_product_media_cleanup(text, text, text[], uuid) from public, anon, authenticated;
 
+-- A genuinely pristine draft (never published/stocked/ordered/reviewed/
+-- warehoused/returned) may be deleted immediately, without any grace
+-- period — its eligibility is a completely separate rule set from a
+-- Retired product's.
 create or replace function public.delete_draft_product(
   p_product_id text,
   p_brand_id uuid,
@@ -752,9 +757,7 @@ begin
   v_media_urls := private.capture_owned_product_media_urls(p_product_id, v_product.image, v_product.images);
   -- Enqueued BEFORE the delete, in the same transaction: if this insert
   -- fails for any reason, the exception aborts the function and the
-  -- delete below never runs — the product and its media rows survive
-  -- together rather than the product vanishing with its cleanup targets
-  -- lost.
+  -- delete below never runs.
   v_queued := private.queue_owned_product_media_cleanup(p_product_id, v_product.image, v_product.images, p_actor_id);
 
   -- Safe disposable references cascade automatically (product_options,
@@ -777,19 +780,19 @@ $$;
 revoke all on function public.delete_draft_product(text, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.delete_draft_product(text, uuid, uuid, text) to service_role;
 
--- CORRECTIVE PASS (item 7): idempotency is now real, not just "the first
--- caller wins." A replay with the same (product_id, operation_key) is
--- only treated as a safe no-op if the actor and reason also match the
--- original — otherwise a different request is silently colliding with an
--- old key and must be rejected as IDEMPOTENCY_CONFLICT rather than
--- returning someone else's stored request.
+-- Schedules an automatic hard deletion 7 days from now. Only ever
+-- succeeds (creates a row) when the product is CURRENTLY fully eligible —
+-- no immutable history, no operational blockers, no active hold, no
+-- already-active schedule. If it isn't eligible right now, no row is
+-- created at all (no impossible admin request, no "blocked" schedule
+-- sitting around waiting for a human) — the caller gets the current
+-- blockers back and can retry once they clear.
 --
--- CORRECTIVE PASS (item 1 / item 4): a request is now refused outright
--- (no row created) when the product has any IMMUTABLE-history blocker —
--- offering a deletion request that can never succeed was the exact
--- behavior item 4 prohibits. Only OPERATIONAL blockers (resolvable) allow
--- the request through as 'blocked'.
-create or replace function public.request_product_deletion(
+-- Idempotency: a replay with the same (product_id, operation_key) is only
+-- a safe no-op if the actor and reason also match the original —
+-- otherwise a different call is colliding with an old key and must be
+-- rejected as IDEMPOTENCY_CONFLICT.
+create or replace function public.schedule_product_deletion(
   p_product_id text,
   p_brand_id uuid,
   p_actor_id uuid,
@@ -819,27 +822,27 @@ begin
 
   perform id from public.product_variants where product_id = p_product_id for update;
 
-  v_normalized_reason := coalesce(nullif(trim(p_reason), ''), 'No reason provided.');
+  v_normalized_reason := nullif(trim(p_reason), '');
 
   if p_operation_key is not null then
-    select * into v_existing from public.product_deletion_requests
+    select * into v_existing from public.product_deletion_schedules
     where product_id = p_product_id and operation_key = p_operation_key;
     if found then
-      if v_existing.requested_by is distinct from p_actor_id or v_existing.reason <> v_normalized_reason then
+      if v_existing.initiated_by is distinct from p_actor_id or v_existing.reason is distinct from v_normalized_reason then
         return jsonb_build_object('ok', false, 'code', 'IDEMPOTENCY_CONFLICT', 'message', 'This idempotency key was already used for a different request.');
       end if;
-      return jsonb_build_object('ok', true, 'code', 'DELETION_REQUESTED', 'message', 'Deletion request already recorded.', 'requestId', v_existing.id, 'requestState', v_existing.status);
+      return jsonb_build_object('ok', true, 'code', 'DELETION_SCHEDULED', 'message', 'Deletion already scheduled.', 'scheduleId', v_existing.id, 'scheduleState', v_existing.status, 'dueAt', v_existing.due_at);
     end if;
   end if;
 
-  select * into v_existing from public.product_deletion_requests
-  where product_id = p_product_id and status in ('requested', 'under_review', 'blocked') for update;
+  select * into v_existing from public.product_deletion_schedules
+  where product_id = p_product_id and status = 'scheduled' for update;
   if found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_ALREADY_OPEN', 'message', 'A deletion request is already open for this product.', 'requestId', v_existing.id, 'requestState', v_existing.status);
+    return jsonb_build_object('ok', false, 'code', 'DELETION_ALREADY_SCHEDULED', 'message', 'A deletion is already scheduled for this product.', 'scheduleId', v_existing.id, 'scheduleState', v_existing.status, 'dueAt', v_existing.due_at);
   end if;
 
   if v_product.status <> 'archived' then
-    return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_DRAFT', 'message', 'Archive this product before requesting permanent deletion.');
+    return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_RETIRED', 'message', 'Retire this product before scheduling permanent deletion.');
   end if;
 
   v_eligibility := private.compute_product_deletion_eligibility(p_product_id);
@@ -847,33 +850,40 @@ begin
   if coalesce((v_eligibility->>'mustRetainHistory')::boolean, false) is true then
     return jsonb_build_object(
       'ok', false, 'code', 'PRODUCT_MUST_BE_RETAINED',
-      'message', 'This product has order, review, inventory, warehouse, or return history and must remain archived permanently — it can never be permanently deleted, so no deletion request was created.',
+      'message', 'This product has order, review, inventory, warehouse, or return history and must remain retired permanently — it can never be deleted, so no deletion was scheduled.',
       'blockers', v_eligibility->'blockers'
     );
   end if;
 
-  insert into public.product_deletion_requests (
+  if jsonb_array_length(v_eligibility->'blockers') > 0 then
+    return jsonb_build_object(
+      'ok', false, 'code', 'PRODUCT_DELETION_BLOCKED',
+      'message', 'This product cannot be scheduled for deletion right now — resolve the blockers below and try again.',
+      'blockers', v_eligibility->'blockers'
+    );
+  end if;
+
+  insert into public.product_deletion_schedules (
     product_id, product_name, product_sku, product_image, brand_id,
-    requested_by, requested_by_label, reason, status, blocker_snapshot, operation_key
+    initiated_by, initiated_by_label, reason, status, due_at, blocker_snapshot, operation_key
   ) values (
     p_product_id, v_product.name, v_product.sku, v_product.image, v_product.brand_id,
-    p_actor_id, p_actor_label, v_normalized_reason,
-    case when jsonb_array_length(v_eligibility->'blockers') > 0 then 'blocked' else 'requested' end,
+    p_actor_id, p_actor_label, v_normalized_reason, 'scheduled', now() + interval '7 days',
     v_eligibility->'blockers', p_operation_key
   )
   returning * into v_new;
 
   return jsonb_build_object(
-    'ok', true, 'code', 'DELETION_REQUESTED', 'message', 'Deletion request submitted.',
-    'requestId', v_new.id, 'requestState', v_new.status, 'blockers', v_new.blocker_snapshot
+    'ok', true, 'code', 'DELETION_SCHEDULED', 'message', 'Permanent deletion scheduled.',
+    'scheduleId', v_new.id, 'scheduleState', v_new.status, 'dueAt', v_new.due_at
   );
 end;
 $$;
 
-revoke all on function public.request_product_deletion(text, uuid, uuid, text, text, text) from public, anon, authenticated;
-grant execute on function public.request_product_deletion(text, uuid, uuid, text, text, text) to service_role;
+revoke all on function public.schedule_product_deletion(text, uuid, uuid, text, text, text) from public, anon, authenticated;
+grant execute on function public.schedule_product_deletion(text, uuid, uuid, text, text, text) to service_role;
 
-create or replace function public.cancel_product_deletion_request(
+create or replace function public.cancel_product_deletion_schedule(
   p_product_id text,
   p_brand_id uuid,
   p_actor_id uuid,
@@ -886,7 +896,7 @@ set search_path = ''
 as $$
 declare
   v_product record;
-  v_request record;
+  v_schedule record;
 begin
   select * into v_product from public.products where id = p_product_id for update;
   if not found then
@@ -896,202 +906,25 @@ begin
     return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_OWNED', 'message', 'You do not have access to this product.');
   end if;
 
-  select * into v_request from public.product_deletion_requests
-  where product_id = p_product_id and status in ('requested', 'under_review', 'blocked') for update;
+  select * into v_schedule from public.product_deletion_schedules
+  where product_id = p_product_id and status = 'scheduled' for update;
   if not found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_NOT_FOUND', 'message', 'There is no open deletion request for this product.');
+    return jsonb_build_object('ok', false, 'code', 'DELETION_SCHEDULE_NOT_FOUND', 'message', 'There is no active deletion schedule for this product.');
   end if;
 
-  update public.product_deletion_requests
-    set status = 'cancelled', cancelled_at = now(), updated_at = now()
-    where id = v_request.id;
+  update public.product_deletion_schedules
+    set status = 'cancelled', cancelled_at = now(), cancelled_by = p_actor_id, cancelled_by_label = p_actor_label, updated_at = now()
+    where id = v_schedule.id;
 
-  return jsonb_build_object('ok', true, 'code', 'DELETION_REQUEST_CANCELLED', 'message', 'Deletion request cancelled.', 'requestId', v_request.id, 'requestState', 'cancelled');
+  return jsonb_build_object('ok', true, 'code', 'DELETION_SCHEDULE_CANCELLED', 'message', 'Scheduled deletion cancelled.', 'scheduleId', v_schedule.id, 'scheduleState', 'cancelled');
 end;
 $$;
 
-revoke all on function public.cancel_product_deletion_request(text, uuid, uuid, text) from public, anon, authenticated;
-grant execute on function public.cancel_product_deletion_request(text, uuid, uuid, text) to service_role;
+revoke all on function public.cancel_product_deletion_schedule(text, uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.cancel_product_deletion_schedule(text, uuid, uuid, text) to service_role;
 
--- Admin: move a request to under_review / blocked / rejected. Approval
--- (the only status that actually deletes) is its own function below.
---
--- CORRECTIVE PASS: recompute now passes p_ignore_request_id = p_request_id
--- so marking a request 'blocked' doesn't spuriously add
--- DELETION_REQUEST_ALREADY_OPEN against itself.
-create or replace function public.admin_update_deletion_request(
-  p_request_id uuid,
-  p_actor_id uuid,
-  p_actor_label text,
-  p_new_status text,
-  p_admin_note text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_product_id text;
-  v_request record;
-  v_eligibility jsonb;
-begin
-  if p_new_status not in ('under_review', 'blocked', 'rejected') then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'Invalid status transition.');
-  end if;
-
-  -- Un-locked lookup only to learn which product this request belongs to,
-  -- so locks can then be acquired in the same global order every lifecycle
-  -- RPC uses (products -> product_variants -> product_deletion_requests),
-  -- avoiding a deadlock cycle against request_product_deletion/
-  -- cancel_product_deletion_request (which only know the product id up
-  -- front, never the request id).
-  select product_id into v_product_id from public.product_deletion_requests where id = p_request_id;
-  if v_product_id is null then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_NOT_FOUND', 'message', 'Deletion request not found.');
-  end if;
-
-  perform id from public.products where id = v_product_id for update;
-  perform id from public.product_variants where product_id = v_product_id for update;
-
-  select * into v_request from public.product_deletion_requests where id = p_request_id for update;
-  if not found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_NOT_FOUND', 'message', 'Deletion request not found.');
-  end if;
-  if v_request.status not in ('requested', 'under_review', 'blocked') then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'This request has already been resolved.');
-  end if;
-
-  if p_new_status = 'rejected' and coalesce(nullif(trim(p_admin_note), ''), '') = '' then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'A reason is required to reject a deletion request.');
-  end if;
-
-  if p_new_status = 'blocked' then
-    v_eligibility := private.compute_product_deletion_eligibility(v_product_id, p_request_id);
-  end if;
-
-  update public.product_deletion_requests
-    set status = p_new_status,
-        reviewed_by = p_actor_id,
-        reviewed_at = now(),
-        admin_note = coalesce(nullif(trim(p_admin_note), ''), admin_note),
-        blocker_snapshot = coalesce(v_eligibility->'blockers', blocker_snapshot),
-        updated_at = now()
-    where id = p_request_id;
-
-  return jsonb_build_object('ok', true, 'code', 'DELETION_REQUEST_UPDATED', 'message', 'Deletion request updated.', 'requestId', p_request_id, 'requestState', p_new_status);
-end;
-$$;
-
-revoke all on function public.admin_update_deletion_request(uuid, uuid, text, text, text) from public, anon, authenticated;
-grant execute on function public.admin_update_deletion_request(uuid, uuid, text, text, text) to service_role;
-
--- CORRECTIVE PASS (items 1, 2, 3, 8): this is the function the original
--- migration made structurally impossible to succeed. Fixed by:
---   - recomputing eligibility with p_ignore_request_id = p_request_id, so
---     this request's own open-request state is never counted against it;
---   - the immutable-vs-operational split above means an archived,
---     previously-published, history-free product no longer trips
---     PRODUCT_NOT_DRAFT;
---   - product_id is now nullable/ON DELETE SET NULL with a name/sku/image
---     snapshot, so the delete below can actually succeed and the request
---     row survives it, readable forever;
---   - the whole function is one Postgres statement-level transaction — an
---     unhandled exception at any point (including from the DELETE itself,
---     e.g. an unanticipated FK restrict) aborts everything mutated so far
---     automatically; nothing here needs a manual rollback;
---   - media URLs are captured before the delete for durable Storage
---     cleanup, exactly like delete_draft_product.
-create or replace function public.admin_approve_product_deletion(
-  p_request_id uuid,
-  p_actor_id uuid,
-  p_actor_label text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_product_id text;
-  v_request record;
-  v_product record;
-  v_eligibility jsonb;
-  v_media_urls text[];
-  v_queued integer;
-begin
-  -- Same un-locked-lookup-then-locks-in-global-order pattern as
-  -- admin_update_deletion_request above — see its comment.
-  select product_id into v_product_id from public.product_deletion_requests where id = p_request_id;
-  if v_product_id is null then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_NOT_FOUND', 'message', 'Deletion request not found.');
-  end if;
-
-  select * into v_product from public.products where id = v_product_id for update;
-  perform id from public.product_variants where product_id = v_product_id for update;
-
-  select * into v_request from public.product_deletion_requests where id = p_request_id for update;
-  if not found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_NOT_FOUND', 'message', 'Deletion request not found.');
-  end if;
-  if v_request.status not in ('requested', 'under_review', 'blocked') then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'This request has already been resolved.');
-  end if;
-
-  if v_product.id is null then
-    -- Product already gone somehow — resolve the orphaned request rather
-    -- than leaving it stuck open forever. product_id is already null via
-    -- the ON DELETE SET NULL FK action; nothing further to snapshot here
-    -- since request creation already captured a name/sku/image snapshot.
-    update public.product_deletion_requests set status = 'completed', completed_at = now(), reviewed_by = p_actor_id, reviewed_at = now(), updated_at = now() where id = p_request_id;
-    return jsonb_build_object('ok', true, 'code', 'PRODUCT_PERMANENTLY_DELETED', 'message', 'Product was already gone; request closed.', 'requestId', p_request_id, 'requestState', 'completed');
-  end if;
-
-  -- Always recompute — never trust the snapshot taken at request time —
-  -- and never let this request's own "open request" state count against
-  -- itself.
-  v_eligibility := private.compute_product_deletion_eligibility(v_product_id, p_request_id);
-  if coalesce((v_eligibility->>'mustRetainHistory')::boolean, true) is true
-     or jsonb_array_length(v_eligibility->'blockers') > 0 then
-    update public.product_deletion_requests
-      set status = 'blocked', blocker_snapshot = v_eligibility->'blockers', updated_at = now()
-      where id = p_request_id;
-    return jsonb_build_object(
-      'ok', false, 'code', 'PRODUCT_MUST_BE_RETAINED',
-      'message', 'New activity means this product can no longer be safely deleted — it remains archived.',
-      'requestId', p_request_id, 'requestState', 'blocked', 'blockers', v_eligibility->'blockers'
-    );
-  end if;
-
-  v_media_urls := private.capture_owned_product_media_urls(v_product_id, v_product.image, v_product.images);
-  -- Same enqueue-before-delete, same-transaction guarantee as
-  -- delete_draft_product above — a failure here aborts the function
-  -- before the product is touched.
-  v_queued := private.queue_owned_product_media_cleanup(v_product_id, v_product.image, v_product.images, p_actor_id);
-
-  delete from public.products where id = v_product_id;
-  if not found then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_ELIGIBILITY_CHANGED', 'message', 'This product could not be deleted — it may have changed since eligibility was checked.');
-  end if;
-
-  update public.product_deletion_requests
-    set status = 'completed', completed_at = now(), reviewed_by = p_actor_id, reviewed_at = now(), updated_at = now(),
-        product_name = v_product.name, product_sku = v_product.sku, product_image = v_product.image
-    where id = p_request_id;
-
-  return jsonb_build_object(
-    'ok', true, 'code', 'PRODUCT_PERMANENTLY_DELETED', 'message', 'Product permanently deleted.',
-    'requestId', p_request_id, 'requestState', 'completed', 'before', to_jsonb(v_product),
-    'mediaUrls', to_jsonb(coalesce(v_media_urls, array[]::text[])), 'mediaJobsQueued', v_queued
-  );
-end;
-$$;
-
-revoke all on function public.admin_approve_product_deletion(uuid, uuid, text) from public, anon, authenticated;
-grant execute on function public.admin_approve_product_deletion(uuid, uuid, text) to service_role;
-
--- Admin emergency control: hide/archive immediately regardless of any open
--- deletion-request state. Never deletes anything, never bypasses the
+-- Admin emergency control: hide/retire immediately regardless of any
+-- active deletion schedule. Never deletes anything, never bypasses the
 -- deletion RPCs above — just forces status = 'archived' with a mandatory
 -- reason, for cases needing instant storefront removal.
 create or replace function public.admin_emergency_hide_product(
@@ -1109,7 +942,7 @@ declare
   v_product record;
 begin
   if coalesce(nullif(trim(p_reason), ''), '') = '' then
-    return jsonb_build_object('ok', false, 'code', 'DELETION_REQUEST_STATE_CONFLICT', 'message', 'A reason is required to hide a product.');
+    return jsonb_build_object('ok', false, 'code', 'REASON_REQUIRED', 'message', 'A reason is required to hide a product.');
   end if;
 
   select * into v_product from public.products where id = p_product_id for update;
@@ -1119,10 +952,10 @@ begin
   perform id from public.product_variants where product_id = p_product_id for update;
 
   if v_product.status = 'archived' then
-    return jsonb_build_object('ok', true, 'code', 'ALREADY_ARCHIVED', 'message', 'Already hidden.', 'lifecycle', 'archived');
+    return jsonb_build_object('ok', true, 'code', 'ALREADY_RETIRED', 'message', 'Already hidden.', 'lifecycle', 'archived');
   end if;
 
-  update public.products set status = 'archived' where id = p_product_id;
+  update public.products set status = 'archived', retired_at = now() where id = p_product_id;
 
   return jsonb_build_object('ok', true, 'code', 'EMERGENCY_HIDDEN', 'message', 'Product hidden from the storefront.', 'lifecycle', 'archived', 'before', to_jsonb(v_product));
 end;
@@ -1132,22 +965,247 @@ revoke all on function public.admin_emergency_hide_product(text, uuid, text, tex
 grant execute on function public.admin_emergency_hide_product(text, uuid, text, text) to service_role;
 
 -- ----------------------------------------------------------------------------
--- 5. Checkout defense-in-depth: an archived/draft/unpublished product can
---    never gain a new order_items row, even via a direct RPC call that
---    skips the app-layer cart/checkout availability checks. All existing
---    order-placement RPCs (place_order, place_paid_order) already check
---    product_variants.selling_status/quantity but never products.status —
---    this closes that gap for every current and future insert path at
---    once, rather than patching each RPC body individually.
+-- 6. Legal/Admin hold. An active hold blocks immediate hard deletion,
+--    scheduling, and execution of an existing schedule (all enforced via
+--    the eligibility calculation's PRODUCT_HAS_ACTIVE_HOLD blocker, which
+--    every relevant RPC recomputes fresh). Applying a hold to an already-
+--    scheduled product safely stops that schedule (moved to 'blocked',
+--    not silently ignored). Releasing a hold never auto-resumes or
+--    auto-schedules anything — the owner/admin must call
+--    schedule_product_deletion again.
+-- ----------------------------------------------------------------------------
+
+create or replace function public.apply_product_deletion_hold(
+  p_product_id text,
+  p_actor_id uuid,
+  p_actor_label text,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_product record;
+  v_existing record;
+  v_schedule record;
+  v_hold record;
+begin
+  if coalesce(nullif(trim(p_reason), ''), '') = '' then
+    return jsonb_build_object('ok', false, 'code', 'REASON_REQUIRED', 'message', 'A reason is required to apply a hold.');
+  end if;
+
+  select * into v_product from public.products where id = p_product_id for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_FOUND', 'message', 'This product no longer exists.');
+  end if;
+
+  select * into v_existing from public.product_deletion_holds
+  where product_id = p_product_id and status = 'active' for update;
+  if found then
+    return jsonb_build_object('ok', false, 'code', 'ALREADY_ON_HOLD', 'message', 'This product already has an active hold.', 'holdId', v_existing.id);
+  end if;
+
+  select * into v_schedule from public.product_deletion_schedules
+  where product_id = p_product_id and status = 'scheduled' for update;
+  if found then
+    update public.product_deletion_schedules
+      set status = 'blocked', blocked_at = now(), blocked_reason = 'A legal/admin hold was applied to this product.', updated_at = now()
+      where id = v_schedule.id;
+  end if;
+
+  insert into public.product_deletion_holds (product_id, brand_id, reason, created_by, created_by_label)
+  values (p_product_id, v_product.brand_id, trim(p_reason), p_actor_id, p_actor_label)
+  returning * into v_hold;
+
+  return jsonb_build_object('ok', true, 'code', 'HOLD_APPLIED', 'message', 'Deletion hold applied.', 'holdId', v_hold.id, 'scheduleStopped', v_schedule.id is not null);
+end;
+$$;
+
+revoke all on function public.apply_product_deletion_hold(text, uuid, text, text) from public, anon, authenticated;
+grant execute on function public.apply_product_deletion_hold(text, uuid, text, text) to service_role;
+
+create or replace function public.release_product_deletion_hold(
+  p_product_id text,
+  p_actor_id uuid,
+  p_actor_label text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_hold record;
+begin
+  select * into v_hold from public.product_deletion_holds
+  where product_id = p_product_id and status = 'active' for update;
+  if not found then
+    return jsonb_build_object('ok', false, 'code', 'HOLD_NOT_FOUND', 'message', 'There is no active hold on this product.');
+  end if;
+
+  update public.product_deletion_holds
+    set status = 'released', released_by = p_actor_id, released_by_label = p_actor_label, released_at = now()
+    where id = v_hold.id;
+
+  -- Deliberately does not touch any deletion schedule — releasing a hold
+  -- must never automatically resume or (re)create a deletion schedule.
+  return jsonb_build_object('ok', true, 'code', 'HOLD_RELEASED', 'message', 'Deletion hold released.', 'holdId', v_hold.id);
+end;
+$$;
+
+revoke all on function public.release_product_deletion_hold(text, uuid, text) from public, anon, authenticated;
+grant execute on function public.release_product_deletion_hold(text, uuid, text) to service_role;
+
+-- ----------------------------------------------------------------------------
+-- 7. Scheduled-deletion cron executor.
 --
--- CORRECTIVE PASS (item 9): the original version silently skipped the
--- check whenever NEW.product_id was null, even though every real
--- order-placement path also sets variant_id — a caller that only supplied
--- variant_id (product_id null) sailed straight through with zero
--- enforcement. Now resolves the product via variant_id whenever
--- product_id is null, and only skips entirely when *neither* is present
--- (a genuinely product-less historical row, which no live insert path
--- produces).
+-- Concurrency/reliability:
+--   - `for update skip locked` claims a bounded batch of due schedules —
+--     two concurrent invocations (an overlapping cron run, a manual
+--     retrigger) can never grab the same row, so a product is never
+--     deleted twice and a schedule is never double-completed.
+--   - Each schedule is processed inside its own nested
+--     `begin ... exception when others ... end` block, which PL/pgSQL
+--     implements via an implicit savepoint — one schedule's unexpected
+--     failure rolls back only that schedule's own work and is recorded in
+--     the results array, never the rest of the batch already completed in
+--     this same call.
+--   - Eligibility (including the active-hold check) is recomputed fresh,
+--     under lock, for every schedule, with that schedule's own id passed
+--     as the ignore-schedule so its own active-state is never treated as
+--     a blocker against itself. Any real blocker (new order, new stock,
+--     a hold applied mid-grace-period, etc.) flips the schedule to
+--     'blocked' instead of deleting anything.
+--   - The delete and the schedule's own 'completed' update are the same
+--     transaction as the media-cleanup enqueue — a crash between "product
+--     deleted" and "schedule marked completed" cannot happen because
+--     they're the same statement-level unit of work; if the process dies
+--     before commit, nothing in this iteration committed at all (the next
+--     cron run picks the still-'scheduled' row back up, unharmed).
+--   - Cancellation racing execution: cancel_product_deletion_schedule
+--     locks the schedule row exactly like this executor's cursor does
+--     (`for update`); whichever transaction gets there first wins, and
+--     the loser simply doesn't see a 'scheduled' row to act on (a
+--     `skip locked` batch pass simply skips a row a concurrent
+--     cancellation is mid-transaction on; the executor's next pass picks
+--     it up if it's still 'scheduled' after the cancellation
+--     commits — a scheduled row cancelled first mid-way through it being
+--     locked here retains its committed 'cancelled' status).
+-- ----------------------------------------------------------------------------
+
+create or replace function private.execute_due_product_deletions(p_batch_size integer default 25)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_row record;
+  v_schedule_id uuid;
+  v_product_id text;
+  v_product record;
+  v_eligibility jsonb;
+  v_media_urls text[];
+  v_queued integer;
+  v_completed integer := 0;
+  v_blocked integer := 0;
+  v_errored integer := 0;
+  v_results jsonb := '[]'::jsonb;
+begin
+  for v_row in
+    select id, product_id from public.product_deletion_schedules
+    where status = 'scheduled' and due_at <= now()
+    order by due_at
+    limit greatest(1, least(coalesce(p_batch_size, 25), 200))
+    for update skip locked
+  loop
+    begin
+      v_schedule_id := v_row.id;
+      v_product_id := v_row.product_id;
+
+      if v_product_id is null then
+        update public.product_deletion_schedules set status = 'completed', completed_at = now() where id = v_schedule_id;
+        v_completed := v_completed + 1;
+        v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'outcome', 'completed');
+        continue;
+      end if;
+
+      select * into v_product from public.products where id = v_product_id for update;
+      perform id from public.product_variants where product_id = v_product_id for update;
+
+      if v_product.id is null then
+        -- Product already gone somehow — close the orphaned schedule
+        -- rather than leaving it stuck 'scheduled' forever.
+        update public.product_deletion_schedules set status = 'completed', completed_at = now() where id = v_schedule_id;
+        v_completed := v_completed + 1;
+        v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'outcome', 'completed');
+        continue;
+      end if;
+
+      v_eligibility := private.compute_product_deletion_eligibility(v_product_id, v_schedule_id);
+      if coalesce((v_eligibility->>'mustRetainHistory')::boolean, true) is true
+         or jsonb_array_length(v_eligibility->'blockers') > 0 then
+        update public.product_deletion_schedules
+          set status = 'blocked', blocked_at = now(),
+              blocked_reason = 'New activity means this product can no longer be safely deleted — it remains retired.',
+              blocker_snapshot = v_eligibility->'blockers', updated_at = now()
+          where id = v_schedule_id;
+        v_blocked := v_blocked + 1;
+        v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'productId', v_product_id, 'outcome', 'blocked', 'blockers', v_eligibility->'blockers');
+        continue;
+      end if;
+
+      v_media_urls := private.capture_owned_product_media_urls(v_product_id, v_product.image, v_product.images);
+      v_queued := private.queue_owned_product_media_cleanup(v_product_id, v_product.image, v_product.images, null);
+
+      delete from public.products where id = v_product_id;
+      if not found then
+        update public.product_deletion_schedules
+          set status = 'blocked', blocked_at = now(), blocked_reason = 'The product changed unexpectedly during deletion.', updated_at = now()
+          where id = v_schedule_id;
+        v_blocked := v_blocked + 1;
+        v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'productId', v_product_id, 'outcome', 'blocked');
+        continue;
+      end if;
+
+      update public.product_deletion_schedules
+        set status = 'completed', completed_at = now(),
+            product_name = v_product.name, product_sku = v_product.sku, product_image = v_product.image
+        where id = v_schedule_id;
+      v_completed := v_completed + 1;
+      v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'productId', v_product_id, 'outcome', 'completed', 'mediaJobsQueued', v_queued);
+    exception when others then
+      v_errored := v_errored + 1;
+      v_results := v_results || jsonb_build_object('scheduleId', v_schedule_id, 'productId', v_product_id, 'outcome', 'error', 'error', sqlerrm);
+    end;
+  end loop;
+
+  return jsonb_build_object('completed', v_completed, 'blocked', v_blocked, 'errored', v_errored, 'results', v_results);
+end;
+$$;
+
+revoke all on function private.execute_due_product_deletions(integer) from public, anon, authenticated;
+
+create or replace function public.execute_due_product_deletions(p_batch_size integer default 25)
+returns jsonb
+language sql
+security definer
+set search_path = ''
+as $$
+  select private.execute_due_product_deletions(p_batch_size);
+$$;
+
+revoke all on function public.execute_due_product_deletions(integer) from public, anon, authenticated;
+grant execute on function public.execute_due_product_deletions(integer) to service_role;
+
+-- ----------------------------------------------------------------------------
+-- 8. Checkout defense-in-depth: an archived/draft/unpublished product can
+--    never gain a new order_items row, even via a direct RPC call that
+--    skips the app-layer cart/checkout availability checks. Resolves the
+--    product through variant_id whenever product_id is null (every real
+--    order-placement path sets variant_id), so a caller that only
+--    supplies variant_id can't sail through unenforced.
 -- ----------------------------------------------------------------------------
 
 create or replace function private.enforce_order_item_product_available()
@@ -1182,14 +1240,11 @@ for each row execute function private.enforce_order_item_product_available();
 revoke all on function private.enforce_order_item_product_available() from public, anon, authenticated;
 
 -- ----------------------------------------------------------------------------
--- 6. storefront_products: filter archived/paused/inactive-brand products
+-- 9. storefront_products: filters Retired/paused/inactive-brand products
 --    for every reader, not only RLS-scoped anon/authenticated queries.
 --    Service-role reads (lib/cart/liveValidation.ts, lib/payments/
 --    intentionCart.ts, checkout RPCs) bypass RLS entirely, so the view
---    itself must carry this predicate — it previously relied on the RLS
---    policy alone, exactly the class of bug 20260814000006 was written to
---    fix for the launch gate, now extended to the base publish/pause/
---    active-brand conditions too.
+--    itself must carry this predicate.
 -- ----------------------------------------------------------------------------
 
 create or replace view public.storefront_products
@@ -1215,15 +1270,13 @@ where p.status = 'published'
 grant select on public.storefront_products to anon, authenticated, service_role;
 
 -- ----------------------------------------------------------------------------
--- 7. Admin review queue: a single paginated, filtered, database-level
---    search RPC (item 10). Replaces the original app-layer approach of
---    loading every product_deletion_requests row and filtering/paginating
---    in JavaScript — status/brand/partner/text-search and LIMIT/OFFSET are
---    all applied inside this one query, so the admin review queue never
---    pulls more rows out of Postgres than the current page actually needs.
+-- 10. Admin/brand-portal Retired-tab + deletion-schedule search — single
+--     paginated, filtered, database-level RPCs. Neither ever loads a full
+--     table into memory: status/brand/partner/text filters and
+--     LIMIT/OFFSET are all applied inside Postgres.
 -- ----------------------------------------------------------------------------
 
-create or replace function private.admin_search_deletion_requests(
+create or replace function private.admin_search_deletion_schedules(
   p_status text default null,
   p_brand_id uuid default null,
   p_is_partner boolean default null,
@@ -1244,44 +1297,46 @@ declare
   v_rows jsonb;
 begin
   select count(*) into v_total
-  from public.product_deletion_requests r
-  join public.brands b on b.id = r.brand_id
-  where (p_status is null or r.status = p_status)
-    and (p_brand_id is null or r.brand_id = p_brand_id)
+  from public.product_deletion_schedules s
+  join public.brands b on b.id = s.brand_id
+  where (p_status is null or s.status = p_status)
+    and (p_brand_id is null or s.brand_id = p_brand_id)
     and (p_is_partner is null or b.is_mahaly_partner = p_is_partner)
     and (
       v_search is null
-      or r.id::text ilike '%' || v_search || '%'
-      or r.product_id ilike '%' || v_search || '%'
-      or r.product_name ilike '%' || v_search || '%'
+      or s.id::text ilike '%' || v_search || '%'
+      or s.product_id ilike '%' || v_search || '%'
+      or s.product_name ilike '%' || v_search || '%'
       or b.name ilike '%' || v_search || '%'
     );
 
-  select coalesce(jsonb_agg(row_data order by requested_at desc), '[]'::jsonb) into v_rows
+  select coalesce(jsonb_agg(row_data order by scheduled_at desc), '[]'::jsonb) into v_rows
   from (
     select
       jsonb_build_object(
-        'id', r.id, 'productId', r.product_id, 'brandId', r.brand_id,
-        'productName', r.product_name, 'productSku', r.product_sku, 'productImage', r.product_image,
-        'requestedByLabel', r.requested_by_label, 'requestedAt', r.requested_at, 'reason', r.reason,
-        'status', r.status, 'reviewedAt', r.reviewed_at, 'adminNote', r.admin_note,
-        'completedAt', r.completed_at, 'cancelledAt', r.cancelled_at, 'blockerSnapshot', r.blocker_snapshot,
-        'brandName', b.name, 'brandSlug', b.slug, 'brandIsPartner', b.is_mahaly_partner
+        'id', s.id, 'productId', s.product_id, 'brandId', s.brand_id,
+        'productName', s.product_name, 'productSku', s.product_sku, 'productImage', s.product_image,
+        'initiatedByLabel', s.initiated_by_label, 'scheduledAt', s.scheduled_at, 'dueAt', s.due_at, 'reason', s.reason,
+        'status', s.status, 'cancelledAt', s.cancelled_at, 'cancelledByLabel', s.cancelled_by_label,
+        'blockedAt', s.blocked_at, 'blockedReason', s.blocked_reason,
+        'completedAt', s.completed_at, 'blockerSnapshot', s.blocker_snapshot,
+        'brandName', b.name, 'brandSlug', b.slug, 'brandIsPartner', b.is_mahaly_partner,
+        'hasActiveHold', exists(select 1 from public.product_deletion_holds h where h.product_id = s.product_id and h.status = 'active')
       ) as row_data,
-      r.requested_at
-    from public.product_deletion_requests r
-    join public.brands b on b.id = r.brand_id
-    where (p_status is null or r.status = p_status)
-      and (p_brand_id is null or r.brand_id = p_brand_id)
+      s.scheduled_at
+    from public.product_deletion_schedules s
+    join public.brands b on b.id = s.brand_id
+    where (p_status is null or s.status = p_status)
+      and (p_brand_id is null or s.brand_id = p_brand_id)
       and (p_is_partner is null or b.is_mahaly_partner = p_is_partner)
       and (
         v_search is null
-        or r.id::text ilike '%' || v_search || '%'
-        or r.product_id ilike '%' || v_search || '%'
-        or r.product_name ilike '%' || v_search || '%'
+        or s.id::text ilike '%' || v_search || '%'
+        or s.product_id ilike '%' || v_search || '%'
+        or s.product_name ilike '%' || v_search || '%'
         or b.name ilike '%' || v_search || '%'
       )
-    order by r.requested_at desc
+    order by s.scheduled_at desc
     limit v_limit offset v_offset
   ) page;
 
@@ -1289,9 +1344,9 @@ begin
 end;
 $$;
 
-revoke all on function private.admin_search_deletion_requests(text, uuid, boolean, text, integer, integer) from public, anon, authenticated;
+revoke all on function private.admin_search_deletion_schedules(text, uuid, boolean, text, integer, integer) from public, anon, authenticated;
 
-create or replace function public.admin_search_deletion_requests(
+create or replace function public.admin_search_deletion_schedules(
   p_status text default null,
   p_brand_id uuid default null,
   p_is_partner boolean default null,
@@ -1305,8 +1360,89 @@ stable
 security definer
 set search_path = ''
 as $$
-  select private.admin_search_deletion_requests(p_status, p_brand_id, p_is_partner, p_search, p_limit, p_offset);
+  select private.admin_search_deletion_schedules(p_status, p_brand_id, p_is_partner, p_search, p_limit, p_offset);
 $$;
 
-revoke all on function public.admin_search_deletion_requests(text, uuid, boolean, text, integer, integer) from public, anon, authenticated;
-grant execute on function public.admin_search_deletion_requests(text, uuid, boolean, text, integer, integer) to service_role;
+revoke all on function public.admin_search_deletion_schedules(text, uuid, boolean, text, integer, integer) from public, anon, authenticated;
+grant execute on function public.admin_search_deletion_schedules(text, uuid, boolean, text, integer, integer) to service_role;
+
+-- Paginated, database-level "Retired" product list — used by both Brand
+-- Portal (p_brand_id required) and Admin (p_brand_id null = all brands).
+-- Never loads a full catalog into memory: status = 'archived' plus
+-- search/pagination are applied inside Postgres, and each row's deletion-
+-- eligibility badge is computed inline via a lateral join to the same
+-- canonical eligibility function every mutation RPC uses (never a second,
+-- divergent implementation).
+create or replace function private.search_retired_products(
+  p_brand_id uuid default null,
+  p_search text default null,
+  p_limit integer default 25,
+  p_offset integer default 0
+)
+returns jsonb
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 25), 1), 100);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+  v_search text := nullif(trim(coalesce(p_search, '')), '');
+  v_total integer;
+  v_rows jsonb;
+begin
+  select count(*) into v_total
+  from public.products p
+  where p.status = 'archived'
+    and (p_brand_id is null or p.brand_id = p_brand_id)
+    and (v_search is null or p.name ilike '%' || v_search || '%' or p.sku ilike '%' || v_search || '%' or p.id ilike '%' || v_search || '%');
+
+  select coalesce(jsonb_agg(row_data order by retired_at desc nulls last), '[]'::jsonb) into v_rows
+  from (
+    select
+      jsonb_build_object(
+        'id', p.id, 'name', p.name, 'sku', p.sku, 'image', p.image, 'brandId', p.brand_id, 'brandName', p.brand_name,
+        'eligibility', private.compute_product_deletion_eligibility(p.id),
+        'activeSchedule', (
+          select jsonb_build_object('id', sch.id, 'status', sch.status, 'dueAt', sch.due_at)
+          from public.product_deletion_schedules sch
+          where sch.product_id = p.id and sch.status = 'scheduled'
+          limit 1
+        )
+      ) as row_data,
+      -- Pre-migration archived rows have no known retirement date
+      -- (retired_at only starts getting set by retire_product/emergency-
+      -- hide going forward) — they sort after everything with a known
+      -- date rather than being mutated to fabricate one.
+      p.retired_at
+    from public.products p
+    where p.status = 'archived'
+      and (p_brand_id is null or p.brand_id = p_brand_id)
+      and (v_search is null or p.name ilike '%' || v_search || '%' or p.sku ilike '%' || v_search || '%' or p.id ilike '%' || v_search || '%')
+    order by p.retired_at desc nulls last
+    limit v_limit offset v_offset
+  ) page;
+
+  return jsonb_build_object('rows', v_rows, 'total', v_total, 'limit', v_limit, 'offset', v_offset);
+end;
+$$;
+
+revoke all on function private.search_retired_products(uuid, text, integer, integer) from public, anon, authenticated;
+
+create or replace function public.search_retired_products(
+  p_brand_id uuid default null,
+  p_search text default null,
+  p_limit integer default 25,
+  p_offset integer default 0
+)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.search_retired_products(p_brand_id, p_search, p_limit, p_offset);
+$$;
+
+revoke all on function public.search_retired_products(uuid, text, integer, integer) from public, anon, authenticated;
+grant execute on function public.search_retired_products(uuid, text, integer, integer) to service_role;

@@ -5,26 +5,25 @@ import { useRouter } from "next/navigation";
 import { Archive, EyeOff, RotateCcw, Trash2, X } from "lucide-react";
 import type { ProductRecord } from "@/types";
 
-type PendingAction = "archive" | "restore" | "delete_draft" | "hide" | null;
+type PendingAction = "retire" | "restore" | "delete_draft" | "hide" | null;
 
 // Replaces the old generic DeleteEntityButton (a bare confirm() + raw
 // `DELETE /api/admin/products/[id]`, which used to hard-delete with no
 // dependency checks) for products specifically. Every action here is
 // state-aware and calls a canonical lifecycle RPC — nothing here ever
 // edits `status` directly:
-//   - Archive/Retire: hidden from the storefront immediately, fully
-//     reversible, every order/review/inventory/warehouse history record
-//     untouched.
-//   - Restore: brings an archived product back to Draft only — never
+//   - Retire: hidden from the storefront immediately, fully reversible,
+//     every order/review/inventory/warehouse history record untouched.
+//   - Restore: brings a retired product back to Draft only — never
 //     straight to Published (see restore_product's own comment in
 //     supabase/migrations/20260814020000_product_deletion_lifecycle.sql
 //     for why) — the normal edit-and-publish flow is what actually
 //     republishes it, with its own full validation.
 //   - Permanently delete: only ever offered for a genuinely pristine,
 //     history-free draft. A product with real order/review/inventory/
-//     warehouse/return/audit history can never be deleted this way — real
-//     permanent deletion of that kind of product only ever happens
-//     through the deletion-requests review queue this component links to.
+//     warehouse/return/audit history can never be deleted this way —
+//     scheduling real permanent deletion of a Retired product happens
+//     from the Retired tab, not from this generic row.
 export default function AdminProductDeletionActions({ product }: { product: ProductRecord }) {
   const router = useRouter();
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -97,9 +96,9 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
         {!isArchived && (
           <button
             type="button"
-            onClick={() => open("archive")}
-            aria-label={`Archive ${product.name}`}
-            title="Archive — removes from storefront, fully reversible"
+            onClick={() => open("retire")}
+            aria-label={`Retire ${product.name}`}
+            title="Retire — removes from storefront, fully reversible"
             className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
           >
             <Archive className="h-4 w-4" strokeWidth={1.6} />
@@ -146,15 +145,15 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
           <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
             <button type="button" onClick={() => setPendingAction(null)} disabled={busy} aria-label="Close confirmation" className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50"><X className="h-4 w-4" aria-hidden="true" /></button>
             <h2 id="admin-product-action-title" className="pr-9 text-lg font-bold text-slate-900">
-              {pendingAction === "archive" && `Archive ${product.name}?`}
+              {pendingAction === "retire" && `Retire ${product.name}?`}
               {pendingAction === "restore" && `Restore ${product.name}?`}
               {pendingAction === "hide" && `Hide ${product.name} immediately?`}
               {pendingAction === "delete_draft" && `Permanently delete ${product.name}?`}
             </h2>
             <p id="admin-product-action-description" className="mt-2 text-[13px] leading-6 text-slate-600">
-              {pendingAction === "archive" && "Removes it from the storefront immediately. Fully reversible — order, review, and inventory history are untouched."}
+              {pendingAction === "retire" && "Removes it from the storefront immediately. Fully reversible — order, review, and inventory history are untouched."}
               {pendingAction === "restore" && "Brings this product back as a Draft — it does not go straight back to Published. Open it in the editor and publish when it's ready, so the normal publish checks run again."}
-              {pendingAction === "hide" && "Instantly hides this product from the storefront, even if a deletion request is pending. This is not a deletion — the product stays archived with full history intact. A reason is required and is recorded in the audit log."}
+              {pendingAction === "hide" && "Instantly hides this product from the storefront, even if a deletion is scheduled. This is not a deletion — the product stays retired with full history intact. A reason is required and is recorded in the audit log."}
               {pendingAction === "delete_draft" && "This draft has never been published or stocked, so the database allows deleting it immediately. This cannot be undone."}
             </p>
             {pendingAction === "hide" && (
@@ -178,7 +177,7 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
                 disabled={!canConfirm}
                 className={`h-10 rounded-lg px-4 text-[12.5px] font-semibold text-white disabled:opacity-60 ${pendingAction === "delete_draft" ? "bg-red-700 hover:bg-red-800" : pendingAction === "hide" ? "bg-amber-600 hover:bg-amber-700" : pendingAction === "restore" ? "bg-emerald-700 hover:bg-emerald-800" : "bg-slate-800 hover:bg-slate-900"}`}
               >
-                {busy ? "Working…" : pendingAction === "archive" ? "Archive" : pendingAction === "restore" ? "Restore to Draft" : pendingAction === "hide" ? "Hide now" : "Delete permanently"}
+                {busy ? "Working…" : pendingAction === "retire" ? "Retire" : pendingAction === "restore" ? "Restore to Draft" : pendingAction === "hide" ? "Hide now" : "Delete permanently"}
               </button>
             </div>
           </div>

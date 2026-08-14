@@ -11,7 +11,7 @@ import { restoreProduct } from "@/lib/admin/productDeletion";
 // (before this pass) also doubled as a restore bypass. Always routes
 // through the canonical restore_product RPC: brings an archived product
 // back to Draft (never straight to Published — see restore_product's own
-// comment for why), blocked while a deletion request is open.
+// comment for why), blocked while a deletion schedule is active.
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const staff = await requireStaffRole("manager");

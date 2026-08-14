@@ -39,7 +39,14 @@ test("storage cleanup is durable, service-only, and has an authenticated cron re
   assert.match(cleanup, /review-images/);
   assert.match(cleanup, /product-images/);
   assert.match(cron, /Bearer \$\{cronSecret\}/);
-  assert.deepEqual(vercel.crons, [{ path: "/api/cron/storage-cleanup", schedule: "0 3 * * *" }]);
+  // Not an exact-equal on the whole array — the product deletion lifecycle
+  // migration (supabase/migrations/20260814020000_product_deletion_lifecycle.sql)
+  // legitimately added a second, independent cron entry
+  // (/api/cron/product-deletions) alongside this one.
+  assert.ok(
+    vercel.crons.some((entry) => entry.path === "/api/cron/storage-cleanup" && entry.schedule === "0 3 * * *"),
+    "expected the storage-cleanup cron entry to still be present"
+  );
 });
 
 test("confirmed auth email changes synchronize the profile mirror", () => {

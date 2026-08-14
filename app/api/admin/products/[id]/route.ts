@@ -176,12 +176,13 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 // would just bubble up as a generic 500), no per-row success verification
 // (Supabase's .delete() doesn't error on zero matched rows, so a delete
 // against an already-gone product still logged a "delete" audit entry and
-// reported {ok:true}). Replaced entirely by the deletion-request review
-// queue (app/api/admin/products/deletion-requests/**) and the emergency
-// hide action (app/api/admin/products/[id]/emergency-hide/route.ts), both
-// routed through the canonical, transaction-safe lifecycle RPCs in
+// reported {ok:true}). Replaced entirely by the automatic deletion-schedule
+// flow (app/api/admin/products/[id]/deletion-schedule/route.ts, and its
+// brand-portal equivalent) and the emergency hide action
+// (app/api/admin/products/[id]/emergency-hide/route.ts), both routed
+// through the canonical, transaction-safe lifecycle RPCs in
 // lib/admin/productDeletion.ts. There is intentionally no direct
 // "DELETE this product" admin route anymore — every permanent deletion
-// must go through a reviewed product_deletion_requests row so the
-// database's own eligibility check (immutable order/inventory/warehouse/
-// review history) always runs first.
+// must go through the database's own eligibility check (immutable order/
+// inventory/warehouse/review history) via schedule_product_deletion /
+// execute_due_product_deletions, never a human approval step.

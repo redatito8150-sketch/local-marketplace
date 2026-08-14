@@ -13,14 +13,16 @@ export type NotificationType =
   | "product_updated"
   | "product_published"
   | "product_archived"
+  | "product_retired"
   | "product_restored"
   | "product_draft_deleted"
-  | "product_deletion_requested"
-  | "product_deletion_request_cancelled"
-  | "product_deletion_approved"
-  | "product_deletion_rejected"
+  | "product_deletion_scheduled"
+  | "product_deletion_schedule_cancelled"
+  | "product_deletion_schedule_blocked"
   | "product_permanently_deleted"
   | "product_emergency_hidden"
+  | "product_deletion_hold_applied"
+  | "product_deletion_hold_released"
   | "brand_updated"
   | "brand_application_submitted"
   | "coupon_created"
@@ -45,7 +47,8 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   product_created: DISCORD_COLORS.green,
   product_published: DISCORD_COLORS.green,
   product_restored: DISCORD_COLORS.green,
-  product_deletion_rejected: DISCORD_COLORS.green,
+  product_deletion_schedule_cancelled: DISCORD_COLORS.green,
+  product_deletion_hold_released: DISCORD_COLORS.green,
   brand_application_submitted: DISCORD_COLORS.green,
   coupon_created: DISCORD_COLORS.green,
   role_created: DISCORD_COLORS.green,
@@ -58,12 +61,13 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   image_upload_failed: DISCORD_COLORS.orange,
   storage_error: DISCORD_COLORS.orange,
   warehouse_transfer_requested: DISCORD_COLORS.orange,
-  product_deletion_requested: DISCORD_COLORS.orange,
+  product_deletion_scheduled: DISCORD_COLORS.orange,
+  product_deletion_schedule_blocked: DISCORD_COLORS.orange,
+  product_deletion_hold_applied: DISCORD_COLORS.orange,
   order_cancelled: DISCORD_COLORS.red,
   product_archived: DISCORD_COLORS.red,
+  product_retired: DISCORD_COLORS.red,
   product_draft_deleted: DISCORD_COLORS.red,
-  product_deletion_request_cancelled: DISCORD_COLORS.red,
-  product_deletion_approved: DISCORD_COLORS.red,
   product_permanently_deleted: DISCORD_COLORS.red,
   product_emergency_hidden: DISCORD_COLORS.red,
   role_deleted: DISCORD_COLORS.red,

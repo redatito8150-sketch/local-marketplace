@@ -5,21 +5,24 @@ import Link from "next/link";
 import { Archive, MoreHorizontal, Pencil, RotateCcw, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
+import { formatDateOnly } from "@/lib/format";
 
-type PendingAction = "archive" | "restore" | "delete_draft" | "request" | "cancel" | null;
+type PendingAction = "retire" | "restore" | "delete_draft" | "schedule_delete" | "cancel_schedule" | null;
 
-interface ActiveRequest {
+interface ActiveSchedule {
   status: string;
-  adminNote: string | null;
+  dueAt: string;
+  blockedReason: string | null;
 }
 
-// Deliberately calls each action by what it actually does — "archive"
-// never says "delete," and "delete_draft"/"request" are never conflated,
-// per the product deletion lifecycle redesign (supabase/migrations/
-// 20260814020000_product_deletion_lifecycle.sql). Eligibility is fetched
-// lazily when the menu opens (GET .../deletion) rather than eagerly for
-// every row in the list — the database, not this component, decides what's
-// actually allowed; every confirm button below just reflects that answer.
+// Deliberately calls each action by what it actually does — "retire"
+// never says "delete," and "delete_draft"/"schedule_delete" are never
+// conflated. Ordinary permanent deletion no longer waits on admin
+// approval: scheduling one either succeeds immediately (a 7-day grace
+// period starts) or fails outright with the current blockers — there is
+// no "pending review" state. Eligibility is fetched lazily when the menu
+// opens (GET .../deletion) rather than eagerly for every row in the list —
+// the database, not this component, decides what's actually allowed.
 export default function ProductRowActions({
   productId,
   name,
@@ -30,10 +33,9 @@ export default function ProductRowActions({
   editHref: string;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [eligibility, setEligibility] = useState<ProductDeletionEligibility | null>(null);
-  const [activeRequest, setActiveRequest] = useState<ActiveRequest | null>(null);
+  const [activeSchedule, setActiveSchedule] = useState<ActiveSchedule | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [reason, setReason] = useState("");
   const [confirmText, setConfirmText] = useState("");
@@ -41,13 +43,13 @@ export default function ProductRowActions({
   const [error, setError] = useState("");
   const cancelRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDetailsElement>(null);
-  // Generated once when the "request permanent deletion" dialog opens and
+  // Generated once when the "schedule permanent deletion" dialog opens and
   // reused for every retry of that same attempt (a network error + resend
   // must not mint a fresh key each time, or the server-side idempotency
-  // check in request_product_deletion never actually gets exercised) — a
+  // check in schedule_product_deletion never actually gets exercised) — a
   // fresh dialog open (chooseAction) always gets a fresh key, since that's
   // a genuinely new attempt, not a retry.
-  const requestIdempotencyKeyRef = useRef<string>("");
+  const scheduleIdempotencyKeyRef = useRef<string>("");
 
   const loadState = async () => {
     setLoading(true);
@@ -56,7 +58,7 @@ export default function ProductRowActions({
       if (!res.ok) return;
       const data = await res.json();
       setEligibility(data.eligibility);
-      setActiveRequest(data.activeRequest ? { status: data.activeRequest.status, adminNote: data.activeRequest.adminNote } : null);
+      setActiveSchedule(data.activeSchedule ? { status: data.activeSchedule.status, dueAt: data.activeSchedule.dueAt, blockedReason: data.activeSchedule.blockedReason } : null);
     } finally {
       setLoading(false);
     }
@@ -78,8 +80,8 @@ export default function ProductRowActions({
     setError("");
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (pendingAction === "request") {
-        headers["Idempotency-Key"] = requestIdempotencyKeyRef.current;
+      if (pendingAction === "schedule_delete") {
+        headers["Idempotency-Key"] = scheduleIdempotencyKeyRef.current;
       }
       const response = await fetch(`/api/brand-portal/products/${productId}/deletion`, {
         method: "POST",
@@ -105,8 +107,8 @@ export default function ProductRowActions({
     setError("");
     setReason("");
     setConfirmText("");
-    if (action === "request") {
-      requestIdempotencyKeyRef.current = crypto.randomUUID();
+    if (action === "schedule_delete") {
+      scheduleIdempotencyKeyRef.current = crypto.randomUUID();
     }
     setPendingAction(action);
   };
@@ -115,10 +117,10 @@ export default function ProductRowActions({
   const canConfirm = !busy && (!needsTypedConfirm || confirmText.trim().toLowerCase() === name.trim().toLowerCase());
 
   const dialogCopy: Record<Exclude<PendingAction, null>, { title: string; body: string; confirmLabel: string; tone: "neutral" | "danger" }> = {
-    archive: {
-      title: `Archive ${name}?`,
-      body: "The product leaves the storefront immediately — customers can no longer find or buy it. Nothing is deleted: orders, reviews, and inventory history stay exactly as they are, and you can restore it later from the Archived filter.",
-      confirmLabel: "Archive product",
+    retire: {
+      title: `Retire ${name}?`,
+      body: "This product is hidden from customers immediately. Its sales, review, and inventory history stays exactly as it is, and you can restore it to Draft later.",
+      confirmLabel: "Retire product",
       tone: "neutral",
     },
     restore: {
@@ -129,20 +131,20 @@ export default function ProductRowActions({
     },
     delete_draft: {
       title: `Permanently delete ${name}?`,
-      body: "This draft has never been published or stocked, so it can be deleted immediately without staff review. This cannot be undone — the product and its draft data will be gone for good. Type the product name below to confirm.",
+      body: "This draft has never been published or stocked, so it can be deleted right away. This cannot be undone — the product and its draft data will be gone for good. Type the product name below to confirm.",
       confirmLabel: "Delete permanently",
       tone: "danger",
     },
-    request: {
-      title: `Request permanent deletion of ${name}?`,
-      body: "This sends a request to Zakhnook staff to permanently delete this archived product. It stays archived (hidden from the storefront) either way — if staff find open orders, stock, or warehouse activity still in progress when they review it, the request is blocked (not rejected) until that clears; if new order, review, inventory, or warehouse history appears before then, it will remain archived permanently instead.",
-      confirmLabel: "Send request",
+    schedule_delete: {
+      title: `Schedule permanent deletion of ${name}?`,
+      body: "This product will be permanently deleted in 7 days. It stays hidden the whole time, and you can cancel any time before the deletion date. If new order, review, inventory, or warehouse activity appears before then, the deletion is paused automatically instead of happening.",
+      confirmLabel: "Schedule deletion",
       tone: "danger",
     },
-    cancel: {
-      title: "Cancel this deletion request?",
-      body: "The product stays archived. You can request permanent deletion again later.",
-      confirmLabel: "Cancel request",
+    cancel_schedule: {
+      title: "Cancel this scheduled deletion?",
+      body: "The product stays retired. You can schedule permanent deletion again later.",
+      confirmLabel: "Cancel scheduled deletion",
       tone: "neutral",
     },
   };
@@ -157,13 +159,13 @@ export default function ProductRowActions({
           <summary aria-label={`More actions for ${name}`} className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-[#ddd6cd] bg-white text-[#75685f] transition-colors hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 [&::-webkit-details-marker]:hidden">
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
           </summary>
-          <div className="absolute right-0 top-11 z-20 w-64 rounded-xl border border-[#ddd6cd] bg-white p-1.5 shadow-[0_16px_40px_rgba(67,45,29,0.14)]">
+          <div className="absolute right-0 top-11 z-20 w-72 rounded-xl border border-[#ddd6cd] bg-white p-1.5 shadow-[0_16px_40px_rgba(67,45,29,0.14)]">
             {loading && <p className="px-3 py-2.5 text-[12px] text-[#9b8e84]">Loading…</p>}
             {!loading && eligibility && (
               <>
-                {eligibility.canArchive && (
-                  <button type="button" onClick={() => chooseAction("archive")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-                    <Archive className="h-4 w-4" aria-hidden="true" />Archive product
+                {eligibility.canRetire && (
+                  <button type="button" onClick={() => chooseAction("retire")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
+                    <Archive className="h-4 w-4" aria-hidden="true" />Retire product
                   </button>
                 )}
                 {eligibility.canRestore && (
@@ -173,26 +175,38 @@ export default function ProductRowActions({
                 )}
                 {eligibility.canDeleteImmediately && (
                   <button type="button" onClick={() => chooseAction("delete_draft")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />Delete draft
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />Delete draft now
                   </button>
                 )}
-                {activeRequest ? (
+                {activeSchedule ? (
                   <div className="px-3 py-2.5 text-[12px] text-[#9b8e84]">
                     <p className="font-semibold text-[#51473f]">
-                      Deletion request: {activeRequest.status === "blocked" ? "blocked by staff" : activeRequest.status.replace("_", " ")}
+                      {activeSchedule.status === "blocked"
+                        ? "Deletion paused"
+                        : `Deletion scheduled · ${formatDateOnly(activeSchedule.dueAt)}`}
                     </p>
-                    {activeRequest.adminNote && <p className="mt-1">{activeRequest.adminNote}</p>}
-                    <button type="button" onClick={() => chooseAction("cancel")} className="mt-1.5 font-semibold text-red-700 hover:underline">
-                      Cancel request
-                    </button>
+                    {activeSchedule.status === "blocked" && activeSchedule.blockedReason && <p className="mt-1">{activeSchedule.blockedReason}</p>}
+                    {activeSchedule.status === "scheduled" && (
+                      <button type="button" onClick={() => chooseAction("cancel_schedule")} className="mt-1.5 font-semibold text-red-700 hover:underline">
+                        Cancel scheduled deletion
+                      </button>
+                    )}
                   </div>
-                ) : eligibility.canRequestDeletion ? (
-                  <button type="button" onClick={() => chooseAction("request")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200">
-                    <Trash2 className="h-4 w-4" aria-hidden="true" />Request permanent deletion
+                ) : eligibility.hasActiveHold ? (
+                  <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
+                    Deletion is on hold for this product. Contact Zakhnook staff for details.
+                  </p>
+                ) : eligibility.canScheduleDeletion ? (
+                  <button type="button" onClick={() => chooseAction("schedule_delete")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-200">
+                    <Trash2 className="h-4 w-4" aria-hidden="true" />Schedule permanent deletion
                   </button>
                 ) : eligibility.mustRetainHistory ? (
                   <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
-                    This product has order, inventory, or warehouse history and will remain archived permanently — it can never be deleted.
+                    This product cannot be permanently deleted because it has order, review, inventory, or warehouse history. Its sales and inventory history will remain available.
+                  </p>
+                ) : eligibility.lifecycle === "archived" && eligibility.blockers.length > 0 ? (
+                  <p className="px-3 py-2.5 text-[12px] leading-5 text-[#9b8e84]">
+                    {eligibility.blockers[0].message}
                   </p>
                 ) : null}
               </>
@@ -212,7 +226,7 @@ export default function ProductRowActions({
             <h2 id="product-action-title" className="mt-4 pr-9 text-xl font-bold tracking-[-0.025em] text-[#242424]">{dialogCopy[pendingAction].title}</h2>
             <p id="product-action-description" className="mt-2 text-[13px] leading-6 text-[#75685f]">{dialogCopy[pendingAction].body}</p>
 
-            {pendingAction === "request" && (
+            {pendingAction === "schedule_delete" && (
               <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">
                 Reason (optional)
                 <textarea

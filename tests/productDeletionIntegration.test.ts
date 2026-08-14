@@ -12,11 +12,19 @@ import { randomUUID } from "node:crypto";
 // Supabase project, rather than asserting on SQL source text (that static
 // coverage lives in tests/productDeletionLifecycleMigration.test.ts).
 //
+// THIRD PASS: fully rewritten for the automatic, database-authoritative
+// schedule+hold model that replaced the old admin-approval deletion-request
+// workflow. There is no more request/approve step: schedule_product_deletion
+// either creates a 7-day-grace-period schedule immediately (only when
+// currently fully eligible) or refuses outright — nothing here waits on a
+// human, and execute_due_product_deletions (the cron executor) is called
+// directly in these tests to simulate the grace period elapsing.
+//
 // Same env-credential-skip convention as tests/fulfillmentIntegration.test.ts:
 // fully skipped (not failed) when Supabase credentials aren't configured,
 // and additionally skipped if the credentialed project does NOT yet have
 // this branch's migration applied (probed via a cheap read of
-// product_deletion_requests). This repo's .env.local points at the real
+// product_deletion_schedules). This repo's .env.local points at the real
 // Supabase project, and this branch's migration is deliberately never
 // applied there (per this task's own "never apply migrations" instruction)
 // — so this suite is expected to report all-skipped in this environment.
@@ -26,13 +34,9 @@ import { randomUUID } from "node:crypto";
 // Every row this suite creates is scoped under a fresh, randomly-named
 // throwaway brand/product (never touching any real data), and every test
 // cleans up its own rows in a `finally` block via cleanupBrand(), which
-// deletes product_deletion_requests rows for the brand FIRST — required
-// now that product_deletion_requests.brand_id is `on delete restrict`:
-// leftover request rows would otherwise block the brand delete and leak
-// permanently (the corrective pass also added a DELETE grant on
-// product_deletion_requests to service_role, since the original migration
-// omitted it and this cleanup would have failed even with the FK ordered
-// correctly).
+// deletes product_deletion_schedules and product_deletion_holds rows for
+// the brand FIRST — both are `brand_id ... on delete restrict`, so leftover
+// rows would otherwise block the brand delete and leak permanently.
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const envPath = path.join(rootDir, ".env.local");
@@ -70,10 +74,11 @@ let schemaReady = false;
 async function probeSchemaReady(): Promise<boolean> {
   if (!hasCredentials) return false;
   admin = createClient(supabaseUrl!, serviceRoleKey!);
-  // Probes for the corrective-pass column shape specifically (not just
-  // table existence) so this suite also skips cleanly against a database
-  // that still has the original, pre-corrective-pass migration applied.
-  const { error } = await admin.from("product_deletion_requests").select("id, product_name, product_sku").limit(1);
+  // Probes for THIS pass's schema shape specifically (product_deletion_
+  // schedules, not the old product_deletion_requests) so this suite also
+  // skips cleanly against a database that still has an earlier pass's
+  // migration applied.
+  const { error } = await admin.from("product_deletion_schedules").select("id, product_name, product_sku, due_at").limit(1);
   return !error;
 }
 
@@ -107,11 +112,38 @@ async function createDraftProduct(brandId: string) {
   return id;
 }
 
+async function retireForTest(productId: string, brandId: string) {
+  const result = await admin!.rpc("retire_product", { p_product_id: productId, p_brand_id: brandId, p_actor_id: null, p_actor_label: "test" });
+  if (!result.data?.ok) throw new Error(`retireForTest failed: ${JSON.stringify(result.data ?? result.error)}`);
+}
+
+async function scheduleForTest(productId: string, brandId: string, reason = "cleanup") {
+  const result = await admin!.rpc("schedule_product_deletion", {
+    p_product_id: productId, p_brand_id: brandId, p_actor_id: null, p_actor_label: "test",
+    p_reason: reason, p_operation_key: randomUUID(),
+  });
+  if (!result.data?.ok) throw new Error(`scheduleForTest failed: ${JSON.stringify(result.data ?? result.error)}`);
+  return result.data.scheduleId as string;
+}
+
+// Simulates the grace period having already elapsed — the executor only
+// ever looks at due_at <= now(), so backdating it is the direct way to
+// exercise "grace period expires" without actually waiting 7 real days.
+async function makeScheduleDue(scheduleId: string) {
+  await admin!.from("product_deletion_schedules").update({ due_at: new Date(Date.now() - 1000).toISOString() }).eq("id", scheduleId);
+}
+
 async function cleanupBrand(brandId: string) {
-  await admin!.from("product_deletion_requests").delete().eq("brand_id", brandId);
+  await admin!.from("product_deletion_schedules").delete().eq("brand_id", brandId);
+  await admin!.from("product_deletion_holds").delete().eq("brand_id", brandId);
   await admin!.from("products").delete().eq("brand_id", brandId);
   await admin!.from("brands").delete().eq("id", brandId);
 }
+
+// ============================================================================
+// Pristine-draft immediate deletion — unchanged rule set from prior passes,
+// completely separate from the Retired-product scheduling path below.
+// ============================================================================
 
 test("a genuinely pristine draft can be permanently deleted immediately", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
@@ -126,10 +158,6 @@ test("a genuinely pristine draft can be permanently deleted immediately", { skip
     });
     assert.equal(result.ok, true);
     assert.equal(result.code, "DRAFT_DELETED");
-    // No media was uploaded for this fixture, so mediaUrls is empty — but
-    // the field must still be present (see the storage-cleanup-queued
-    // coverage in productMediaStorage.test.ts for the URL-filtering logic
-    // itself, which needs no live DB).
     assert.deepEqual(result.mediaUrls, []);
 
     const { data: gone } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
@@ -172,10 +200,75 @@ test("a draft with order history cannot be deleted immediately and must be retai
   }
 });
 
-// item 4 + item 13: immutable-history products must never be offered a
-// deletion request that can never succeed — request_product_deletion
-// refuses outright (no row created) rather than creating a 'blocked' row.
-test("an archived product with immutable history cannot even request permanent deletion", { skip: !runLive }, async () => {
+// ============================================================================
+// Retire / restore.
+// ============================================================================
+
+test("retire is idempotent, and canonical restore always lands in draft regardless of variant/stock state", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand(false);
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await admin!.from("products").update({ status: "published" }).eq("id", productId);
+
+    const first = await admin!.rpc("retire_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    assert.equal(first.data.ok, true);
+    assert.equal(first.data.code, "RETIRED");
+    const second = await admin!.rpc("retire_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    assert.equal(second.data.ok, true);
+    assert.equal(second.data.code, "ALREADY_RETIRED");
+
+    const { data: retiredRow } = await admin!.from("products").select("retired_at").eq("id", productId).single();
+    assert.ok(retiredRow!.retired_at, "retired_at must be set on retire");
+
+    // No variants, no stock at all — restore still succeeds, because it
+    // only ever targets draft, which has no completeness requirement.
+    const restoreOk = await admin!.rpc("restore_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    assert.equal(restoreOk.data.ok, true, `expected restore to succeed, got: ${JSON.stringify(restoreOk.data)}`);
+    assert.equal(restoreOk.data.code, "RESTORED");
+    assert.equal(restoreOk.data.lifecycle, "draft");
+
+    const { data: row } = await admin!.from("products").select("status, retired_at").eq("id", productId).single();
+    assert.equal(row!.status, "draft", "restore must land in draft, never published, directly");
+    assert.equal(row!.retired_at, null, "retired_at must be cleared on restore");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("a brand cannot act on another brand's product (retire, schedule, or cancel)", { skip: !runLive }, async () => {
+  const brandA = await createThrowawayBrand();
+  const brandB = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brandA.id);
+    const retire = await admin!.rpc("retire_product", { p_product_id: productId, p_brand_id: brandB.id, p_actor_id: null, p_actor_label: "test" });
+    assert.equal(retire.data.ok, false);
+    assert.equal(retire.data.code, "PRODUCT_NOT_OWNED");
+
+    await retireForTest(productId, brandA.id);
+    const schedule = await admin!.rpc("schedule_product_deletion", {
+      p_product_id: productId, p_brand_id: brandB.id, p_actor_id: null, p_actor_label: "test",
+      p_reason: "x", p_operation_key: randomUUID(),
+    });
+    assert.equal(schedule.data.ok, false);
+    assert.equal(schedule.data.code, "PRODUCT_NOT_OWNED");
+
+    const cancel = await admin!.rpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brandB.id, p_actor_id: null, p_actor_label: "test" });
+    assert.equal(cancel.data.ok, false);
+    assert.equal(cancel.data.code, "PRODUCT_NOT_OWNED");
+  } finally {
+    await cleanupBrand(brandA.id);
+    await cleanupBrand(brandB.id);
+  }
+});
+
+// ============================================================================
+// Automatic scheduling — the headline behavioral change this pass makes:
+// no admin approval anywhere. schedule_product_deletion only ever creates a
+// row when the product is CURRENTLY fully eligible; otherwise nothing is
+// created at all.
+// ============================================================================
+
+test("a retired product with immutable history can never be scheduled for deletion — no schedule row is created", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
@@ -185,214 +278,368 @@ test("an archived product with immutable history cannot even request permanent d
       previous_quantity: 0, quantity_delta: 1, new_quantity: 1,
       movement_type: "opening_stock", source: "test", source_operation_key: randomUUID(),
     });
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await retireForTest(productId, brand.id);
 
     const eligibility = await admin!.rpc("get_product_deletion_eligibility", { p_product_id: productId });
     assert.equal(eligibility.data.mustRetainHistory, true);
-    assert.equal(eligibility.data.canRequestDeletion, false);
+    assert.equal(eligibility.data.canScheduleDeletion, false);
     assert.equal(eligibility.data.lifecycle, "historical");
 
-    const result = await admin!.rpc("request_product_deletion", {
+    const result = await admin!.rpc("schedule_product_deletion", {
       p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
       p_reason: "cleanup", p_operation_key: randomUUID(),
     });
     assert.equal(result.data.ok, false);
     assert.equal(result.data.code, "PRODUCT_MUST_BE_RETAINED");
 
-    const { data: requests } = await admin!.from("product_deletion_requests").select("id").eq("product_id", productId);
-    assert.deepEqual(requests, [], "no request row should have been created");
+    const { data: schedules } = await admin!.from("product_deletion_schedules").select("id").eq("product_id", productId);
+    assert.deepEqual(schedules, [], "no schedule row should have been created for a product that must be retained forever");
   } finally {
     await cleanupBrand(brand.id);
   }
 });
 
-// SECOND CORRECTIVE PASS: restore_product now always targets 'draft'
-// (never 'published' directly, regardless of variants/stock/launch
-// state) — getting back to Published is the ordinary edit-and-publish
-// flow's job, with its own full validation. This also proves restore
-// still works with zero variants/zero stock, since draft has no
-// completeness requirement at all.
-test("canonical restore always lands in draft, regardless of variant/stock state, and is idempotent-safe against re-archiving", { skip: !runLive }, async () => {
-  const brand = await createThrowawayBrand(false);
-  try {
-    const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "published" }).eq("id", productId);
-
-    const first = await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
-    assert.equal(first.data.ok, true);
-    assert.equal(first.data.code, "ARCHIVED");
-    const second = await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
-    assert.equal(second.data.ok, true);
-    assert.equal(second.data.code, "ALREADY_ARCHIVED");
-
-    // No variants, no stock at all — restore still succeeds, because it
-    // only ever targets draft, which has no completeness requirement.
-    const restoreOk = await admin!.rpc("restore_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
-    assert.equal(restoreOk.data.ok, true, `expected restore to succeed, got: ${JSON.stringify(restoreOk.data)}`);
-    assert.equal(restoreOk.data.code, "RESTORED");
-    assert.equal(restoreOk.data.lifecycle, "draft");
-
-    const { data: row } = await admin!.from("products").select("status").eq("id", productId).single();
-    assert.equal(row!.status, "draft", "restore must land in draft, never published, directly");
-  } finally {
-    await cleanupBrand(brand.id);
-  }
-});
-
-test("a brand cannot act on another brand's product", { skip: !runLive }, async () => {
-  const brandA = await createThrowawayBrand();
-  const brandB = await createThrowawayBrand();
-  try {
-    const productId = await createDraftProduct(brandA.id);
-    const result = await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brandB.id, p_actor_id: null, p_actor_label: "test" });
-    assert.equal(result.data.ok, false);
-    assert.equal(result.data.code, "PRODUCT_NOT_OWNED");
-  } finally {
-    await cleanupBrand(brandA.id);
-    await cleanupBrand(brandB.id);
-  }
-});
-
-test("deletion request lifecycle: request -> cancel, duplicate requests are rejected, and idempotency conflicts are detected", { skip: !runLive }, async () => {
+test("a retired product with a resolvable operational blocker cannot be scheduled either, but leaves no stuck row behind", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await admin!.from("product_variants").insert({ product_id: productId, sku: `${productId}-v1`, quantity: 0, brand_stock_quantity: 3 });
+    await retireForTest(productId, brand.id);
+
+    const result = await admin!.rpc("schedule_product_deletion", {
+      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
+      p_reason: "cleanup", p_operation_key: randomUUID(),
+    });
+    assert.equal(result.data.ok, false);
+    assert.equal(result.data.code, "PRODUCT_DELETION_BLOCKED");
+    assert.ok(result.data.blockers.some((b: { code: string }) => b.code === "PRODUCT_HAS_RESERVED_STOCK"));
+
+    const { data: schedules } = await admin!.from("product_deletion_schedules").select("id").eq("product_id", productId);
+    assert.deepEqual(schedules, [], "no 'blocked' placeholder row is ever created — the caller just gets the blockers back and can retry once they clear");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("schedule -> cancel lifecycle: duplicate scheduling is rejected while active, and idempotency conflicts are detected", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
 
     const key = randomUUID();
-    const first = await admin!.rpc("request_product_deletion", {
+    const first = await admin!.rpc("schedule_product_deletion", {
       p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
       p_reason: "no longer selling", p_operation_key: key,
     });
     assert.equal(first.data.ok, true);
-    assert.equal(first.data.code, "DELETION_REQUESTED");
+    assert.equal(first.data.code, "DELETION_SCHEDULED");
+    const scheduleId = first.data.scheduleId;
 
     // Idempotent replay of the exact same key AND the same reason/actor
     // succeeds without duplicating.
-    const replay = await admin!.rpc("request_product_deletion", {
+    const replay = await admin!.rpc("schedule_product_deletion", {
       p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
       p_reason: "no longer selling", p_operation_key: key,
     });
     assert.equal(replay.data.ok, true);
-    assert.equal(replay.data.requestId, first.data.requestId);
+    assert.equal(replay.data.scheduleId, scheduleId);
 
-    // item 7 + item 13: the SAME key reused with a DIFFERENT reason is a
-    // real conflict, not a safe no-op — a naive "first caller wins" replay
-    // would have silently returned the original request here instead.
-    const conflict = await admin!.rpc("request_product_deletion", {
+    // The SAME key reused with a DIFFERENT reason is a real conflict, not a
+    // safe no-op — a naive "first caller wins" replay would have silently
+    // returned the original schedule here instead.
+    const conflict = await admin!.rpc("schedule_product_deletion", {
       p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
       p_reason: "a completely different reason", p_operation_key: key,
     });
     assert.equal(conflict.data.ok, false);
     assert.equal(conflict.data.code, "IDEMPOTENCY_CONFLICT");
 
-    // A genuinely new request (new key) while one is already open is refused.
-    const duplicate = await admin!.rpc("request_product_deletion", {
+    // A genuinely new schedule attempt (new key) while one is already
+    // active is refused.
+    const duplicate = await admin!.rpc("schedule_product_deletion", {
       p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
       p_reason: "again", p_operation_key: randomUUID(),
     });
     assert.equal(duplicate.data.ok, false);
-    assert.equal(duplicate.data.code, "DELETION_REQUEST_ALREADY_OPEN");
+    assert.equal(duplicate.data.code, "DELETION_ALREADY_SCHEDULED");
 
-    const cancel = await admin!.rpc("cancel_product_deletion_request", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    const cancel = await admin!.rpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
     assert.equal(cancel.data.ok, true);
+    assert.equal(cancel.data.scheduleState, "cancelled");
 
-    const cancelAgain = await admin!.rpc("cancel_product_deletion_request", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status, cancelled_at").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "cancelled");
+    assert.ok(scheduleRow!.cancelled_at);
+
+    const cancelAgain = await admin!.rpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
     assert.equal(cancelAgain.data.ok, false);
-    assert.equal(cancelAgain.data.code, "DELETION_REQUEST_NOT_FOUND");
+    assert.equal(cancelAgain.data.code, "DELETION_SCHEDULE_NOT_FOUND");
+
+    // Scheduling again after a cancellation must succeed — cancelled is
+    // terminal, not a lingering block.
+    const again = await admin!.rpc("schedule_product_deletion", {
+      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
+      p_reason: "actually yes", p_operation_key: randomUUID(),
+    });
+    assert.equal(again.data.ok, true);
   } finally {
     await cleanupBrand(brand.id);
   }
 });
 
-// item 1 + item 3 + item 13's headline scenario: this is the exact flow
-// the original migration made structurally impossible. A history-free
-// archived product's request must be approvable, the product must
-// actually be gone afterward, and the request row must survive as
-// 'completed' with its own product_id now null and its name/sku/image
-// snapshot intact.
-test("successful request -> approval deletes the product and the request survives as a readable, completed record", { skip: !runLive }, async () => {
+// ============================================================================
+// Cron executor — this is where "schedule the deletion" and "actually
+// delete it" are two separate steps in this design. due_at is backdated to
+// simulate the 7-day grace period having elapsed, and
+// execute_due_product_deletions is called directly (exactly what the
+// authenticated cron route does).
+// ============================================================================
+
+test("a history-free scheduled product is actually hard-deleted once due, and the schedule survives as a completed history record", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id, "discontinuing this line");
+    await makeScheduleDue(scheduleId);
 
-    const requestResult = await admin!.rpc("request_product_deletion", {
-      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-      p_reason: "discontinuing this line", p_operation_key: randomUUID(),
-    });
-    assert.equal(requestResult.data.ok, true);
-    assert.equal(requestResult.data.requestState, "requested", "a history-free archived product must not enter 'blocked' at request time");
-    const requestId = requestResult.data.requestId;
-
-    const approve = await admin!.rpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: null, p_actor_label: "admin-test" });
-    assert.equal(approve.data.ok, true, `expected approval to succeed, got: ${JSON.stringify(approve.data)}`);
-    assert.equal(approve.data.code, "PRODUCT_PERMANENTLY_DELETED");
-    assert.equal(approve.data.requestState, "completed");
+    const outcome = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(outcome.data.completed, 1);
+    assert.equal(outcome.data.blocked, 0);
+    assert.equal(outcome.data.errored, 0);
 
     const { data: gone } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
     assert.equal(gone, null, "product must actually be deleted");
 
-    const { data: requestRow } = await admin!.from("product_deletion_requests").select("*").eq("id", requestId).single();
-    assert.equal(requestRow!.status, "completed");
-    assert.equal(requestRow!.product_id, null, "product_id must be nulled once the product is gone");
-    assert.equal(requestRow!.product_name, "Deletion Test Product", "the name snapshot must survive the product's own deletion");
-    assert.ok(requestRow!.completed_at);
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("*").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "completed");
+    assert.equal(scheduleRow!.product_id, null, "product_id must be nulled once the product is gone");
+    assert.equal(scheduleRow!.product_name, "Deletion Test Product", "the name snapshot must survive the product's own deletion");
+    assert.ok(scheduleRow!.completed_at);
   } finally {
-    // Product is already gone via the approval above; cleanupBrand still
-    // needs to remove the now-orphaned (but intentionally retained)
-    // completed request row before the brand itself can be deleted.
     await cleanupBrand(brand.id);
   }
 });
 
-// item 1 / item 3's "approval ignores only its own workflow blocker,
-// never real blockers" requirement, verified from the other direction:
-// admin approval must still correctly refuse (not silently succeed) when
-// genuine new activity has appeared since the request was filed — proving
-// the p_ignore_request_id exclusion only suppresses the request's own
-// self-reference, not real blockers.
-test("admin approval recomputes eligibility and refuses a request that new activity has blocked, without deleting anything", { skip: !runLive }, async () => {
+// The executor must recompute eligibility fresh at execution time, not
+// trust the snapshot captured when the schedule was created — proving the
+// p_ignore_schedule_id exclusion only suppresses the schedule's own
+// self-reference, not real new blockers.
+test("the cron executor refuses to delete (and marks the schedule 'blocked') when new activity appeared during the grace period", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await makeScheduleDue(scheduleId);
 
-    const requestResult = await admin!.rpc("request_product_deletion", {
-      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-      p_reason: "cleanup", p_operation_key: randomUUID(),
-    });
-    assert.equal(requestResult.data.ok, true);
-    const requestId = requestResult.data.requestId;
-
-    // New activity after the request was filed: declared brand stock
-    // appears (a real, resolvable operational blocker, not the request's
+    // New activity after the schedule was created: declared brand stock
+    // appears (a real, resolvable operational blocker, not the schedule's
     // own self-reference).
     const { data: variant } = await admin!.from("product_variants").insert({ product_id: productId, sku: `${productId}-v1`, quantity: 0 }).select("id").single();
     await admin!.from("product_variants").update({ brand_stock_quantity: 3 }).eq("id", variant!.id);
 
-    const approve = await admin!.rpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: null, p_actor_label: "admin-test" });
-    assert.equal(approve.data.ok, false);
-    assert.equal(approve.data.code, "PRODUCT_MUST_BE_RETAINED");
-    assert.ok(approve.data.blockers.some((b: { code: string }) => b.code === "PRODUCT_HAS_RESERVED_STOCK"));
-    // The self-referential blocker must never appear.
-    assert.ok(!approve.data.blockers.some((b: { code: string }) => b.code === "DELETION_REQUEST_ALREADY_OPEN"));
+    const outcome = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(outcome.data.completed, 0);
+    assert.equal(outcome.data.blocked, 1);
 
     const { data: stillThere } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
     assert.ok(stillThere, "product must not have been deleted");
 
-    const { data: requestRow } = await admin!.from("product_deletion_requests").select("status").eq("id", requestId).single();
-    assert.equal(requestRow!.status, "blocked");
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status, blocker_snapshot").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "blocked");
+    // The self-referential "already scheduled" blocker must never appear.
+    const snapshot = scheduleRow!.blocker_snapshot as Array<{ code: string }>;
+    assert.ok(snapshot.some((b) => b.code === "PRODUCT_HAS_RESERVED_STOCK"));
+    assert.ok(!snapshot.some((b) => b.code === "DELETION_ALREADY_SCHEDULED"));
   } finally {
     await cleanupBrand(brand.id);
   }
 });
 
-test("an archived product with active variant stock cannot be ordered (order_items guard trigger, product_id present)", { skip: !runLive }, async () => {
+test("concurrent cron invocations never delete the same scheduled product twice", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await makeScheduleDue(scheduleId);
+
+    // FOR UPDATE SKIP LOCKED means two overlapping invocations racing the
+    // same due batch can never both grab this row — exactly one of them
+    // must report it completed, the other must not see it at all.
+    const [a, b] = await Promise.all([
+      admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 }),
+      admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 }),
+    ]);
+    const totalCompleted = (a.data?.completed ?? 0) + (b.data?.completed ?? 0);
+    assert.equal(totalCompleted, 1, "the product must be reported completed by exactly one of the two concurrent invocations");
+
+    const { data: gone } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
+    assert.equal(gone, null);
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "completed");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("cancelling and executing a due schedule at the same time resolves to exactly one deterministic outcome, never both", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await makeScheduleDue(scheduleId);
+
+    const [cancelResult, executeResult] = await Promise.all([
+      admin!.rpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" }),
+      admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 }),
+    ]);
+
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status").eq("id", scheduleId).single();
+    const { data: productRow } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
+
+    if (scheduleRow!.status === "cancelled") {
+      // Cancel won the race: the executor's batch query (status = 'scheduled')
+      // must not have seen this row at all.
+      assert.equal(executeResult.data.completed, 0);
+      assert.ok(productRow, "product must still exist when cancel wins the race");
+    } else {
+      // Execute won the race: the cancel call must have found no active
+      // schedule to cancel (it already committed as 'completed').
+      assert.equal(scheduleRow!.status, "completed");
+      assert.equal(cancelResult.data.ok, false);
+      assert.equal(cancelResult.data.code, "DELETION_SCHEDULE_NOT_FOUND");
+      assert.equal(productRow, null, "product must be gone when execute wins the race");
+    }
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("repeated executor runs after a completed deletion are idempotent — no re-delete, no duplicate cleanup jobs", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await makeScheduleDue(scheduleId);
+
+    const first = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(first.data.completed, 1);
+
+    // The completed schedule is no longer 'scheduled', so it drops out of
+    // the executor's own working set entirely on a second pass.
+    const second = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(second.data.completed, 0);
+    assert.equal(second.data.blocked, 0);
+    assert.equal(second.data.errored, 0);
+
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "completed");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+// ============================================================================
+// Legal/admin hold.
+// ============================================================================
+
+test("an active hold blocks scheduling outright", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
+
+    const hold = await admin!.rpc("apply_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test", p_reason: "legal review" });
+    assert.equal(hold.data.ok, true);
+    assert.equal(hold.data.scheduleStopped, false, "there was no active schedule to stop");
+
+    const eligibility = await admin!.rpc("get_product_deletion_eligibility", { p_product_id: productId });
+    assert.equal(eligibility.data.hasActiveHold, true);
+    assert.equal(eligibility.data.canScheduleDeletion, false);
+
+    const schedule = await admin!.rpc("schedule_product_deletion", {
+      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
+      p_reason: "x", p_operation_key: randomUUID(),
+    });
+    assert.equal(schedule.data.ok, false);
+    assert.equal(schedule.data.code, "PRODUCT_DELETION_BLOCKED");
+    assert.ok(schedule.data.blockers.some((b: { code: string }) => b.code === "PRODUCT_HAS_ACTIVE_HOLD"));
+
+    // A second hold while one is already active is refused, not stacked.
+    const secondHold = await admin!.rpc("apply_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test", p_reason: "again" });
+    assert.equal(secondHold.data.ok, false);
+    assert.equal(secondHold.data.code, "ALREADY_ON_HOLD");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("applying a hold to an already-scheduled product safely stops the schedule (moves it to 'blocked', not silently ignored)", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+
+    const hold = await admin!.rpc("apply_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test", p_reason: "legal review" });
+    assert.equal(hold.data.ok, true);
+    assert.equal(hold.data.scheduleStopped, true);
+
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status, blocked_reason").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "blocked");
+    assert.ok(scheduleRow!.blocked_reason);
+
+    // Even if due_at were somehow still in the past, the executor's own
+    // batch query only ever selects status = 'scheduled' — a 'blocked' row
+    // is already out of its working set entirely, belt-and-braces confirmed
+    // here by also recomputing eligibility directly.
+    const eligibility = await admin!.rpc("get_product_deletion_eligibility", { p_product_id: productId });
+    assert.equal(eligibility.data.hasActiveHold, true);
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("releasing a hold never auto-resumes or auto-recreates a deletion schedule", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await admin!.rpc("apply_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test", p_reason: "legal review" });
+
+    const release = await admin!.rpc("release_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test" });
+    assert.equal(release.data.ok, true);
+
+    const { data: scheduleRow } = await admin!.from("product_deletion_schedules").select("status").eq("id", scheduleId).single();
+    assert.equal(scheduleRow!.status, "blocked", "the original schedule must stay 'blocked' — it is never silently resurrected");
+
+    const eligibility = await admin!.rpc("get_product_deletion_eligibility", { p_product_id: productId });
+    assert.equal(eligibility.data.hasActiveHold, false);
+    assert.equal(eligibility.data.canScheduleDeletion, true, "eligible again, but only a fresh schedule_product_deletion call creates a new schedule");
+
+    const releaseAgain = await admin!.rpc("release_product_deletion_hold", { p_product_id: productId, p_actor_id: null, p_actor_label: "admin-test" });
+    assert.equal(releaseAgain.data.ok, false);
+    assert.equal(releaseAgain.data.code, "HOLD_NOT_FOUND");
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+// ============================================================================
+// order_items availability guard — unchanged mechanism from prior passes.
+// ============================================================================
+
+test("a retired product with active variant stock cannot be ordered (order_items guard trigger, product_id present)", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const productId = await createDraftProduct(brand.id);
+    await retireForTest(productId, brand.id);
     const { data: variant } = await admin!.from("product_variants").insert({ product_id: productId, sku: `${productId}-v1`, quantity: 5, selling_status: "active" }).select("id").single();
 
     const { data: order } = await admin!.from("orders").insert({
@@ -413,15 +660,11 @@ test("an archived product with active variant stock cannot be ordered (order_ite
   }
 });
 
-// item 9 + item 13: the original trigger silently skipped enforcement
-// whenever the inserted row's product_id was null, even though every real
-// order-placement path also sets variant_id — this proves the
-// variant_id-resolution fallback actually closes that gap.
-test("an archived product cannot be ordered even when the order_item insert only supplies variant_id (product_id null)", { skip: !runLive }, async () => {
+test("a retired product cannot be ordered even when the order_item insert only supplies variant_id (product_id null)", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
+    await retireForTest(productId, brand.id);
     const { data: variant } = await admin!.from("product_variants").insert({ product_id: productId, sku: `${productId}-v1`, quantity: 5, selling_status: "active" }).select("id").single();
 
     const { data: order } = await admin!.from("orders").insert({
@@ -465,53 +708,67 @@ test("a published product can be ordered normally (order_items guard does not fa
   }
 });
 
-// item 10 + item 13: the admin review queue's search/filter/pagination is
-// a single database-level RPC — this proves it actually filters and
-// paginates rather than returning everything.
-test("admin_search_deletion_requests filters by status and paginates at the database level", { skip: !runLive }, async () => {
+// ============================================================================
+// Admin/brand-portal search + pagination RPCs.
+// ============================================================================
+
+test("admin_search_deletion_schedules filters by status and paginates at the database level", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
-    const productIds: string[] = [];
     for (let i = 0; i < 3; i += 1) {
       const productId = await createDraftProduct(brand.id);
-      await admin!.from("products").update({ status: "archived" }).eq("id", productId);
-      await admin!.rpc("request_product_deletion", {
-        p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-        p_reason: "bulk cleanup", p_operation_key: randomUUID(),
-      });
-      productIds.push(productId);
+      await retireForTest(productId, brand.id);
+      await scheduleForTest(productId, brand.id, "bulk cleanup");
     }
 
-    const page1 = await admin!.rpc("admin_search_deletion_requests", { p_status: "requested", p_brand_id: brand.id, p_limit: 2, p_offset: 0 });
+    const page1 = await admin!.rpc("admin_search_deletion_schedules", { p_status: "scheduled", p_brand_id: brand.id, p_limit: 2, p_offset: 0 });
     assert.equal(page1.data.total, 3);
     assert.equal(page1.data.rows.length, 2);
 
-    const page2 = await admin!.rpc("admin_search_deletion_requests", { p_status: "requested", p_brand_id: brand.id, p_limit: 2, p_offset: 2 });
+    const page2 = await admin!.rpc("admin_search_deletion_schedules", { p_status: "scheduled", p_brand_id: brand.id, p_limit: 2, p_offset: 2 });
     assert.equal(page2.data.rows.length, 1);
 
-    const wrongStatus = await admin!.rpc("admin_search_deletion_requests", { p_status: "completed", p_brand_id: brand.id, p_limit: 10, p_offset: 0 });
+    const wrongStatus = await admin!.rpc("admin_search_deletion_schedules", { p_status: "completed", p_brand_id: brand.id, p_limit: 10, p_offset: 0 });
     assert.equal(wrongStatus.data.total, 0);
   } finally {
     await cleanupBrand(brand.id);
   }
 });
 
-test("restore is blocked while a deletion request is open, and succeeds once it's cancelled", { skip: !runLive }, async () => {
+test("search_retired_products only returns archived products, scoped by brand, with eligibility and active-schedule info inline", { skip: !runLive }, async () => {
+  const brand = await createThrowawayBrand();
+  try {
+    const retiredId = await createDraftProduct(brand.id);
+    await retireForTest(retiredId, brand.id);
+    const scheduleId = await scheduleForTest(retiredId, brand.id);
+
+    const draftId = await createDraftProduct(brand.id);
+
+    const result = await admin!.rpc("search_retired_products", { p_brand_id: brand.id, p_limit: 25, p_offset: 0 });
+    assert.equal(result.data.total, 1, "only the retired product should be returned, not the draft");
+    const row = result.data.rows[0];
+    assert.equal(row.id, retiredId);
+    assert.equal(row.eligibility.mustRetainHistory, false);
+    assert.equal(row.activeSchedule.id, scheduleId);
+    assert.equal(row.activeSchedule.status, "scheduled");
+    assert.notEqual(draftId, retiredId);
+  } finally {
+    await cleanupBrand(brand.id);
+  }
+});
+
+test("restore is blocked while a deletion schedule is active, and succeeds once it's cancelled", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
-    const requestResult = await admin!.rpc("request_product_deletion", {
-      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-      p_reason: "cleanup", p_operation_key: randomUUID(),
-    });
-    assert.equal(requestResult.data.ok, true);
+    await retireForTest(productId, brand.id);
+    await scheduleForTest(productId, brand.id);
 
     const restoreBlocked = await admin!.rpc("restore_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
     assert.equal(restoreBlocked.data.ok, false);
-    assert.equal(restoreBlocked.data.code, "DELETION_REQUEST_ALREADY_OPEN");
+    assert.equal(restoreBlocked.data.code, "DELETION_SCHEDULE_ALREADY_ACTIVE");
 
-    await admin!.rpc("cancel_product_deletion_request", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    await admin!.rpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
     const restoreOk = await admin!.rpc("restore_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
     assert.equal(restoreOk.data.ok, true);
   } finally {
@@ -520,21 +777,17 @@ test("restore is blocked while a deletion request is open, and succeeds once it'
 });
 
 // ============================================================================
-// SECOND CORRECTIVE PASS — item 1: the archived -> draft -> published
-// two-step bypass. Exercised directly against the database boundary (raw
-// UPDATEs via the service-role client, simulating "future service-role
-// code" the task explicitly calls out as the real risk), since that
-// trigger — not the API route guards, which are covered separately by
-// tests/productDeletionRepoSafety.test.ts's static checks — is the actual
-// authoritative enforcement point.
+// Archived -> draft -> published two-step bypass — unchanged mechanism from
+// the second corrective pass, re-verified with retire_product in place of
+// the old archive_product name.
 // ============================================================================
 
-test("a raw UPDATE cannot move an archived product straight to published", { skip: !runLive }, async () => {
+test("a raw UPDATE cannot move a retired product straight to published", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
     await admin!.from("products").update({ status: "published" }).eq("id", productId);
-    await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    await retireForTest(productId, brand.id);
 
     await assert.rejects(
       async () => {
@@ -550,12 +803,12 @@ test("a raw UPDATE cannot move an archived product straight to published", { ski
   }
 });
 
-test("a raw UPDATE cannot move an archived product to draft either — only restore_product may", { skip: !runLive }, async () => {
+test("a raw UPDATE cannot move a retired product to draft either — only restore_product may", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
     await admin!.from("products").update({ status: "published" }).eq("id", productId);
-    await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    await retireForTest(productId, brand.id);
 
     await assert.rejects(
       async () => {
@@ -576,20 +829,12 @@ test("the archived -> draft -> published two-step bypass is impossible: the firs
   try {
     const productId = await createDraftProduct(brand.id);
     await admin!.from("products").update({ status: "published" }).eq("id", productId);
-    await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    await retireForTest(productId, brand.id);
 
-    // Step 1 of the bypass: archived -> draft. This is the step the
-    // original (pre-second-corrective-pass) API guard let through.
     const step1 = await admin!.from("products").update({ status: "draft" }).eq("id", productId);
     assert.ok(step1.error, "step 1 (archived -> draft) must fail at the database level");
     assert.match(step1.error!.message, /PRODUCT_ARCHIVED_TRANSITION_REQUIRES_RESTORE/);
 
-    // Step 2 (draft -> published) is what an ordinary, otherwise-legitimate
-    // publish call would do next — it's never reached in a real two-step
-    // attempt, since step 1 already failed. Demonstrated here as a
-    // standalone sanity check that step 2 alone would have succeeded had
-    // step 1 not been blocked, proving the trigger — not some unrelated
-    // publish-path restriction — is what closes the bypass.
     const stillArchived = await admin!.from("products").select("status").eq("id", productId).single();
     assert.equal(stillArchived.data!.status, "archived");
   } finally {
@@ -602,17 +847,10 @@ test("bulk publish still excludes a product after a failed attempt to slip it in
   try {
     const productId = await createDraftProduct(brand.id);
     await admin!.from("products").update({ status: "published" }).eq("id", productId);
-    await admin!.rpc("archive_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    await retireForTest(productId, brand.id);
 
-    // Attempted bypass step, rejected by the trigger (same as above).
     await admin!.from("products").update({ status: "draft" }).eq("id", productId);
 
-    // The bulk route's own exclusion logic (app/api/admin/products/bulk/
-    // route.ts) filters on the product's CURRENT status before ever
-    // issuing its raw `update ... set status = 'published'` — since the
-    // trigger kept this product genuinely archived, that exclusion still
-    // correctly applies. Reproduced here at the data level: a bulk-style
-    // update scoped to "still archived" ids does not touch this product.
     const { data: archivedIds } = await admin!.from("products").select("id").eq("brand_id", brand.id).eq("status", "archived");
     assert.deepEqual(archivedIds?.map((r) => r.id), [productId]);
 
@@ -624,15 +862,16 @@ test("bulk publish still excludes a product after a failed attempt to slip it in
 });
 
 // ============================================================================
-// SECOND CORRECTIVE PASS — item 2: media ownership + durable, transactional
-// cleanup enqueueing.
+// Media ownership + durable, transactional cleanup enqueueing — capture/
+// queue functions unchanged from the second corrective pass; re-verified
+// against both delete_draft_product and the cron executor's own delete path.
 // ============================================================================
 
-function ownedMediaUrl(path: string): string {
-  return `${supabaseUrl}/storage/v1/object/public/product-images/${path}`;
+function ownedMediaUrl(pathSegment: string): string {
+  return `${supabaseUrl}/storage/v1/object/public/product-images/${pathSegment}`;
 }
 
-test("media cleanup covers brand-portal draft-upload paths, admin temp-folder paths, and canonical product-folder paths alike", { skip: !runLive }, async () => {
+test("media cleanup covers brand-portal draft-upload paths, admin temp-folder paths, and canonical product-folder paths alike (immediate draft delete)", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
@@ -651,18 +890,11 @@ test("media cleanup covers brand-portal draft-upload paths, admin temp-folder pa
     assert.equal(result.data.ok, true, `expected deletion to succeed, got: ${JSON.stringify(result.data)}`);
     assert.equal(result.data.mediaJobsQueued, 3, "all three URL shapes must be recognized as owned, regardless of folder naming");
 
-    const { data: jobs } = await admin!.from("storage_cleanup_jobs").select("storage_path").eq("bucket_id", "product-images").in("storage_path", [
-      brandDraftUrl.split("/product-images/")[1],
-      adminTempUrl.split("/product-images/")[1],
-      canonicalUrl.split("/product-images/")[1],
-    ]);
+    const paths = [brandDraftUrl, adminTempUrl, canonicalUrl].map((u) => u.split("/product-images/")[1]);
+    const { data: jobs } = await admin!.from("storage_cleanup_jobs").select("storage_path").eq("bucket_id", "product-images").in("storage_path", paths);
     assert.equal(jobs?.length, 3);
 
-    await admin!.from("storage_cleanup_jobs").delete().eq("bucket_id", "product-images").in("storage_path", [
-      brandDraftUrl.split("/product-images/")[1],
-      adminTempUrl.split("/product-images/")[1],
-      canonicalUrl.split("/product-images/")[1],
-    ]);
+    await admin!.from("storage_cleanup_jobs").delete().eq("bucket_id", "product-images").in("storage_path", paths);
   } finally {
     await cleanupBrand(brand.id);
   }
@@ -682,8 +914,6 @@ test("media cleanup never queues an external URL or another live product's share
       { product_id: productId, storage_reference: ownedUrl, display_order: 0 },
       { product_id: productId, storage_reference: sharedUrl, display_order: 1 },
     ]);
-    // Deliberately made to look shared: another live product also
-    // references the exact same URL.
     await admin!.from("product_media").insert({ product_id: sharedWithId, storage_reference: sharedUrl, display_order: 0 });
     await admin!.from("products").update({ image: externalUrl }).eq("id", productId);
 
@@ -699,36 +929,30 @@ test("media cleanup never queues an external URL or another live product's share
     const ownedPath = ownedUrl.split("/product-images/")[1];
     await admin!.from("storage_cleanup_jobs").delete().eq("bucket_id", "product-images").eq("storage_path", ownedPath);
   } finally {
-    // cleanupBrand(brandB.id) deletes brandB's products, which cascades
-    // (on delete cascade) to their product_media rows automatically —
-    // nothing extra to clean up here.
     await cleanupBrand(brandA.id);
     await cleanupBrand(brandB.id);
   }
 });
 
-test("a blocked approval never queues cleanup jobs and never deletes the product (enqueue only happens on the success path)", { skip: !runLive }, async () => {
+test("a blocked scheduled deletion never queues cleanup jobs and never deletes the product (enqueue only happens on the success path)", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
-    const requestResult = await admin!.rpc("request_product_deletion", {
-      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-      p_reason: "cleanup", p_operation_key: randomUUID(),
-    });
-    const requestId = requestResult.data.requestId;
+    await retireForTest(productId, brand.id);
+    const scheduleId = await scheduleForTest(productId, brand.id);
+    await makeScheduleDue(scheduleId);
 
     const ownedUrl = ownedMediaUrl(`products/${productId}/photo.jpg`);
     await admin!.from("product_media").insert({ product_id: productId, storage_reference: ownedUrl, display_order: 0 });
-    // New activity blocks this specific approval.
+    // New activity blocks this specific execution.
     const { data: variant } = await admin!.from("product_variants").insert({ product_id: productId, sku: `${productId}-v1`, quantity: 0 }).select("id").single();
     await admin!.from("product_variants").update({ brand_stock_quantity: 1 }).eq("id", variant!.id);
 
-    const approve = await admin!.rpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: null, p_actor_label: "admin-test" });
-    assert.equal(approve.data.ok, false);
+    const outcome = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(outcome.data.blocked, 1);
 
     const { data: stillThere } = await admin!.from("products").select("id").eq("id", productId).maybeSingle();
-    assert.ok(stillThere, "product must survive a blocked approval");
+    assert.ok(stillThere, "product must survive a blocked execution");
 
     const ownedPath = ownedUrl.split("/product-images/")[1];
     const { data: job } = await admin!.from("storage_cleanup_jobs").select("id").eq("bucket_id", "product-images").eq("storage_path", ownedPath).maybeSingle();
@@ -738,75 +962,37 @@ test("a blocked approval never queues cleanup jobs and never deletes the product
   }
 });
 
-test("repeated approval calls after a successful deletion are idempotent — no re-delete, no duplicate cleanup jobs", { skip: !runLive }, async () => {
-  const brand = await createThrowawayBrand();
-  try {
-    const productId = await createDraftProduct(brand.id);
-    await admin!.from("products").update({ status: "archived" }).eq("id", productId);
-    const ownedUrl = ownedMediaUrl(`products/${productId}/photo.jpg`);
-    await admin!.from("product_media").insert({ product_id: productId, storage_reference: ownedUrl, display_order: 0 });
-    const requestResult = await admin!.rpc("request_product_deletion", {
-      p_product_id: productId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test",
-      p_reason: "cleanup", p_operation_key: randomUUID(),
-    });
-    const requestId = requestResult.data.requestId;
-
-    const first = await admin!.rpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: null, p_actor_label: "admin-test" });
-    assert.equal(first.data.ok, true);
-    assert.equal(first.data.mediaJobsQueued, 1);
-
-    const ownedPath = ownedUrl.split("/product-images/")[1];
-    const { data: jobsAfterFirst } = await admin!.from("storage_cleanup_jobs").select("id").eq("bucket_id", "product-images").eq("storage_path", ownedPath);
-    assert.equal(jobsAfterFirst?.length, 1);
-
-    // Retrying the same call after success: the request is already
-    // terminal ('completed'), so this must be refused, not silently
-    // re-run the delete or duplicate the cleanup job.
-    const second = await admin!.rpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: null, p_actor_label: "admin-test" });
-    assert.equal(second.data.ok, false);
-    assert.equal(second.data.code, "DELETION_REQUEST_STATE_CONFLICT");
-
-    const { data: jobsAfterRetry } = await admin!.from("storage_cleanup_jobs").select("id").eq("bucket_id", "product-images").eq("storage_path", ownedPath);
-    assert.equal(jobsAfterRetry?.length, 1, "retrying after success must not duplicate the cleanup job");
-
-    await admin!.from("storage_cleanup_jobs").delete().eq("bucket_id", "product-images").eq("storage_path", ownedPath);
-  } finally {
-    await cleanupBrand(brand.id);
-  }
-});
-
-test("partial results: one draft deletes successfully with its media queued while a sibling with history fails, independently", { skip: !runLive }, async () => {
+test("partial batch outcomes: one scheduled deletion completes with its media queued while a sibling with a new blocker is independently marked blocked", { skip: !runLive }, async () => {
   const brand = await createThrowawayBrand();
   try {
     const okProductId = await createDraftProduct(brand.id);
     const blockedProductId = await createDraftProduct(brand.id);
+    await retireForTest(okProductId, brand.id);
+    await retireForTest(blockedProductId, brand.id);
+
     const okUrl = ownedMediaUrl(`products/${okProductId}/photo.jpg`);
     await admin!.from("product_media").insert({ product_id: okProductId, storage_reference: okUrl, display_order: 0 });
 
-    const { data: variant } = await admin!.from("product_variants").insert({ product_id: blockedProductId, sku: `${blockedProductId}-v1`, quantity: 1 }).select("id").single();
-    await admin!.from("inventory_movements").insert({
-      variant_id: variant!.id, product_id: blockedProductId, brand_id: brand.id,
-      previous_quantity: 0, quantity_delta: 1, new_quantity: 1,
-      movement_type: "opening_stock", source: "test", source_operation_key: randomUUID(),
-    });
+    const okScheduleId = await scheduleForTest(okProductId, brand.id);
+    const blockedScheduleId = await scheduleForTest(blockedProductId, brand.id);
+    await makeScheduleDue(okScheduleId);
+    await makeScheduleDue(blockedScheduleId);
 
-    // Simulates what the bulk route's per-product loop does: independent
-    // RPC calls, each its own transaction.
-    const okResult = await admin!.rpc("delete_draft_product", { p_product_id: okProductId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
-    const blockedResult = await admin!.rpc("delete_draft_product", { p_product_id: blockedProductId, p_brand_id: brand.id, p_actor_id: null, p_actor_label: "test" });
+    const { data: variant } = await admin!.from("product_variants").insert({ product_id: blockedProductId, sku: `${blockedProductId}-v1`, quantity: 0 }).select("id").single();
+    await admin!.from("product_variants").update({ brand_stock_quantity: 2 }).eq("id", variant!.id);
 
-    assert.equal(okResult.data.ok, true);
-    assert.equal(blockedResult.data.ok, false);
-    assert.equal(blockedResult.data.code, "PRODUCT_NOT_DRAFT");
+    const outcome = await admin!.rpc("execute_due_product_deletions", { p_batch_size: 25 });
+    assert.equal(outcome.data.completed, 1);
+    assert.equal(outcome.data.blocked, 1);
 
     const { data: okGone } = await admin!.from("products").select("id").eq("id", okProductId).maybeSingle();
     assert.equal(okGone, null);
     const { data: blockedStillThere } = await admin!.from("products").select("id").eq("id", blockedProductId).maybeSingle();
-    assert.ok(blockedStillThere, "the failed sibling must be untouched by the other's success");
+    assert.ok(blockedStillThere, "the blocked sibling must be untouched by the other's success");
 
     const okPath = okUrl.split("/product-images/")[1];
     const { data: okJob } = await admin!.from("storage_cleanup_jobs").select("id").eq("bucket_id", "product-images").eq("storage_path", okPath).maybeSingle();
-    assert.ok(okJob, "the successful product's cleanup job must exist regardless of the sibling's failure");
+    assert.ok(okJob, "the successful product's cleanup job must exist regardless of the sibling's blocker");
 
     await admin!.from("storage_cleanup_jobs").delete().eq("bucket_id", "product-images").eq("storage_path", okPath);
   } finally {

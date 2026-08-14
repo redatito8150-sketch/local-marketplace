@@ -72,6 +72,18 @@ export function formatDateOnly(value: string | number | Date): string {
 }
 
 /**
+ * Whole days remaining until `dueAt` (a deletion schedule's due date,
+ * always UTC in the database), floored at 0. A plain, non-component
+ * utility — kept out of any Server Component body directly, since
+ * eslint-plugin-react-hooks' purity rule flags `Date.now()` called
+ * straight inside a component/page function, even a Server Component that
+ * only ever runs once per request.
+ */
+export function daysUntil(dueAt: string | number | Date): number {
+  return Math.max(0, Math.ceil((new Date(dueAt).getTime() - Date.now()) / 86_400_000));
+}
+
+/**
  * The one price-resolution rule used everywhere a product's active price is
  * charged or totaled (cart add, Complete Featured Look total): Variant
  * Price is the final price when set, otherwise the product's own base

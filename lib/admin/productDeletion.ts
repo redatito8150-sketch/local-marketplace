@@ -5,9 +5,16 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 // migrations/20260814020000_product_deletion_lifecycle.sql) is the single
 // source of truth — this file only types and forwards its jsonb result and
 // wraps every lifecycle RPC it also defines. No business rule here is
-// re-implemented in application code; every route that needs to know
-// whether a product can be archived/restored/deleted/requested calls one
-// of the functions below instead of re-deriving the answer itself.
+// re-implemented in application code.
+//
+// Terminology: `products.status = 'archived'` internally is presented to
+// users as "Retired" everywhere in this codebase's UI/API — the RPC names
+// below use "retire"/"restore"/"schedule deletion" throughout, matching
+// what a brand owner or admin actually sees, not the raw DB status value.
+// Ordinary deletion no longer waits on admin approval: eligibility is
+// database-authoritative, so scheduling a deletion either succeeds
+// (creating a 7-day grace-period schedule) or fails outright with the
+// current blockers — there is no "pending admin review" state to sit in.
 export type DeletionBlockerCategory =
   | "orders"
   | "inventory"
@@ -35,28 +42,30 @@ export type ProductLifecycleState = "active" | "draft" | "archived" | "historica
 export interface ProductDeletionEligibility {
   productId: string;
   lifecycle: ProductLifecycleState;
-  canArchive: boolean;
+  canRetire: boolean;
   canRestore: boolean;
   canDeleteImmediately: boolean;
-  canRequestDeletion: boolean;
+  canScheduleDeletion: boolean;
   mustRetainHistory: boolean;
+  hasActiveHold: boolean;
   blockers: DeletionBlocker[];
 }
 
 // Every mutating RPC returns this same envelope shape. `mediaUrls`/
-// `mediaJobsQueued` are only ever populated by the two RPCs that actually
-// hard-delete a product row (delete_draft_product,
-// admin_approve_product_deletion) — purely informational for callers/
-// tests. The RPC itself already enqueued the cleanup jobs transactionally
-// (private.queue_owned_product_media_cleanup, same transaction as the
-// delete) — no caller needs to do anything further with these fields.
+// `mediaJobsQueued` are only ever populated by RPCs that actually
+// hard-delete a product row (delete_draft_product, the cron executor) —
+// purely informational; the RPC itself already enqueued the cleanup jobs
+// transactionally, in the same transaction as the delete.
 export interface DeletionRpcResult {
   ok: boolean;
   code: string;
   message: string;
   lifecycle?: ProductLifecycleState | "deleted";
-  requestId?: string;
-  requestState?: string;
+  scheduleId?: string;
+  scheduleState?: string;
+  dueAt?: string;
+  holdId?: string;
+  scheduleStopped?: boolean;
   blockers?: DeletionBlocker[];
   before?: unknown;
   mediaJobsQueued?: number;
@@ -68,24 +77,24 @@ function toEligibility(raw: unknown): ProductDeletionEligibility {
   return {
     productId: value.productId,
     lifecycle: value.lifecycle,
-    canArchive: Boolean(value.canArchive),
+    canRetire: Boolean(value.canRetire),
     canRestore: Boolean(value.canRestore),
     canDeleteImmediately: Boolean(value.canDeleteImmediately),
-    canRequestDeletion: Boolean(value.canRequestDeletion),
+    canScheduleDeletion: Boolean(value.canScheduleDeletion),
     mustRetainHistory: Boolean(value.mustRetainHistory),
+    hasActiveHold: Boolean(value.hasActiveHold),
     blockers: Array.isArray(value.blockers) ? value.blockers : [],
   };
 }
 
-// `ignoreRequestId`: when computing eligibility on behalf of a specific
-// deletion request (the admin review/approve flows), pass that request's
-// own id so its own still-open status is never counted as a blocker
-// against itself — see the SQL function's own comment for the bug this
-// fixes.
-export async function getProductDeletionEligibility(productId: string, ignoreRequestId?: string): Promise<ProductDeletionEligibility> {
+// `ignoreScheduleId`: when computing eligibility on behalf of a specific
+// deletion schedule (its own creation-time check, or the cron executor
+// evaluating it at due time), pass that schedule's own id so its own
+// still-active status is never counted as a blocker against itself.
+export async function getProductDeletionEligibility(productId: string, ignoreScheduleId?: string): Promise<ProductDeletionEligibility> {
   const { data, error } = await supabaseAdmin.rpc("get_product_deletion_eligibility", {
     p_product_id: productId,
-    p_ignore_request_id: ignoreRequestId ?? null,
+    p_ignore_schedule_id: ignoreScheduleId ?? null,
   });
   if (error) throw new Error(`getProductDeletionEligibility(${productId}) failed: ${error.message}`);
   return toEligibility(data);
@@ -100,8 +109,8 @@ async function callDeletionRpc(fn: string, args: Record<string, unknown>): Promi
 // p_brand_id: pass the calling brand's id from brand-portal routes (the RPC
 // verifies the product actually belongs to it); pass null from admin
 // routes, which have already authorized the caller as staff/admin.
-export function archiveProduct(productId: string, brandId: string | null, actorId: string, actorLabel: string) {
-  return callDeletionRpc("archive_product", { p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel });
+export function retireProduct(productId: string, brandId: string | null, actorId: string, actorLabel: string) {
+  return callDeletionRpc("retire_product", { p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel });
 }
 
 export function restoreProduct(productId: string, brandId: string | null, actorId: string, actorLabel: string) {
@@ -112,7 +121,10 @@ export function deleteDraftProduct(productId: string, brandId: string | null, ac
   return callDeletionRpc("delete_draft_product", { p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel });
 }
 
-export function requestProductDeletion(
+// Only ever succeeds (creates a 7-day schedule) when the product is
+// currently, fully eligible. If it isn't, no row is created at all — the
+// caller gets the current blockers back and can try again once they clear.
+export function scheduleProductDeletion(
   productId: string,
   brandId: string | null,
   actorId: string,
@@ -120,88 +132,88 @@ export function requestProductDeletion(
   reason: string,
   operationKey: string
 ) {
-  return callDeletionRpc("request_product_deletion", {
+  return callDeletionRpc("schedule_product_deletion", {
     p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel,
     p_reason: reason, p_operation_key: operationKey,
   });
 }
 
-export function cancelProductDeletionRequest(productId: string, brandId: string | null, actorId: string, actorLabel: string) {
-  return callDeletionRpc("cancel_product_deletion_request", { p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel });
-}
-
-export function adminUpdateDeletionRequest(
-  requestId: string,
-  actorId: string,
-  actorLabel: string,
-  newStatus: "under_review" | "blocked" | "rejected",
-  adminNote: string
-) {
-  return callDeletionRpc("admin_update_deletion_request", {
-    p_request_id: requestId, p_actor_id: actorId, p_actor_label: actorLabel,
-    p_new_status: newStatus, p_admin_note: adminNote,
-  });
-}
-
-export function adminApproveProductDeletion(requestId: string, actorId: string, actorLabel: string) {
-  return callDeletionRpc("admin_approve_product_deletion", { p_request_id: requestId, p_actor_id: actorId, p_actor_label: actorLabel });
+export function cancelProductDeletionSchedule(productId: string, brandId: string | null, actorId: string, actorLabel: string) {
+  return callDeletionRpc("cancel_product_deletion_schedule", { p_product_id: productId, p_brand_id: brandId, p_actor_id: actorId, p_actor_label: actorLabel });
 }
 
 export function adminEmergencyHideProduct(productId: string, actorId: string, actorLabel: string, reason: string) {
   return callDeletionRpc("admin_emergency_hide_product", { p_product_id: productId, p_actor_id: actorId, p_actor_label: actorLabel, p_reason: reason });
 }
 
-// `productId` is nullable — once a request reaches `completed`, the
+export function applyProductDeletionHold(productId: string, actorId: string, actorLabel: string, reason: string) {
+  return callDeletionRpc("apply_product_deletion_hold", { p_product_id: productId, p_actor_id: actorId, p_actor_label: actorLabel, p_reason: reason });
+}
+
+export function releaseProductDeletionHold(productId: string, actorId: string, actorLabel: string) {
+  return callDeletionRpc("release_product_deletion_hold", { p_product_id: productId, p_actor_id: actorId, p_actor_label: actorLabel });
+}
+
+// The cron-invoked, batched, skip-locked executor. Never called from a
+// user-facing route — only from the authenticated cron route.
+export async function executeDueProductDeletions(batchSize = 25): Promise<{ completed: number; blocked: number; errored: number; results: unknown[] }> {
+  const { data, error } = await supabaseAdmin.rpc("execute_due_product_deletions", { p_batch_size: batchSize });
+  if (error) throw new Error(`executeDueProductDeletions() failed: ${error.message}`);
+  return data as { completed: number; blocked: number; errored: number; results: unknown[] };
+}
+
+// `productId` is nullable — once a schedule reaches 'completed', the
 // product row it referred to has actually been permanently deleted
 // (product_id ON DELETE SET NULL). productName/productSku/productImage
-// are immutable snapshots captured at request time and refreshed right
-// before deletion at approval time, so a completed request's history
+// are immutable snapshots captured at scheduling time and refreshed right
+// before deletion at execution time, so a completed schedule's history
 // stays fully readable forever even though the live product is gone.
-export interface DeletionRequestRow {
+export interface DeletionScheduleRow {
   id: string;
   productId: string | null;
   productName: string;
   productSku: string | null;
   productImage: string | null;
   brandId: string;
-  requestedBy: string | null;
-  requestedByLabel: string;
-  requestedAt: string;
-  reason: string;
-  status: "requested" | "under_review" | "blocked" | "approved" | "rejected" | "cancelled" | "completed";
-  reviewedBy: string | null;
-  reviewedAt: string | null;
-  adminNote: string | null;
-  completedAt: string | null;
+  initiatedByLabel: string;
+  scheduledAt: string;
+  dueAt: string;
+  reason: string | null;
+  status: "scheduled" | "cancelled" | "blocked" | "completed";
   cancelledAt: string | null;
+  cancelledByLabel: string | null;
+  blockedAt: string | null;
+  blockedReason: string | null;
+  completedAt: string | null;
   blockerSnapshot: DeletionBlocker[];
   brandName?: string;
   brandSlug?: string;
   brandIsPartner?: boolean;
+  hasActiveHold?: boolean;
 }
 
-interface DeletionRequestSelectRow {
+interface DeletionScheduleSelectRow {
   id: string;
   product_id: string | null;
   product_name: string;
   product_sku: string | null;
   product_image: string | null;
   brand_id: string;
-  requested_by: string | null;
-  requested_by_label: string;
-  requested_at: string;
-  reason: string;
-  status: DeletionRequestRow["status"];
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  admin_note: string | null;
-  completed_at: string | null;
+  initiated_by_label: string;
+  scheduled_at: string;
+  due_at: string;
+  reason: string | null;
+  status: DeletionScheduleRow["status"];
   cancelled_at: string | null;
+  cancelled_by_label: string | null;
+  blocked_at: string | null;
+  blocked_reason: string | null;
+  completed_at: string | null;
   blocker_snapshot: DeletionBlocker[] | null;
   brands?: { name: string; slug: string; is_mahaly_partner: boolean } | null;
 }
 
-function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRow {
+function mapDeletionScheduleRow(row: DeletionScheduleSelectRow): DeletionScheduleRow {
   return {
     id: row.id,
     productId: row.product_id,
@@ -209,16 +221,16 @@ function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRo
     productSku: row.product_sku,
     productImage: row.product_image,
     brandId: row.brand_id,
-    requestedBy: row.requested_by,
-    requestedByLabel: row.requested_by_label,
-    requestedAt: row.requested_at,
+    initiatedByLabel: row.initiated_by_label,
+    scheduledAt: row.scheduled_at,
+    dueAt: row.due_at,
     reason: row.reason,
     status: row.status,
-    reviewedBy: row.reviewed_by,
-    reviewedAt: row.reviewed_at,
-    adminNote: row.admin_note,
-    completedAt: row.completed_at,
     cancelledAt: row.cancelled_at,
+    cancelledByLabel: row.cancelled_by_label,
+    blockedAt: row.blocked_at,
+    blockedReason: row.blocked_reason,
+    completedAt: row.completed_at,
     blockerSnapshot: row.blocker_snapshot ?? [],
     brandName: row.brands?.name,
     brandSlug: row.brands?.slug,
@@ -226,29 +238,47 @@ function mapDeletionRequestRow(row: DeletionRequestSelectRow): DeletionRequestRo
   };
 }
 
-export async function getDeletionRequestForProduct(productId: string): Promise<DeletionRequestRow | null> {
+export async function getActiveDeletionScheduleForProduct(productId: string): Promise<DeletionScheduleRow | null> {
   const { data, error } = await supabaseAdmin
-    .from("product_deletion_requests")
+    .from("product_deletion_schedules")
     .select("*, brands(name, slug, is_mahaly_partner)")
     .eq("product_id", productId)
-    .in("status", ["requested", "under_review", "blocked"])
+    .eq("status", "scheduled")
     .maybeSingle();
-  if (error) throw new Error(`getDeletionRequestForProduct(${productId}) failed: ${error.message}`);
-  return data ? mapDeletionRequestRow(data as DeletionRequestSelectRow) : null;
+  if (error) throw new Error(`getActiveDeletionScheduleForProduct(${productId}) failed: ${error.message}`);
+  return data ? mapDeletionScheduleRow(data as DeletionScheduleSelectRow) : null;
 }
 
-export async function getDeletionRequestById(requestId: string): Promise<DeletionRequestRow | null> {
+export async function getDeletionScheduleById(scheduleId: string): Promise<DeletionScheduleRow | null> {
   const { data, error } = await supabaseAdmin
-    .from("product_deletion_requests")
+    .from("product_deletion_schedules")
     .select("*, brands(name, slug, is_mahaly_partner)")
-    .eq("id", requestId)
+    .eq("id", scheduleId)
     .maybeSingle();
-  if (error) throw new Error(`getDeletionRequestById(${requestId}) failed: ${error.message}`);
-  return data ? mapDeletionRequestRow(data as DeletionRequestSelectRow) : null;
+  if (error) throw new Error(`getDeletionScheduleById(${scheduleId}) failed: ${error.message}`);
+  return data ? mapDeletionScheduleRow(data as DeletionScheduleSelectRow) : null;
 }
 
-export interface DeletionRequestListFilters {
-  status?: DeletionRequestRow["status"];
+export interface ActiveHold {
+  id: string;
+  reason: string;
+  createdByLabel: string;
+  createdAt: string;
+}
+
+export async function getActiveHoldForProduct(productId: string): Promise<ActiveHold | null> {
+  const { data, error } = await supabaseAdmin
+    .from("product_deletion_holds")
+    .select("id, reason, created_by_label, created_at")
+    .eq("product_id", productId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (error) throw new Error(`getActiveHoldForProduct(${productId}) failed: ${error.message}`);
+  return data ? { id: data.id, reason: data.reason, createdByLabel: data.created_by_label, createdAt: data.created_at } : null;
+}
+
+export interface DeletionScheduleListFilters {
+  status?: DeletionScheduleRow["status"];
   brandId?: string;
   isPartner?: boolean;
   search?: string;
@@ -256,43 +286,47 @@ export interface DeletionRequestListFilters {
   offset?: number;
 }
 
-export interface DeletionRequestListPage {
-  rows: DeletionRequestRow[];
+export interface DeletionScheduleListPage {
+  rows: DeletionScheduleRow[];
   total: number;
   limit: number;
   offset: number;
 }
 
-interface AdminSearchDeletionRequestsRow {
+interface AdminSearchDeletionSchedulesRow {
   id: string;
   productId: string | null;
   productName: string;
   productSku: string | null;
   productImage: string | null;
   brandId: string;
-  requestedByLabel: string;
-  requestedAt: string;
-  reason: string;
-  status: DeletionRequestRow["status"];
-  reviewedAt: string | null;
-  adminNote: string | null;
-  completedAt: string | null;
+  initiatedByLabel: string;
+  scheduledAt: string;
+  dueAt: string;
+  reason: string | null;
+  status: DeletionScheduleRow["status"];
   cancelledAt: string | null;
+  cancelledByLabel: string | null;
+  blockedAt: string | null;
+  blockedReason: string | null;
+  completedAt: string | null;
   blockerSnapshot: DeletionBlocker[] | null;
   brandName: string;
   brandSlug: string;
   brandIsPartner: boolean;
+  hasActiveHold: boolean;
 }
 
-// Admin review queue — a single database-level paginated + filtered query
-// (private.admin_search_deletion_requests, supabase/migrations/
-// 20260814020000_product_deletion_lifecycle.sql). Status/brand/partner and
-// text search (product name/id, brand name, request id) are all applied
-// inside Postgres before LIMIT/OFFSET — this never loads more rows into
-// memory than the current page actually needs, unlike the original
-// implementation which fetched every row and filtered/paginated in JS.
-export async function listDeletionRequests(filters: DeletionRequestListFilters = {}): Promise<DeletionRequestListPage> {
-  const { data, error } = await supabaseAdmin.rpc("admin_search_deletion_requests", {
+// The admin deletion-schedules operational page — a single database-level
+// paginated + filtered query (private.admin_search_deletion_schedules).
+// Status/brand/partner and text search are all applied inside Postgres
+// before LIMIT/OFFSET — never loads more rows into memory than the
+// current page needs. This is NOT an approval queue: every row here is
+// either an active 7-day countdown, or already-resolved history
+// (cancelled/blocked/completed) — there is nothing for an admin to
+// "approve."
+export async function listDeletionSchedules(filters: DeletionScheduleListFilters = {}): Promise<DeletionScheduleListPage> {
+  const { data, error } = await supabaseAdmin.rpc("admin_search_deletion_schedules", {
     p_status: filters.status ?? null,
     p_brand_id: filters.brandId ?? null,
     p_is_partner: typeof filters.isPartner === "boolean" ? filters.isPartner : null,
@@ -300,9 +334,9 @@ export async function listDeletionRequests(filters: DeletionRequestListFilters =
     p_limit: filters.limit ?? 25,
     p_offset: filters.offset ?? 0,
   });
-  if (error) throw new Error(`listDeletionRequests() failed: ${error.message}`);
+  if (error) throw new Error(`listDeletionSchedules() failed: ${error.message}`);
 
-  const result = data as { rows: AdminSearchDeletionRequestsRow[]; total: number; limit: number; offset: number };
+  const result = data as { rows: AdminSearchDeletionSchedulesRow[]; total: number; limit: number; offset: number };
   return {
     total: result.total,
     limit: result.limit,
@@ -314,20 +348,60 @@ export async function listDeletionRequests(filters: DeletionRequestListFilters =
       productSku: row.productSku,
       productImage: row.productImage,
       brandId: row.brandId,
-      requestedBy: null,
-      requestedByLabel: row.requestedByLabel,
-      requestedAt: row.requestedAt,
+      initiatedByLabel: row.initiatedByLabel,
+      scheduledAt: row.scheduledAt,
+      dueAt: row.dueAt,
       reason: row.reason,
       status: row.status,
-      reviewedBy: null,
-      reviewedAt: row.reviewedAt,
-      adminNote: row.adminNote,
-      completedAt: row.completedAt,
       cancelledAt: row.cancelledAt,
+      cancelledByLabel: row.cancelledByLabel,
+      blockedAt: row.blockedAt,
+      blockedReason: row.blockedReason,
+      completedAt: row.completedAt,
       blockerSnapshot: row.blockerSnapshot ?? [],
       brandName: row.brandName,
       brandSlug: row.brandSlug,
       brandIsPartner: row.brandIsPartner,
+      hasActiveHold: row.hasActiveHold,
     })),
   };
+}
+
+// A single Retired product row from the paginated Retired-tab search
+// below — eligibility is computed inline by the same canonical function
+// every mutation RPC uses, never re-derived in application code.
+export interface RetiredProductRow {
+  id: string;
+  name: string;
+  sku: string;
+  image: string;
+  brandId: string;
+  brandName: string;
+  eligibility: ProductDeletionEligibility;
+  activeSchedule: { id: string; status: string; dueAt: string } | null;
+}
+
+export interface RetiredProductListPage {
+  rows: RetiredProductRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Paginated "Retired" tab for both Brand Portal (pass brandId) and Admin
+// (omit brandId for all brands) — private.search_retired_products applies
+// status = 'archived', search, and LIMIT/OFFSET entirely inside Postgres,
+// so this never loads a full catalog into memory just to show one page of
+// Retired products.
+export async function listRetiredProducts(filters: { brandId?: string; search?: string; limit?: number; offset?: number } = {}): Promise<RetiredProductListPage> {
+  const { data, error } = await supabaseAdmin.rpc("search_retired_products", {
+    p_brand_id: filters.brandId ?? null,
+    p_search: filters.search ?? null,
+    p_limit: filters.limit ?? 25,
+    p_offset: filters.offset ?? 0,
+  });
+  if (error) throw new Error(`listRetiredProducts() failed: ${error.message}`);
+
+  const result = data as { rows: RetiredProductRow[]; total: number; limit: number; offset: number };
+  return result;
 }

@@ -7,7 +7,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { adminEmergencyHideProduct } from "@/lib/admin/productDeletion";
 
 // Admin's separate emergency control: hide a product from the storefront
-// immediately regardless of any open deletion-request state. Archives
+// immediately regardless of any active deletion-schedule state. Retires
 // (never deletes) transactionally, requires a reason, and is never
 // presented as permanent deletion — see admin_emergency_hide_product in
 // supabase/migrations/20260814020000_product_deletion_lifecycle.sql.

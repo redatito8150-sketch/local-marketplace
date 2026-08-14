@@ -5,18 +5,20 @@ import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
-import { archiveProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
+import { retireProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
 
 // "delete" was removed from this route entirely — it used to run a single
 // unguarded `delete from products where id in (...)`, with no dependency
 // checks and a blind `affected: ids.length` regardless of how many rows
-// actually matched. Permanent deletion of a product with real history now
-// only ever happens through a reviewed product_deletion_requests row
-// (app/api/admin/products/deletion-requests/**); the only bulk delete this
-// route still offers is "delete_draft", which is per-product
+// actually matched. Permanent deletion of a product with real history is
+// never possible at all (mustRetainHistory forbids it outright); a
+// history-free Retired product goes through the automatic
+// schedule_product_deletion RPC (7-day grace period, no admin approval
+// required — see app/admin/products/deletion-schedules/); the only bulk
+// delete this route still offers is "delete_draft", which is per-product
 // eligibility-checked (via the same canonical RPC the single-product route
 // uses) and reports which ids actually succeeded vs. why each failure did.
-const BULK_ACTIONS = ["publish", "archive", "delete_draft", "feature", "unfeature"] as const;
+const BULK_ACTIONS = ["publish", "retire", "delete_draft", "feature", "unfeature"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
 
 const STATUS_BY_ACTION: Partial<Record<BulkAction, string>> = {
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
   // archive / delete_draft: per-product, eligibility-checked, transaction-
   // safe RPC calls — structured {succeeded, failed} result, never a blind
   // "all N affected."
-  if (action === "archive" || action === "delete_draft") {
+  if (action === "retire" || action === "delete_draft") {
     const succeeded: string[] = [];
     const failed: { productId: string; code: string; message: string }[] = [];
 
@@ -66,8 +68,8 @@ export async function POST(request: NextRequest) {
         failed.push({ productId: id, code: "PRODUCT_NOT_FOUND", message: "This product no longer exists." });
         continue;
       }
-      const result = action === "archive"
-        ? await archiveProduct(id, null, staff.user.id, actorLabel)
+      const result = action === "retire"
+        ? await retireProduct(id, null, staff.user.id, actorLabel)
         : await deleteDraftProduct(id, null, staff.user.id, actorLabel);
 
       if (!result.ok) {
@@ -85,16 +87,16 @@ export async function POST(request: NextRequest) {
         actorLabel,
         entityType: "product",
         entityId: id,
-        action: action === "archive" ? "bulk_archive" : "product_draft_deleted",
+        action: action === "retire" ? "bulk_archive" : "product_draft_deleted",
         before: existing,
         brandSlug: existing.brand_slug ?? undefined,
       });
     }
 
-    if (action === "archive" && succeeded.length > 0) {
+    if (action === "retire" && succeeded.length > 0) {
       await notify(
-        "product_archived",
-        `Bulk archive: ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`,
+        "product_retired",
+        `Bulk retire: ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`,
         succeeded.map((id) => existingById.get(id)?.name).filter(Boolean).join(", "),
         { actorLabel, detailLabel: "Products" }
       );

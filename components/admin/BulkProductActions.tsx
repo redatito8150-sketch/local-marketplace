@@ -27,10 +27,10 @@ function StatusCell({ product }: { product: ProductRecord }) {
   if (product.status === "archived") {
     return (
       <div className="flex flex-col items-start gap-1">
-        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>
+        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Retired</span>
         {product.deletionRequestedAt && (
-          <Link href="/admin/products/deletion-requests" className="rounded-full bg-red-50 px-2.5 py-1 text-[10.5px] font-semibold text-red-700 hover:underline">
-            Deletion requested
+          <Link href="/admin/products/deletion-schedules" className="rounded-full bg-red-50 px-2.5 py-1 text-[10.5px] font-semibold text-red-700 hover:underline">
+            Deletion scheduled
           </Link>
         )}
       </div>
@@ -75,7 +75,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
 
   const [bulkResult, setBulkResult] = useState<{ succeeded: string[]; failed: { productId: string; message: string }[] } | null>(null);
 
-  const runBulkAction = async (action: "publish" | "archive" | "delete_draft") => {
+  const runBulkAction = async (action: "publish" | "retire" | "delete_draft") => {
     setBusy(true);
     setBulkResult(null);
     try {
@@ -141,10 +141,10 @@ export default function BulkProductActions({ products }: { products: ProductReco
             <button
               type="button"
               disabled={busy}
-              onClick={() => runBulkAction("archive")}
+              onClick={() => runBulkAction("retire")}
               className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50 disabled:opacity-60"
             >
-              Archive
+              Retire
             </button>
             <button
               type="button"
@@ -156,10 +156,10 @@ export default function BulkProductActions({ products }: { products: ProductReco
               Delete drafts
             </button>
             <Link
-              href="/admin/products/deletion-requests"
+              href="/admin/products/deletion-schedules"
               className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50"
             >
-              Deletion requests
+              Deletion schedules
             </Link>
           </div>
         </div>

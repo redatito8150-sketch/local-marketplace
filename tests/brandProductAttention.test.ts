@@ -23,10 +23,17 @@ test("overview attention count does not count variants independently", () => {
   assert.doesNotMatch(overview, /outOfStock\.length \+ pendingProducts\.length/);
 });
 
-test("product quick views include the archived catalog", () => {
+// Product deletion lifecycle (supabase/migrations/
+// 20260814020000_product_deletion_lifecycle.sql, item 1) removed the
+// inline "Archived" quick-view tile in favor of a dedicated, database-
+// paginated Retired page — the main product list now deliberately
+// excludes archived (Retired) products entirely, so they never clutter
+// the default catalog view.
+test("the main product list excludes retired products and links to a dedicated, database-paginated Retired page instead of an inline quick-view tile", () => {
   const products = readFileSync(path.join(root, "app/brand-portal/products/page.tsx"), "utf8");
 
-  assert.match(products, /id: "archived" as const, label: "Archived", params: \{ status: "archived" \}/);
-  assert.match(products, /archived: allProducts\.filter\(\(product\) => product\.status === "archived"\)\.length/);
-  assert.match(products, /params\.status === "archived"/);
+  assert.doesNotMatch(products, /id: "archived" as const, label: "Archived", params: \{ status: "archived" \}/);
+  assert.match(products, /allProductsWithRetired\.filter\(\(product\) => product\.status !== "archived"\)/);
+  assert.match(products, /listRetiredProducts\(/);
+  assert.match(products, /retiredCount/);
 });

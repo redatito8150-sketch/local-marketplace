@@ -23,7 +23,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
-import { archiveProduct } from "@/lib/admin/productDeletion";
+import { retireProduct } from "@/lib/admin/productDeletion";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // additional completeness check, unlike the full editor's own Archive
   // button. No review, available to owner and assistant alike.
   if (body.action === "archive") {
-    const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
+    const result = await retireProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
     if (!result.ok) {
       return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "PRODUCT_NOT_OWNED" ? 403 : result.code === "PRODUCT_NOT_FOUND" ? 404 : 409 });
     }

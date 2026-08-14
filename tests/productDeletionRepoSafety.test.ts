@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Repo-wide safety checks for the product deletion lifecycle redesign:
 // no route anywhere still does a raw, unguarded `products`/`product_variants`
-// hard delete, and `deletion_requested_at` is never read as if it were the
+// hard delete, `deletion_requested_at` is never read as if it were the
 // authoritative workflow state (it's a display-only mirror written by a
-// trigger — see supabase/migrations/20260814020000_product_deletion_lifecycle.sql).
+// trigger — see supabase/migrations/20260814020000_product_deletion_lifecycle.sql),
+// and the old admin-approval deletion-request workflow (product_deletion_requests,
+// archive_product, request_product_deletion, admin_approve_product_deletion,
+// admin_update_deletion_request, the deletion-requests review-queue routes/
+// page) has been fully removed, not just renamed — ordinary deletion is now
+// automatic and database-authoritative, never gated on a human approval.
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -24,6 +29,11 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 const appApiFiles = walk(path.join(rootDir, "app", "api"));
+const appLibComponentFiles = [
+  ...walk(path.join(rootDir, "app")),
+  ...walk(path.join(rootDir, "lib")),
+  ...walk(path.join(rootDir, "components")),
+];
 
 test("no route directly hard-deletes a product via supabaseAdmin", () => {
   const offenders: string[] = [];
@@ -48,20 +58,18 @@ test("the base product resources no longer expose an HTTP DELETE handler", () =>
   assert.doesNotMatch(adminRoute, /export async function DELETE/);
 });
 
-test("the admin bulk products route no longer offers a 'delete' action", () => {
+test("the admin bulk products route no longer offers a raw 'delete' action, and uses 'retire' (not 'archive') as its lifecycle action id", () => {
   const bulkRoute = readFileSync(path.join(rootDir, "app/api/admin/products/bulk/route.ts"), "utf8");
   assert.doesNotMatch(bulkRoute, /"publish",\s*"archive",\s*"delete"/);
   assert.match(bulkRoute, /delete_draft/);
+  assert.match(bulkRoute, /BULK_ACTIONS = \[[^\]]*"retire"[^\]]*\]/);
+  assert.doesNotMatch(bulkRoute, /BULK_ACTIONS = \[[^\]]*"archive"[^\]]*\]/);
 });
 
-// SECOND CORRECTIVE PASS: the original guard here only blocked
-// archived -> published directly, which still allowed a two-step bypass
-// (archived -> draft through this same route, then the ordinary publish
-// flow — no longer seeing "archived" — republished it, all without ever
-// calling restore_product). The guard must now reject ANY status change
-// away from "archived", not just to "published" — this is deliberately a
-// stronger regex than "status === published" alone, since that specific
-// weaker check is exactly what let the two-step bypass through.
+// THIRD PASS: the guard below is unchanged from the second corrective pass
+// — an archived (Retired) product still may only leave 'archived' through
+// restore_product, regardless of which workflow (approval-queue or
+// automatic-schedule) governs how it got there or what happens after.
 test("admin and brand-portal product PATCH routes refuse leaving 'archived' via ANY status change, not just -> published", () => {
   const adminRoute = readFileSync(path.join(rootDir, "app/api/admin/products/[id]/route.ts"), "utf8");
   const brandPortalRoute = readFileSync(path.join(rootDir, "app/api/brand-portal/products/[id]/route.ts"), "utf8");
@@ -72,10 +80,6 @@ test("admin and brand-portal product PATCH routes refuse leaving 'archived' via 
   }
 });
 
-// SECOND CORRECTIVE PASS (item 1): the database-level backstop for the
-// same bypass — required precisely because "future service-role code" is
-// explicitly called out as a risk the API-layer guards above can't cover
-// on their own.
 test("a database trigger blocks any archived -> non-archived UPDATE outside of restore_product", () => {
   const migration = readFileSync(path.join(rootDir, "supabase/migrations/20260814020000_product_deletion_lifecycle.sql"), "utf8");
   assert.match(migration, /create trigger products_enforce_archived_transition/);
@@ -116,4 +120,79 @@ test("deletion_requested_at is only ever read for display, never as a workflow g
     }
   }
   assert.deepEqual(offenders, [], `deletion_requested_at used as a workflow gate in: ${offenders.join(", ")}`);
+});
+
+// THIRD PASS: the entire admin-approval deletion-request workflow (request
+// -> under_review/blocked -> approved/rejected/cancelled -> completed, with
+// a human clicking "Approve") was removed on purpose per the owner's
+// explicit instruction that ordinary deletion eligibility is objective and
+// database-authoritative — it must never wait on a human. These checks
+// confirm the removal is real (no dangling references), not just that new
+// code was added alongside the old.
+test("the old admin-approval deletion-request workflow (routes, page, RPC names, table) has no remaining references anywhere in application code", () => {
+  const staleIdentifiers = [
+    /\bproduct_deletion_requests\b/,
+    /\barchive_product\s*\(/,
+    /\brequest_product_deletion\s*\(/,
+    /\badmin_approve_product_deletion\s*\(/,
+    /\badmin_update_deletion_request\s*\(/,
+    /\badmin_search_deletion_requests\s*\(/,
+    /app\/api\/admin\/products\/deletion-requests/,
+    /app\/admin\/products\/deletion-requests/,
+    /DeletionRequestRowActions/,
+  ];
+  const offenders: Array<{ file: string; pattern: string }> = [];
+  for (const file of appLibComponentFiles) {
+    const relative = path.relative(rootDir, file).replace(/\\/g, "/");
+    const content = readFileSync(file, "utf8");
+    for (const pattern of staleIdentifiers) {
+      if (pattern.test(content)) offenders.push({ file: relative, pattern: pattern.source });
+    }
+  }
+  assert.deepEqual(offenders, [], `stale old-model reference(s): ${offenders.map((o) => `${o.file} (${o.pattern})`).join(", ")}`);
+});
+
+test("the old admin-approval deletion-request review queue's routes and page no longer exist on disk", () => {
+  const removedPaths = [
+    "app/api/admin/products/deletion-requests/route.ts",
+    "app/api/admin/products/deletion-requests/[id]/approve/route.ts",
+    "app/api/admin/products/deletion-requests/[id]/route.ts",
+    "app/admin/products/deletion-requests/page.tsx",
+    "components/admin/DeletionRequestRowActions.tsx",
+  ];
+  for (const relative of removedPaths) {
+    assert.equal(existsSync(path.join(rootDir, relative)), false, `${relative} should have been removed`);
+  }
+});
+
+test("the new automatic schedule/hold routes and pages exist on disk, replacing the old approval-queue tree", () => {
+  const requiredPaths = [
+    "supabase/migrations/20260814020000_product_deletion_lifecycle.sql",
+    "app/api/admin/products/deletion-schedules/route.ts",
+    "app/admin/products/deletion-schedules/page.tsx",
+    "app/api/admin/products/[id]/deletion-hold/route.ts",
+    "app/api/admin/products/[id]/deletion-schedule/route.ts",
+    "app/api/cron/product-deletions/route.ts",
+    "app/admin/products/retired/page.tsx",
+    "app/brand-portal/products/retired/page.tsx",
+    "components/admin/RetiredProductRowActions.tsx",
+    "components/admin/DeletionScheduleRowActions.tsx",
+  ];
+  for (const relative of requiredPaths) {
+    assert.equal(existsSync(path.join(rootDir, relative)), true, `${relative} should exist`);
+  }
+});
+
+test("the brand-portal deletion route gates schedule_delete/cancel_schedule/delete_draft to brand owners only, not assistants", () => {
+  const content = readFileSync(path.join(rootDir, "app/api/brand-portal/products/[id]/deletion/route.ts"), "utf8");
+  assert.match(content, /\["delete_draft",\s*"schedule_delete",\s*"cancel_schedule"\]\.includes\(action\)/);
+  assert.match(content, /owner\.accessLevel !== "owner"/);
+});
+
+test("the cron executor route is authenticated via CRON_SECRET, matching the existing storage-cleanup cron's own pattern, and is never reachable by an ordinary user", () => {
+  const content = readFileSync(path.join(rootDir, "app/api/cron/product-deletions/route.ts"), "utf8");
+  assert.match(content, /process\.env\.CRON_SECRET/);
+  assert.match(content, /request\.headers\.get\("authorization"\) !== `Bearer \$\{cronSecret\}`/);
+  const vercelConfig = readFileSync(path.join(rootDir, "vercel.json"), "utf8");
+  assert.match(vercelConfig, /"path":\s*"\/api\/cron\/product-deletions"/);
 });
