@@ -7,8 +7,8 @@ export interface WarehouseVariantRow {
   sku: string;
   optionLabel: string; // e.g. "Red / M" — joined option value labels, empty for a single-default variant
   quantity: number; // live, storefront-visible stock
-  brandStockQuantity: number; // the brand's own declared count, not storefront-visible
-  pendingRequestedQty: number; // already tied up in an open (pending) forward transfer request
+  brandStockQuantity: number; // legacy/internal transition balance; not editable in the partner portal
+  pendingRequestedQty: number; // incoming quantity tied to nonterminal replenishment documents
   pendingReturnQty: number; // legacy pending returns not yet deducted from live stock
 }
 
@@ -31,7 +31,7 @@ export interface WarehouseTransferRow {
   brandId: string;
   brandName: string;
   direction: "to_local" | "to_brand";
-  status: "pending" | "received" | "rejected";
+  status: "draft" | "pending" | "submitted" | "approved" | "in_transit" | "receiving" | "partially_received" | "received" | "rejected" | "cancelled";
   requestedAt: string;
   requestedByEmail: string | null;
   brandNote: string | null;
@@ -69,9 +69,10 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
       .in("variant_id", variantIds),
     supabaseAdmin
       .from("warehouse_transfer_items")
-      .select("variant_id, requested_qty, warehouse_transfers!inner(status, direction, stock_reserved_at)")
+      .select("variant_id, requested_qty, received_ok_qty, warehouse_transfers!inner(status, direction, stock_reserved_at)")
       .in("variant_id", variantIds)
-      .eq("warehouse_transfers.status", "pending"),
+      .in("warehouse_transfers.status", ["pending", "submitted", "approved", "in_transit", "receiving", "partially_received"])
+      .is("received_ok_qty", null),
   ]);
 
   const labelsByVariant = new Map<string, { label: string }[]>();
@@ -171,13 +172,6 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
 
   const transfers = transferRows ?? [];
   const itemsByTransfer = await attachItems(transfers);
-  const emails = new Map<string, string | null>();
-  for (const t of transfers) {
-    for (const id of [t.requested_by, t.decided_by] as (string | null)[]) {
-      if (id && !emails.has(id)) emails.set(id, await emailFor(id));
-    }
-  }
-
   return transfers.map((t) => ({
     id: t.id as string,
     brandId: t.brand_id as string,
@@ -185,10 +179,10 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     direction: t.direction as WarehouseTransferRow["direction"],
     status: t.status as WarehouseTransferRow["status"],
     requestedAt: t.requested_at as string,
-    requestedByEmail: (t.requested_by as string | null) ? emails.get(t.requested_by as string) ?? null : null,
+    requestedByEmail: null,
     brandNote: t.brand_note as string | null,
     decidedAt: t.decided_at as string | null,
-    decidedByEmail: (t.decided_by as string | null) ? emails.get(t.decided_by as string) ?? null : null,
+    decidedByEmail: null,
     receivingNote: t.receiving_note as string | null,
     items: itemsByTransfer.get(t.id as string) ?? [],
   }));

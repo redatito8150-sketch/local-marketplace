@@ -247,6 +247,7 @@ export interface BrandVariant {
   color?: string;
   size?: string;
   quantity: number;
+  incomingQuantity: number;
   lowStockThreshold: number;
   sellingStatus: SellingStatus;
   stockStatus: StockStatus;
@@ -318,7 +319,7 @@ export async function getVariantsForBrand(
   const productIds = [...new Set(rows.map((row) => row.product_id))];
   const dataClient = impersonating ? supabaseAdmin : supabase;
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-  const [variantsByProduct, mediaResult, salesResult] = await Promise.all([
+  const [variantsByProduct, mediaResult, salesResult, incomingResult] = await Promise.all([
     getVariantsForProducts(productIds, dataClient),
     productIds.length
       ? dataClient
@@ -335,9 +336,19 @@ export async function getVariantsForBrand(
       .eq("brand_slug", brandSlug)
       .gte("orders.created_at", since)
       .neq("orders.status", "cancelled"),
+    rows.length
+      ? supabaseAdmin
+        .from("warehouse_transfer_items")
+        .select("variant_id, requested_qty, received_ok_qty, warehouse_transfers!inner(status, direction)")
+        .in("variant_id", rows.map((row) => row.id))
+        .eq("warehouse_transfers.direction", "to_local")
+        .in("warehouse_transfers.status", ["pending", "submitted", "approved", "in_transit", "receiving", "partially_received"])
+        .is("received_ok_qty", null)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (mediaResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) media failed: ${mediaResult.error.message}`);
   if (salesResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) sales failed: ${salesResult.error.message}`);
+  if (incomingResult.error) throw new Error(`getVariantsForBrand(${brandSlug}) incoming stock failed: ${incomingResult.error.message}`);
 
   const optionValuesByVariant = new Map(
     [...variantsByProduct.values()].flat().map((v) => [v.id, v.optionValues])
@@ -352,6 +363,11 @@ export async function getVariantsForBrand(
   for (const sale of salesResult.data ?? []) {
     if (!sale.variant_id) continue;
     soldByVariant.set(sale.variant_id, (soldByVariant.get(sale.variant_id) ?? 0) + Number(sale.quantity));
+  }
+  const incomingByVariant = new Map<string, number>();
+  for (const item of incomingResult.data ?? []) {
+    if (!item.variant_id) continue;
+    incomingByVariant.set(item.variant_id, (incomingByVariant.get(item.variant_id) ?? 0) + Number(item.requested_qty));
   }
 
   return rows.map((row) => {
@@ -373,6 +389,7 @@ export async function getVariantsForBrand(
       color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
       size: optionValues.find((o) => o.optionTypeName === "Size")?.label,
       quantity: row.quantity,
+      incomingQuantity: incomingByVariant.get(row.id) ?? 0,
       lowStockThreshold: threshold,
       sellingStatus: row.selling_status,
       stockStatus: calculateStockStatus(row.quantity, threshold),
