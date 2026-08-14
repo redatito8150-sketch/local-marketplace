@@ -71,17 +71,20 @@ test("warehouse APIs enforce exact lines and persistent operation keys", () => {
   const reject = read("app/api/admin/warehouse/transfers/[id]/reject/route.ts");
   const transfer = read("app/api/brand-portal/warehouse/transfers/route.ts");
   const warehouseReturn = read("app/api/brand-portal/warehouse/returns/route.ts");
-  const stock = read("app/api/brand-portal/warehouse/stock/route.ts");
   const client = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
 
   assert.match(receive, /expectedIds\.size !== submittedIds\.length/);
   assert.match(receive, /Each transfer item must appear exactly once/);
   assert.match(reject, /\.rpc\("reject_warehouse_transfer"/);
-  assert.match(stock, /\.rpc\("set_warehouse_brand_stock"/);
   assert.match(transfer, /parseOrderIdempotencyKey/);
   assert.match(warehouseReturn, /parseOrderIdempotencyKey/);
   assert.match(client, /"Idempotency-Key": returnOperationKey\.current/);
   assert.match(client, /"Idempotency-Key": transferOperationKey\.current/);
+});
+
+test("the brand-portal warehouse stock route no longer calls set_warehouse_brand_stock (claude/partner-restock-request-backend: disabled, see tests/launchStateAndPermissions.test.ts) — the RPC itself stays defined and service_role-only, asserted above", () => {
+  const stock = read("app/api/brand-portal/warehouse/stock/route.ts");
+  assert.doesNotMatch(stock, /\.rpc\("set_warehouse_brand_stock"/);
 });
 
 test("review uploads are server-only and bucket privacy is reconciled deterministically", () => {
