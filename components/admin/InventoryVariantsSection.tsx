@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertCircle, Boxes, ImageIcon, Loader2, PackageOpen, RefreshCw, Tags } from "lucide-react";
 import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
@@ -75,6 +76,9 @@ export default function InventoryVariantsSection({
   productTypeId,
   inventoryHref,
   isPartnerBrand,
+  optionLoadState = "ready",
+  optionLoadError = "",
+  onRetryOptions,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -98,6 +102,9 @@ export default function InventoryVariantsSection({
   // matter what's typed here (see forceZeroOpeningStock), so the field
   // itself is locked and relabeled rather than silently ignoring input.
   isPartnerBrand?: boolean;
+  optionLoadState?: "idle" | "loading" | "ready" | "error";
+  optionLoadError?: string;
+  onRetryOptions?: () => void;
 }) {
   const colorType = availableOptionTypes.find((t) => t.key === "color");
   const sizeType = availableOptionTypes.find((t) => t.key === "size");
@@ -109,6 +116,12 @@ export default function InventoryVariantsSection({
   const colorValues = colorValueIds
     .map((id) => availableOptionValues.find((v) => v.id === id))
     .filter((v): v is OptionValueOption => Boolean(v));
+  const activeVariants = value.variants.filter((variant) => variant.sellingStatus === "active");
+  const openingUnits = value.variants.reduce((sum, variant) => sum + Math.max(0, variant.openingStock ?? variant.quantity), 0);
+  const zeroStockVariants = activeVariants.filter((variant) => (variant.openingStock ?? variant.quantity) === 0).length;
+  const customPricedVariants = value.variants.filter((variant) => variant.variantPrice != null || variant.variantDiscountPercent != null).length;
+  const missingColorImages = colorValueIds.length >= 2 ? colorValueIds.filter((id) => !value.colorImages[id]).length : 0;
+  const attentionCount = (isPartnerBrand ? 0 : zeroStockVariants) + missingColorImages + (value.variants.length - activeVariants.length);
 
   const availableColorValues = colorType
     ? availableOptionValues.filter((v) => v.optionTypeId === colorType.id && (!v.isArchived || colorValueIds.includes(v.id)))
@@ -266,6 +279,19 @@ export default function InventoryVariantsSection({
         </div>
       </div>
 
+      <div className="overflow-hidden rounded-[16px] border border-[#e4dcd4] bg-[#fbf8f4]">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e9e1d9] px-4 py-3.5">
+          <div><p className="text-[12px] font-extrabold text-[#352e29]">Variant summary</p><p className="mt-0.5 text-[10.5px] text-[#897b71]">Updates instantly as colors and sizes change.</p></div>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${attentionCount ? "bg-[#fff0eb] text-[#a24e4b]" : "bg-emerald-50 text-emerald-700"}`}>{attentionCount ? `${attentionCount} need attention` : value.variants.length ? "Ready" : "Start with a color"}</span>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-[#e9e1d9] sm:grid-cols-4 sm:divide-y-0">
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Boxes className="mt-0.5 h-4 w-4 text-[#C85956]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{value.variants.length}</p><p className="text-[10px] text-[#897b71]">sellable combinations</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Tags className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{colorValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">colors</span> · {sizeValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">sizes</span></p><p className="text-[10px] text-[#897b71]">option coverage</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{isPartnerBrand ? activeVariants.length : openingUnits}</p><p className="text-[10px] text-[#897b71]">{isPartnerBrand ? "active · stock after receipt" : "opening units"}</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><ImageIcon className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{missingColorImages || customPricedVariants}</p><p className="text-[10px] text-[#897b71]">{missingColorImages ? "color photos missing" : `${customPricedVariants} custom prices`}</p></div></div>
+        </div>
+      </div>
+
       {/* Variants — one unified Color-first table. Add Color, then Add Size
           inside each Color row; every Size is a real, immediately editable
           Variant row (Opening Stock/Low Stock/Variant Price inline). No
@@ -296,10 +322,37 @@ export default function InventoryVariantsSection({
           onUpdateVariant={updateVariant}
           onReorderSize={onReorderOptionValue}
         />
+      ) : optionLoadState === "idle" || optionLoadState === "loading" ? (
+        <div className="flex items-center gap-3 rounded-xl border border-stone-150 bg-stone-50 px-4 py-4 text-[12.5px] text-ink-soft/70">
+          <Loader2 className="h-4 w-4 animate-spin text-[#C85956]" />
+          Loading colors and sizes…
+        </div>
+      ) : optionLoadState === "error" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-red-600" />
+            <div>
+              <p className="text-[12.5px] font-bold text-red-800">Colors and sizes could not be loaded</p>
+              <p className="mt-0.5 text-[11.5px] text-red-700/75">{optionLoadError || "Check your connection and try again."}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRetryOptions}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-[11.5px] font-bold text-red-700 transition-colors hover:bg-red-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Try again
+          </button>
+        </div>
       ) : (
-        <p className="text-[12.5px] text-red-600">
-          System Color and Size option types were not found. Contact an administrator.
-        </p>
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-amber-700" />
+          <div>
+            <p className="text-[12.5px] font-bold text-amber-900">Color and Size need administrator setup</p>
+            <p className="mt-0.5 text-[11.5px] text-amber-800/75">The system option types are unavailable for this workspace.</p>
+          </div>
+        </div>
       )}
 
       {/* Legacy custom option (pre-rebuild data only) */}

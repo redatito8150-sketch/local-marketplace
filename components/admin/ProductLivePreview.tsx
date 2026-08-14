@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ExternalLink, EyeOff, ImageOff, Monitor, RefreshCw, Smartphone } from "lucide-react";
@@ -48,6 +48,8 @@ export default function ProductLivePreview({
   const [mounted, setMounted] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [featuredImage, setFeaturedImage] = useState<string | undefined>();
+  const [variantPreview, setVariantPreview] = useState<{ variantId?: string; sku?: string; color?: string; size?: string; quantity?: number; displayPrice: number }>();
+  const handleVariantPreviewChange = useCallback((selection: { variantId?: string; sku?: string; color?: string; size?: string; quantity?: number; displayPrice: number }) => setVariantPreview(selection), []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setMounted(true));
@@ -80,16 +82,17 @@ export default function ProductLivePreview({
     <div className="h-full min-h-[34rem]">
       <div className="flex h-full flex-col rounded-xl3 border border-stone-150 bg-white shadow-soft">
         {/* Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-150 px-5 py-3.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="h-2 w-2 flex-none rounded-full bg-green-500" />
-            <span className="text-[12.5px] font-semibold text-ink">Live Preview</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-stone-150 px-4 py-3.5 sm:px-5">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.12em] text-emerald-700">Live</span>
+              <span className="text-[13px] font-extrabold text-ink">Customer preview</span>
             {hasUnsavedChanges && (
               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700">
                 Unsaved changes
               </span>
             )}
-            {justSaved && (
+              {justSaved && (
               <motion.span
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -98,16 +101,18 @@ export default function ProductLivePreview({
               >
                 Saved successfully
               </motion.span>
-            )}
+              )}
+            </div>
+            <p className="mt-1 text-[10.5px] text-ink-soft/55">Updates as you edit — actions are disabled.</p>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               title="Refresh preview"
               aria-label="Refresh preview"
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+              className="rounded-lg p-2 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
             >
               <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} />
             </button>
@@ -119,7 +124,7 @@ export default function ProductLivePreview({
                 rel="noopener noreferrer"
                 title="Open product page"
                 aria-label="Open product page"
-                className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+                className="rounded-lg p-2 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
               >
                 <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.8} />
               </Link>
@@ -133,34 +138,28 @@ export default function ProductLivePreview({
               </span>
             )}
 
-            <div className="mx-1 h-4 w-px bg-stone-150" />
-
-            <button
-              type="button"
-              title="Desktop preview"
-              aria-label="Desktop preview"
-              onClick={() => setViewport("desktop")}
-              className={`rounded-md p-1.5 transition-colors ${
-                viewport === "desktop"
-                  ? "bg-beige-100 text-ink"
-                  : "text-ink-soft/60 hover:bg-stone-100"
-              }`}
-            >
-              <Monitor className="h-3.5 w-3.5" strokeWidth={1.8} />
-            </button>
-            <button
-              type="button"
-              title="Mobile preview"
-              aria-label="Mobile preview"
-              onClick={() => setViewport("mobile")}
-              className={`rounded-md p-1.5 transition-colors ${
-                viewport === "mobile"
-                  ? "bg-beige-100 text-ink"
-                  : "text-ink-soft/60 hover:bg-stone-100"
-              }`}
-            >
-              <Smartphone className="h-3.5 w-3.5" strokeWidth={1.8} />
-            </button>
+            <div className="flex rounded-lg bg-stone-100 p-1">
+              <button
+                type="button"
+                aria-label="Desktop preview"
+                onClick={() => setViewport("desktop")}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10.5px] font-bold transition-colors ${
+                  viewport === "desktop" ? "bg-white text-ink shadow-sm" : "text-ink-soft/60 hover:text-ink"
+                }`}
+              >
+                <Monitor className="h-3.5 w-3.5" strokeWidth={1.8} /> Desktop
+              </button>
+              <button
+                type="button"
+                aria-label="Mobile preview"
+                onClick={() => setViewport("mobile")}
+                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[10.5px] font-bold transition-colors ${
+                  viewport === "mobile" ? "bg-white text-ink shadow-sm" : "text-ink-soft/60 hover:text-ink"
+                }`}
+              >
+                <Smartphone className="h-3.5 w-3.5" strokeWidth={1.8} /> Mobile
+              </button>
+            </div>
 
             {onClose && (
               <>
@@ -170,14 +169,22 @@ export default function ProductLivePreview({
                   title="Hide live preview"
                   aria-label="Hide live preview"
                   onClick={onClose}
-                  className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-stone-150 bg-white px-3 text-[10.5px] font-bold text-ink-soft/70 transition-colors hover:border-ink/25 hover:text-ink"
                 >
                   <EyeOff className="h-3.5 w-3.5" strokeWidth={1.8} />
+                  Hide preview
                 </button>
               </>
             )}
           </div>
         </div>
+
+        {previewProduct.variants?.length ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-stone-150 bg-[#fffaf5] px-4 py-2.5 text-[10.5px] sm:px-5">
+            <span className="font-extrabold text-[#4c4139]">Variant preview</span>
+            {variantPreview?.variantId ? <><span className="text-[#75685f]">{[variantPreview.color, variantPreview.size].filter(Boolean).join(" · ") || "Default variant"}</span><span className="font-mono text-[#8a7c72]">{variantPreview.sku}</span><span className={`font-bold ${(variantPreview.quantity ?? 0) > 0 ? "text-emerald-700" : "text-[#C85956]"}`}>{variantPreview.quantity ?? 0} in stock</span><span className="font-extrabold tabular-nums text-[#332c27]">{variantPreview.displayPrice.toLocaleString()} EGP</span></> : <span className="text-[#8a7c72]">Choose a color and size below to inspect its exact image, price and stock.</span>}
+          </div>
+        ) : null}
 
         {/* Content */}
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-auto bg-stone-50 p-4">
@@ -227,6 +234,7 @@ export default function ProductLivePreview({
                       disableActions
                       disabledActionReason="Preview only — cart and wishlist actions are disabled."
                       onColorImageChange={setFeaturedImage}
+                      onVariantPreviewChange={handleVariantPreviewChange}
                     />
                   </div>
 

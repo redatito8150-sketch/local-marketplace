@@ -18,6 +18,7 @@ export default function ProductInfo({
   disableActions = false,
   disabledActionReason,
   onColorImageChange,
+  onVariantPreviewChange,
   signedIn = false,
   subscribedVariantIds = [],
 }: {
@@ -33,6 +34,7 @@ export default function ProductInfo({
   // this is the only way a Color selection is allowed to affect the
   // gallery's primary image (never the reverse).
   onColorImageChange?: (url: string | undefined) => void;
+  onVariantPreviewChange?: (selection: { variantId?: string; sku?: string; color?: string; size?: string; quantity?: number; displayPrice: number }) => void;
   // Whether the viewer is signed in, and which of this product's variants
   // they already have a "notify me" subscription on (resolved server-side
   // — see app/product/[id]/page.tsx and lib/backInStock.ts) — both feed
@@ -135,6 +137,17 @@ export default function ProductInfo({
     if (hours > 0) return `${hours}h ${minutes}m ${seconds}s left`;
     return `${minutes}m ${seconds}s left`;
   })();
+
+  useEffect(() => {
+    onVariantPreviewChange?.({
+      variantId: resolvedVariant?.id,
+      sku: resolvedVariant?.sku,
+      color: selectedColor,
+      size: selectedSize ?? undefined,
+      quantity: resolvedVariant?.quantity,
+      displayPrice,
+    });
+  }, [displayPrice, onVariantPreviewChange, resolvedVariant, selectedColor, selectedSize]);
 
   useEffect(() => {
     onColorImageChange?.(selectedColor ? product.colorImages?.[selectedColor] : undefined);
