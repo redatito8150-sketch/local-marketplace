@@ -5,6 +5,7 @@ import { Lock, LockOpen, ShieldAlert, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
+import { getAdminDeletionBlockerHref } from "@/lib/admin/productDeletionLinks";
 
 export default function ArchivedProductRowActions({
   productId,
@@ -96,16 +97,19 @@ export default function ArchivedProductRowActions({
               : "Why this stays Archived"}
           </summary>
           <div className="mt-2 space-y-2 rounded-xl border border-[#e3dcd3] bg-[#fffdf9] p-3">
-            {(eligibility.hasTemporaryBlockers ? eligibility.temporaryBlockers : eligibility.immutableReasons).map((blocker) => (
-              <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]">
+            {(eligibility.hasTemporaryBlockers ? eligibility.temporaryBlockers : eligibility.immutableReasons).map((blocker) => {
+              const blockerHref = audience === "admin"
+                ? getAdminDeletionBlockerHref(blocker, productId)
+                : blocker.href;
+              return <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]">
                 <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" />
                 <div>
                   <p className="font-semibold">{blocker.message}</p>
                   <p className="text-[#75685f]">{blocker.resolution}</p>
-                  {blocker.href && <Link href={blocker.href} className="font-semibold text-[#C85956] hover:underline">Open related area</Link>}
+                  {blockerHref && <Link href={blockerHref} className="font-semibold text-[#C85956] hover:underline">Open related area</Link>}
                 </div>
-              </div>
-            ))}
+              </div>;
+            })}
           </div>
         </details>
       )}

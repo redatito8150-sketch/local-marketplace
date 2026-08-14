@@ -73,6 +73,7 @@ const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
           { label: "Category Heroes", href: "/admin/content/categories", icon: LayoutTemplate, minRole: "manager", permission: "manage_site_content" },
         ],
       },
+      { label: "Inventory Ledger", href: "/admin/inventory", icon: History, permission: "manage_inventory" },
       { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock", permission: "manage_inventory" },
       { label: "Local Warehouse", href: "/admin/warehouse", icon: Warehouse, permission: "manage_inventory" },
       { label: "Review Moderation", href: "/admin/reviews", icon: MessageSquareWarning, permission: "moderate_reviews" },

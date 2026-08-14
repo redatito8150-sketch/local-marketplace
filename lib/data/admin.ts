@@ -1258,3 +1258,85 @@ export async function getFullTaxonomyTreeForAdmin(): Promise<TaxonomyNode[]> {
     isActive: row.is_active as boolean,
   }));
 }
+
+export interface AdminInventoryMovementRow {
+  id: string;
+  productId: string;
+  productName: string;
+  productImage: string;
+  brandName: string;
+  variantId: string;
+  variantSku: string;
+  previousQuantity: number;
+  quantityDelta: number;
+  newQuantity: number;
+  movementType: string;
+  reason: string;
+  note: string | null;
+  source: string;
+  createdAt: string;
+}
+
+export async function getInventoryMovementsForAdmin(options: {
+  productId?: string;
+  page?: number;
+  limit?: number;
+} = {}): Promise<{ rows: AdminInventoryMovementRow[]; total: number; page: number; limit: number }> {
+  const page = Math.max(1, options.page ?? 1);
+  const limit = Math.min(100, Math.max(1, options.limit ?? 50));
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  let query = supabaseAdmin
+    .from("inventory_movements")
+    .select("id, product_id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+  if (options.productId) query = query.eq("product_id", options.productId);
+
+  const { data, error, count } = await query;
+  if (error) throw new Error(`getInventoryMovementsForAdmin failed: ${error.message}`);
+
+  const productIds = [...new Set((data ?? []).map((row) => row.product_id))];
+  const variantIds = [...new Set((data ?? []).map((row) => row.variant_id))];
+  const [productsResult, variantsResult] = await Promise.all([
+    productIds.length
+      ? supabaseAdmin.from("products").select("id, name, image, brand_name").in("id", productIds)
+      : Promise.resolve({ data: [], error: null }),
+    variantIds.length
+      ? supabaseAdmin.from("product_variants").select("id, sku").in("id", variantIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (productsResult.error) throw new Error(`getInventoryMovementsForAdmin products failed: ${productsResult.error.message}`);
+  if (variantsResult.error) throw new Error(`getInventoryMovementsForAdmin variants failed: ${variantsResult.error.message}`);
+
+  const products = new Map((productsResult.data ?? []).map((product) => [product.id, product]));
+  const variants = new Map((variantsResult.data ?? []).map((variant) => [variant.id, variant]));
+
+  return {
+    rows: (data ?? []).map((row) => {
+      const product = products.get(row.product_id);
+      const variant = variants.get(row.variant_id);
+      return {
+        id: row.id,
+        productId: row.product_id,
+        productName: product?.name ?? row.product_id,
+        productImage: product?.image ?? "",
+        brandName: product?.brand_name ?? "Unknown brand",
+        variantId: row.variant_id,
+        variantSku: variant?.sku ?? row.variant_id,
+        previousQuantity: Number(row.previous_quantity),
+        quantityDelta: Number(row.quantity_delta),
+        newQuantity: Number(row.new_quantity),
+        movementType: row.movement_type,
+        reason: row.reason,
+        note: row.note ?? null,
+        source: row.source,
+        createdAt: row.created_at,
+      };
+    }),
+    total: count ?? 0,
+    page,
+    limit,
+  };
+}
