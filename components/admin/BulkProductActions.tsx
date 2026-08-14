@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Pencil, Star } from "lucide-react";
 import type { ProductRecord } from "@/types";
 import { formatPrice } from "@/lib/format";
-import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
+import AdminProductDeletionActions from "@/components/admin/AdminProductDeletionActions";
 import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
 import { isPublishDateLive } from "@/lib/newArrivals";
 
@@ -25,7 +25,16 @@ function StatusCell({ product }: { product: ProductRecord }) {
     );
   }
   if (product.status === "archived") {
-    return <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>;
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>
+        {product.deletionRequestedAt && (
+          <Link href="/admin/products/deletion-requests" className="rounded-full bg-red-50 px-2.5 py-1 text-[10.5px] font-semibold text-red-700 hover:underline">
+            Deletion requested
+          </Link>
+        )}
+      </div>
+    );
   }
   // A "published" row with a future Publish Date isn't actually live yet —
   // same gate the storefront queries use (lib/newArrivals.ts). Plain
@@ -39,6 +48,10 @@ function StatusCell({ product }: { product: ProductRecord }) {
     );
   }
   return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>;
+}
+
+function existingNameById(products: ProductRecord[], id: string): string {
+  return products.find((p) => p.id === id)?.name ?? id;
 }
 
 export default function BulkProductActions({ products }: { products: ProductRecord[] }) {
@@ -60,22 +73,29 @@ export default function BulkProductActions({ products }: { products: ProductReco
     setSelected((prev) => (prev.size === products.length ? new Set() : new Set(products.map((p) => p.id))));
   };
 
-  const runBulkAction = async (action: "publish" | "archive" | "delete") => {
-    if (action === "delete" && !confirm(`Delete ${selected.size} product(s)? This can't be undone.`)) {
-      return;
-    }
+  const [bulkResult, setBulkResult] = useState<{ succeeded: string[]; failed: { productId: string; message: string }[] } | null>(null);
+
+  const runBulkAction = async (action: "publish" | "archive" | "delete_draft") => {
     setBusy(true);
+    setBulkResult(null);
     try {
       const res = await fetch("/api/admin/products/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [...selected], action }),
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         alert(data.error ?? "Bulk action failed");
         return;
       }
+      // Structured per-product outcome — never a blind "N affected." A
+      // publish/archive bulk update reports `succeeded` as every id whose
+      // row was actually changed (see the route's .select("id") after the
+      // update); archive/delete_draft report a real per-product `failed`
+      // list with the exact blocker reason for anything the database
+      // refused (e.g. history that must be retained).
+      setBulkResult({ succeeded: data.succeeded ?? [], failed: data.failed ?? [] });
       setSelected(new Set());
       router.refresh();
     } finally {
@@ -129,12 +149,37 @@ export default function BulkProductActions({ products }: { products: ProductReco
             <button
               type="button"
               disabled={busy}
-              onClick={() => runBulkAction("delete")}
+              onClick={() => runBulkAction("delete_draft")}
+              title="Only pristine, never-published/never-stocked drafts are actually deleted — each other selection reports why it was skipped"
               className="rounded-md border border-red-100 bg-white px-3 py-1.5 text-[12px] font-medium text-red-700 hover:bg-red-50 disabled:opacity-60"
             >
-              Delete
+              Delete drafts
             </button>
+            <Link
+              href="/admin/products/deletion-requests"
+              className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50"
+            >
+              Deletion requests
+            </Link>
           </div>
+        </div>
+      )}
+
+      {bulkResult && (
+        <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-[12.5px]">
+          {bulkResult.succeeded.length > 0 && (
+            <p className="text-emerald-700">{bulkResult.succeeded.length} product(s) updated successfully.</p>
+          )}
+          {bulkResult.failed.length > 0 && (
+            <div className="mt-1 text-red-700">
+              <p className="font-semibold">{bulkResult.failed.length} could not be processed:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {bulkResult.failed.map((f) => (
+                  <li key={f.productId}>{existingNameById(products, f.productId)}: {f.message}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -221,10 +266,7 @@ export default function BulkProductActions({ products }: { products: ProductReco
                   >
                     <Pencil className="h-4 w-4" strokeWidth={1.6} />
                   </Link>
-                  <DeleteEntityButton
-                    apiPath={`/api/admin/products/${product.id}`}
-                    name={product.name}
-                  />
+                  <AdminProductDeletionActions product={product} />
                 </div>
               </td>
             </tr>

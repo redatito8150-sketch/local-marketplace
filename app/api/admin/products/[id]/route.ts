@@ -153,33 +153,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   return NextResponse.json({ id: params.id, variants });
 }
 
-export async function DELETE(_request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const admin = await requireAdminUser();
-  if (!admin) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
-
-  const { data: existing } = await supabaseAdmin
-    .from("products")
-    .select("*")
-    .eq("id", params.id)
-    .maybeSingle();
-
-  const { error } = await supabaseAdmin.from("products").delete().eq("id", params.id);
-
-  if (error) {
-    return safeErrorResponse("admin.products.delete", error, "Failed to delete product");
-  }
-
-  await logAudit({
-    actorId: admin.id,
-    actorLabel: admin.email ?? admin.id,
-    entityType: "product",
-    entityId: params.id,
-    action: "delete",
-    before: existing,
-  });
-
-  return NextResponse.json({ ok: true });
-}
+// The old DELETE handler here did a raw, unguarded `supabaseAdmin.from(
+// "products").delete()` — no dependency checks (a real FK-blocked delete
+// would just bubble up as a generic 500), no per-row success verification
+// (Supabase's .delete() doesn't error on zero matched rows, so a delete
+// against an already-gone product still logged a "delete" audit entry and
+// reported {ok:true}). Replaced entirely by the deletion-request review
+// queue (app/api/admin/products/deletion-requests/**) and the emergency
+// hide action (app/api/admin/products/[id]/emergency-hide/route.ts), both
+// routed through the canonical, transaction-safe lifecycle RPCs in
+// lib/admin/productDeletion.ts. There is intentionally no direct
+// "DELETE this product" admin route anymore — every permanent deletion
+// must go through a reviewed product_deletion_requests row so the
+// database's own eligibility check (immutable order/inventory/warehouse/
+// review history) always runs first.

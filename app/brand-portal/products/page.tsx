@@ -210,7 +210,7 @@ function ProductTableRow({ product }: { product: DisplayProduct }) {
       <td className="px-5 py-4 font-bold tabular-nums text-[#242424]">{formatPrice(product.price, product.currency)}</td>
       <td className="px-5 py-4"><InventorySummary product={product} /></td>
       <td className="px-5 py-4"><ProductStatuses product={product} /></td>
-      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} canArchive={product.status === "published"} deletionRequested={Boolean(product.deletionRequestedAt)} /></td>
+      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} /></td>
     </tr>
   );
 }
@@ -230,7 +230,7 @@ function ProductMobileCard({ product }: { product: DisplayProduct }) {
       </div>
       <div className="mt-4 flex flex-col gap-3 border-t border-[#eee7de] pt-4 sm:flex-row sm:items-center sm:justify-between">
         <InventorySummary product={product} />
-        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} canArchive={product.status === "published"} deletionRequested={Boolean(product.deletionRequestedAt)} />
+        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} />
       </div>
     </article>
   );

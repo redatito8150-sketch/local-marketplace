@@ -5,18 +5,24 @@ import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
+import { archiveProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
 
-const BULK_ACTIONS = ["publish", "archive", "delete", "feature", "unfeature"] as const;
+// "delete" was removed from this route entirely — it used to run a single
+// unguarded `delete from products where id in (...)`, with no dependency
+// checks and a blind `affected: ids.length` regardless of how many rows
+// actually matched. Permanent deletion of a product with real history now
+// only ever happens through a reviewed product_deletion_requests row
+// (app/api/admin/products/deletion-requests/**); the only bulk delete this
+// route still offers is "delete_draft", which is per-product
+// eligibility-checked (via the same canonical RPC the single-product route
+// uses) and reports which ids actually succeeded vs. why each failure did.
+const BULK_ACTIONS = ["publish", "archive", "delete_draft", "feature", "unfeature"] as const;
 type BulkAction = (typeof BULK_ACTIONS)[number];
 
 const STATUS_BY_ACTION: Partial<Record<BulkAction, string>> = {
   publish: "published",
-  archive: "archived",
 };
 
-// Featured merchandising is admin-list-only (never settable from the
-// product editor or brand portal) — see components/admin/ProductForm.tsx
-// and lib/admin/productPersistence.ts.
 const FEATURED_ACTIONS = ["feature", "unfeature"] as const;
 
 export async function POST(request: NextRequest) {
@@ -42,58 +48,94 @@ export async function POST(request: NextRequest) {
 
   const { data: existingRows } = await supabaseAdmin
     .from("products")
-    .select("id, name, status, featured")
+    .select("id, name, status, featured, brand_slug")
     .in("id", ids);
   const existingById = new Map((existingRows ?? []).map((r) => [r.id, r]));
+  const actorLabel = staff.user.email ?? staff.user.id;
+
+  // archive / delete_draft: per-product, eligibility-checked, transaction-
+  // safe RPC calls — structured {succeeded, failed} result, never a blind
+  // "all N affected."
+  if (action === "archive" || action === "delete_draft") {
+    const succeeded: string[] = [];
+    const failed: { productId: string; code: string; message: string }[] = [];
+
+    for (const id of ids) {
+      const existing = existingById.get(id);
+      if (!existing) {
+        failed.push({ productId: id, code: "PRODUCT_NOT_FOUND", message: "This product no longer exists." });
+        continue;
+      }
+      const result = action === "archive"
+        ? await archiveProduct(id, null, staff.user.id, actorLabel)
+        : await deleteDraftProduct(id, null, staff.user.id, actorLabel);
+
+      if (!result.ok) {
+        failed.push({ productId: id, code: result.code, message: result.message });
+        continue;
+      }
+      succeeded.push(id);
+      await logAudit({
+        actorId: staff.user.id,
+        actorLabel,
+        entityType: "product",
+        entityId: id,
+        action: action === "archive" ? "bulk_archive" : "product_draft_deleted",
+        before: existing,
+        brandSlug: existing.brand_slug ?? undefined,
+      });
+    }
+
+    if (action === "archive" && succeeded.length > 0) {
+      await notify(
+        "product_archived",
+        `Bulk archive: ${succeeded.length} product${succeeded.length === 1 ? "" : "s"}`,
+        succeeded.map((id) => existingById.get(id)?.name).filter(Boolean).join(", "),
+        { actorLabel, detailLabel: "Products" }
+      );
+    }
+
+    return NextResponse.json({ ok: true, succeeded, failed });
+  }
 
   const isFeaturedAction = (FEATURED_ACTIONS as readonly string[]).includes(action);
 
-  if (action === "delete") {
-    const { error } = await supabaseAdmin.from("products").delete().in("id", ids);
-    if (error) {
-      return safeErrorResponse("admin.products.bulk.delete", error, "Failed to delete products");
-    }
-  } else if (isFeaturedAction) {
+  let affectedRows: { id: string }[] = [];
+  if (isFeaturedAction) {
     const featured = action === "feature";
-    const { error } = await supabaseAdmin.from("products").update({ featured }).in("id", ids);
-    if (error) {
-      return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
-    }
+    const { data, error } = await supabaseAdmin.from("products").update({ featured }).in("id", ids).select("id");
+    if (error) return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
+    affectedRows = data ?? [];
   } else {
     const status = STATUS_BY_ACTION[action];
-    const { error } = await supabaseAdmin.from("products").update({ status }).in("id", ids);
-    if (error) {
-      return safeErrorResponse("admin.products.bulk.status", error, "Failed to update products");
-    }
+    const { data, error } = await supabaseAdmin.from("products").update({ status }).in("id", ids).select("id");
+    if (error) return safeErrorResponse("admin.products.bulk.status", error, "Failed to update products");
+    affectedRows = data ?? [];
   }
 
-  const auditAction =
-    action === "delete" ? "bulk_delete" : action === "publish" ? "bulk_publish" : action === "archive" ? "bulk_archive" : isFeaturedAction ? "update" : "update";
-  for (const id of ids) {
+  const affectedIds = affectedRows.map((r) => r.id);
+  const auditAction = action === "publish" ? "bulk_publish" : "update";
+  for (const id of affectedIds) {
     const before = existingById.get(id);
     await logAudit({
       actorId: staff.user.id,
-      actorLabel: staff.user.email ?? staff.user.id,
+      actorLabel,
       entityType: "product",
       entityId: id,
       action: auditAction,
       before,
-      after: action === "delete" ? undefined : isFeaturedAction ? { featured: action === "feature" } : { status: STATUS_BY_ACTION[action] },
+      after: isFeaturedAction ? { featured: action === "feature" } : { status: STATUS_BY_ACTION[action] },
     });
   }
 
-  // Matches the single-product routes' convention: publish/archive notify,
-  // delete does not (the existing single-item DELETE route never notifies
-  // either — only logs the audit entry above). Featured toggles are
-  // low-stakes merchandising and don't need a bell notification either.
-  if (action === "publish" || action === "archive") {
+  if (action === "publish" && affectedIds.length > 0) {
     await notify(
-      action === "publish" ? "product_published" : "product_archived",
-      `Bulk ${action}: ${ids.length} product${ids.length === 1 ? "" : "s"}`,
-      (existingRows ?? []).map((r) => r.name).join(", "),
-      { actorLabel: staff.user.email ?? staff.user.id, detailLabel: "Products" }
+      "product_published",
+      `Bulk publish: ${affectedIds.length} product${affectedIds.length === 1 ? "" : "s"}`,
+      affectedIds.map((id) => existingById.get(id)?.name).filter(Boolean).join(", "),
+      { actorLabel, detailLabel: "Products" }
     );
   }
 
-  return NextResponse.json({ ok: true, affected: ids.length });
+  return NextResponse.json({ ok: true, affected: affectedIds.length, succeeded: affectedIds });
 }

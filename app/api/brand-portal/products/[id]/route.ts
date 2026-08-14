@@ -23,6 +23,7 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
+import { archiveProduct } from "@/lib/admin/productDeletion";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -98,12 +99,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // additional completeness check, unlike the full editor's own Archive
   // button. No review, available to owner and assistant alike.
   if (body.action === "archive") {
-    const { error } = await supabaseAdmin
-      .from("products")
-      .update({ status: "archived" })
-      .eq("id", params.id);
-    if (error) {
-      return safeErrorResponse("brand-portal.products.quick-archive", error, "Failed to archive");
+    const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "PRODUCT_NOT_OWNED" ? 403 : result.code === "PRODUCT_NOT_FOUND" ? 404 : 409 });
     }
 
     const auditLogId = await logAudit({
@@ -273,57 +271,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   return NextResponse.json({ id: params.id, variants });
 }
 
-// Instant-Publish: removes the product from the storefront immediately
-// (archived, not hard-deleted, unlike the old deletion-request gate).
-// Product ids are reused as URL slugs elsewhere, so archiving instead of
-// deleting also keeps the id around if the brand owner republishes it later.
-export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
-  const params = await props.params;
-  const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
-  if (!owner || owner.isImpersonating || !owner.brandId) {
-    return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
-
-  if (!checkRateLimit(`brand-portal-product-delete:${owner.user.id}`, 30, 10 * 60 * 1000)) {
-    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
-  }
-
-  const existing = await loadOwnedProduct(params.id, owner.brandId);
-  if (!existing) {
-    return NextResponse.json({ error: "Product not found" }, { status: 404 });
-  }
-
-  const { error } = await supabaseAdmin
-    .from("products")
-    .update({ status: "archived" })
-    .eq("id", params.id);
-
-  if (error) {
-    return safeErrorResponse("brand-portal.products.remove", error, "Failed to remove product");
-  }
-
-  const auditLogId = await logAudit({
-    actorId: owner.user.id,
-    actorLabel: owner.user.email ?? owner.user.id,
-    entityType: "product",
-    entityId: params.id,
-    action: "archive",
-    before: existing,
-    brandSlug: owner.brandSlug ?? undefined,
-  });
-
-  const stockWarning = await getPartnerStockWarning(params.id, owner.brandId);
-  await notify(
-    "product_archived",
-    `Product removed: ${existing.name}`,
-    [describeProductArchive(existing), stockWarning].filter(Boolean).join("\n\n"),
-    {
-      relatedEntityType: "product",
-      relatedEntityId: params.id,
-      auditLogId,
-      actorLabel: owner.user.email ?? owner.user.id,
-    }
-  );
-
-  return NextResponse.json({ ok: true, warning: stockWarning ?? undefined });
-}
+// The old DELETE handler here only ever archived the product (never
+// actually deleted anything, despite the Brand Portal UI calling it
+// "Request deletion") — replaced by the dedicated, honestly-named actions
+// in app/api/brand-portal/products/[id]/deletion/route.ts (archive /
+// restore / delete-draft / request / cancel), which route through the
+// canonical, transaction-safe lifecycle RPCs instead of a raw column
+// update. HTTP DELETE is intentionally not used on this resource anymore —
+// see that file's header comment for the full rationale.
