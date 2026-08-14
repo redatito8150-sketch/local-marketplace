@@ -727,6 +727,7 @@ export default function ProductForm({
         onSaveDraft={() => submit("draft")}
         onArchive={() => submit("archived")}
         canArchive={form.status === "published" && publishReadinessIssues.length === 0}
+        canPublish={publishReadinessIssues.length === 0}
         onPublish={() => submit("published")}
         onBack={handleCancel}
         standalone={isStandaloneEditor}
@@ -1039,7 +1040,7 @@ export default function ProductForm({
               </div>
             </div>
           </div>
-          <p className="mt-3 text-[10.5px] leading-4 text-ink-soft/45">Keep it archived if you want a complete listing to remain hidden. Published products are included in New Arrivals for their first 20 days; featured placement remains Admin-managed.</p>
+          <p className="mt-3 text-[10.5px] leading-4 text-ink-soft/45">Save it as a Draft if you want to finish it later. Published products are included in New Arrivals for their first 20 days; featured placement remains Admin-managed.</p>
         </FormSection> : null}
 
         {isCreateExperience ? (
@@ -1053,7 +1054,6 @@ export default function ProductForm({
             onPrevious={() => moveWizard(-1)}
             onNext={() => moveWizard(1)}
             onSaveDraft={() => submit("draft")}
-            onArchive={() => submit("archived")}
             onPublish={() => submit("published")}
           />
         ) : (
@@ -1062,7 +1062,7 @@ export default function ProductForm({
             submitting={submitting}
             onSaveDraft={() => submit("draft")}
             onArchive={() => submit("archived")}
-            canArchive={publishReadinessIssues.length === 0}
+            canArchive={form.status === "published" && publishReadinessIssues.length === 0}
             onPublish={() => submit("published")}
             showDraft={!hasLeftDraft}
             publishLabel={hasLeftDraft ? "Update" : "Publish Product"}

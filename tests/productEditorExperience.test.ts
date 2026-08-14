@@ -269,6 +269,15 @@ test("new products use a six-step wizard with a prominent, reversible customer p
   assert.match(previewSource, /> Mobile/);
 });
 
+test("the creation wizard follows the final lifecycle: Draft can publish, but cannot Archive", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
+
+  assert.doesNotMatch(chromeSource, /Keep archived/);
+  assert.match(formSource, /canPublish=\{publishReadinessIssues\.length === 0\}/);
+  assert.match(formSource, /canArchive=\{form\.status === "published" && publishReadinessIssues\.length === 0\}/);
+});
+
 test("brand-portal product creation uses a standalone shell without the portal sidebar", () => {
   const shellSource = readFileSync(new URL("../components/brand-portal/BrandPortalExperienceShell.tsx", import.meta.url), "utf8");
   const layoutSource = readFileSync(new URL("../app/brand-portal/layout.tsx", import.meta.url), "utf8");

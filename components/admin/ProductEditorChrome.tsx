@@ -45,6 +45,7 @@ export function ProductEditorHeader({
   onSaveDraft,
   onArchive,
   canArchive,
+  canPublish,
   onPublish,
   onBack,
   standalone = false,
@@ -70,6 +71,7 @@ export function ProductEditorHeader({
   // not live purchasable stock) — disabled with an explanatory title
   // until that's true, same as Publish itself failing validation would.
   canArchive: boolean;
+  canPublish: boolean;
   onPublish: () => void;
   onBack: () => void;
   standalone?: boolean;
@@ -181,9 +183,9 @@ export function ProductEditorHeader({
         {showPublishAction ? (
           <button
             type="button"
-            disabled={submitting || (createExperience && !canArchive)}
+            disabled={submitting || !canPublish}
             onClick={onPublish}
-            title={createExperience && !canArchive ? "Complete all required product info first" : undefined}
+            title={!canPublish ? "Complete all required product info first" : undefined}
             className="min-h-10 rounded-lg bg-mahalyred px-4 text-[12px] font-semibold text-cream transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-45"
           >
             Publish Product
@@ -348,7 +350,6 @@ export function ProductWizardBottomBar({
   onPrevious,
   onNext,
   onSaveDraft,
-  onArchive,
   onPublish,
 }: {
   stepIndex: number;
@@ -360,7 +361,6 @@ export function ProductWizardBottomBar({
   onPrevious: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
-  onArchive: () => void;
   onPublish: () => void;
 }) {
   const isFirst = stepIndex === 0;
@@ -375,12 +375,9 @@ export function ProductWizardBottomBar({
       <div className="ml-auto flex flex-wrap items-center gap-2">
         {!hasPersistedProduct ? <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-[#51473f] hover:bg-[#f4eee8] disabled:opacity-50">Save draft</button> : null}
         {isLast ? (
-          <>
-            <button type="button" disabled={submitting || !canPublish} onClick={onArchive} className="min-h-10 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-[#51473f] hover:bg-[#f4eee8] disabled:cursor-not-allowed disabled:opacity-45">Keep archived</button>
-            <button type="button" disabled={submitting || !canPublish} onClick={onPublish} className="min-h-10 rounded-lg bg-[#C85956] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-45">
-              {isPartnerBrand ? "Publish & prepare stock" : "Publish product"}
-            </button>
-          </>
+          <button type="button" disabled={submitting || !canPublish} onClick={onPublish} className="min-h-10 rounded-lg bg-[#C85956] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-45">
+            {isPartnerBrand ? "Publish & prepare stock" : "Publish product"}
+          </button>
         ) : (
           <button type="button" disabled={submitting} onClick={onNext} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#332c27] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#4a4039] disabled:opacity-50">
             Continue <ArrowRight className="h-4 w-4" />
