@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireWarehouseReceiver } from "@/lib/supabase/warehouseAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -30,32 +30,38 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   });
   if (error) return safeErrorResponse("admin.warehouse.transfers.reject", error, "Failed to reject the transfer");
 
-  const { data: brand } = await supabaseAdmin.from("brands").select("slug, name, owner_user_id").eq("id", transfer.brand_id).maybeSingle();
+  // Same reasoning as the receive route: the RPC above already committed
+  // the rejection, so the audit/Discord/owner-notification work below is
+  // supplementary and must not risk delaying (or truncating) the response
+  // the client is waiting on.
+  after(async () => {
+    const { data: brand } = await supabaseAdmin.from("brands").select("slug, name, owner_user_id").eq("id", transfer.brand_id).maybeSingle();
 
-  await logAudit({
-    actorId: receiver.id,
-    actorLabel: receiver.email ?? receiver.id,
-    entityType: "warehouse_transfer",
-    entityId: params.id,
-    action: "reject",
-    after: { note: body.note ?? undefined },
-    brandSlug: brand?.slug ?? undefined,
-  });
-  await notify(
-    "warehouse_transfer_rejected",
-    `Local Warehouse transfer rejected: ${brand?.name ?? ""}`,
-    body.note ?? "",
-    { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id, actorLabel: receiver.email ?? receiver.id }
-  );
-  if (brand?.owner_user_id) {
-    await notifyUser(
-      brand.owner_user_id,
+    await logAudit({
+      actorId: receiver.id,
+      actorLabel: receiver.email ?? receiver.id,
+      entityType: "warehouse_transfer",
+      entityId: params.id,
+      action: "reject",
+      after: { note: body.note ?? undefined },
+      brandSlug: brand?.slug ?? undefined,
+    });
+    await notify(
       "warehouse_transfer_rejected",
-      "Your Local Warehouse transfer request was rejected",
+      `Local Warehouse transfer rejected: ${brand?.name ?? ""}`,
       body.note ?? "",
-      { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
+      { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id, actorLabel: receiver.email ?? receiver.id }
     );
-  }
+    if (brand?.owner_user_id) {
+      await notifyUser(
+        brand.owner_user_id,
+        "warehouse_transfer_rejected",
+        "Your Local Warehouse transfer request was rejected",
+        body.note ?? "",
+        { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
+      );
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }
