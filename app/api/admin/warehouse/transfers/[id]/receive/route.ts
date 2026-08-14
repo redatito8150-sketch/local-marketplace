@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { requireWarehouseReceiver } from "@/lib/supabase/warehouseAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -82,74 +82,86 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   } as never);
   if (error) return safeErrorResponse("admin.warehouse.transfers.receive", error, isReturn ? "Failed to confirm the return" : "Failed to confirm receipt", 400);
 
-  const { data: brand } = await supabaseAdmin.from("brands").select("slug, name, owner_user_id").eq("id", transfer.brand_id).maybeSingle();
+  // The RPC above already committed the actual receipt (transfer status +
+  // product_variants.quantity) — everything from here on (audit log,
+  // Discord mirror, in-app/owner notifications, and above all the
+  // back-in-stock email loop in checkAndNotifyRestock, which sends one
+  // email per subscriber with no bound on how many that is) is
+  // supplementary. Awaiting all of that before responding risked the
+  // client seeing a truncated/empty body ("Unexpected end of JSON input")
+  // on a slow batch even though the receipt had already succeeded —
+  // `after()` runs this work once the response has been sent, so the
+  // caller gets `{ok:true, results}` back as soon as the RPC is done.
+  after(async () => {
+    const { data: brand } = await supabaseAdmin.from("brands").select("slug, name, owner_user_id").eq("id", transfer.brand_id).maybeSingle();
 
-  const { data: itemRows } = await supabaseAdmin
-    .from("warehouse_transfer_items")
-    .select("id, variant_id, product_variants(sku)")
-    .eq("transfer_id", params.id)
-    .in("id", body.items.map((item) => item.itemId));
-  const skuByVariantId = new Map(
-    (itemRows ?? []).map((row) => [row.variant_id as string, (row.product_variants as unknown as { sku: string } | null)?.sku ?? row.variant_id])
-  );
-  const receivedResults = (results ?? []) as { variant_id: string; received_ok_qty: number; damaged_qty: number; missing_qty: number; new_quantity: number }[];
-  const changeSummary = describeInventoryAdjustments(
-    receivedResults
-      .filter((r) => isReturn ? r.received_ok_qty + r.damaged_qty + r.missing_qty > 0 : r.received_ok_qty > 0)
-      .map((r) => {
-        const delta = isReturn ? -(r.received_ok_qty + r.damaged_qty + r.missing_qty) : r.received_ok_qty;
-        return { sku: skuByVariantId.get(r.variant_id) ?? r.variant_id, previousQuantity: r.new_quantity - delta, newQuantity: r.new_quantity };
-      })
-  );
-  const discrepancySummary = receivedResults
-    .filter((r) => r.damaged_qty > 0 || r.missing_qty > 0)
-    .map((r) => `${skuByVariantId.get(r.variant_id) ?? r.variant_id}: damaged ${r.damaged_qty}, missing ${r.missing_qty}`)
-    .join("\n");
-
-  await logAudit({
-    actorId: receiver.id,
-    actorLabel: receiver.email ?? receiver.id,
-    entityType: "warehouse_transfer",
-    entityId: params.id,
-    action: "approve",
-    after: {
-      [isReturn ? "Stock returned to brand" : "Stock received"]: changeSummary || undefined,
-      Discrepancies: discrepancySummary || undefined,
-      Note: body.note || undefined,
-    },
-    brandSlug: brand?.slug ?? undefined,
-  });
-
-  const hasDiscrepancy = body.items.some((item) => item.damagedQty > 0 || item.missingQty > 0);
-  await notify(
-    "warehouse_transfer_received",
-    `Local Warehouse ${isReturn ? "return" : "transfer"} confirmed: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
-    body.note ?? "",
-    {
-      relatedEntityType: "warehouse_transfer",
-      relatedEntityId: params.id,
-      actorLabel: receiver.email ?? receiver.id,
-    }
-  );
-
-  if (brand?.owner_user_id) {
-    await notifyUser(
-      brand.owner_user_id,
-      "warehouse_transfer_received",
-      isReturn
-        ? (hasDiscrepancy ? "Your return was confirmed — with some discrepancies" : "Your return was confirmed in full")
-        : (hasDiscrepancy ? "Your transfer was received — with some discrepancies" : "Your transfer was received in full"),
-      body.note ?? "",
-      { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
+    const { data: itemRows } = await supabaseAdmin
+      .from("warehouse_transfer_items")
+      .select("id, variant_id, product_variants(sku)")
+      .eq("transfer_id", params.id)
+      .in("id", body.items!.map((item) => item.itemId));
+    const skuByVariantId = new Map(
+      (itemRows ?? []).map((row) => [row.variant_id as string, (row.product_variants as unknown as { sku: string } | null)?.sku ?? row.variant_id])
     );
-  }
+    const receivedResults = (results ?? []) as { variant_id: string; received_ok_qty: number; damaged_qty: number; missing_qty: number; new_quantity: number }[];
+    const changeSummary = describeInventoryAdjustments(
+      receivedResults
+        .filter((r) => isReturn ? r.received_ok_qty + r.damaged_qty + r.missing_qty > 0 : r.received_ok_qty > 0)
+        .map((r) => {
+          const delta = isReturn ? -(r.received_ok_qty + r.damaged_qty + r.missing_qty) : r.received_ok_qty;
+          return { sku: skuByVariantId.get(r.variant_id) ?? r.variant_id, previousQuantity: r.new_quantity - delta, newQuantity: r.new_quantity };
+        })
+    );
+    const discrepancySummary = receivedResults
+      .filter((r) => r.damaged_qty > 0 || r.missing_qty > 0)
+      .map((r) => `${skuByVariantId.get(r.variant_id) ?? r.variant_id}: damaged ${r.damaged_qty}, missing ${r.missing_qty}`)
+      .join("\n");
 
-  if (!isReturn) {
-    const variantIds = ((results as { variant_id: string; received_ok_qty: number }[] | null) ?? [])
-      .filter((r) => r.received_ok_qty > 0)
-      .map((r) => r.variant_id);
-    if (variantIds.length) await checkAndNotifyRestock(variantIds);
-  }
+    await logAudit({
+      actorId: receiver.id,
+      actorLabel: receiver.email ?? receiver.id,
+      entityType: "warehouse_transfer",
+      entityId: params.id,
+      action: "approve",
+      after: {
+        [isReturn ? "Stock returned to brand" : "Stock received"]: changeSummary || undefined,
+        Discrepancies: discrepancySummary || undefined,
+        Note: body.note || undefined,
+      },
+      brandSlug: brand?.slug ?? undefined,
+    });
+
+    const hasDiscrepancy = body.items!.some((item) => item.damagedQty > 0 || item.missingQty > 0);
+    await notify(
+      "warehouse_transfer_received",
+      `Local Warehouse ${isReturn ? "return" : "transfer"} confirmed: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
+      body.note ?? "",
+      {
+        relatedEntityType: "warehouse_transfer",
+        relatedEntityId: params.id,
+        actorLabel: receiver.email ?? receiver.id,
+      }
+    );
+
+    if (brand?.owner_user_id) {
+      await notifyUser(
+        brand.owner_user_id,
+        "warehouse_transfer_received",
+        isReturn
+          ? (hasDiscrepancy ? "Your return was confirmed — with some discrepancies" : "Your return was confirmed in full")
+          : (hasDiscrepancy ? "Your transfer was received — with some discrepancies" : "Your transfer was received in full"),
+        body.note ?? "",
+        { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
+      );
+    }
+
+    if (!isReturn) {
+      const variantIds = ((results as { variant_id: string; received_ok_qty: number }[] | null) ?? [])
+        .filter((r) => r.received_ok_qty > 0)
+        .map((r) => r.variant_id);
+      if (variantIds.length) await checkAndNotifyRestock(variantIds);
+    }
+  });
 
   return NextResponse.json({ ok: true, results });
 }
