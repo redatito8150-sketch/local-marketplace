@@ -1,5 +1,20 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { OrderRecord } from "@/types";
+import type { User } from "@supabase/supabase-js";
+
+export async function claimGuestOrdersForVerifiedUser(user: User): Promise<number> {
+  if (!user.email || !user.email_confirmed_at) return 0;
+  const { data, error } = await supabaseAdmin.rpc("claim_guest_orders_for_account", {
+    p_user_id: user.id,
+    p_email: user.email,
+  });
+  // Keep deploys backwards-compatible while the migration and app version
+  // roll out separately. The page still shows already-linked orders; guest
+  // recovery starts automatically as soon as the RPC exists.
+  if (error?.code === "PGRST202" || error?.code === "42883") return 0;
+  if (error) throw new Error(`claimGuestOrdersForVerifiedUser failed: ${error.message}`);
+  return Number((data as { orders_claimed?: number } | null)?.orders_claimed ?? 0);
+}
 
 interface OrderRow {
   id: string;

@@ -129,7 +129,7 @@ function AccountPageContent() {
         <form onSubmit={handleMfaSubmit} className="w-full max-w-md rounded-[30px] border border-white/70 bg-white/75 p-8 shadow-card backdrop-blur-xl">
           <ShieldCheck className="h-9 w-9 text-mahalyred" />
           <h1 className="mt-6 font-serif text-3xl font-semibold">One more step</h1>
-          <p className="mt-2 text-sm leading-6 text-ink-soft/60">Enter the 6-digit code from your authenticator app.</p>
+          <p className="mt-2 text-sm leading-6 text-ink-soft/60">Enter the 6-digit code from your authenticator app. This verification stays active for your current signed-in session; you will be asked again after signing out or when the session expires.</p>
           <TotpCodeInput
             value={mfaCode}
             onChange={(value) => {

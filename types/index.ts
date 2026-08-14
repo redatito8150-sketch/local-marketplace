@@ -617,6 +617,9 @@ export interface OrderRecord {
   orderNumber: string;
   status: OrderStatus;
   userId?: string;
+  accountName?: string;
+  accountEmail?: string;
+  accountPhone?: string;
   shippingName: string;
   shippingEmail: string;
   shippingPhone: string;

@@ -29,6 +29,8 @@ import {
 } from "@/lib/payments/pendingCardAttempt";
 import { usePendingCardPaymentReconciliation } from "@/lib/hooks/usePendingCardPaymentReconciliation";
 import type { AddressLabel, AddressRecord, AppError, PurchasedCartLine } from "@/types";
+import { supabase } from "@/lib/supabase/client";
+import { addressRecordToForm, formatAddressSnapshot } from "@/lib/addresses/form";
 
 // Only set once the owner has configured a real Paymob publishable key
 // (see .env.local.example) — until then the "Pay by card" option simply
@@ -54,6 +56,12 @@ interface ShippingForm {
   address: string;
   city: string;
   governorate: string;
+  buildingNumber: string;
+  floor: string;
+  apartment: string;
+  landmark: string;
+  deliveryInstructions: string;
+  postalCode: string;
 }
 
 const EMPTY_SHIPPING: ShippingForm = {
@@ -64,17 +72,30 @@ const EMPTY_SHIPPING: ShippingForm = {
   address: "",
   city: "",
   governorate: "",
+  buildingNumber: "",
+  floor: "",
+  apartment: "",
+  landmark: "",
+  deliveryInstructions: "",
+  postalCode: "",
 };
 
 function addressToShipping(address: AddressRecord, fallbackEmail: string): ShippingForm {
+  const form = addressRecordToForm(address);
   return {
-    firstName: address.firstName,
-    lastName: address.lastName,
+    firstName: form.firstName,
+    lastName: form.lastName,
     email: fallbackEmail,
-    phone: address.phone,
-    address: address.addressLine,
-    city: address.city,
-    governorate: address.governorate,
+    phone: form.phone,
+    address: form.addressLine,
+    city: form.city,
+    governorate: form.governorate,
+    buildingNumber: form.buildingNumber,
+    floor: form.floor,
+    apartment: form.apartment,
+    landmark: form.landmark,
+    deliveryInstructions: form.deliveryInstructions,
+    postalCode: form.postalCode,
   };
 }
 
@@ -82,7 +103,7 @@ const NEW_ADDRESS = "__new__";
 
 export default function CheckoutPage() {
   const { items, subtotal, clearCart, removePurchasedItems } = useCart();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   // Covers pressing Back into /checkout via client-side routing — this
   // remounts CheckoutPage (resetting cardState) but not the app-level
   // providers, so the global reconciler in app/providers.tsx wouldn't
@@ -132,7 +153,14 @@ export default function CheckoutPage() {
     // need to fetch or set state here at all.
     if (!user) return;
     let cancelled = false;
-    fetch("/api/account/addresses")
+    supabase.auth.getSession()
+      .then(({ data: { session } }) =>
+        fetch("/api/account/addresses", {
+          headers: session?.access_token
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : undefined,
+        })
+      )
       .then((res) => (res.ok ? res.json() : { addresses: [] }))
       .then((data: { addresses: AddressRecord[] }) => {
         if (cancelled) return;
@@ -220,6 +248,48 @@ export default function CheckoutPage() {
     dispatchCard({ type: "START_ATTEMPT", idempotencyKey });
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        dispatchCard({
+          type: "INTENTION_FAILED",
+          error: makeAppError("authentication", {
+            userMessage: "Your session could not be verified. Sign in again before paying by card.",
+          }),
+        });
+        return;
+      }
+
+      if (selectedAddressId === NEW_ADDRESS && user && saveNewAddress) {
+        const saved = await fetchWithAppError<{ id: string }>("/api/account/addresses", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            label: newAddressLabel,
+            firstName: shipping.firstName,
+            lastName: shipping.lastName,
+            phone: shipping.phone,
+            addressLine: shipping.address,
+            city: shipping.city,
+            governorate: shipping.governorate,
+            buildingNumber: shipping.buildingNumber,
+            floor: shipping.floor,
+            apartment: shipping.apartment,
+            landmark: shipping.landmark,
+            deliveryInstructions: shipping.deliveryInstructions,
+            postalCode: shipping.postalCode,
+          }),
+        });
+        if (!saved.ok) {
+          dispatchCard({ type: "INTENTION_FAILED", error: saved.error });
+          return;
+        }
+        setSelectedAddressId(saved.data.id);
+        setSaveNewAddress(false);
+      }
+
       const result = await fetchWithAppError<{ clientSecret: string; paymentAttemptId: string }>(
         "/api/payments/paymob/intention",
         {
@@ -227,6 +297,7 @@ export default function CheckoutPage() {
           headers: {
             "Content-Type": "application/json",
             "Idempotency-Key": idempotencyKey,
+            Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
             items: items.map((item) => ({
@@ -235,8 +306,26 @@ export default function CheckoutPage() {
               color: item.color,
               quantity: item.quantity,
             })),
-            shipping,
+            shipping: {
+              ...shipping,
+              address: formatAddressSnapshot({
+                label: newAddressLabel,
+                firstName: shipping.firstName,
+                lastName: shipping.lastName,
+                phone: shipping.phone,
+                addressLine: shipping.address,
+                city: shipping.city,
+                governorate: shipping.governorate,
+                buildingNumber: shipping.buildingNumber,
+                floor: shipping.floor,
+                apartment: shipping.apartment,
+                landmark: shipping.landmark,
+                deliveryInstructions: shipping.deliveryInstructions,
+                postalCode: shipping.postalCode,
+              }),
+            },
             couponCode: appliedCoupon?.code,
+            accountCheckout: true,
           }),
         }
       );
@@ -268,7 +357,7 @@ export default function CheckoutPage() {
     // what the customer actually filled in or selected before clicking
     // Pay with Card. Was previously [cardState.phase] only — caused every
     // card attempt to send an empty shipping.firstName.
-  }, [cardState.phase, items, shipping, appliedCoupon, user]);
+  }, [cardState.phase, items, shipping, appliedCoupon, user, selectedAddressId, saveNewAddress, newAddressLabel]);
 
   // Mounts Paymob Pixel once a client_secret is available, and keeps it
   // mounted through "ready" -> "pixel_open" (that transition only clears
@@ -471,6 +560,18 @@ export default function CheckoutPage() {
     setPlacing(true);
     setError(null);
 
+    const { data: { session } } = await supabase.auth.getSession();
+    if (user && !session?.access_token) {
+      setPlacing(false);
+      setError(makeAppError("authentication", {
+        userMessage: "Your session could not be verified. Sign in again before placing the order.",
+      }));
+      return;
+    }
+    const authenticatedHeaders: Record<string, string> = session?.access_token
+      ? { Authorization: `Bearer ${session.access_token}` }
+      : {};
+
     // Using a saved address as-is → pass its id straight through. Typing a
     // brand-new one with "save to my account" checked → create it first so
     // the order can reference a real address id; left unchecked (or for
@@ -482,7 +583,7 @@ export default function CheckoutPage() {
     if (selectedAddressId === NEW_ADDRESS && user && saveNewAddress) {
       const saveResult = await fetchWithAppError<{ id: string }>("/api/account/addresses", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authenticatedHeaders },
         body: JSON.stringify({
           label: newAddressLabel,
           firstName: shipping.firstName,
@@ -491,12 +592,22 @@ export default function CheckoutPage() {
           addressLine: shipping.address,
           city: shipping.city,
           governorate: shipping.governorate,
+          buildingNumber: shipping.buildingNumber,
+          floor: shipping.floor,
+          apartment: shipping.apartment,
+          landmark: shipping.landmark,
+          deliveryInstructions: shipping.deliveryInstructions,
+          postalCode: shipping.postalCode,
         }),
       });
-      // Saving the address is a convenience, not a requirement for placing
-      // this order — if it fails, silently fall through to the flat
-      // shipping fields rather than blocking checkout over it.
-      if (saveResult.ok) addressId = saveResult.data.id;
+      // The customer explicitly asked to save this address, so checkout must
+      // not silently create an unlinked order if persistence fails.
+      if (!saveResult.ok) {
+        setPlacing(false);
+        setError(saveResult.error);
+        return;
+      }
+      addressId = saveResult.data.id;
     }
 
     const idempotencyKey =
@@ -507,6 +618,7 @@ export default function CheckoutPage() {
       headers: {
         "Content-Type": "application/json",
         "Idempotency-Key": idempotencyKey,
+        ...authenticatedHeaders,
       },
       body: JSON.stringify({
         items: items.map((item) => ({
@@ -515,9 +627,27 @@ export default function CheckoutPage() {
           color: item.color,
           quantity: item.quantity,
         })),
-        shipping,
+        shipping: {
+          ...shipping,
+          address: formatAddressSnapshot({
+            label: newAddressLabel,
+            firstName: shipping.firstName,
+            lastName: shipping.lastName,
+            phone: shipping.phone,
+            addressLine: shipping.address,
+            city: shipping.city,
+            governorate: shipping.governorate,
+            buildingNumber: shipping.buildingNumber,
+            floor: shipping.floor,
+            apartment: shipping.apartment,
+            landmark: shipping.landmark,
+            deliveryInstructions: shipping.deliveryInstructions,
+            postalCode: shipping.postalCode,
+          }),
+        },
         couponCode: appliedCoupon?.code,
         addressId,
+        accountCheckout: Boolean(user),
       }),
     });
 
@@ -656,7 +786,13 @@ export default function CheckoutPage() {
                   required
                   value={shipping.email}
                   onChange={(v) => setShipping((s) => ({ ...s, email: v }))}
+                  readOnly={Boolean(user)}
                 />
+                {user && (
+                  <p className="-mt-3 text-[12px] text-ink-soft/55">
+                    Order updates go to the verified email on your account. Delivery recipient details are kept separately below.
+                  </p>
+                )}
 
                 {selectedAddressId === NEW_ADDRESS && (
                   <>
@@ -676,6 +812,7 @@ export default function CheckoutPage() {
                         onChange={(v) => setShipping((s) => ({ ...s, lastName: v }))}
                       />
                     </div>
+
                     <Field
                       label="Phone"
                       type="tel"
@@ -707,6 +844,15 @@ export default function CheckoutPage() {
                         onChange={(v) => setShipping((s) => ({ ...s, governorate: v }))}
                       />
                     </div>
+
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <Field label="Building number" value={shipping.buildingNumber} onChange={(v) => setShipping((s) => ({ ...s, buildingNumber: v }))} />
+                      <Field label="Floor" value={shipping.floor} onChange={(v) => setShipping((s) => ({ ...s, floor: v }))} />
+                      <Field label="Apartment" value={shipping.apartment} onChange={(v) => setShipping((s) => ({ ...s, apartment: v }))} />
+                    </div>
+                    <Field label="Landmark (optional)" placeholder="Near a well-known place" value={shipping.landmark} onChange={(v) => setShipping((s) => ({ ...s, landmark: v }))} />
+                    <Field label="Delivery instructions (optional)" value={shipping.deliveryInstructions} onChange={(v) => setShipping((s) => ({ ...s, deliveryInstructions: v }))} />
+                    <Field label="Postal code (optional)" value={shipping.postalCode} onChange={(v) => setShipping((s) => ({ ...s, postalCode: v }))} />
 
                     {user && (
                       <div className="space-y-2 rounded-md border border-stone-150 bg-white p-4">
@@ -744,6 +890,7 @@ export default function CheckoutPage() {
 
                 <button
                   type="submit"
+                  disabled={authLoading}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-md bg-mahalyred py-3.5 text-[14px] font-semibold text-cream transition-transform hover:scale-[1.01]"
                 >
                   Continue to Payment
@@ -1129,6 +1276,7 @@ function Field({
   required,
   value,
   onChange,
+  readOnly,
 }: {
   label: string;
   type?: string;
@@ -1136,6 +1284,7 @@ function Field({
   required?: boolean;
   value?: string;
   onChange?: (value: string) => void;
+  readOnly?: boolean;
 }) {
   return (
     <label className="block">
@@ -1146,7 +1295,8 @@ function Field({
         required={required}
         value={value}
         onChange={onChange ? (e) => onChange(e.target.value) : undefined}
-        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink/30"
+        readOnly={readOnly}
+        className="mt-1.5 w-full rounded-md border border-stone-150 bg-white px-3.5 py-2.5 text-[14px] text-ink outline-none transition-colors focus:border-ink/30 read-only:bg-stone-50 read-only:text-ink-soft/70"
       />
     </label>
   );

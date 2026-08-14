@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import { formatDateOnly, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_BADGE_CLASSES } from "@/lib/account/orderStatusLabels";
 import type { OrderRecord, OrderStatus } from "@/types";
+import CancelOrderButton from "@/components/account/CancelOrderButton";
 
 // The customer-facing shipment timeline — a linear subset of the real
 // status set (guest/cancelled orders are shown via their own badge instead,
@@ -23,9 +24,11 @@ function timelineIndexForStatus(status: OrderStatus): number {
 export default function OrderCard({
   order,
   showItems = true,
+  showCancel = false,
 }: {
   order: OrderRecord;
   showItems?: boolean;
+  showCancel?: boolean;
 }) {
   const brandNames = [...new Set(order.items.map((i) => i.brand))];
   const fulfillmentLabel =
@@ -107,6 +110,11 @@ export default function OrderCard({
               <span>{formatPrice(order.shippingFeeEgp, "EGP")}</span>
             </div>
           )}
+        </div>
+      )}
+      {showCancel && (
+        <div className="mt-4 border-t border-[var(--account-border)] pt-3">
+          <CancelOrderButton masterOrderId={order.masterOrderId} />
         </div>
       )}
     </div>

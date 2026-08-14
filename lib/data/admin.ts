@@ -560,7 +560,18 @@ export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> 
     throw new Error(`getOrderForAdmin(${id}) failed: ${error.message}`);
   }
   if (!data) return null;
-  return toOrderRecord(data as OrderRow);
+  const order = toOrderRecord(data as OrderRow);
+  if (order.userId) {
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name, email, phone")
+      .eq("id", order.userId)
+      .maybeSingle();
+    order.accountName = profile?.full_name ?? undefined;
+    order.accountEmail = profile?.email ?? undefined;
+    order.accountPhone = profile?.phone ?? undefined;
+  }
+  return order;
 }
 
 export interface SiblingOrderSummary {

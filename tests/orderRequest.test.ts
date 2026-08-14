@@ -36,6 +36,22 @@ test("accepts and normalizes a valid order request", () => {
   assert.equal(result.value.items[0].color, "Sand");
   assert.equal(result.value.shipping.email, "nour@example.com");
   assert.equal(result.value.couponCode, "SUMMER20");
+  assert.equal(result.value.accountCheckout, false);
+});
+
+test("preserves explicit account checkout intent and rejects malformed values", () => {
+  const result = validateOrderRequest({
+    items: [validItem],
+    shipping: validShipping,
+    accountCheckout: true,
+  });
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.accountCheckout, true);
+
+  assert.deepEqual(
+    validateOrderRequest({ items: [validItem], shipping: validShipping, accountCheckout: "yes" }),
+    { ok: false, error: "Invalid checkout mode" }
+  );
 });
 
 test("rejects an empty cart", () => {

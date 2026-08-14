@@ -186,7 +186,16 @@ export default async function AdminOrderDetailPage(
         </div>
 
         <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Shipping</h2>
+          <h2 className="text-[15px] font-semibold text-ink">Customer & delivery</h2>
+          {order.userId && (
+            <div className="mt-4 rounded-lg bg-stone-50 px-3.5 py-3 text-[13px] text-ink-soft/75">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Account customer</p>
+              <p className="mt-1 font-medium text-ink">{order.accountName || "Account holder"}</p>
+              <p>{order.accountEmail || "Email unavailable"}</p>
+              {order.accountPhone && <p>{order.accountPhone}</p>}
+            </div>
+          )}
+          <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Delivery recipient</p>
           <div className="mt-4 space-y-1.5 text-[13px] text-ink-soft/75">
             <p className="font-medium text-ink">{order.shippingName}</p>
             <p>{order.shippingEmail}</p>
