@@ -74,7 +74,7 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
                       showCancel={index === 0 && groupOrders.every((candidate) =>
                         candidate.paymentMethod === "cash_on_delivery" &&
                         candidate.paymentStatus === "unpaid" &&
-                        (candidate.status === "pending" || candidate.status === "preparing")
+                        (["confirmed", "pending", "paid", "preparing"] as string[]).includes(candidate.status)
                       )}
                     />
                   ))}
@@ -87,7 +87,7 @@ export default function OrdersTabs({ orders }: { orders: OrderRecord[] }) {
                 showCancel={
                   groupOrders[0].paymentMethod === "cash_on_delivery" &&
                   groupOrders[0].paymentStatus === "unpaid" &&
-                  (groupOrders[0].status === "pending" || groupOrders[0].status === "preparing")
+                  (["confirmed", "pending", "paid", "preparing"] as string[]).includes(groupOrders[0].status)
                 }
               />
             )

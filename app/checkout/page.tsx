@@ -43,9 +43,9 @@ const CARD_PAYMENT_ENABLED = Boolean(PAYMOB_PUBLIC_KEY);
 type Step = "shipping" | "payment" | "confirmation";
 
 const STEPS: { id: Step; label: string }[] = [
-  { id: "shipping", label: "Shipping" },
-  { id: "payment", label: "Payment" },
-  { id: "confirmation", label: "Confirmation" },
+  { id: "shipping", label: "Delivery details" },
+  { id: "payment", label: "Payment method" },
+  { id: "confirmation", label: "Order placed" },
 ];
 
 interface ShippingForm {
@@ -694,18 +694,21 @@ export default function CheckoutPage() {
       <section className="mx-auto max-w-screen2xl px-8 py-12 lg:px-12 lg:py-16">
         {/* Step indicator */}
         <div className="mb-10 flex items-center gap-3">
-          {STEPS.map((s, i) => (
+          {STEPS.map((s, i) => {
+            const orderPlaced = step === "confirmation" || cardState.phase === "confirmed";
+            const completed = i < stepIndex || (orderPlaced && i <= STEPS.length - 1);
+            return (
             <div key={s.id} className="flex items-center gap-3">
               <div
                 className={`flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold transition-colors ${
-                  i < stepIndex
+                  completed
                     ? "bg-mahalyred text-cream"
                     : i === stepIndex
                     ? "border-2 border-ink text-ink"
                     : "border border-stone-150 text-ink-soft/40"
                 }`}
               >
-                {i < stepIndex ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : i + 1}
+                {completed ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : i + 1}
               </div>
               <span
                 className={`text-[13px] font-medium ${
@@ -718,7 +721,8 @@ export default function CheckoutPage() {
                 <div className="h-px w-10 bg-stone-150 sm:w-16" />
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_340px]">
@@ -1090,6 +1094,9 @@ export default function CheckoutPage() {
                 <h1 className="mt-6 text-2xl font-bold tracking-tightest text-ink">
                   Order confirmed
                 </h1>
+                <p className={`mt-3 rounded-full px-3 py-1.5 text-[12px] font-semibold ${paymentMethod === "cod" ? "bg-amber-50 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
+                  {paymentMethod === "cod" ? "Cash due on delivery" : "Paid online by card"}
+                </p>
                 {masterOrderNumber && (
                   <p className="mt-1 text-[14px] font-semibold text-ink">
                     Your purchase number is {masterOrderNumber}

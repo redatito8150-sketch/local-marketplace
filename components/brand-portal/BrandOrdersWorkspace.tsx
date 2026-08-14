@@ -11,6 +11,7 @@ import { formatDateOnly, formatDateTime, formatPrice, formatSize } from "@/lib/f
 import type { BrandOrder } from "@/lib/data/brandPortal";
 import type { OrderStatus } from "@/types";
 import { getOrderPaymentPresentation, paymentToneClass } from "@/lib/orders/paymentPresentation";
+import { normalizeOrderStatus } from "@/lib/orders/lifecycle";
 
 type Queue = "all" | "attention" | "active" | "fulfilled" | "cancelled";
 type Params = { brand?: string; q?: string; queue?: string; from?: string; to?: string; sort?: string };
@@ -38,6 +39,18 @@ function hasItemDiscount(item: BrandOrder["items"][number]) {
 function label(value?: string) {
   if (!value) return "Not available";
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function fulfillmentInstruction(order: BrandOrder): { title: string; detail: string } {
+  if (order.fulfillmentType === "mahaly_pool") {
+    return { title: "No action needed from your brand", detail: "Zakhnook is preparing and delivering this warehouse-fulfilled order." };
+  }
+  const status = normalizeOrderStatus(order.status as OrderStatus);
+  if (status === "confirmed") return { title: "Accept and prepare this order", detail: "Confirm that you can fulfill the listed variants, then start packing them." };
+  if (status === "preparing") return { title: "Finish packing for pickup", detail: "When the package is complete, mark it ready so Zakhnook can collect it." };
+  if (status === "ready_for_pickup") return { title: "Waiting for Zakhnook pickup", detail: "Your work is complete for now. Zakhnook owns the next delivery step." };
+  if (status === "shipped") return { title: "On the way to the customer", detail: "Zakhnook is delivering this shipment." };
+  return { title: "No action needed", detail: "This shipment no longer needs a fulfillment action from your brand." };
 }
 
 function OrderImage({ item, size = "md" }: { item: BrandOrder["items"][number]; size?: "sm" | "md" | "lg" }) {
@@ -162,7 +175,7 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
               <div className="border-t border-[#eee7e1] bg-[#fcfaf8] px-4 py-4"><div className="space-y-2 text-[11px]"><div className="flex items-center justify-between text-[#74675e]"><span>Products subtotal</span><span className="font-semibold text-[#4a4039]">{formatPrice(productsSubtotal(selected), "EGP")}</span></div>{selected.brandDiscountEgp > 0 && <div className="flex items-center justify-between text-[#C85956]"><span>Coupon{selected.couponCode ? ` (${selected.couponCode})` : ""}</span><span className="font-semibold">−{formatPrice(selected.brandDiscountEgp, "EGP")}</span></div>}<div className="flex items-center justify-between text-[#74675e]"><span>Delivery</span><span className="font-semibold text-[#4a4039]">{selected.shippingFeeEgp > 0 ? formatPrice(selected.shippingFeeEgp, "EGP") : "Free"}</span></div></div><div className="mt-3 flex items-end justify-between border-t border-[#e8dfd8] pt-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#9b8d82]">Order total</p>{selectedPayment && <p className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[9.5px] font-bold ring-1 ring-inset ${paymentToneClass(selectedPayment.tone)}`}>{selected.paymentMethod === "card" ? <CreditCard className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}{selectedPayment.label}</p>}</div><p className="text-lg font-extrabold tracking-[-0.03em] text-[#242424]">{formatPrice(orderTotal(selected), "EGP")}</p></div></div>
             </section>
             <section className={`rounded-2xl border p-4 ${selected.fulfillmentType === "mahaly_pool" ? "border-[#e5ddd6] bg-[#f6f2ee]" : "border-[#C85956]/20 bg-[#fff1ef]"}`}>
-              <div className="flex gap-3">{selected.fulfillmentType === "mahaly_pool" ? <Truck className="mt-0.5 h-4 w-4 flex-none text-[#6c6058]" /> : <PackageCheck className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" />}<div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#9b8d82]">Fulfillment & delivery</p><p className="mt-2 text-[12px] font-bold text-[#403730]">{selected.fulfillmentType === "mahaly_pool" ? "No action needed from your brand" : selected.status === "paid" ? "Prepare these variants" : selected.status === "preparing" ? "Hand the package to Zakhnook" : "Your fulfillment is up to date"}</p><p className="mt-1 text-[10.5px] leading-5 text-[#81746b]">{selected.fulfillmentType === "mahaly_pool" ? "Zakhnook is preparing and delivering this pooled marketplace order." : "Pack the listed variants and update the order when the next step is complete."}</p>{selected.fulfillmentType === "brand_direct" && <div data-print-hide className="mt-3"><BrandOrderStatusControl orderId={selected.id} status={selected.status} brandSlug={brandSlug} /></div>}</div></div>
+              <div className="flex gap-3">{selected.fulfillmentType === "mahaly_pool" ? <Truck className="mt-0.5 h-4 w-4 flex-none text-[#6c6058]" /> : <PackageCheck className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" />}<div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#9b8d82]">Fulfillment & delivery</p><p className="mt-2 text-[12px] font-bold text-[#403730]">{fulfillmentInstruction(selected).title}</p><p className="mt-1 text-[10.5px] leading-5 text-[#81746b]">{fulfillmentInstruction(selected).detail}</p>{selected.fulfillmentType === "brand_direct" && <div data-print-hide className="mt-3"><BrandOrderStatusControl orderId={selected.id} status={selected.status} brandSlug={brandSlug} /></div>}</div></div>
               <div className="mt-4 grid gap-3 border-t border-[#dfd6cf] pt-4 sm:grid-cols-2"><div><p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#9b8d82]">Deliver to</p><p className="mt-1.5 text-[11.5px] font-bold text-[#403730]">{selected.shippingName}</p><p className="mt-1 text-[10px] text-[#81746b]">{selected.shippingCity}, {selected.shippingGovernorate}</p></div><div className="border-t border-[#dfd6cf] pt-3 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"><p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#9b8d82]">Tracking</p><p className="mt-1.5 text-[11px] font-bold text-[#403730]">{selected.fulfillmentType === "mahaly_pool" ? "Managed by Zakhnook" : "Not assigned yet"}</p><p className="mt-1 text-[10px] leading-4 text-[#81746b]">Carrier details appear after dispatch.</p></div></div>
             </section>
             <section className="rounded-2xl border border-[#eadfd7] bg-white p-4">

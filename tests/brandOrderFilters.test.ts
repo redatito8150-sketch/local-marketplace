@@ -40,3 +40,11 @@ test("order search still matches customer and product text", () => {
   assert.equal(filterBrandOrders([order], { q: "baby blue" }).length, 1);
   assert.equal(filterBrandOrders([order], { q: "not present" }).length, 0);
 });
+
+test("a newly confirmed direct order appears in Needs action", () => {
+  assert.equal(filterBrandOrders([{ ...order, status: "confirmed" }], { queue: "attention" }).length, 1);
+});
+
+test("warehouse-fulfilled orders never ask the brand to act", () => {
+  assert.equal(filterBrandOrders([{ ...order, status: "confirmed", fulfillmentType: "mahaly_pool" }], { queue: "attention" }).length, 0);
+});

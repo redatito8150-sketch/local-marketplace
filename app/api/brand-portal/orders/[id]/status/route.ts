@@ -2,21 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireActiveBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
-import { notifyUser } from "@/lib/notify";
-import { sendEmail } from "@/lib/email/sendEmail";
-import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
+import { notify, notifyUser } from "@/lib/notify";
 import { getOrderForAdmin } from "@/lib/data/admin";
 
 // A brand only ever advances its OWN 'brand_direct' shipment through the
 // self-fulfillment handoff — Zakhnook still does the actual delivery, but the
-// brand is the one packing the order, so it marks "I'm packing it" and
-// "I've handed it to the courier" itself rather than waiting on an admin.
+// brand is the one packing the order, so it accepts the work and marks the
+// package ready. Zakhnook owns pickup, dispatch and delivery after that.
 // 'mahaly_pool' orders (this brand's items pooled with other partner
 // brands', fulfilled straight from Zakhnook's own warehouse) are never
 // editable here — only admin/staff touch those, same as before.
 const ALLOWED_TRANSITIONS: Record<string, string> = {
+  confirmed: "preparing",
+  pending: "preparing",
   paid: "preparing",
-  preparing: "shipped",
+  preparing: "ready_for_pickup",
 };
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
@@ -58,7 +58,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     p_expected_status: order.status,
     p_new_status: status,
     p_actor_id: owner.user.id,
-    p_note: null,
+    p_note: status === "preparing"
+      ? "Accepted by the brand and preparation started"
+      : "Brand marked the package ready for Zakhnook pickup",
   });
   if (error) {
     const code = error.message.split(":")[0]?.trim();
@@ -84,20 +86,28 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     after: { status },
   });
 
-  if (status === "shipped") {
-    const fullOrder = await getOrderForAdmin(params.id);
-    if (fullOrder?.shippingEmail) {
-      await sendEmail({ to: fullOrder.shippingEmail, ...orderShippedEmail(fullOrder) });
-    }
-    if (order.user_id) {
-      await notifyUser(
-        order.user_id,
-        "order_shipped",
-        `Order #${fullOrder?.orderNumber ?? params.id} is on its way`,
-        "",
-        { relatedEntityType: "order", relatedEntityId: params.id }
-      );
-    }
+  const fullOrder = await getOrderForAdmin(params.id);
+  if (status === "preparing" && order.user_id) {
+    await notifyUser(
+      order.user_id,
+      "order_preparing",
+      `Order #${fullOrder?.orderNumber ?? params.id} is being prepared`,
+      "The brand accepted your order and started packing it.",
+      { relatedEntityType: "order", relatedEntityId: params.id }
+    );
+  } else if (status === "ready_for_pickup") {
+    await notify(
+      "order_ready_for_pickup",
+      `Order ready for pickup: #${fullOrder?.orderNumber ?? params.id}`,
+      `${owner.brandName ?? owner.brandSlug} finished preparing this shipment.`,
+      {
+        relatedEntityType: "order",
+        relatedEntityId: params.id,
+        entityIdLabel: "Order ID",
+        actorLabel: owner.user.email ?? owner.user.id,
+        detailLabel: "Brand",
+      }
+    );
   }
 
   return NextResponse.json({ id: params.id, status });

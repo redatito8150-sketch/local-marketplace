@@ -7,6 +7,8 @@ import type { AuditEntityType } from "@/lib/auditLog";
 export type NotificationType =
   | "order_created"
   | "order_cancelled"
+  | "order_preparing"
+  | "order_ready_for_pickup"
   | "product_created"
   | "product_updated"
   | "product_published"
@@ -30,6 +32,8 @@ export type NotificationType =
 // everything else (edits, warnings).
 const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   order_created: DISCORD_COLORS.green,
+  order_preparing: DISCORD_COLORS.orange,
+  order_ready_for_pickup: DISCORD_COLORS.orange,
   product_created: DISCORD_COLORS.green,
   product_published: DISCORD_COLORS.green,
   brand_application_submitted: DISCORD_COLORS.green,

@@ -143,6 +143,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (existing?.user_id && order) {
     const CUSTOMER_NOTIFICATION_TEXT: Partial<Record<typeof status, { title: string; body: string }>> = {
       cancelled: { title: `Order #${order.orderNumber} was cancelled`, body: "" },
+      preparing: { title: `Order #${order.orderNumber} is being prepared`, body: "The items are being packed." },
+      ready_for_pickup: { title: `Order #${order.orderNumber} is ready for pickup`, body: "Zakhnook owns the next delivery step." },
       shipped: { title: `Order #${order.orderNumber} is on its way`, body: "" },
       fulfilled: { title: `Order #${order.orderNumber} was delivered`, body: "" },
     };

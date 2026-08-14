@@ -3,21 +3,24 @@ import { formatDateOnly, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_BADGE_CLASSES } from "@/lib/account/orderStatusLabels";
 import type { OrderRecord, OrderStatus } from "@/types";
 import CancelOrderButton from "@/components/account/CancelOrderButton";
+import { normalizeOrderStatus } from "@/lib/orders/lifecycle";
+import { getOrderPaymentPresentation, paymentToneClass } from "@/lib/orders/paymentPresentation";
 
 // The customer-facing shipment timeline — a linear subset of the real
 // status set (guest/cancelled orders are shown via their own badge instead,
 // not folded into this line). Mirrors the same "pending/paid → Processing"
 // collapse already used for the tab labels above.
 const TIMELINE_STEPS: { status: OrderStatus; label: string }[] = [
-  { status: "paid", label: "Processing" },
+  { status: "confirmed", label: "Confirmed" },
   { status: "preparing", label: "Preparing" },
-  { status: "shipped", label: "Shipped" },
+  { status: "ready_for_pickup", label: "Ready for pickup" },
+  { status: "shipped", label: "On the way" },
   { status: "fulfilled", label: "Delivered" },
 ];
 
 function timelineIndexForStatus(status: OrderStatus): number {
-  if (status === "pending") return 0;
-  const i = TIMELINE_STEPS.findIndex((s) => s.status === status);
+  const normalized = normalizeOrderStatus(status);
+  const i = TIMELINE_STEPS.findIndex((s) => s.status === normalized);
   return i === -1 ? 0 : i;
 }
 
@@ -40,6 +43,7 @@ export default function OrderCard({
 
   const activeIndex = timelineIndexForStatus(order.status);
   const showTimeline = order.status !== "cancelled";
+  const payment = getOrderPaymentPresentation(order);
 
   return (
     <div className="rounded-[20px] border border-[var(--account-border)] bg-[var(--account-surface)] p-5 shadow-[var(--account-shadow)] sm:p-6">
@@ -50,11 +54,14 @@ export default function OrderCard({
             {formatDateOnly(order.createdAt)} · {fulfillmentLabel}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <span
             className={`rounded-full px-3 py-1 text-[11px] font-semibold ${ORDER_STATUS_BADGE_CLASSES[order.status]}`}
           >
             {ORDER_STATUS_LABELS[order.status]}
+          </span>
+          <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ring-1 ring-inset ${paymentToneClass(payment.tone)}`}>
+            {payment.label}
           </span>
           <p className="text-[14px] font-semibold text-[var(--account-text)]">
             {order.subtotalUsd > 0 && formatPrice(order.subtotalUsd, "USD")}
@@ -78,7 +85,7 @@ export default function OrderCard({
                 >
                   {i < activeIndex ? <Check className="h-3 w-3" strokeWidth={2.5} /> : null}
                 </div>
-                <span className="mt-1 whitespace-nowrap text-[10.5px] text-[var(--account-text-muted)]">
+                <span className="mt-1 max-w-[72px] text-center text-[10px] leading-3 text-[var(--account-text-muted)]">
                   {step.label}
                 </span>
               </div>
