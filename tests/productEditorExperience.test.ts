@@ -250,3 +250,42 @@ test("the Live Preview is never replaced by a Drawer: it renders unconditionally
   assert.doesNotMatch(formSource, /activeVariantCell/);
   assert.match(formSource, /<ProductLivePreview/);
 });
+
+test("new products use a six-step wizard with a prominent, reversible customer preview", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
+  const previewSource = readFileSync(new URL("../components/admin/ProductLivePreview.tsx", import.meta.url), "utf8");
+
+  assert.match(formSource, /isCreateExperience \? \(/);
+  assert.match(formSource, /<ProductWizardBottomBar/);
+  assert.match(formSource, /activeSection === "inventory"/);
+  assert.doesNotMatch(chromeSource, /label: "Shipping"/);
+  assert.equal((chromeSource.match(/number: "[1-6]", label:/g) ?? []).length, 6);
+  assert.match(chromeSource, /Preview product/);
+  assert.match(chromeSource, /Hide preview/);
+  assert.match(previewSource, /Customer preview/);
+  assert.match(previewSource, /> Desktop/);
+  assert.match(previewSource, /> Mobile/);
+});
+
+test("brand-portal product creation uses a standalone shell without the portal sidebar", () => {
+  const shellSource = readFileSync(new URL("../components/brand-portal/BrandPortalExperienceShell.tsx", import.meta.url), "utf8");
+  const layoutSource = readFileSync(new URL("../app/brand-portal/layout.tsx", import.meta.url), "utf8");
+
+  assert.match(shellSource, /pathname === "\/brand-portal\/products\/new"/);
+  assert.match(shellSource, /if \(isStandaloneProductCreator\)/);
+  assert.match(shellSource, /<main className="min-h-screen/);
+  assert.match(layoutSource, /<BrandPortalExperienceShell/);
+});
+
+test("option loading distinguishes progress, retryable failure, and missing administrator setup", () => {
+  const formSource = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
+  const inventorySource = readFileSync(new URL("../components/admin/InventoryVariantsSection.tsx", import.meta.url), "utf8");
+
+  assert.match(formSource, /optionLoadState/);
+  assert.match(formSource, /onRetryOptions=\{loadOptions\}/);
+  assert.match(inventorySource, /Loading colors and sizes/);
+  assert.match(inventorySource, /Colors and sizes could not be loaded/);
+  assert.match(inventorySource, /Try again/);
+  assert.match(inventorySource, /need administrator setup/);
+});

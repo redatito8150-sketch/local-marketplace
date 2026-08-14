@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import type { OptionSwatchType, SellingStatus, TaxonomyNode } from "@/types";
 import OptionValueMultiSelect from "./OptionValueMultiSelect";
 import VariantTable from "./VariantTable";
@@ -75,6 +76,9 @@ export default function InventoryVariantsSection({
   productTypeId,
   inventoryHref,
   isPartnerBrand,
+  optionLoadState = "ready",
+  optionLoadError = "",
+  onRetryOptions,
 }: {
   value: InventoryVariantsValue;
   onChange: (next: InventoryVariantsValue) => void;
@@ -98,6 +102,9 @@ export default function InventoryVariantsSection({
   // matter what's typed here (see forceZeroOpeningStock), so the field
   // itself is locked and relabeled rather than silently ignoring input.
   isPartnerBrand?: boolean;
+  optionLoadState?: "idle" | "loading" | "ready" | "error";
+  optionLoadError?: string;
+  onRetryOptions?: () => void;
 }) {
   const colorType = availableOptionTypes.find((t) => t.key === "color");
   const sizeType = availableOptionTypes.find((t) => t.key === "size");
@@ -296,10 +303,37 @@ export default function InventoryVariantsSection({
           onUpdateVariant={updateVariant}
           onReorderSize={onReorderOptionValue}
         />
+      ) : optionLoadState === "idle" || optionLoadState === "loading" ? (
+        <div className="flex items-center gap-3 rounded-xl border border-stone-150 bg-stone-50 px-4 py-4 text-[12.5px] text-ink-soft/70">
+          <Loader2 className="h-4 w-4 animate-spin text-[#C85956]" />
+          Loading colors and sizes…
+        </div>
+      ) : optionLoadState === "error" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-red-600" />
+            <div>
+              <p className="text-[12.5px] font-bold text-red-800">Colors and sizes could not be loaded</p>
+              <p className="mt-0.5 text-[11.5px] text-red-700/75">{optionLoadError || "Check your connection and try again."}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onRetryOptions}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-[11.5px] font-bold text-red-700 transition-colors hover:bg-red-100"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Try again
+          </button>
+        </div>
       ) : (
-        <p className="text-[12.5px] text-red-600">
-          System Color and Size option types were not found. Contact an administrator.
-        </p>
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-none text-amber-700" />
+          <div>
+            <p className="text-[12.5px] font-bold text-amber-900">Color and Size need administrator setup</p>
+            <p className="mt-0.5 text-[11.5px] text-amber-800/75">The system option types are unavailable for this workspace.</p>
+          </div>
+        </div>
       )}
 
       {/* Legacy custom option (pre-rebuild data only) */}
