@@ -54,16 +54,33 @@ test("the admin bulk products route no longer offers a 'delete' action", () => {
   assert.match(bulkRoute, /delete_draft/);
 });
 
-// item 5 + item 13: an archived product must only come back through
-// restore_product's canonical revalidation — these three generic routes
-// each offered a bypass (edit the status field straight back to
-// "published") before the corrective pass.
-test("admin and brand-portal product PATCH routes refuse an archived -> published transition", () => {
+// SECOND CORRECTIVE PASS: the original guard here only blocked
+// archived -> published directly, which still allowed a two-step bypass
+// (archived -> draft through this same route, then the ordinary publish
+// flow — no longer seeing "archived" — republished it, all without ever
+// calling restore_product). The guard must now reject ANY status change
+// away from "archived", not just to "published" — this is deliberately a
+// stronger regex than "status === published" alone, since that specific
+// weaker check is exactly what let the two-step bypass through.
+test("admin and brand-portal product PATCH routes refuse leaving 'archived' via ANY status change, not just -> published", () => {
   const adminRoute = readFileSync(path.join(rootDir, "app/api/admin/products/[id]/route.ts"), "utf8");
   const brandPortalRoute = readFileSync(path.join(rootDir, "app/api/brand-portal/products/[id]/route.ts"), "utf8");
   for (const [name, content] of [["admin", adminRoute], ["brand-portal", brandPortalRoute]] as const) {
-    assert.match(content, /existing\.status === "archived" && (body|productBody)\.status === "published"/, `${name} route missing the restore-bypass guard`);
+    assert.match(content, /existing\.status === "archived" && (body|productBody)\.status !== "archived"/, `${name} route missing the full archived-departure guard`);
+    // The narrower, insufficient form must not be the one actually guarding.
+    assert.doesNotMatch(content, /existing\.status === "archived" && (body|productBody)\.status === "published"/, `${name} route still has the incomplete published-only guard`);
   }
+});
+
+// SECOND CORRECTIVE PASS (item 1): the database-level backstop for the
+// same bypass — required precisely because "future service-role code" is
+// explicitly called out as a risk the API-layer guards above can't cover
+// on their own.
+test("a database trigger blocks any archived -> non-archived UPDATE outside of restore_product", () => {
+  const migration = readFileSync(path.join(rootDir, "supabase/migrations/20260814020000_product_deletion_lifecycle.sql"), "utf8");
+  assert.match(migration, /create trigger products_enforce_archived_transition/);
+  assert.match(migration, /before update of status on public\.products/);
+  assert.match(migration, /app\.product_restore_in_progress/);
 });
 
 test("the admin bulk 'publish' action excludes currently-archived products instead of republishing them directly", () => {

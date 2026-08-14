@@ -43,10 +43,13 @@ export interface ProductDeletionEligibility {
   blockers: DeletionBlocker[];
 }
 
-// Every mutating RPC returns this same envelope shape. `mediaUrls` is only
-// ever populated by the two RPCs that actually hard-delete a product row
-// (delete_draft_product, admin_approve_product_deletion) — the caller is
-// responsible for handing these to queueOwnedProductMediaCleanup() below.
+// Every mutating RPC returns this same envelope shape. `mediaUrls`/
+// `mediaJobsQueued` are only ever populated by the two RPCs that actually
+// hard-delete a product row (delete_draft_product,
+// admin_approve_product_deletion) — purely informational for callers/
+// tests. The RPC itself already enqueued the cleanup jobs transactionally
+// (private.queue_owned_product_media_cleanup, same transaction as the
+// delete) — no caller needs to do anything further with these fields.
 export interface DeletionRpcResult {
   ok: boolean;
   code: string;
@@ -56,6 +59,7 @@ export interface DeletionRpcResult {
   requestState?: string;
   blockers?: DeletionBlocker[];
   before?: unknown;
+  mediaJobsQueued?: number;
   mediaUrls?: string[];
 }
 

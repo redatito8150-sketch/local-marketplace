@@ -124,10 +124,14 @@ create index if not exists product_deletion_requests_status_idx
 create unique index if not exists product_deletion_requests_operation_key_idx
   on public.product_deletion_requests (product_id, operation_key)
   where operation_key is not null;
--- Case-insensitive search support for the admin review queue's paginated
--- search RPC (private.admin_search_deletion_requests below).
+-- Trigram search support for the admin review queue's paginated search RPC
+-- (private.admin_search_deletion_requests below) — pg_trgm's GIN opclass
+-- accelerates ILIKE '%...%' directly against the plain column, so this is
+-- deliberately NOT built on lower(product_name): that would only be used
+-- by a query that also wraps its predicate in lower(...), which the
+-- ILIKE-based search below does not.
 create index if not exists product_deletion_requests_product_name_trgm_idx
-  on public.product_deletion_requests using gin (lower(product_name) gin_trgm_ops);
+  on public.product_deletion_requests using gin (product_name gin_trgm_ops);
 
 alter table public.product_deletion_requests enable row level security;
 -- No RLS policy is added on purpose, matching this codebase's established
@@ -410,7 +414,7 @@ begin
   -- Purely local to canDeleteImmediately's own check — an archived,
   -- previously-published product must never see PRODUCT_NOT_DRAFT or
   -- PRODUCT_EVER_PUBLISHED in its blockers, since neither has any bearing
-  -- on whether it can be *requested*/*approved* for deletion.
+  -- on whether it can be requested or approved for deletion.
   if v_product.status <> 'draft' or v_product.publish_date is not null or v_product.first_stocked_at is not null then
     v_pristine := false;
   end if;
@@ -523,14 +527,31 @@ $$;
 revoke all on function public.archive_product(text, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.archive_product(text, uuid, uuid, text) to service_role;
 
--- CORRECTIVE PASS (item 6): restore now verifies full baseline
--- publish-readiness, not just "at least one active variant exists" —
--- required product fields, direct-brand sellable stock, and the
--- partner-brand launch gate are all re-checked so an archived product
--- can never come back published in an unsellable/incomplete state. This
--- is a core-readiness subset (the fields already stored on the `products`
--- row plus variant/stock/launch state), not a re-implementation of the
--- full multi-field form validation in lib/admin/productValidation.ts.
+-- SECOND CORRECTIVE PASS (item 1 + item 6 superseded): restore no longer
+-- targets 'published' directly and no longer re-implements a partial copy
+-- of publish-readiness validation in SQL. The prior version's approach —
+-- restore straight to 'published' after checking a hand-picked subset of
+-- fields/stock/launch-state — was both an incomplete re-implementation of
+-- lib/admin/productValidation.ts's real rules and, combined with the
+-- generic PATCH routes' original archived-> published-only guard, part of
+-- what enabled the two-step archived -> draft -> published bypass (the
+-- generic routes happily allowed archived -> draft, then the ordinary
+-- publish flow — with its own full validation — took it the rest of the
+-- way, never going through this function at all).
+--
+-- Restore now does exactly one thing: move an eligible archived product
+-- back to 'draft', unconditionally on product completeness. Getting back
+-- to 'published' from there is deliberately left to the same ordinary
+-- edit-and-publish flow (full form save, validateProductInput) every
+-- other draft already goes through — there is no second, parallel
+-- publish-readiness implementation to keep in sync with the real one.
+--
+-- `perform set_config('app.product_restore_in_progress', 'on', true)`
+-- (local to this transaction, auto-clears at commit/rollback) is the only
+-- way the new products_enforce_archived_transition trigger below ever
+-- allows an archived row to leave 'archived' — see that trigger's own
+-- comment for why this is the actual database-level boundary the bypass
+-- required, not just an API-layer check.
 create or replace function public.restore_product(
   p_product_id text,
   p_brand_id uuid,
@@ -545,8 +566,6 @@ as $$
 declare
   v_product record;
   v_brand record;
-  v_active_variants integer;
-  v_sellable_stock numeric;
   v_open_request record;
 begin
   select * into v_product from public.products where id = p_product_id for update;
@@ -573,45 +592,127 @@ begin
     return jsonb_build_object('ok', false, 'code', 'NOT_AUTHORIZED', 'message', 'This brand is not active, so its products cannot be restored.');
   end if;
 
-  if coalesce(nullif(trim(v_product.name), ''), '') = '' or v_product.price is null or v_product.price <= 0 or coalesce(nullif(trim(v_product.image), ''), '') = '' then
-    return jsonb_build_object('ok', false, 'code', 'PRODUCT_MISSING_REQUIRED_FIELDS', 'message', 'This product is missing required fields (name, price, or image) and cannot be republished as-is.');
-  end if;
+  perform set_config('app.product_restore_in_progress', 'on', true);
+  update public.products set status = 'draft', draft_started_at = now() where id = p_product_id;
 
-  select count(*) into v_active_variants from public.product_variants
-  where product_id = p_product_id and is_archived = false and selling_status = 'active';
-  if v_active_variants = 0 then
-    return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_DRAFT', 'message', 'This product has no active, sellable variants — add or restore at least one variant before restoring.');
-  end if;
-
-  if v_brand.is_mahaly_partner then
-    if v_product.first_stocked_at is null then
-      return jsonb_build_object('ok', false, 'code', 'PRODUCT_NOT_LAUNCHED', 'message', 'This Zakhnook-fulfilled product has never actually been launched (no stock has ever been received for it) — it cannot be restored until Zakhnook has received real stock.');
-    end if;
-  else
-    select coalesce(sum(quantity), 0) into v_sellable_stock from public.product_variants
-    where product_id = p_product_id and is_archived = false and selling_status = 'active';
-    if v_sellable_stock <= 0 then
-      return jsonb_build_object('ok', false, 'code', 'PRODUCT_NO_SELLABLE_STOCK', 'message', 'This product has no sellable stock on any active variant — add stock before restoring.');
-    end if;
-  end if;
-
-  update public.products set status = 'published' where id = p_product_id;
-
-  return jsonb_build_object('ok', true, 'code', 'RESTORED', 'message', 'Product restored.', 'lifecycle', 'active', 'before', to_jsonb(v_product));
+  return jsonb_build_object('ok', true, 'code', 'RESTORED', 'message', 'Product restored to Draft — publish it from the editor when ready.', 'lifecycle', 'draft', 'before', to_jsonb(v_product));
 end;
 $$;
 
 revoke all on function public.restore_product(text, uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.restore_product(text, uuid, uuid, text) to service_role;
 
--- CORRECTIVE PASS (item 8): captures the product's own owned media URLs
--- (product_media.storage_reference + product_color_images.image_url)
--- BEFORE the delete cascades those rows away, and returns them as
--- `mediaUrls` — the caller (lib/admin/productMediaStorage.ts) is
--- responsible for filtering these down to genuinely-owned Storage paths
--- and queuing them with the existing storage_cleanup_jobs mechanism
--- (lib/account/storageCleanup.ts). This RPC never touches Storage itself
--- — only Postgres rows — keeping it a plain, fast, transactional delete.
+-- SECOND CORRECTIVE PASS (item 1): the database-level boundary for the
+-- archived -> draft -> published two-step bypass. An archived product may
+-- leave 'archived' ONLY inside restore_product (which sets this session-
+-- local flag immediately before its own update) — any other UPDATE that
+-- tries to move a row's status away from 'archived', from ANY caller
+-- (a future admin route, a bulk script, a one-off service-role query run
+-- by hand), is rejected outright. This is deliberately independent of the
+-- API-layer guards in the PATCH routes below: those exist for a fast,
+-- friendly error message; this trigger is what actually makes the bypass
+-- impossible regardless of what application code does or forgets to do.
+create or replace function private.enforce_archived_product_transition()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if old.status = 'archived' and new.status <> 'archived'
+     and coalesce(current_setting('app.product_restore_in_progress', true), '') <> 'on' then
+    raise exception 'PRODUCT_ARCHIVED_TRANSITION_REQUIRES_RESTORE';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists products_enforce_archived_transition on public.products;
+create trigger products_enforce_archived_transition
+before update of status on public.products
+for each row execute function private.enforce_archived_product_transition();
+
+revoke all on function private.enforce_archived_product_transition() from public, anon, authenticated;
+
+-- SECOND CORRECTIVE PASS (item 2): media ownership is now proven by DB
+-- association, not by guessing from the URL's path shape. The prior
+-- version only recognized `products/{realProductId}/...` — but real
+-- uploads commonly still live under the *temporary* folder used before
+-- the product had a permanent id (`products/{tempFolderId}/...` for
+-- admin, `product-drafts/{userId}/{tempFolderId}/...` for brand-portal —
+-- see components/admin/ProductForm.tsx's `uploadFolderId`), which that
+-- pattern silently missed. The moment a URL is written into
+-- product_media.storage_reference/product_color_images.image_url (or
+-- products.image/products.images) *for this product_id*, that row IS the
+-- authoritative ownership record — regardless of which folder shape the
+-- URL happens to use. The only remaining safety checks are: (a) it must
+-- actually be one of our own Storage bucket's public URLs (matched by the
+-- Supabase Storage public-URL path shape itself, not a hostname — never
+-- deletes an arbitrary external URL), and (b) no OTHER live product's
+-- rows/legacy fields reference the exact same URL (never deletes shared
+-- media).
+create or replace function private.capture_owned_product_media_urls(
+  p_product_id text, p_image text, p_images text[]
+)
+returns text[]
+language sql
+stable
+set search_path = ''
+as $$
+  select array_agg(distinct candidate.url) from (
+    select storage_reference as url from public.product_media where product_id = p_product_id
+    union
+    select image_url as url from public.product_color_images where product_id = p_product_id
+    union
+    select unnest(array_remove(array[p_image] || coalesce(p_images, array[]::text[]), null))
+  ) candidate(url)
+  where candidate.url like '%/storage/v1/object/public/product-images/%'
+    and not exists (select 1 from public.product_media pm2 where pm2.storage_reference = candidate.url and pm2.product_id <> p_product_id)
+    and not exists (select 1 from public.product_color_images pci2 where pci2.image_url = candidate.url and pci2.product_id <> p_product_id)
+    and not exists (select 1 from public.products p2 where p2.id <> p_product_id and (p2.image = candidate.url or candidate.url = any(p2.images)));
+$$;
+
+revoke all on function private.capture_owned_product_media_urls(text, text, text[]) from public, anon, authenticated;
+
+-- SECOND CORRECTIVE PASS (item 2): enqueues cleanup jobs directly into
+-- storage_cleanup_jobs (lib/account/storageCleanup.ts's own table) INSIDE
+-- the caller's transaction — not as a separate step the API route
+-- performs after the RPC returns. The prior version deleted the product
+-- first and only queued cleanup afterward from application code; a crash
+-- or error between those two steps permanently lost the cleanup targets
+-- (the product was already gone, nothing left to re-derive them from).
+-- Now the enqueue and the delete either both commit or both roll back
+-- together — a failure inserting a job aborts the whole function, so the
+-- product delete that follows never runs either.
+create or replace function private.queue_owned_product_media_cleanup(
+  p_product_id text, p_image text, p_images text[], p_actor_id uuid
+)
+returns integer
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_urls text[];
+  v_queued integer := 0;
+begin
+  v_urls := private.capture_owned_product_media_urls(p_product_id, p_image, p_images);
+  if v_urls is null then
+    return 0;
+  end if;
+
+  insert into public.storage_cleanup_jobs (bucket_id, storage_path, owner_user_id)
+  select 'product-images', regexp_replace(url, '^.*?/storage/v1/object/public/product-images/', ''), p_actor_id
+  from unnest(v_urls) as url
+  -- Idempotent: re-running for the same product/URLs (a retry after an
+  -- earlier partial failure, or a defensive double-call) never duplicates
+  -- a job — the table's own unique(bucket_id, storage_path) absorbs it.
+  on conflict (bucket_id, storage_path) do nothing;
+  get diagnostics v_queued = row_count;
+  return v_queued;
+end;
+$$;
+
+revoke all on function private.queue_owned_product_media_cleanup(text, text, text[], uuid) from public, anon, authenticated;
+
 create or replace function public.delete_draft_product(
   p_product_id text,
   p_brand_id uuid,
@@ -627,6 +728,7 @@ declare
   v_product record;
   v_eligibility jsonb;
   v_media_urls text[];
+  v_queued integer;
 begin
   select * into v_product from public.products where id = p_product_id for update;
   if not found then
@@ -647,11 +749,13 @@ begin
     );
   end if;
 
-  select array_agg(url) into v_media_urls from (
-    select storage_reference as url from public.product_media where product_id = p_product_id
-    union all
-    select image_url as url from public.product_color_images where product_id = p_product_id
-  ) urls;
+  v_media_urls := private.capture_owned_product_media_urls(p_product_id, v_product.image, v_product.images);
+  -- Enqueued BEFORE the delete, in the same transaction: if this insert
+  -- fails for any reason, the exception aborts the function and the
+  -- delete below never runs — the product and its media rows survive
+  -- together rather than the product vanishing with its cleanup targets
+  -- lost.
+  v_queued := private.queue_owned_product_media_cleanup(p_product_id, v_product.image, v_product.images, p_actor_id);
 
   -- Safe disposable references cascade automatically (product_options,
   -- product_color_images, product_media DB rows, product_variants and
@@ -665,7 +769,7 @@ begin
 
   return jsonb_build_object(
     'ok', true, 'code', 'DRAFT_DELETED', 'message', 'Draft permanently deleted.', 'lifecycle', 'deleted',
-    'before', to_jsonb(v_product), 'mediaUrls', to_jsonb(coalesce(v_media_urls, array[]::text[]))
+    'before', to_jsonb(v_product), 'mediaUrls', to_jsonb(coalesce(v_media_urls, array[]::text[])), 'mediaJobsQueued', v_queued
   );
 end;
 $$;
@@ -914,6 +1018,7 @@ declare
   v_product record;
   v_eligibility jsonb;
   v_media_urls text[];
+  v_queued integer;
 begin
   -- Same un-locked-lookup-then-locks-in-global-order pattern as
   -- admin_update_deletion_request above — see its comment.
@@ -958,11 +1063,11 @@ begin
     );
   end if;
 
-  select array_agg(url) into v_media_urls from (
-    select storage_reference as url from public.product_media where product_id = v_product_id
-    union all
-    select image_url as url from public.product_color_images where product_id = v_product_id
-  ) urls;
+  v_media_urls := private.capture_owned_product_media_urls(v_product_id, v_product.image, v_product.images);
+  -- Same enqueue-before-delete, same-transaction guarantee as
+  -- delete_draft_product above — a failure here aborts the function
+  -- before the product is touched.
+  v_queued := private.queue_owned_product_media_cleanup(v_product_id, v_product.image, v_product.images, p_actor_id);
 
   delete from public.products where id = v_product_id;
   if not found then
@@ -977,7 +1082,7 @@ begin
   return jsonb_build_object(
     'ok', true, 'code', 'PRODUCT_PERMANENTLY_DELETED', 'message', 'Product permanently deleted.',
     'requestId', p_request_id, 'requestState', 'completed', 'before', to_jsonb(v_product),
-    'mediaUrls', to_jsonb(coalesce(v_media_urls, array[]::text[]))
+    'mediaUrls', to_jsonb(coalesce(v_media_urls, array[]::text[])), 'mediaJobsQueued', v_queued
   );
 end;
 $$;

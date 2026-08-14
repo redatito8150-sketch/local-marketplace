@@ -6,8 +6,6 @@ import { notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { archiveProduct, deleteDraftProduct } from "@/lib/admin/productDeletion";
-import { extractOwnedStorageTargets } from "@/lib/admin/productMediaStorage";
-import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
 
 // "delete" was removed from this route entirely — it used to run a single
 // unguarded `delete from products where id in (...)`, with no dependency
@@ -76,10 +74,11 @@ export async function POST(request: NextRequest) {
         failed.push({ productId: id, code: result.code, message: result.message });
         continue;
       }
-      if (action === "delete_draft" && result.mediaUrls?.length) {
-        const targets = extractOwnedStorageTargets(id, result.mediaUrls);
-        if (targets.length) await queueStorageCleanupTargets(staff.user.id, targets);
-      }
+      // Storage cleanup for a deleted draft is enqueued transactionally by
+      // delete_draft_product itself (private.queue_owned_product_media_cleanup)
+      // — nothing to do here per product, and one product's later failure
+      // in this loop can never undo an earlier product's already-committed
+      // cleanup jobs, since each RPC call is its own transaction.
       succeeded.push(id);
       await logAudit({
         actorId: staff.user.id,

@@ -215,25 +215,72 @@ test("corrective pass: idempotency replay validates actor and reason, not just t
   assert.match(body, /'IDEMPOTENCY_CONFLICT'/);
 });
 
-test("corrective pass: restore_product checks required fields, direct-brand sellable stock, and the partner launch gate", () => {
+// SECOND CORRECTIVE PASS (item 1): restore_product no longer re-implements
+// publish-readiness in SQL — it targets 'draft' unconditionally on
+// completeness, leaving the real validation to the ordinary publish flow
+// (validateProductInput), which the two-step archived -> draft ->
+// published bypass otherwise routed around entirely.
+test("second corrective pass: restore_product targets draft, not published, and sets the restore-in-progress flag", () => {
   const body = migration.match(/create or replace function public\.restore_product[\s\S]*?\$\$;/)?.[0] ?? "";
-  assert.match(body, /'PRODUCT_MISSING_REQUIRED_FIELDS'/);
-  assert.match(body, /'PRODUCT_NO_SELLABLE_STOCK'/);
-  assert.match(body, /'PRODUCT_NOT_LAUNCHED'/);
-  assert.match(body, /v_brand\.is_mahaly_partner/);
+  assert.match(body, /set_config\('app\.product_restore_in_progress', 'on', true\)/);
+  assert.match(body, /update public\.products set status = 'draft', draft_started_at = now\(\) where id = p_product_id/);
+  assert.doesNotMatch(body, /status = 'published'/);
+  // The heavy, partially-duplicated publish-readiness checks from the
+  // first corrective pass are gone — restore no longer needs to know
+  // about direct-vs-partner stock/launch rules at all.
+  assert.doesNotMatch(body, /PRODUCT_NO_SELLABLE_STOCK|PRODUCT_NOT_LAUNCHED|PRODUCT_MISSING_REQUIRED_FIELDS/);
 });
 
-test("corrective pass: delete_draft_product and admin_approve_product_deletion capture owned media URLs before the delete", () => {
-  const draftBody = migration.match(/create or replace function public\.delete_draft_product[\s\S]*?\$\$;/)?.[0] ?? "";
-  const approveBody = migration.match(/create or replace function public\.admin_approve_product_deletion[\s\S]*?\$\$;/)?.[0] ?? "";
-  for (const body of [draftBody, approveBody]) {
-    assert.match(body, /select storage_reference as url from public\.product_media/);
-    assert.match(body, /select image_url as url from public\.product_color_images/);
-    assert.match(body, /'mediaUrls'/);
-    // The select-into-array capture must appear before the delete statement.
-    const captureIndex = body.indexOf("array_agg(url)");
+// SECOND CORRECTIVE PASS (item 1): the actual database-level boundary
+// that makes the archived -> draft -> published two-step bypass
+// impossible, independent of what any application route does.
+test("second corrective pass: an archived product can only leave 'archived' via the restore-in-progress flag", () => {
+  assert.ok(sql.includes("createorreplacefunctionprivate.enforce_archived_product_transition()"));
+  const body = migration.match(/create or replace function private\.enforce_archived_product_transition[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(body, /old\.status = 'archived' and new\.status <> 'archived'/);
+  assert.match(body, /current_setting\('app\.product_restore_in_progress', true\)/);
+  assert.match(body, /raise exception 'PRODUCT_ARCHIVED_TRANSITION_REQUIRES_RESTORE'/);
+  assert.ok(sql.includes("createtriggerproducts_enforce_archived_transition"));
+  assert.ok(sql.includes("beforeupdateofstatusonpublic.products"));
+});
+
+// SECOND CORRECTIVE PASS (item 2): media ownership is now proven by DB
+// association (any URL actually stored against this product_id in
+// product_media/product_color_images/products.image/products.images),
+// not by pattern-matching the URL against `products/{id}/...` — which
+// silently missed the temp-folder paths real uploads commonly still live
+// under (products/{tempId}/... for admin, product-drafts/{userId}/
+// {tempId}/... for brand-portal — see components/admin/ProductForm.tsx's
+// uploadFolderId). Cleanup jobs are enqueued directly into
+// storage_cleanup_jobs inside the SAME transaction as the delete, not as
+// a separate step in application code afterward.
+test("second corrective pass: media ownership is DB-association-based and cleanup is enqueued transactionally", () => {
+  assert.ok(sql.includes("createorreplacefunctionprivate.capture_owned_product_media_urls("));
+  const captureBody = migration.match(/create or replace function private\.capture_owned_product_media_urls[\s\S]*?\$\$;/)?.[0] ?? "";
+  // No products/{id}/ path-prefix requirement anymore — only proven
+  // DB association (product_id) plus a genuine Supabase Storage public
+  // URL shape, and exclusion of anything another live product also
+  // references (never deletes shared media).
+  assert.doesNotMatch(captureBody, /products\/'\s*\|\|\s*p_product_id/);
+  assert.match(captureBody, /storage_reference as url from public\.product_media where product_id = p_product_id/);
+  assert.match(captureBody, /image_url as url from public\.product_color_images where product_id = p_product_id/);
+  assert.match(captureBody, /unnest\(array_remove\(array\[p_image\] \|\| coalesce\(p_images, array\[\]::text\[\]\), null\)\)/);
+  assert.match(captureBody, /like '%\/storage\/v1\/object\/public\/product-images\/%'/);
+  assert.match(captureBody, /pm2\.product_id <> p_product_id/);
+  assert.match(captureBody, /pci2\.product_id <> p_product_id/);
+  assert.match(captureBody, /p2\.id <> p_product_id/);
+
+  assert.ok(sql.includes("createorreplacefunctionprivate.queue_owned_product_media_cleanup("));
+  const queueBody = migration.match(/create or replace function private\.queue_owned_product_media_cleanup[\s\S]*?\$\$;/)?.[0] ?? "";
+  assert.match(queueBody, /insert into public\.storage_cleanup_jobs \(bucket_id, storage_path, owner_user_id\)/);
+  assert.match(queueBody, /on conflict \(bucket_id, storage_path\) do nothing/);
+
+  for (const fnName of ["delete_draft_product", "admin_approve_product_deletion"]) {
+    const body = migration.match(new RegExp(`create or replace function public\\.${fnName}[\\s\\S]*?\\$\\$;`))?.[0] ?? "";
+    const queueIndex = body.indexOf("private.queue_owned_product_media_cleanup(");
     const deleteIndex = body.indexOf("delete from public.products");
-    assert.ok(captureIndex >= 0 && deleteIndex > captureIndex, "media URLs must be captured before the delete");
+    assert.ok(queueIndex >= 0, `${fnName} must enqueue media cleanup`);
+    assert.ok(deleteIndex > queueIndex, `${fnName} must enqueue cleanup before deleting the product (same transaction, delete-first would risk losing targets on failure)`);
   }
 });
 

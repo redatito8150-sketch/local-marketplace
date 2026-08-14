@@ -123,8 +123,8 @@ export default function ProductRowActions({
     },
     restore: {
       title: `Restore ${name}?`,
-      body: "The product becomes available on the storefront again, once it still meets today's publishing requirements (active variants, an active brand).",
-      confirmLabel: "Restore product",
+      body: "Brings this product back as a Draft — it doesn't go straight back to the storefront. Open it in the editor and publish when it's ready, so the normal publish checks run again.",
+      confirmLabel: "Restore to Draft",
       tone: "neutral",
     },
     delete_draft: {
@@ -168,7 +168,7 @@ export default function ProductRowActions({
                 )}
                 {eligibility.canRestore && (
                   <button type="button" onClick={() => chooseAction("restore")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-                    <RotateCcw className="h-4 w-4" aria-hidden="true" />Restore product
+                    <RotateCcw className="h-4 w-4" aria-hidden="true" />Restore to Draft
                   </button>
                 )}
                 {eligibility.canDeleteImmediately && (

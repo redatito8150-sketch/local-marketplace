@@ -5,8 +5,6 @@ import { logAudit } from "@/lib/auditLog";
 import { notifyUser, notify } from "@/lib/notify";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { adminApproveProductDeletion } from "@/lib/admin/productDeletion";
-import { extractOwnedStorageTargets } from "@/lib/admin/productMediaStorage";
-import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
 
 // The one and only endpoint that can permanently delete a product. Gated
 // at the "admin" rank (not just "manager"), matching this codebase's
@@ -59,10 +57,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: result.message, code: result.code, blockers: result.blockers }, { status: 409 });
   }
 
-  if (result.mediaUrls?.length && before.product_id) {
-    const targets = extractOwnedStorageTargets(before.product_id, result.mediaUrls);
-    if (targets.length) await queueStorageCleanupTargets(staff.user.id, targets);
-  }
+  // Storage cleanup was enqueued transactionally by
+  // admin_approve_product_deletion itself, in the same database
+  // transaction as the product delete — see private.
+  // queue_owned_product_media_cleanup in supabase/migrations/
+  // 20260814020000_product_deletion_lifecycle.sql.
 
   const auditLogId = await logAudit({
     actorId: staff.user.id,

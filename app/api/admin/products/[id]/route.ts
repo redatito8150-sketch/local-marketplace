@@ -39,15 +39,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const body: ProductInput = await request.json();
 
-  // Closes the restore bypass this generic full-form-save route otherwise
-  // offered: an archived product must only come back through
-  // restore_product's canonical revalidation (active brand, complete
-  // fields, active variant, direct-brand sellable stock, partner-brand
-  // launch gate — see supabase/migrations/
-  // 20260814020000_product_deletion_lifecycle.sql), never by simply
-  // editing status back to "published" here. Archived -> draft is still
-  // allowed (no bypass concern — draft never republishes automatically).
-  if (existing.status === "archived" && body.status === "published") {
+  // SECOND CORRECTIVE PASS: the original guard here only blocked
+  // archived -> published, which still let a caller do archived -> draft
+  // through this same route and then republish through the ordinary
+  // (unguarded, since it no longer sees "archived") publish flow — a
+  // two-step bypass around restore_product entirely. An archived product
+  // must only ever leave "archived" through restore_product itself (which
+  // targets draft — see that function's comment in supabase/migrations/
+  // 20260814020000_product_deletion_lifecycle.sql), so this route now
+  // rejects ANY status change away from "archived", not just to
+  // "published". The products_enforce_archived_transition trigger backs
+  // this up at the database level regardless of what this route does.
+  if (existing.status === "archived" && body.status !== "archived") {
     return NextResponse.json(
       { error: "This product is archived. Use Restore product to bring it back — editing status directly is not allowed for archived products." },
       { status: 409 }

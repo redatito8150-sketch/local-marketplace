@@ -135,11 +135,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // Audit Log page can always show exactly what changed, field by field.
   const productBody = body as ProductInput;
 
-  // Closes the restore bypass this generic full-form-save route otherwise
-  // offered: an archived product must only come back through
-  // restore_product's canonical revalidation, never by editing status
-  // back to "published" here directly. Archived -> draft stays allowed.
-  if (existing.status === "archived" && productBody.status === "published") {
+  // SECOND CORRECTIVE PASS: blocks the full archived -> anything transition
+  // (not just -> published) — see the matching comment in
+  // app/api/admin/products/[id]/route.ts for the two-step bypass this
+  // closes. Only restore_product may move a product out of "archived",
+  // backed by the products_enforce_archived_transition DB trigger.
+  if (existing.status === "archived" && productBody.status !== "archived") {
     return NextResponse.json(
       { error: "This product is archived. Use Restore product from the products list — editing status directly is not allowed for archived products." },
       { status: 409 }
