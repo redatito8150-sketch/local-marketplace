@@ -18,6 +18,7 @@ import { formatDateTime } from "@/lib/format";
 
 const PAGE_SIZE = 30;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
 const FILTER_CONTROL = "h-11 min-w-0 rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12.5px] text-[#51473f] outline-none transition-[border-color,box-shadow] focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8";
 
 const SOURCE_OPTIONS = [
@@ -61,6 +62,10 @@ function sourceLabel(value: string) {
   return SOURCE_OPTIONS.find((option) => option.value === value)?.label ?? titleCase(value);
 }
 
+function formatCount(value: number) {
+  return NUMBER_FORMAT.format(value);
+}
+
 export default async function AdminInventoryPage(props: { searchParams: Promise<InventoryParams> }) {
   const params = await props.searchParams;
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
@@ -97,7 +102,7 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
   }
 
   const health = [
-    { label: "All variants", value: overview.totalVariantCount, note: `${overview.totalAvailableUnits.toLocaleString()} units available`, href: "/admin/products", tone: "bg-[#C85956]", active: true },
+    { label: "All variants", value: overview.totalVariantCount, note: `${formatCount(overview.totalAvailableUnits)} units available`, href: "/admin/products", tone: "bg-[#C85956]", active: true },
     { label: "Healthy", value: overview.healthyCount, note: "Above the alert level", href: "/admin/products?inventory=in", tone: "bg-emerald-500", active: false },
     { label: "Low stock", value: overview.lowStockCount, note: "Needs a replenishment plan", href: "/admin/low-stock?level=low", tone: "bg-amber-500", active: false },
     { label: "Out of stock", value: overview.outOfStockCount, note: "Unavailable to shoppers", href: "/admin/low-stock?level=out", tone: "bg-red-500", active: false },
@@ -121,7 +126,7 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
           {health.map((item) => (
             <Link key={item.label} href={item.href} className={`group relative min-h-[112px] border-b border-r border-[#eee7e1] px-4 py-4 transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+3)]:border-b-0 xl:border-b-0 xl:px-5 xl:[&:nth-child(2n)]:border-r xl:last:border-r-0 ${item.active ? "bg-[#fff8f6]" : "hover:bg-[#fcfaf8]"}`}>
               <span className={`absolute inset-y-4 left-0 w-[3px] rounded-r-full ${item.tone} ${item.active ? "opacity-100" : "opacity-0 transition-opacity group-hover:opacity-40"}`} aria-hidden="true" />
-              <div className="flex items-start justify-between gap-4"><div><p className={`text-[10.5px] font-bold uppercase tracking-[0.1em] ${item.active ? "text-[#C85956]" : "text-[#8d8076]"}`}>{item.label}</p><p className="mt-1 text-[27px] font-extrabold tabular-nums tracking-[-0.04em] text-[#242424]">{item.value.toLocaleString()}</p></div><span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone}`} aria-hidden="true" /></div>
+              <div className="flex items-start justify-between gap-4"><div><p className={`text-[10.5px] font-bold uppercase tracking-[0.1em] ${item.active ? "text-[#C85956]" : "text-[#8d8076]"}`}>{item.label}</p><p className="mt-1 text-[27px] font-extrabold tabular-nums tracking-[-0.04em] text-[#242424]">{formatCount(item.value)}</p></div><span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone}`} aria-hidden="true" /></div>
               <p className="mt-1 text-[10.5px] text-[#91837a]">{item.note}</p>
             </Link>
           ))}
@@ -129,9 +134,9 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
       </section>
 
       <section aria-label="Inventory operations" className="mt-4 grid overflow-hidden rounded-[18px] border border-[#eadfd7] bg-[#fcfaf8] sm:grid-cols-3">
-        <OperationalSignal icon={Truck} label="Incoming stock" value={`${overview.incomingUnitCount.toLocaleString()} units`} note={`${overview.openTransferCount} open warehouse ${overview.openTransferCount === 1 ? "document" : "documents"}`} href="/admin/warehouse" />
-        <OperationalSignal icon={Activity} label="Recent activity" value={`${overview.movementsLast24Hours.toLocaleString()} movements`} note="Recorded in the last 24 hours" />
-        <OperationalSignal icon={PackageSearch} label="Catalog coverage" value={`${overview.brands.length.toLocaleString()} brands`} note={`${overview.totalVariantCount.toLocaleString()} active variants monitored`} href="/admin/products" />
+        <OperationalSignal icon={Truck} label="Incoming stock" value={`${formatCount(overview.incomingUnitCount)} units`} note={`${formatCount(overview.openTransferCount)} open warehouse ${overview.openTransferCount === 1 ? "document" : "documents"}`} href="/admin/warehouse" />
+        <OperationalSignal icon={Activity} label="Recent activity" value={`${formatCount(overview.movementsLast24Hours)} movements`} note="Recorded in the last 24 hours" />
+        <OperationalSignal icon={PackageSearch} label="Catalog coverage" value={`${formatCount(overview.brands.length)} brands`} note={`${formatCount(overview.totalVariantCount)} active variants monitored`} href="/admin/products" />
       </section>
 
       <form action="/admin/inventory" className="mt-5 rounded-[18px] border border-[#eadfd7] bg-white p-4 shadow-[0_8px_24px_rgba(72,50,36,.035)]">
@@ -148,7 +153,7 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
       </form>
 
       <section className="mt-4 overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
-        <header className="flex flex-col gap-2 border-b border-[#eee7e1] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><h2 className="text-[12px] font-extrabold text-[#302924]">Inventory activity</h2><p className="mt-1 text-[10.5px] text-[#8d8076]">{result.total.toLocaleString()} immutable {result.total === 1 ? "movement" : "movements"}{activeFilterCount ? " match these filters" : " across the marketplace"}.</p></div><div className="flex items-center gap-2 text-[9.5px] font-bold text-[#8d8076]"><span className="inline-flex items-center gap-1.5"><ArrowDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-emerald-700" />Stock in</span><span className="inline-flex items-center gap-1.5"><ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 text-red-700" />Stock out</span></div></header>
+        <header className="flex flex-col gap-2 border-b border-[#eee7e1] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><h2 className="text-[12px] font-extrabold text-[#302924]">Inventory activity</h2><p className="mt-1 text-[10.5px] text-[#8d8076]">{formatCount(result.total)} immutable {result.total === 1 ? "movement" : "movements"}{activeFilterCount ? " match these filters" : " across the marketplace"}.</p></div><div className="flex items-center gap-2 text-[9.5px] font-bold text-[#8d8076]"><span className="inline-flex items-center gap-1.5"><ArrowDownLeft aria-hidden="true" className="h-3.5 w-3.5 text-emerald-700" />Stock in</span><span className="inline-flex items-center gap-1.5"><ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5 text-red-700" />Stock out</span></div></header>
 
         {result.rows.length ? <ActivityRows rows={result.rows} /> : <DashboardEmptyState title="No inventory activity found" description={activeFilterCount ? "Clear or adjust the filters to find more stock movements." : "Stock movements will appear here after the first inventory change."} />}
       </section>

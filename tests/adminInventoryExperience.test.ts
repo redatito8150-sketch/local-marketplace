@@ -18,6 +18,8 @@ test("admin Inventory uses the same health-and-activity operating model as Brand
   assert.match(admin, /Incoming stock/);
   assert.match(admin, /Recent activity/);
   assert.match(admin, /Catalog coverage/);
+  assert.match(admin, /new Intl\.NumberFormat\("en-US"\)/);
+  assert.doesNotMatch(admin, /\.toLocaleString\(\)/);
 });
 
 test("inventory overview computes marketplace health without changing stock", () => {
