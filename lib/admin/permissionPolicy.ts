@@ -46,6 +46,7 @@ const ADMIN_PATH_RULES: ReadonlyArray<{
     matches: (path) =>
       path.startsWith("/api/admin/product-options") ||
       path.startsWith("/api/admin/products") ||
+      path.startsWith("/admin/categories") ||
       path.startsWith("/admin/products"),
     permission: "manage_products",
   },

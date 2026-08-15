@@ -77,6 +77,12 @@ export default function DashboardShell({
 
   return (
     <div className={`min-h-screen ${isAdmin ? "admin-theme bg-[var(--admin-bg)] text-[var(--admin-text)]" : "bg-[#FAFAF7]"}`}>
+      <a
+        href="#dashboard-main"
+        className="sr-only fixed left-4 top-4 z-50 rounded-lg bg-slate-950 px-4 py-2 text-sm font-semibold text-white focus:not-sr-only focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/40"
+      >
+        Skip to content
+      </a>
       <header className={`sticky top-0 z-40 border-b backdrop-blur ${isAdmin ? "border-[var(--admin-border)] bg-[color-mix(in_srgb,var(--admin-surface)_94%,transparent)]" : "border-slate-200/80 bg-white/95"}`}>
         <div className="flex h-[72px] w-full items-center gap-3 px-4 sm:px-6 lg:px-8 xl:px-10">
           <button
@@ -116,7 +122,7 @@ export default function DashboardShell({
           </button>
           <DashboardSidebarProvider collapsed={collapsed}>{sidebar}</DashboardSidebarProvider>
         </aside>
-        <main className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 xl:px-10 xl:py-10">
+        <main id="dashboard-main" tabIndex={-1} className="min-w-0 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 xl:px-10 xl:py-10">
           {children}
         </main>
       </div>
@@ -131,7 +137,7 @@ export default function DashboardShell({
           />
           <aside
             ref={drawerRef}
-            className={`relative h-full w-[min(86vw,320px)] overflow-y-auto border-r p-5 shadow-2xl ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}
+            className={`relative h-full w-[min(86vw,320px)] touch-manipulation overscroll-contain overflow-y-auto border-r p-5 shadow-2xl ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}
             onClickCapture={(event) => {
               if ((event.target as HTMLElement).closest("a")) setMobileOpen(false);
             }}

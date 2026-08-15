@@ -11,6 +11,7 @@ const cases = [
   ["/admin/orders/123", "manage_orders"],
   ["/api/admin/orders/export", "manage_orders"],
   ["/admin/products/categories", "manage_products"],
+  ["/admin/categories", "manage_products"],
   ["/api/admin/inventory/adjustments", "manage_inventory"],
   ["/admin/brands/acme/edit", "manage_brands"],
   ["/api/admin/applications/123/create-brand", "manage_applications"],

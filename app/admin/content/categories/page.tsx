@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
+import { getUserPermissions } from "@/lib/supabase/permissions";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 import { CATEGORIES } from "@/content/categories";
 import CategoryHeroForm from "@/components/admin/CategoryHeroForm";
@@ -15,6 +16,9 @@ const CATEGORY_LABELS: Record<CategorySlug, string> = {
 export default async function AdminCategoryHeroesPage() {
   const staff = await requireStaffRole("manager");
   if (!staff) redirect("/admin");
+
+  const permissions = await getUserPermissions(staff.user.id);
+  if (permissions.has("manage_products")) redirect("/admin/categories?view=storefront");
 
   const row = await getSiteContentRowForAdmin("category_heroes");
   const overrides = (row?.value as Record<CategorySlug, CategoryHeroContent>) ?? {};
