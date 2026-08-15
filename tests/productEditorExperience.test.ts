@@ -21,6 +21,7 @@ const validProduct: ProductInput = {
   isNew: false,
   featured: false,
   status: "draft",
+  launchPolicy: "show_now",
   defaultLowStockThreshold: 5,
   optionTypeIds: [],
   valueIdsByOptionType: {},
@@ -90,24 +91,21 @@ test("archiving requires the same completeness as publishing, minus purchasable 
   assert.deepEqual(zeroStock, []);
 });
 
-test("publish readiness is reported inside Inventory & Variants", () => {
+test("publish readiness inside Inventory & Variants requires an Active variant, not stock", () => {
   const issues = validateProductSections({
     ...validProduct,
     status: "published",
-    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "paused" }],
   });
-  assert.ok(issues.some((issue) => issue.section === "inventory" && /stock/i.test(issue.message)));
+  assert.ok(issues.some((issue) => issue.section === "inventory" && /active selling status/i.test(issue.message)));
 });
 
-// A Zakhnook Partner brand's variants always start at 0 live quantity by
-// design (lib/admin/variantPersistence.ts's forceZeroOpeningStock — their
-// stock is provisioned later via a confirmed Local Warehouse transfer,
-// never through this form). Without this exception, a partner brand could
-// never publish anything at all: every variant they can possibly submit
-// has quantity 0, so the ordinary "needs stock > 0" rule would fail every
-// single time — indistinguishable, from the brand's side, from the
-// product editor being broken.
-test("a partner brand can publish with 0-stock variants — the ordinary 'needs stock > 0' rule does not apply to them", () => {
+// Product creation/editing is catalog-only now — publishing never requires
+// positive stock, for a partner brand or a direct one. Both need exactly
+// the same thing: at least one Active variant definition. The actual
+// sellable-stock gap closes later through Inventory (direct) or a
+// confirmed warehouse receipt (partner), never through this form.
+test("a partner brand can publish with 0-stock variants — quantity is never the gate for anyone", () => {
   const issues = validateProductSections({
     ...validProduct,
     status: "published",
@@ -117,7 +115,7 @@ test("a partner brand can publish with 0-stock variants — the ordinary 'needs 
   assert.deepEqual(issues, []);
 });
 
-test("a partner brand still needs at least one Active variant to publish — the exception only drops the stock requirement, not the whole check", () => {
+test("a partner brand still needs at least one Active variant to publish", () => {
   const issues = validateProductSections({
     ...validProduct,
     status: "published",
@@ -128,14 +126,14 @@ test("a partner brand still needs at least one Active variant to publish — the
   assert.ok(!/needs stock and/i.test(issues.find((i) => i.fieldId === "generated-variants")!.message));
 });
 
-test("a non-partner (brand_direct) brand is unaffected — still blocked on 0 stock exactly as before", () => {
+test("a non-partner (brand_direct) brand publishes fine with 0-stock variants too — the old direct-only stock requirement is gone", () => {
   const issues = validateProductSections({
     ...validProduct,
     status: "published",
     isPartnerBrand: false,
     variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
   });
-  assert.ok(issues.some((issue) => issue.section === "inventory" && /needs stock and/i.test(issue.message)));
+  assert.deepEqual(issues, []);
 });
 
 test("the shared editor shell exposes all six sections and reliable active-section tracking", () => {
@@ -257,7 +255,14 @@ test("new products use a six-step wizard with a prominent, reversible customer p
   const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
   const previewSource = readFileSync(new URL("../components/admin/ProductLivePreview.tsx", import.meta.url), "utf8");
 
-  assert.match(formSource, /isCreateExperience \? \(/);
+  // CORRECTIVE PASS: the wizard bottom bar (with its own Save as Draft) is
+  // only shown while the create-session product is still genuinely a
+  // Draft — the instant an in-session publish succeeds, this switches to
+  // the normal edit-mode bottom bar, which correctly hides Save as Draft
+  // for a published product. This closes the bypass where the wizard bar
+  // (gated only on the static `mode` prop, which never changes mid-session)
+  // kept offering Save as Draft forever after a successful publish.
+  assert.match(formSource, /isCreateExperience && form\.status === "draft" \? \(/);
   assert.match(formSource, /<ProductWizardBottomBar/);
   assert.match(formSource, /activeSection === "inventory"/);
   assert.doesNotMatch(chromeSource, /label: "Shipping"/);
@@ -306,13 +311,17 @@ test("product image guidance distinguishes sharp 4:5 assets, crop warnings and u
   assert.equal(assessProductImageDimensions(400, 500).level, "error");
 });
 
-test("the final step is an actionable readiness checklist with a clear storefront outcome", () => {
+// item 5: the final step is both an actionable readiness checklist AND the
+// explicit two-option launch-policy decision — not just informational
+// "here's what will happen" copy.
+test("the final step is an actionable readiness checklist with an explicit launch-policy choice", () => {
   const source = readFileSync(new URL("../components/admin/ProductForm.tsx", import.meta.url), "utf8");
   assert.match(source, /required item/);
   assert.match(source, /Fix now/);
-  assert.match(source, /Storefront state after publish/);
-  assert.match(source, /Hidden until warehouse receipt/);
-  assert.match(source, /Visible to shoppers immediately/);
+  assert.match(source, /How should this product launch\?/);
+  assert.match(source, /Show now as Out of stock/);
+  assert.match(source, /Publish when stock is ready/);
+  assert.match(source, /effectiveLaunchPolicy/);
 });
 
 test("fulfillment guidance collapses into the editor header after the first step", () => {

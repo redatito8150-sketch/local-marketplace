@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
   const [{ data: products, error: productsError }, variantsByProduct, mediaResult] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)")
+      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner(is_active)")
       .in("id", productIds),
     getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
       logError("Order variant lookup failed", error.message);
@@ -187,15 +187,17 @@ export async function POST(request: NextRequest) {
 
   for (const item of items) {
     const product = productById.get(item.productId);
-    const brand = product?.brands as unknown as { is_active: boolean; fulfillment_mode: string } | null;
-    // Checkout defense in depth for the product-launch gate (item 4): a
-    // zakhnook_fulfilled brand's product with no first_stocked_at yet is
-    // never purchasable, mirroring storefront_products' own WHERE clause
-    // (supabase/migrations/20260814000006_storefront_launch_gate_view.sql)
-    // — this query can't source from that view directly (it needs the
+    const brand = product?.brands as unknown as { is_active: boolean } | null;
+    // Checkout defense in depth for the product-launch gate: a when_stocked
+    // product with no first_stocked_at yet is never purchasable, mirroring
+    // private.is_product_customer_visible() (supabase/migrations/
+    // 20260815000000_product_launch_policy_and_opening_stock.sql) — this
+    // query can't source from storefront_products directly (it needs the
     // brands!...!inner embed the view can't expose), so the same condition
-    // is checked explicitly here instead.
-    const isLaunched = brand?.fulfillment_mode !== "zakhnook_fulfilled" || product?.first_stocked_at != null;
+    // is checked explicitly here. The order_items insert trigger below
+    // (enforce_order_item_product_available) enforces the identical rule
+    // again at the database boundary, even if this check is ever bypassed.
+    const isLaunched = product?.launch_policy !== "when_stocked" || product?.first_stocked_at != null;
     if (
       !product ||
       product.status !== "published" ||

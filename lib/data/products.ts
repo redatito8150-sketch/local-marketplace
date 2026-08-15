@@ -93,13 +93,17 @@ export interface ProductRow {
   status: ProductStatus;
   publish_date: string | null;
   paused_by_brand: boolean;
+  // Immutable — the first moment this product actually became visible to a
+  // real customer. Drives the "New" window (lib/newArrivals.ts) instead of
+  // publish_date, which can be hidden behind a when_stocked launch policy.
+  first_visible_at: string | null;
 }
 
 // Keep public catalog reads aligned with the database's column grants. New
 // workflow/moderation columns must be added deliberately instead of leaking
 // automatically through select("*") when the schema evolves.
 export const PRODUCT_PUBLIC_SELECT =
-  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at" as const;
+  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at, first_visible_at" as const;
 
 // Per-request lookup context for the display-only fields resolved from
 // product_type_id/collection_id — loaded once and reused across a batch
@@ -177,7 +181,7 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     discountPercent: row.discount_percent ?? undefined,
     discountEndsAt: row.discount_ends_at ?? undefined,
     featured: row.featured,
-    isNew: isWithinNewArrivalWindow(row.status, row.publish_date),
+    isNew: isWithinNewArrivalWindow(row.status, row.first_visible_at),
   };
 }
 
@@ -225,7 +229,7 @@ function toProductDetail(row: ProductRow, ctx: DisplayContext): ProductDetail {
     modelHeight: row.model_height ?? undefined,
     modelWearing: row.model_wearing ?? undefined,
     featured: row.featured,
-    isNew: isWithinNewArrivalWindow(row.status, row.publish_date),
+    isNew: isWithinNewArrivalWindow(row.status, row.first_visible_at),
     status: row.status,
     publishDate: row.publish_date ?? undefined,
     defaultLowStockThreshold: row.default_low_stock_threshold,
@@ -274,8 +278,12 @@ export async function getProductCountLabel(
 }
 
 export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
-  // A product is New for exactly NEW_ARRIVAL_WINDOW_DAYS after its actual
-  // publish_date (not a stored is_new flag) — see lib/newArrivals.ts.
+  // A product is New for exactly NEW_ARRIVAL_WINDOW_DAYS after it actually
+  // became visible to a real customer (first_visible_at), not a stored
+  // is_new flag and not publish_date — a when_stocked product's hidden
+  // publish time never starts this clock. See lib/newArrivals.ts. No upper
+  // bound needed (unlike the old publish_date-based query): first_visible_at
+  // is only ever stamped to now(), never a future/scheduled value.
   const now = new Date();
   const windowStart = new Date(now.getTime() - NEW_ARRIVAL_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
@@ -283,13 +291,9 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
     .eq("paused_by_brand", false)
-    .not("publish_date", "is", null)
-    .gte("publish_date", windowStart)
-    // A scheduled-for-the-future publish_date previously leaked into New
-    // Arrivals immediately (the .gte above has no upper bound on its own)
-    // — this excludes anything not actually live yet.
-    .lte("publish_date", now.toISOString())
-    .order("publish_date", { ascending: false })
+    .not("first_visible_at", "is", null)
+    .gte("first_visible_at", windowStart)
+    .order("first_visible_at", { ascending: false })
     .limit(limit);
 
   if (error) {

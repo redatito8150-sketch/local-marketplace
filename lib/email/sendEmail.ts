@@ -5,28 +5,49 @@ import { logError } from "@/lib/errorLog";
 // supplementary to the real write path it's attached to (an order being
 // placed, shipped, or cancelled), so a delivery failure is logged, never
 // thrown, and never blocks that write.
+//
+// CORRECTIVE PASS: the return type changed from `Promise<void>` to a real
+// `{ok, error?}` result. Every pre-existing call site awaits this without
+// reading the return value, so nothing breaks — but a caller that DOES
+// need to know whether delivery actually succeeded (lib/backInStock.ts's
+// durable claim/retry flow) now can, instead of a failure being
+// indistinguishable from success because this function never throws.
 export async function sendEmail({
   to,
   subject,
   html,
+  idempotencyKey,
 }: {
   to: string;
   subject: string;
   html: string;
-}): Promise<void> {
+  idempotencyKey?: string;
+}): Promise<{ ok: boolean; error?: string }> {
   if (!resendClient) {
-    logError(`sendEmail(${subject}) skipped`, "RESEND_API_KEY is not configured");
-    return;
+    const message = "RESEND_API_KEY is not configured";
+    logError(`sendEmail(${subject}) skipped`, message);
+    return { ok: false, error: message };
   }
 
-  const { error } = await resendClient.emails.send({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    html,
-  });
+  try {
+    const { error } = await resendClient.emails.send(
+      {
+        from: EMAIL_FROM,
+        to,
+        subject,
+        html,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined
+    );
 
-  if (error) {
-    logError(`sendEmail(${subject}) to ${to} failed`, error.message);
+    if (error) {
+      logError(`sendEmail(${subject}) to ${to} failed`, error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`sendEmail(${subject}) to ${to} threw`, message);
+    return { ok: false, error: message };
   }
 }

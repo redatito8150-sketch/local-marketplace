@@ -28,10 +28,11 @@ export interface ProductLookupRow {
   status: string;
   publish_date: string | null;
   paused_by_brand: boolean;
-  brands: { is_active: boolean; fulfillment_mode: string } | null;
+  brands: { is_active: boolean } | null;
   image: string;
   color_images_by_option_value_id?: Record<string, string>;
   first_stocked_at: string | null;
+  launch_policy: "show_now" | "when_stocked" | null;
 }
 
 export interface ResolvedIntentionLine {
@@ -84,14 +85,16 @@ export function resolveIntentionCart(
 ): ResolveCartResult {
   for (const item of items) {
     const product = productById.get(item.productId);
-    // Checkout defense in depth for the product-launch gate (item 4 of the
-    // fulfillment-foundation corrective pass): a zakhnook_fulfilled brand's
+    // Checkout defense in depth for the product-launch gate: a when_stocked
     // product with no first_stocked_at yet is never purchasable, mirroring
-    // storefront_products' own WHERE clause (supabase/migrations/
-    // 20260814000006_storefront_launch_gate_view.sql) — this lookup can't
-    // source from that view directly (it needs the brands!...!inner embed
-    // the view can't expose), so the same condition is checked explicitly.
-    const isLaunched = product?.brands?.fulfillment_mode !== "zakhnook_fulfilled" || product?.first_stocked_at != null;
+    // private.is_product_customer_visible() (supabase/migrations/
+    // 20260815000000_product_launch_policy_and_opening_stock.sql) — this
+    // lookup can't source from storefront_products directly (it needs the
+    // brands!...!inner embed the view can't expose), so the same condition
+    // is checked explicitly. The order_items insert trigger
+    // (enforce_order_item_product_available) enforces the identical rule
+    // again at the database boundary.
+    const isLaunched = product?.launch_policy !== "when_stocked" || product?.first_stocked_at != null;
     if (
       !product ||
       product.status !== "published" ||

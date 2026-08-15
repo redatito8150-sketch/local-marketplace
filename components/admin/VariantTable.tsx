@@ -10,22 +10,21 @@ import ColorOptionPicker, { type NewColorInput } from "./ColorOptionPicker";
 import SizeValueSelector from "./SizeValueSelector";
 import { compareSizeOrderables, isCustomSizeValue } from "@/lib/inventory/sizeOrder";
 
-type RowState = "not_created" | "created" | "zero_stock";
+// Catalog-only now — quantity/stock is never entered or shown here (see
+// Inventory instead), so a row only ever has two real states: saved or not.
+type RowState = "not_created" | "created";
 
 function rowState(variant: VariantRow): RowState {
-  if (!variant.id) return "not_created";
-  return variant.quantity > 0 ? "created" : "zero_stock";
+  return variant.id ? "created" : "not_created";
 }
 
 const ROW_STATE_DOT: Record<RowState, string> = {
   not_created: "bg-stone-300",
   created: "bg-emerald-500",
-  zero_stock: "bg-amber-500",
 };
 const ROW_STATE_LABEL: Record<RowState, string> = {
   not_created: "Not created",
   created: "Created",
-  zero_stock: "Zero stock",
 };
 
 // Rendered through a portal into document.body, positioned by the
@@ -189,7 +188,7 @@ export default function VariantTable({
   return (
     <div>
       <h3 className="text-[13px] font-semibold text-ink">Variants (Matrix)</h3>
-      <p className="mt-1 text-[12px] text-ink-soft/55">{isPartnerBrand ? "Create the sellable combinations now; stock will be added after Zakhnook receives a shipment." : "Create and manage variants, then add the initial available quantity and price for each one."}</p>
+      <p className="mt-1 text-[12px] text-ink-soft/55">{isPartnerBrand ? "Create the sellable combinations now; stock is added from Inventory after Zakhnook receives a shipment." : "Create and manage variants — SKU, price, and low-stock alert. Stock is added from Inventory once the product is published."}</p>
 
       {colorsMissingImages.length > 0 && (
         <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
@@ -254,7 +253,6 @@ export default function VariantTable({
               <tr className="border-b border-stone-150 bg-stone-50 text-[11px] font-semibold uppercase tracking-wide text-ink-soft/50">
                 <th className="min-w-[200px] px-3 py-2.5">Color / Size</th>
                 <th className="px-3 py-2.5">SKU<br /><span className="font-normal normal-case text-ink-soft/40">(Auto)</span></th>
-                <th className="px-3 py-2.5">Stock<br /><span className="font-normal normal-case text-ink-soft/40">{isPartnerBrand ? "(Added after receiving)" : "(Initial available quantity)"}</span></th>
                 <th className="px-3 py-2.5" title="Applies from the product default unless overridden here.">Low Stock Alert</th>
                 <th className="px-3 py-2.5">
                   Variant Price ({currency})<br /><span className="font-normal normal-case text-ink-soft/40">(Leave empty for base price)</span>
@@ -273,7 +271,7 @@ export default function VariantTable({
                 return (
                   <Fragment key={color.id}>
                     <tr className="bg-stone-50/60">
-                      <td className="px-3 py-2.5" colSpan={7}>
+                      <td className="px-3 py-2.5" colSpan={6}>
                         <div className="flex flex-wrap items-center gap-2.5">
                           <button
                             type="button"
@@ -395,34 +393,6 @@ export default function VariantTable({
                             {variant.sku ? <code className="select-all text-[12px]">{variant.sku}</code> : <span className="text-[11.5px] text-ink-soft/45">Generated after saving</span>}
                           </td>
                           <td className="px-3 py-2">
-                            {persisted ? (
-                              <span className="text-[13px] font-semibold text-ink" title="Managed from Inventory once a variant is saved.">
-                                {variant.quantity}
-                              </span>
-                            ) : isPartnerBrand ? (
-                              <span
-                                className="text-[12px] font-semibold text-amber-700"
-                                title="This is a Zakhnook Fulfilled brand. The variant starts at 0 and becomes available after Zakhnook receives a shipment."
-                              >
-                                0 — ready for shipment
-                              </span>
-                            ) : (
-                              <input
-                                aria-label={`Initial available quantity for ${color.label} ${size.label}`}
-                                type="number"
-                                min={0}
-                                step={1}
-                                disabled={disabled}
-                                value={variant.openingStock ?? variant.quantity}
-                                onChange={(e) => {
-                                  const openingStock = Math.max(0, Math.trunc(Number(e.target.value) || 0));
-                                  onUpdateVariant(color.id, size.id, { openingStock, quantity: openingStock });
-                                }}
-                                className="w-20 rounded border border-stone-150 px-2 py-1 text-[12.5px] outline-none focus:border-ink/30 disabled:bg-stone-50"
-                              />
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
                             <input
                               aria-label={`Low stock alert for ${color.label} ${size.label}`}
                               type="number"
@@ -497,7 +467,7 @@ export default function VariantTable({
                     })}
                     {!isCollapsed && rows.length === 0 && (
                       <tr>
-                        <td className="px-3 py-2 pl-10 text-[12px] italic text-ink-soft/40" colSpan={7}>No sizes added yet for {color.label}.</td>
+                        <td className="px-3 py-2 pl-10 text-[12px] italic text-ink-soft/40" colSpan={6}>No sizes added yet for {color.label}.</td>
                       </tr>
                     )}
                   </Fragment>
@@ -510,7 +480,6 @@ export default function VariantTable({
 
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-ink-soft/55">
         <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${ROW_STATE_DOT.created}`} /> Created</span>
-        <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${ROW_STATE_DOT.zero_stock}`} /> Zero stock</span>
         <span className="flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${ROW_STATE_DOT.not_created}`} /> Not created</span>
       </div>
     </div>

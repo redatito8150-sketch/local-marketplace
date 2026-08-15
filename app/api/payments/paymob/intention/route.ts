@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
           supabaseAdmin
             .from("products")
             .select(
-              "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, brands!products_brand_slug_fkey!inner(is_active, fulfillment_mode)"
+              "id, name, brand_name, brand_slug, price, discount_percent, discount_ends_at, currency, status, publish_date, paused_by_brand, image, first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner(is_active)"
             )
             .in("id", productIds),
           supabaseAdmin

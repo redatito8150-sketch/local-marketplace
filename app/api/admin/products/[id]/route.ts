@@ -19,6 +19,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 import { archiveProduct } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -50,6 +51,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
   if (body.status === "archived" && existing.status !== "published") {
     return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
+  }
+  // CORRECTIVE PASS: a Published product can never revert to Draft — the
+  // database trigger (private.enforce_product_lifecycle_transition())
+  // enforces this for every caller regardless of what this route does;
+  // this guard just returns a clear application-level error instead of a
+  // raw DB exception bubbling up as a 500.
+  if (existing.status === "published" && body.status === "draft") {
+    return NextResponse.json({ error: "A Published product cannot be reverted to Draft." }, { status: 409 });
   }
   if (body.status === "archived") {
     const result = await archiveProduct(params.id, null, admin.id, admin.email ?? admin.id);
@@ -111,7 +120,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: body.variants,
     actorId: admin.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: Boolean(brandRow?.is_mahaly_partner),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
@@ -125,6 +133,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  if (body.status === "published") {
+    await stampFirstVisibleIfEligible(params.id);
+  }
 
   await checkAndNotifyWishlistPriceDrop(
     params.id,

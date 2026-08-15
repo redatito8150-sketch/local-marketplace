@@ -43,10 +43,28 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ wishlisted: false });
   }
 
+  // CORRECTIVE PASS: a wishlisted product must currently be customer-visible
+  // (unpublished/archived/paused/future-scheduled/inactive-brand/an
+  // unreached when_stocked gate all excluded; show_now at 0 stock is still
+  // visible, so it's still wishlistable). Checked here for a clean 404
+  // instead of a raw 500 from the DB trigger below, which is the real
+  // enforcement boundary (wishlists_enforce_visibility, supabase/migrations/
+  // 20260815000000_product_launch_policy_and_opening_stock.sql) and stays
+  // authoritative even if this check is ever bypassed or drifts.
+  const { data: visible } = await supabaseAdmin.rpc("is_product_customer_visible", {
+    p_product_id: productId,
+  });
+  if (!visible) {
+    return NextResponse.json({ error: "This product isn't currently available to customers." }, { status: 404 });
+  }
+
   const { error } = await supabaseAdmin
     .from("wishlists")
     .insert({ user_id: user.id, product_id: productId });
   if (error) {
+    if (error.message.includes("PRODUCT_NOT_AVAILABLE_FOR_WISHLIST")) {
+      return NextResponse.json({ error: "This product isn't currently available to customers." }, { status: 404 });
+    }
     return safeErrorResponse("wishlist.add", error);
   }
   return NextResponse.json({ wishlisted: true });

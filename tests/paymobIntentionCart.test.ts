@@ -19,9 +19,10 @@ function product(overrides: Partial<ProductLookupRow> = {}): ProductLookupRow {
     status: "published",
     publish_date: null,
     paused_by_brand: false,
-    brands: { is_active: true, fulfillment_mode: "brand_fulfilled" },
+    brands: { is_active: true },
     image: "https://example.com/linen-shirt.jpg",
     first_stocked_at: "2026-01-01T00:00:00.000Z",
+    launch_policy: "show_now",
     ...overrides,
   };
 }
@@ -52,9 +53,9 @@ test("resolveIntentionCart rejects an item whose product no longer exists", () =
   if (!result.ok) assert.equal(result.status, 400);
 });
 
-test("resolveIntentionCart rejects a zakhnook_fulfilled brand's product that has never been launched (first_stocked_at is null) — checkout defense in depth for the product-launch gate", () => {
+test("resolveIntentionCart rejects a when_stocked product that has never been launched (first_stocked_at is null) — checkout defense in depth for the product-launch gate", () => {
   const productById = new Map([
-    ["prod-1", product({ brands: { is_active: true, fulfillment_mode: "zakhnook_fulfilled" }, first_stocked_at: null })],
+    ["prod-1", product({ launch_policy: "when_stocked", first_stocked_at: null })],
   ]);
   const variantsByProduct = new Map([["prod-1", [variant()]]]);
   const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
@@ -62,11 +63,11 @@ test("resolveIntentionCart rejects a zakhnook_fulfilled brand's product that has
   if (!result.ok) assert.equal(result.status, 400);
 });
 
-test("resolveIntentionCart accepts a zakhnook_fulfilled brand's product once first_stocked_at is set, and always accepts a brand_fulfilled brand's product regardless of first_stocked_at", () => {
-  const launchedPartnerProduct = product({ brands: { is_active: true, fulfillment_mode: "zakhnook_fulfilled" }, first_stocked_at: "2026-01-01T00:00:00.000Z" });
-  const unlaunchedBrandDirectProduct = product({ brands: { is_active: true, fulfillment_mode: "brand_fulfilled" }, first_stocked_at: null });
+test("resolveIntentionCart accepts a when_stocked product once first_stocked_at is set, and always accepts a show_now product regardless of first_stocked_at", () => {
+  const launchedWhenStockedProduct = product({ launch_policy: "when_stocked", first_stocked_at: "2026-01-01T00:00:00.000Z" });
+  const unstockedShowNowProduct = product({ launch_policy: "show_now", first_stocked_at: null });
 
-  for (const p of [launchedPartnerProduct, unlaunchedBrandDirectProduct]) {
+  for (const p of [launchedWhenStockedProduct, unstockedShowNowProduct]) {
     const productById = new Map([["prod-1", p]]);
     const variantsByProduct = new Map([["prod-1", [variant()]]]);
     const result = resolveIntentionCart([cartItem], productById, variantsByProduct, NOW);
@@ -78,7 +79,7 @@ test("resolveIntentionCart rejects an unpublished, paused, or inactive-brand pro
   for (const overrides of [
     { status: "draft" },
     { paused_by_brand: true },
-    { brands: { is_active: false, fulfillment_mode: "brand_fulfilled" } },
+    { brands: { is_active: false } },
     { publish_date: "2099-01-01T00:00:00.000Z" },
   ]) {
     const productById = new Map([["prod-1", product(overrides)]]);

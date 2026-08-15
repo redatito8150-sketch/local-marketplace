@@ -20,6 +20,7 @@ const baseProduct: ProductInput = {
   isNew: false,
   featured: false,
   status: "draft",
+  launchPolicy: "show_now",
   defaultLowStockThreshold: 5,
   optionTypeIds: [],
   valueIdsByOptionType: {},
@@ -64,20 +65,24 @@ test("validateProductInput rejects a missing taxonomy selection, even as a draft
   );
 });
 
-test("validateProductInput requires stock before publishing", () => {
+// Publishing no longer requires positive stock — catalog information only
+// is entered here, for direct and partner brands alike. A quantity-0
+// variant publishes fine as long as it's Active; only "everything paused/
+// discontinued" actually blocks publishing.
+test("validateProductInput requires an Active variant, not stock, before publishing", () => {
+  const result = validateProductInput({
+    ...baseProduct,
+    status: "published",
+    variants: [{ ...baseVariant, quantity: 0, sellingStatus: "paused" }],
+  });
+  assert.equal(result, "At least one variant needs an Active Selling Status before publishing");
+});
+
+test("validateProductInput accepts a fully complete publish submission with zero stock", () => {
   const result = validateProductInput({
     ...baseProduct,
     status: "published",
     variants: [{ ...baseVariant, quantity: 0 }],
-  });
-  assert.equal(result, "At least one variant needs stock and an Active Selling Status before publishing");
-});
-
-test("validateProductInput accepts a fully complete publish submission", () => {
-  const result = validateProductInput({
-    ...baseProduct,
-    status: "published",
-    variants: [{ ...baseVariant, quantity: 5 }],
   });
   assert.equal(result, null);
 });

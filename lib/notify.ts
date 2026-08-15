@@ -143,6 +143,7 @@ export async function notify(
 export interface NotifyUserOptions {
   relatedEntityType?: string;
   relatedEntityId?: string;
+  deliveryKey?: string;
 }
 
 // Customer-facing sibling of notify() — writes to user_notifications
@@ -152,13 +153,17 @@ export interface NotifyUserOptions {
 // of it, so the same event reaches both channels. Same never-throw
 // contract as notify()/logAudit(): a failure to record is logged, never
 // thrown, since it's supplementary to the write path it's attached to.
+//
+// CORRECTIVE PASS: return type changed from `Promise<void>` to `{ok,
+// error?}`, same non-breaking rationale as sendEmail()'s identical change
+// — every pre-existing caller ignores the return value already.
 export async function notifyUser(
   userId: string,
   type: string,
   title: string,
   body: string = "",
   options?: NotifyUserOptions
-): Promise<void> {
+): Promise<{ ok: boolean; error?: string }> {
   const { error } = await supabaseAdmin.from("user_notifications").insert({
     user_id: userId,
     type,
@@ -166,8 +171,14 @@ export async function notifyUser(
     body,
     related_entity_type: options?.relatedEntityType ?? null,
     related_entity_id: options?.relatedEntityId ?? null,
+    delivery_key: options?.deliveryKey ?? null,
   });
   if (error) {
+    // A stable delivery key turns a crash-after-insert retry into success
+    // without creating a second inbox notification.
+    if (error.code === "23505" && options?.deliveryKey) return { ok: true };
     logError(`notifyUser(${type}) failed`, error.message);
+    return { ok: false, error: error.message };
   }
+  return { ok: true };
 }

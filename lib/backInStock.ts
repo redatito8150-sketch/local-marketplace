@@ -18,7 +18,8 @@ export async function getSubscribedVariantIds(userId: string, productId: string)
     .from("back_in_stock_subscriptions")
     .select("variant_id")
     .eq("user_id", userId)
-    .eq("product_id", productId);
+    .eq("product_id", productId)
+    .in("delivery_status", ["pending", "claimed"]);
   if (error) {
     logError("getSubscribedVariantIds failed", error.message);
     return [];
@@ -58,11 +59,42 @@ export async function subscribeToRestock(
     .insert({ user_id: userId, email, product_id: productId, variant_id: variantId });
   // A unique_violation just means they already subscribed — treat that as
   // success rather than an error the shopper needs to see.
-  if (insertError && insertError.code !== "23505") {
+  if (insertError) {
+    if (insertError.code === "23505") return { ok: true };
+    // CORRECTIVE PASS: the database's own back_in_stock_subscriptions_
+    // enforce_visibility trigger (supabase/migrations/
+    // 20260815000000_product_launch_policy_and_opening_stock.sql) rejects
+    // an INSERT outright for a product that isn't currently
+    // customer-visible (PRODUCT_NOT_AVAILABLE_FOR_NOTIFY_ME) — a hidden
+    // when_stocked, paused, future-scheduled, inactive-brand, archived, or
+    // transition-blocked product. A show_now out-of-stock product is
+    // unaffected (it's visible, so the trigger never fires). This is the
+    // hard boundary; this check just turns the raw DB exception into a
+    // clean, user-facing message.
+    if (insertError.message.includes("PRODUCT_NOT_AVAILABLE_FOR_NOTIFY_ME")) {
+      return { ok: false, error: "This product isn't currently available to customers." };
+    }
+    if (insertError.message.includes("VARIANT_NOT_ELIGIBLE_FOR_NOTIFY_ME")) {
+      return { ok: false, error: "This variant is already available or can no longer be followed." };
+    }
     logError("subscribeToRestock failed", insertError.message);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
   return { ok: true };
+}
+
+// Shape of a row returned by claim_back_in_stock_deliveries (supabase/
+// migrations/20260815000000_product_launch_policy_and_opening_stock.sql) —
+// not in the generated Supabase types since that migration is still
+// unapplied (see the RPC call site below).
+interface ClaimedBackInStockDelivery {
+  id: string;
+  variant_id: string;
+  user_id: string;
+  email: string;
+  claim_token: string;
+  email_sent_at: string | null;
+  notification_sent_at: string | null;
 }
 
 interface VariantNotifyDetail {
@@ -151,55 +183,172 @@ async function loadVariantNotifyDetails(variantIds: string[]): Promise<Map<strin
 // — same contract as notify()/notifyUser()/sendEmail(), since this is a
 // side effect hung off unrelated save/adjustment requests and must never
 // fail those.
-export async function checkAndNotifyRestock(variantIds: string[]): Promise<void> {
-  const uniqueIds = [...new Set(variantIds.filter(Boolean))];
-  if (uniqueIds.length === 0) return;
+//
+// CORRECTIVE PASS — durable delivery: subscriptions are no longer deleted
+// before (or instead of) confirmed delivery. claim_back_in_stock_deliveries
+// (supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql)
+// atomically claims each eligible row (variant purchasable — checked here
+// — AND the product currently customer-visible — checked as PART of the
+// same claiming UPDATE, not a separate stale read) into a 'claimed' lease.
+// A concurrent worker can never double-claim: the claiming UPDATE's WHERE
+// clause only matches 'pending' rows or 'claimed' rows whose lease has
+// expired, so two simultaneous calls simply serialize and the second only
+// ever claims whatever the first didn't. Delivery success/failure is then
+// reported back explicitly (mark_..._sent / mark_..._failed) — a failed
+// send (or a process crash before either call lands) leaves the row
+// 'claimed' until its lease expires, then it's retried on a later call, up
+// to a bounded attempts budget; only then does it become a permanent,
+// inspectable 'failed' row. Nothing is ever silently discarded.
+export interface BackInStockDeliveryRun {
+  claimed: number;
+  completed: number;
+  deferred: number;
+}
+
+async function acknowledgeChannel(
+  claim: ClaimedBackInStockDelivery,
+  channel: "email" | "notification"
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc("mark_back_in_stock_delivery_channel_sent", {
+    p_id: claim.id,
+    p_claim_token: claim.claim_token,
+    p_channel: channel,
+  });
+  if (error || data !== true) {
+    logError(
+      `checkAndNotifyRestock: ${channel} acknowledgement failed for ${claim.id}`,
+      error?.message ?? "claim lease was no longer current"
+    );
+    return false;
+  }
+  return true;
+}
+
+async function deferClaim(claim: ClaimedBackInStockDelivery, reason: string): Promise<void> {
+  const { data, error } = await supabaseAdmin.rpc("mark_back_in_stock_delivery_failed", {
+    p_id: claim.id,
+    p_claim_token: claim.claim_token,
+    p_error: reason,
+  });
+  if (error || data !== true) {
+    logError(
+      `checkAndNotifyRestock: failure acknowledgement failed for ${claim.id}`,
+      error?.message ?? "claim lease was no longer current"
+    );
+  }
+}
+
+// Passing no variant ids is the authenticated cron/worker mode: it drains
+// any eligible pending delivery or expired lease in a bounded batch. Passing
+// ids is the low-latency inventory-event mode. The database claim performs
+// the authoritative variant + product checks atomically in both cases.
+export async function processBackInStockDeliveries(
+  variantIds?: string[]
+): Promise<BackInStockDeliveryRun> {
+  const uniqueIds = variantIds ? [...new Set(variantIds.filter(Boolean))] : null;
+  if (uniqueIds && uniqueIds.length === 0) return { claimed: 0, completed: 0, deferred: 0 };
 
   try {
-    const { data: variants, error } = await supabaseAdmin
-      .from("product_variants")
-      .select("id, quantity, selling_status, is_archived")
-      .in("id", uniqueIds);
-    if (error || !variants?.length) return;
-
-    const purchasableIds = variants
-      .filter((row) =>
-        isVariantPurchasable({
-          sellingStatus: row.selling_status,
-          quantity: row.quantity,
-          isArchived: row.is_archived,
-        })
-      )
-      .map((row) => row.id as string);
-    if (purchasableIds.length === 0) return;
-
-    const { data: subscriptions, error: subsError } = await supabaseAdmin
-      .from("back_in_stock_subscriptions")
-      .select("id, user_id, email, variant_id")
-      .in("variant_id", purchasableIds);
-    if (subsError || !subscriptions?.length) return;
-
-    const details = await loadVariantNotifyDetails([...new Set(subscriptions.map((row) => row.variant_id as string))]);
-
-    for (const subscription of subscriptions) {
-      const detail = details.get(subscription.variant_id as string);
-      if (!detail) continue;
-      const { subject, html } = backInStockEmail(detail);
-      await sendEmail({ to: subscription.email as string, subject, html });
-      await notifyUser(
-        subscription.user_id as string,
-        "back_in_stock",
-        `${detail.productName} is back in stock`,
-        detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
-        { relatedEntityType: "product", relatedEntityId: detail.productId }
-      );
+    // CORRECTIVE PASS: claim_back_in_stock_deliveries isn't in the
+    // generated Supabase types yet (its migration is still unapplied — see
+    // this migration's own header — so `supabase gen types` has never run
+    // against it), which makes `.rpc()`'s return type unknown[] rather than
+    // a real row shape. Cast explicitly to the RPC's documented return
+    // columns (supabase/migrations/20260815000000_product_launch_policy_
+    // and_opening_stock.sql, private/public.claim_back_in_stock_deliveries)
+    // instead of leaving this untyped.
+    const { data: claimedRaw, error: claimError } = await supabaseAdmin.rpc("claim_back_in_stock_deliveries", {
+      p_variant_ids: uniqueIds,
+      p_batch_size: 100,
+    });
+    if (claimError || !claimedRaw?.length) {
+      if (claimError) logError("checkAndNotifyRestock: claim failed", claimError.message);
+      return { claimed: 0, completed: 0, deferred: 0 };
     }
+    const claimed = claimedRaw as unknown as ClaimedBackInStockDelivery[];
+    let completed = 0;
+    let deferred = 0;
 
-    await supabaseAdmin
-      .from("back_in_stock_subscriptions")
-      .delete()
-      .in("id", subscriptions.map((row) => row.id));
+    const details = await loadVariantNotifyDetails([...new Set(claimed.map((row) => row.variant_id))]);
+
+    // Each claimed row is delivered independently — one subscriber's
+    // failure must never stop the rest of the batch, and every outcome
+    // (success or failure) is explicitly reported back to the database so
+    // the row's state always reflects reality, never assumed.
+    for (const claim of claimed) {
+      try {
+        const detail = details.get(claim.variant_id);
+        if (!detail) {
+          // No resolvable detail (e.g. the variant was deleted between claim
+          // and delivery) — nothing meaningful to send; record it as a
+          // failure so it's retried/eventually surfaced rather than left
+          // claimed forever.
+          await deferClaim(claim, "No variant/product detail resolvable at delivery time");
+          deferred += 1;
+          continue;
+        }
+        const { subject, html } = backInStockEmail(detail);
+        if (!claim.email_sent_at) {
+          const emailResult = await sendEmail({
+            to: claim.email,
+            subject,
+            html,
+            idempotencyKey: `back-in-stock-${claim.id}-email`,
+          });
+          if (!emailResult.ok) {
+            await deferClaim(claim, emailResult.error ?? "sendEmail failed");
+            deferred += 1;
+            continue;
+          }
+          if (!(await acknowledgeChannel(claim, "email"))) {
+            deferred += 1;
+            continue;
+          }
+        }
+        if (!claim.notification_sent_at) {
+          const notifyResult = await notifyUser(
+            claim.user_id,
+            "back_in_stock",
+            `${detail.productName} is back in stock`,
+            detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
+            {
+              relatedEntityType: "product",
+              relatedEntityId: detail.productId,
+              deliveryKey: `back-in-stock-${claim.id}-notification`,
+            }
+          );
+          if (!notifyResult.ok) {
+            await deferClaim(claim, notifyResult.error ?? "notifyUser failed");
+            deferred += 1;
+            continue;
+          }
+          if (!(await acknowledgeChannel(claim, "notification"))) {
+            deferred += 1;
+            continue;
+          }
+        }
+        completed += 1;
+      } catch (error) {
+        deferred += 1;
+        const message = error instanceof Error ? error.message : String(error);
+        logError(`checkAndNotifyRestock: delivery threw for ${claim.id}`, message);
+        try {
+          await deferClaim(claim, message);
+        } catch (deferError) {
+          logError(
+            `checkAndNotifyRestock: could not defer thrown delivery ${claim.id}`,
+            deferError instanceof Error ? deferError.message : String(deferError)
+          );
+        }
+      }
+    }
+    return { claimed: claimed.length, completed, deferred };
   } catch (err) {
     logError("checkAndNotifyRestock failed", err instanceof Error ? err.message : String(err));
+    return { claimed: 0, completed: 0, deferred: 0 };
   }
+}
+
+export async function checkAndNotifyRestock(variantIds: string[]): Promise<void> {
+  await processBackInStockDeliveries(variantIds);
 }

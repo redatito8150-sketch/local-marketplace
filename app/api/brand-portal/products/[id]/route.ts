@@ -24,6 +24,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 import { archiveProduct } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -93,6 +94,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       }
     );
 
+    // Resume respects launch policy + current stock — never auto-visible
+    // just because it was resumed; a no-op unless genuinely eligible now.
+    if (!paused) await stampFirstVisibleIfEligible(params.id);
+
     return NextResponse.json({ ok: true });
   }
 
@@ -148,6 +153,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
   if (productBody.status === "archived" && existing.status !== "published") {
     return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
+  }
+  // CORRECTIVE PASS: a Published product can never revert to Draft — the
+  // database trigger (private.enforce_product_lifecycle_transition())
+  // enforces this for every caller; this guard returns a clear
+  // application-level error instead of a raw DB exception, and fires
+  // before the status-coercion logic below could otherwise let a bare
+  // {status: "draft"} PATCH through unnoticed.
+  if (existing.status === "published" && productBody.status === "draft") {
+    return NextResponse.json({ error: "A Published product cannot be reverted to Draft." }, { status: 409 });
   }
   if (productBody.status === "archived") {
     const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
@@ -223,7 +237,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: productBody.variants,
     actorId: owner.user.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: owner.isMahalyPartner,
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
@@ -240,6 +253,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  if (productBody.status === "published") {
+    await stampFirstVisibleIfEligible(params.id);
+  }
 
   await checkAndNotifyWishlistPriceDrop(
     params.id,
