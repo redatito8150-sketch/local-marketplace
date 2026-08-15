@@ -1,0 +1,31 @@
+-- Production hotfix: schema `private` (created by 20260810000005_order_
+-- integrity_and_idempotency.sql / 20260810000006_warehouse_and_storage_
+-- integrity.sql / 20260811000001_payment_attempts.sql) was never granted
+-- USAGE to any role, including service_role. Every existing SECURITY
+-- DEFINER function inside it has always worked regardless (a SECURITY
+-- DEFINER function runs with its owner's privileges, not the caller's), but
+-- three trigger functions added in 20260815000000_product_launch_policy_
+-- and_opening_stock.sql are NOT security definer and call another
+-- private.* function directly from inside their own (invoker-rights) body:
+--
+--   - private.products_after_write_stamp_visibility()
+--     (fires on every products insert/update — this is what broke the
+--     brand-portal Pause/Resume toggle: "permission denied for schema
+--     private")
+--   - private.enforce_order_item_product_available()
+--     (fires on every order_items insert — affects checkout, both COD and
+--     Paymob)
+--   - private.enforce_wishlist_visibility()
+--     (fires on every wishlist insert)
+--
+-- Each of those, when fired by service_role (every write in this app goes
+-- through the service_role key server-side, never the anon key — see
+-- CLAUDE.md), needs service_role to have USAGE on schema private to even
+-- resolve the cross-schema call at runtime. Granting it here is the
+-- minimal, correctly-scoped fix: anon/authenticated still cannot reach
+-- schema private directly (unchanged — they only ever call the public.*
+-- SECURITY DEFINER wrappers, exactly as designed), and service_role already
+-- has full read/write access to every table these functions touch, so this
+-- grants no new capability beyond what service_role could already do via a
+-- plain UPDATE/INSERT.
+grant usage on schema private to service_role;
