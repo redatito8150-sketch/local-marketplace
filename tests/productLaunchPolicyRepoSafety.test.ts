@@ -99,7 +99,9 @@ test("back-in-stock delivery is fenced, channel-idempotent, retryable by cron, a
   const cron = read("app/api/cron/back-in-stock-deliveries/route.ts");
   assert.match(cron, /process\.env\.CRON_SECRET/);
   assert.match(cron, /processBackInStockDeliveries\(\)/);
-  assert.match(read("vercel.json"), /"path":\s*"\/api\/cron\/back-in-stock-deliveries"/);
+  const vercelConfig = read("vercel.json");
+  assert.match(vercelConfig, /"path":\s*"\/api\/cron\/back-in-stock-deliveries"/);
+  assert.match(vercelConfig, /"schedule":\s*"15 3 \* \* \*"/);
 });
 
 test("New Arrivals (lib/newArrivals.ts + lib/data/products.ts's getNewArrivals) uses first_visible_at, never publish_date, for both the window membership and the ranking", () => {
@@ -154,13 +156,19 @@ test("resume-from-pause (admin and brand-portal) calls stampFirstVisibleIfEligib
   assert.match(brandPortalRoute, /if \(!paused\) await stampFirstVisibleIfEligible\(params\.id\);/);
 });
 
-test("the scheduled visibility-activation cron route is authenticated via CRON_SECRET, matching the existing storage-cleanup cron's own pattern", () => {
+test("scheduled visibility activation runs hourly in Supabase Cron, with an authenticated HTTP fallback", () => {
   const cron = read("app/api/cron/activate-product-visibility/route.ts");
   assert.match(cron, /process\.env\.CRON_SECRET/);
   assert.match(cron, /request\.headers\.get\("authorization"\) !== `Bearer \$\{cronSecret\}`/);
   assert.match(cron, /execute_scheduled_product_visibility_activation/);
+
+  const databaseCron = read("supabase/migrations/20260815214110_product_visibility_activation_cron.sql");
+  assert.match(databaseCron, /create extension if not exists pg_cron;/);
+  assert.match(databaseCron, /'product-visibility-activation',\s*'0 \* \* \* \*'/);
+  assert.match(databaseCron, /select private\.execute_scheduled_product_visibility_activation\(200\);/);
+
   const vercelConfig = read("vercel.json");
-  assert.match(vercelConfig, /"path":\s*"\/api\/cron\/activate-product-visibility"/);
+  assert.doesNotMatch(vercelConfig, /"path":\s*"\/api\/cron\/activate-product-visibility"/);
 });
 
 test("the product editor's header no longer renders a Publish action in the create experience — only the bottom action bar does", () => {
