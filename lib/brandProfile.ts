@@ -27,19 +27,32 @@ export function isActiveOffer(
   return product.inStock && isDiscountActive(product.discountPercent, product.discountEndsAt, now);
 }
 
-export type ProductCardBadge = { label: string; kind: "soldOut" | "offer" | "new" };
+export type ProductCardBadge = { label: string; kind: "comingSoon" | "soldOut" | "offer" | "new" };
 
-// A product card shows at most one badge, never both stacked. Sold Out
-// (every variant at 0 stock) outranks everything — there's no point
-// advertising a discount or "New" on something nobody can actually buy.
-// Below that, an active discount wins over "New" — once the discount
-// ends, if the product is still inside its New window (see
-// lib/newArrivals.ts), the badge flips back to New on its own, since all
-// three are computed live from the same product fields rather than stored.
+// A product card shows at most one badge, never both stacked.
+//
+// Coming Soon outranks everything: a product that has NEVER had real
+// stock yet (firstStockedAt unset) is not "sold out" — nothing was ever
+// available to sell in the first place. This is distinct from Sold Out,
+// which means the product WAS purchasable at some point and every variant
+// has since run out. Once real stock lands for the first time,
+// firstStockedAt is stamped (immutably, see products.first_stocked_at)
+// and the card permanently leaves Coming Soon — from that moment on it
+// follows the ordinary Sold Out / Offer / New chain below, exactly as
+// before.
+//
+// Below that, Sold Out (every variant currently at 0 stock) outranks
+// everything else — there's no point advertising a discount or "New" on
+// something nobody can actually buy right now. Below that, an active
+// discount wins over "New" — once the discount ends, if the product is
+// still inside its New window (see lib/newArrivals.ts), the badge flips
+// back to New on its own, since all of these are computed live from the
+// same product fields rather than stored.
 export function productCardBadge(
-  product: Pick<Product, "discountPercent" | "discountEndsAt" | "inStock" | "isNew">,
+  product: Pick<Product, "discountPercent" | "discountEndsAt" | "inStock" | "isNew" | "firstStockedAt">,
   now: Date = new Date()
 ): ProductCardBadge | null {
+  if (!product.firstStockedAt) return { label: "Coming Soon", kind: "comingSoon" };
   if (!product.inStock) return { label: "Sold Out", kind: "soldOut" };
   if (isActiveOffer(product, now)) {
     return { label: `Offer ${Math.round(product.discountPercent ?? 0)}%`, kind: "offer" };
