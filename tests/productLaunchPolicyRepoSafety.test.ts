@@ -72,7 +72,7 @@ test("no checkout/visibility code still keys launch-gating off brands.fulfillmen
   }
 });
 
-test("lib/backInStock.ts's checkAndNotifyRestock checks product-level visibility (not just variant-level purchasability) before sending, and claims subscriptions atomically via a durable claim/lease outbox", () => {
+test("back-in-stock delivery is fenced, channel-idempotent, retryable by cron, and exposes only active subscriptions", () => {
   const src = read("lib/backInStock.ts");
   // CORRECTIVE PASS: subscriptions are no longer deleted before delivery
   // (which had no recovery path on a crash/failure between delete and
@@ -82,15 +82,24 @@ test("lib/backInStock.ts's checkAndNotifyRestock checks product-level visibility
   // product-level visibility as PART of the same claiming UPDATE — not a
   // separate, staleable read — so a concurrent worker can never double-claim
   // and a crash before delivery is retried, not silently discarded.
-  const fnBody = src.slice(src.indexOf("export async function checkAndNotifyRestock"));
+  const fnBody = src.slice(src.indexOf("export async function processBackInStockDeliveries"));
   assert.match(fnBody, /supabaseAdmin\.rpc\("claim_back_in_stock_deliveries"/);
-  assert.match(fnBody, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_sent"/);
-  assert.match(fnBody, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_failed"/);
+  assert.match(src, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_channel_sent"/);
+  assert.match(src, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_failed"/);
   // Every delivery outcome (email failure, notifyUser failure, no
   // resolvable detail) is explicitly reported back — never left claimed
   // forever, never silently treated as sent.
   assert.match(fnBody, /if \(!emailResult\.ok\)/);
   assert.match(fnBody, /if \(!notifyResult\.ok\)/);
+  assert.match(src, /p_claim_token: claim\.claim_token/);
+  assert.match(src, /idempotencyKey: `back-in-stock-\$\{claim\.id\}-email`/);
+  assert.match(src, /deliveryKey: `back-in-stock-\$\{claim\.id\}-notification`/);
+  assert.match(src, /\.in\("delivery_status", \["pending", "claimed"\]\)/);
+
+  const cron = read("app/api/cron/back-in-stock-deliveries/route.ts");
+  assert.match(cron, /process\.env\.CRON_SECRET/);
+  assert.match(cron, /processBackInStockDeliveries\(\)/);
+  assert.match(read("vercel.json"), /"path":\s*"\/api\/cron\/back-in-stock-deliveries"/);
 });
 
 test("New Arrivals (lib/newArrivals.ts + lib/data/products.ts's getNewArrivals) uses first_visible_at, never publish_date, for both the window membership and the ranking", () => {

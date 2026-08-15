@@ -8,6 +8,10 @@
     {
       "path": "/api/cron/activate-product-visibility",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/back-in-stock-deliveries",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

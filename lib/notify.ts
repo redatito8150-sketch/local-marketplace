@@ -143,6 +143,7 @@ export async function notify(
 export interface NotifyUserOptions {
   relatedEntityType?: string;
   relatedEntityId?: string;
+  deliveryKey?: string;
 }
 
 // Customer-facing sibling of notify() — writes to user_notifications
@@ -170,8 +171,12 @@ export async function notifyUser(
     body,
     related_entity_type: options?.relatedEntityType ?? null,
     related_entity_id: options?.relatedEntityId ?? null,
+    delivery_key: options?.deliveryKey ?? null,
   });
   if (error) {
+    // A stable delivery key turns a crash-after-insert retry into success
+    // without creating a second inbox notification.
+    if (error.code === "23505" && options?.deliveryKey) return { ok: true };
     logError(`notifyUser(${type}) failed`, error.message);
     return { ok: false, error: error.message };
   }

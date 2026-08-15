@@ -16,10 +16,12 @@ export async function sendEmail({
   to,
   subject,
   html,
+  idempotencyKey,
 }: {
   to: string;
   subject: string;
   html: string;
+  idempotencyKey?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   if (!resendClient) {
     const message = "RESEND_API_KEY is not configured";
@@ -27,16 +29,25 @@ export async function sendEmail({
     return { ok: false, error: message };
   }
 
-  const { error } = await resendClient.emails.send({
-    from: EMAIL_FROM,
-    to,
-    subject,
-    html,
-  });
+  try {
+    const { error } = await resendClient.emails.send(
+      {
+        from: EMAIL_FROM,
+        to,
+        subject,
+        html,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined
+    );
 
-  if (error) {
-    logError(`sendEmail(${subject}) to ${to} failed`, error.message);
-    return { ok: false, error: error.message };
+    if (error) {
+      logError(`sendEmail(${subject}) to ${to} failed`, error.message);
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logError(`sendEmail(${subject}) to ${to} threw`, message);
+    return { ok: false, error: message };
   }
-  return { ok: true };
 }

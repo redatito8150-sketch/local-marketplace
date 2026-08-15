@@ -49,9 +49,17 @@ test("products.launch_policy is a strict two-value check constraint, defaulting 
   assert.ok(sql.includes("check(launch_policyin('show_now','when_stocked'))"));
 });
 
-test("products.first_visible_at and inventory_movements.is_opening_stock are new, additive columns", () => {
+test("visibility and durable opening-stock recognition columns are additive", () => {
   assert.ok(sql.includes("altertablepublic.productsaddcolumnifnotexistsfirst_visible_attimestamptz"));
   assert.ok(sql.includes("altertablepublic.inventory_movementsaddcolumnifnotexistsis_opening_stockbooleannotnulldefaultfalse"));
+  assert.ok(sql.includes("altertablepublic.product_variantsaddcolumnifnotexistsopening_stock_recognized_attimestamptz"));
+  assert.ok(sql.includes("altertablepublic.product_variantsaddcolumnifnotexistsopening_stock_recognition_sourcetext"));
+});
+
+test("legacy positive stock is durably recognized without fabricating a movement", () => {
+  assert.match(migration, /opening_stock_recognition_source = case[\s\S]*?'historical_movement'[\s\S]*?'legacy_positive_quantity'/);
+  assert.match(migration, /and \(ep\.variant_id is not null or pv\.quantity > 0\);/);
+  assert.doesNotMatch(migration, /insert into public\.inventory_movements[\s\S]{0,300}legacy_positive_quantity/);
 });
 
 test("launch_policy is backfilled to preserve the OLD fulfillment_mode-keyed gate exactly, for zakhnook_fulfilled brands only", () => {
@@ -133,15 +141,12 @@ test("create_variant_with_opening_stock keeps its exact old signature but always
 
 test("apply_inventory_adjustments recognizes and tags a variant's first genuine positive-stock movement, then stamps product-level launch state", () => {
   const body = fn("public\\.apply_inventory_adjustments");
-  // CORRECTIVE PASS: historical evidence (any prior movement that itself
-  // landed positive stock, not just an existing is_opening_stock=true
-  // marker) also disqualifies a later movement from being wrongly
-  // recognized as opening stock — closes the gap for a legacy variant that
-  // reached positive stock, sold back to 0, and carries no marker.
   assert.match(
     body,
-    /v_is_opening_stock := v_variant\.quantity = 0 and v_new_quantity > 0 and not exists \(\s*\n\s*select 1 from public\.inventory_movements\s*\n\s*where variant_id = v_variant\.id and \(is_opening_stock = true or new_quantity > 0\)\s*\n\s*\);/
+    /v_is_opening_stock := v_variant\.quantity = 0\s*\n\s*and v_new_quantity > 0\s*\n\s*and v_variant\.opening_stock_recognized_at is null;/
   );
+  assert.match(body, /opening_stock_recognized_at = case[\s\S]*?opening_stock_recognition_source = case/);
+  assert.match(body, /'inventory_adjustment'/);
   assert.match(body, /is_opening_stock\s*\n\s*\) values \([\s\S]*?v_is_opening_stock\s*\n\s*\);/);
   assert.match(body, /if v_is_opening_stock then\s*\n\s*update public\.products\s*\n\s*set first_stocked_at = coalesce\(first_stocked_at, now\(\)\)/);
   assert.match(body, /perform private\.stamp_product_first_visible_if_eligible\(v_variant\.product_id\);/);
@@ -157,8 +162,9 @@ test("receive_warehouse_document_canonical restores the first_stocked_at stamp t
   const body = fn("private\\.receive_warehouse_document_canonical");
   assert.match(
     body,
-    /v_is_opening_stock := p_expected_direction = 'to_local'\s*\n\s*and v_variant\.quantity = 0 and v_new_quantity > 0/
+    /v_is_opening_stock := p_expected_direction = 'to_local'\s*\n\s*and v_variant\.quantity = 0 and v_new_quantity > 0\s*\n\s*and v_variant\.opening_stock_recognized_at is null/
   );
+  assert.match(body, /'warehouse_receipt'/);
   // The regression fix: a 'to_local' receipt with received_ok_qty > 0 must
   // stamp first_stocked_at again (this was dropped by
   // 20260814010500_partner_replenishment_request.sql's re-declaration).
@@ -222,4 +228,38 @@ test("set_product_launch_policy_show_now verifies ownership, is idempotent, and 
 test("every mutating/gating function in this migration is either security definer with a locked search_path, or a private helper never exposed to anon/authenticated", () => {
   const definerCount = (sql.match(/securitydefinersetsearch_path=(''|public,pg_temp)/g) ?? []).length;
   assert.ok(definerCount >= 8, `expected at least 8 security definer functions with a locked search_path, saw ${definerCount}`);
+});
+
+test("back-in-stock claims use SKIP LOCKED, return a fencing token, verify the variant atomically, and fence every acknowledgement", () => {
+  const claim = fn("private\\.claim_back_in_stock_deliveries");
+  assert.match(claim, /claim_token uuid/);
+  assert.match(claim, /join public\.product_variants pv[\s\S]*?pv\.quantity > 0[\s\S]*?pv\.selling_status = 'active'/);
+  assert.match(claim, /for update of s skip locked/);
+  assert.match(claim, /s\.claim_token/);
+
+  const channelAck = fn("public\\.mark_back_in_stock_delivery_channel_sent");
+  assert.match(channelAck, /and claim_token = p_claim_token/);
+  assert.match(channelAck, /and delivery_status = 'claimed'/);
+
+  const failureAck = fn("public\\.mark_back_in_stock_delivery_failed");
+  assert.match(failureAck, /claim_token = p_claim_token and delivery_status = 'claimed'/);
+  assert.ok(sql.includes("back_in_stock_subscriptions_one_active_per_user_variant_idx"));
+  assert.ok(sql.includes("wheredelivery_statusin('pending','claimed')"));
+});
+
+test("COD and card flows pre-lock rows deterministically, while paid fulfillment honors the already-accepted attempt", () => {
+  const intentionLocks = fn("private\\.lock_and_verify_intention_cart_visibility");
+  assert.match(intentionLocks, /order by b\.id/);
+  assert.match(intentionLocks, /order by 1[\s\S]*?for update/);
+
+  const codLocks = fn("private\\.lock_and_verify_cod_cart_visibility");
+  assert.match(codLocks, /order by p\.brand_id/);
+  assert.match(codLocks, /order by 1/);
+  const cod = fn("private\\.place_order");
+  assert.match(cod, /perform private\.lock_and_verify_cod_cart_visibility\(p_items\);/);
+
+  const paid = fn("public\\.place_paid_order");
+  assert.match(paid, /perform private\.lock_and_verify_intention_cart_visibility\(v_attempt\.cart_snapshot, false, false\);/);
+  assert.match(paid, /set_config\('app\.paid_attempt_fulfillment_in_progress', 'on', true\)/);
+  assert.doesNotMatch(paid, /if not coalesce\(private\.is_product_customer_visible\(v_item ->> 'productId'\)/);
 });

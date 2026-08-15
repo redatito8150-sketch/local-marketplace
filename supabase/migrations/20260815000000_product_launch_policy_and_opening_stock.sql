@@ -84,6 +84,20 @@ create index if not exists products_first_visible_at_idx on public.products (fir
 alter table public.inventory_movements
   add column if not exists is_opening_stock boolean not null default false;
 
+-- Durable recognition is stored on the variant as well as the one real
+-- movement marker. This is necessary for legacy rows whose current positive
+-- quantity predates the inventory ledger: absence of a movement is not proof
+-- that opening stock never happened.
+alter table public.product_variants
+  add column if not exists opening_stock_recognized_at timestamptz;
+alter table public.product_variants
+  add column if not exists opening_stock_recognition_source text;
+alter table public.product_variants drop constraint if exists product_variants_opening_stock_recognition_source_check;
+alter table public.product_variants add constraint product_variants_opening_stock_recognition_source_check
+  check (opening_stock_recognition_source is null or opening_stock_recognition_source in (
+    'historical_movement', 'legacy_positive_quantity', 'inventory_adjustment', 'warehouse_receipt'
+  ));
+
 grant select (launch_policy, first_visible_at) on public.products to anon, authenticated;
 
 comment on column public.products.launch_policy is
@@ -92,6 +106,10 @@ comment on column public.products.first_visible_at is
   'Immutable — set once, the first moment this product actually became visible to a real customer (after any publish_date, and after the stock gate for when_stocked). Never cleared or rewritten by Pause/Resume. Existing-data backfilled below; going forward only private.stamp_product_first_visible_if_eligible() may set it.';
 comment on column public.inventory_movements.is_opening_stock is
   'True on exactly one row per variant: the first genuine positive-stock movement it ever received (a direct apply_inventory_adjustments add, or a partner receive_warehouse_document_canonical receipt). The movement''s own movement_type/source is preserved unchanged — this is an additive marker, not a re-classification. Never set by product creation, which no longer creates any movement row at all.';
+comment on column public.product_variants.opening_stock_recognized_at is
+  'Durable once-only recognition that this variant has already had opening stock. For legacy positive quantities with no ledger row, this prevents a later restock from being mislabeled as opening stock without fabricating an inventory movement.';
+comment on column public.product_variants.opening_stock_recognition_source is
+  'Auditable source for opening_stock_recognized_at: historical_movement, legacy_positive_quantity, inventory_adjustment, or warehouse_receipt.';
 
 -- ----------------------------------------------------------------------------
 -- 2. Backfill — existing data, never mutated destructively.
@@ -163,13 +181,10 @@ where p.first_visible_at is null
 -- opening_stock_inventory_workflow migration, without needing to know
 -- anything about which code path wrote them.
 --
--- A variant with NO such row (it never recorded a 0->positive transition —
--- either it never had stock, or it predates the ledger entirely with no
--- movement history at all despite a nonzero current quantity) gets nothing
--- backfilled: there is no auditable evidence to mark, so it is correctly
--- left eligible for a genuine first restock to become its recognized
--- opening stock going forward (see the runtime predicate below, which
--- treats "zero movement history" as still eligible).
+-- A variant with no positive movement but a positive CURRENT quantity is
+-- separately recognized on product_variants below. We do not fabricate a
+-- movement row or quantities for it: the durable recognition timestamp and
+-- explicit legacy_positive_quantity source record exactly what is known.
 --
 -- This directly fixes the gap the corrective-pass review found: a legacy
 -- variant that previously reached positive stock, later sold back down to
@@ -192,6 +207,27 @@ where im.id = ep.id
     select 1 from public.inventory_movements existing
     where existing.variant_id = im.variant_id and existing.is_opening_stock = true
   );
+
+with earliest_positive as (
+  select distinct on (variant_id) variant_id, created_at
+  from public.inventory_movements
+  where new_quantity > 0
+  order by variant_id, created_at asc, id asc
+)
+update public.product_variants pv
+set opening_stock_recognized_at = coalesce(
+      ep.created_at,
+      least(now(), coalesce(pv.updated_at, pv.created_at, now()))
+    ),
+    opening_stock_recognition_source = case
+      when ep.variant_id is not null then 'historical_movement'
+      else 'legacy_positive_quantity'
+    end
+from (select id from public.product_variants) candidate
+left join earliest_positive ep on ep.variant_id = candidate.id
+where pv.id = candidate.id
+  and pv.opening_stock_recognized_at is null
+  and (ep.variant_id is not null or pv.quantity > 0);
 
 -- Enforces the invariant the runtime code already assumes: at most one
 -- is_opening_stock = true row can ever exist per variant. A unique index
@@ -315,7 +351,13 @@ begin
   if v_product_id is null then
     return new;
   end if;
-  if not coalesce(private.is_product_customer_visible(v_product_id), false) then
+  -- A paid Paymob attempt was already accepted through the canonical
+  -- visibility gate at create_payment_attempt. Once its authenticated paid
+  -- webhook is being reflected, a later Pause/Archive hides the product from
+  -- NEW customers but must not strand this already-paid customer. The local
+  -- transaction flag is set only inside the service-role-only paid RPC.
+  if coalesce(current_setting('app.paid_attempt_fulfillment_in_progress', true), '') <> 'on'
+     and not coalesce(private.is_product_customer_visible(v_product_id), false) then
     raise exception 'PRODUCT_NOT_AVAILABLE_FOR_ORDER';
   end if;
   return new;
@@ -723,7 +765,7 @@ begin
 
   for v_item in select * from jsonb_array_elements(p_adjustments)
   loop
-    select pv.id, pv.product_id, pv.quantity, p.brand_id
+    select pv.id, pv.product_id, pv.quantity, pv.opening_stock_recognized_at, p.brand_id
       into v_variant
     from public.product_variants pv
     join public.products p on p.id = pv.product_id
@@ -774,22 +816,21 @@ begin
     -- second transaction blocks on the row lock until the first commits
     -- its movement row.
     --
-    -- CORRECTIVE PASS: checks both is_opening_stock = true (the marker)
-    -- AND new_quantity > 0 (any historical positive-stock evidence at
-    -- all, marked or not) — a missing or corrupt marker on an old,
-    -- unbackfilled row can never let a later restock be wrongly recognized
-    -- as this variant's opening stock. The backfill above already tags the
-    -- correct historical row for every variant with real evidence; this is
-    -- the redundant, independent runtime safety net for anything the
-    -- backfill didn't (or a future data-repair script that inserts a
-    -- movement without going through this function).
-    v_is_opening_stock := v_variant.quantity = 0 and v_new_quantity > 0 and not exists (
-      select 1 from public.inventory_movements
-      where variant_id = v_variant.id and (is_opening_stock = true or new_quantity > 0)
-    );
+    v_is_opening_stock := v_variant.quantity = 0
+      and v_new_quantity > 0
+      and v_variant.opening_stock_recognized_at is null;
 
     update public.product_variants
-    set quantity = v_new_quantity, updated_at = now()
+    set quantity = v_new_quantity,
+        opening_stock_recognized_at = case
+          when v_is_opening_stock then coalesce(opening_stock_recognized_at, now())
+          else opening_stock_recognized_at
+        end,
+        opening_stock_recognition_source = case
+          when v_is_opening_stock then coalesce(opening_stock_recognition_source, 'inventory_adjustment')
+          else opening_stock_recognition_source
+        end,
+        updated_at = now()
     where id = v_variant.id;
 
     insert into public.inventory_movements (
@@ -946,7 +987,7 @@ begin
     end if;
     if v_damaged > 0 or v_missing > 0 then v_has_discrepancy := true; end if;
 
-    select id, quantity, product_id, brand_stock_quantity into v_variant
+    select id, quantity, product_id, brand_stock_quantity, opening_stock_recognized_at into v_variant
     from public.product_variants where id = v_item_row.variant_id;
 
     if p_expected_direction = 'to_local' then
@@ -971,21 +1012,25 @@ begin
       v_new_brand_stock := v_variant.brand_stock_quantity + v_ok;
     end if;
 
-    -- Same is_opening_stock rule as apply_inventory_adjustments (including
-    -- the corrective-pass historical-evidence check), evaluated under the
+    -- Same durable recognition rule as apply_inventory_adjustments, under the
     -- same variant row lock taken above (the `for update of pv` loop) —
     -- only a 'to_local' receipt can ever be a variant's opening stock; a
     -- 'to_brand' return decreases sellable quantity, never counts.
     v_is_opening_stock := p_expected_direction = 'to_local'
       and v_variant.quantity = 0 and v_new_quantity > 0
-      and not exists (
-        select 1 from public.inventory_movements
-        where variant_id = v_variant.id and (is_opening_stock = true or new_quantity > 0)
-      );
+      and v_variant.opening_stock_recognized_at is null;
 
     update public.product_variants
     set quantity = v_new_quantity,
         brand_stock_quantity = v_new_brand_stock,
+        opening_stock_recognized_at = case
+          when v_is_opening_stock then coalesce(opening_stock_recognized_at, now())
+          else opening_stock_recognized_at
+        end,
+        opening_stock_recognition_source = case
+          when v_is_opening_stock then coalesce(opening_stock_recognition_source, 'warehouse_receipt')
+          else opening_stock_recognition_source
+        end,
         updated_at = now()
     where id = v_variant.id;
 
@@ -1170,6 +1215,18 @@ alter table public.back_in_stock_subscriptions add column if not exists claim_to
 alter table public.back_in_stock_subscriptions add column if not exists delivery_attempts integer not null default 0;
 alter table public.back_in_stock_subscriptions add column if not exists last_delivery_error text;
 alter table public.back_in_stock_subscriptions add column if not exists sent_at timestamptz;
+alter table public.back_in_stock_subscriptions add column if not exists email_sent_at timestamptz;
+alter table public.back_in_stock_subscriptions add column if not exists notification_sent_at timestamptz;
+
+-- A subscription is one request for one stockout/restock cycle. Historical
+-- sent/failed rows remain available for support, but must not block the same
+-- shopper from explicitly subscribing again after a later stockout.
+alter table public.back_in_stock_subscriptions
+  drop constraint if exists back_in_stock_subscriptions_user_id_variant_id_key;
+
+create unique index if not exists back_in_stock_subscriptions_one_active_per_user_variant_idx
+  on public.back_in_stock_subscriptions (user_id, variant_id)
+  where delivery_status in ('pending', 'claimed');
 
 create index if not exists back_in_stock_subscriptions_pending_idx
   on public.back_in_stock_subscriptions (variant_id)
@@ -1185,67 +1242,144 @@ comment on column public.back_in_stock_subscriptions.delivery_status is
 -- p_lease_minutes reclaims a 'claimed' row whose worker never finished
 -- (crashed, timed out) instead of leaving it stuck forever.
 create or replace function private.claim_back_in_stock_deliveries(
-  p_variant_ids uuid[],
+  p_variant_ids uuid[] default null,
   p_lease_minutes integer default 5,
-  p_max_attempts integer default 5
+  p_max_attempts integer default 5,
+  p_batch_size integer default 100
 )
 returns table (
-  id uuid, user_id uuid, email text, product_id text, variant_id uuid, delivery_attempts integer
+  id uuid,
+  user_id uuid,
+  email text,
+  product_id text,
+  variant_id uuid,
+  delivery_attempts integer,
+  claim_token uuid,
+  email_sent_at timestamptz,
+  notification_sent_at timestamptz
 )
 language plpgsql
 set search_path = ''
 as $$
 begin
   return query
+  with candidates as (
+    select s.id
+    from public.back_in_stock_subscriptions s
+    join public.product_variants pv
+      on pv.id = s.variant_id and pv.product_id = s.product_id
+    where (p_variant_ids is null or s.variant_id = any(p_variant_ids))
+      and s.delivery_attempts < greatest(1, coalesce(p_max_attempts, 5))
+      and (
+        s.delivery_status = 'pending'
+        or (
+          s.delivery_status = 'claimed'
+          and s.claimed_at < now() - make_interval(mins => greatest(1, coalesce(p_lease_minutes, 5)))
+        )
+      )
+      and pv.quantity > 0
+      and pv.selling_status = 'active'
+      and coalesce(pv.is_archived, false) = false
+      and private.is_product_customer_visible(s.product_id)
+    order by s.created_at, s.id
+    for update of s skip locked
+    limit greatest(1, least(coalesce(p_batch_size, 100), 500))
+  )
   update public.back_in_stock_subscriptions s
   set delivery_status = 'claimed',
       claimed_at = now(),
       claim_token = gen_random_uuid(),
       delivery_attempts = s.delivery_attempts + 1
-  where s.variant_id = any(p_variant_ids)
-    and s.delivery_attempts < greatest(1, coalesce(p_max_attempts, 5))
-    and (
-      s.delivery_status = 'pending'
-      or (s.delivery_status = 'claimed' and s.claimed_at < now() - make_interval(mins => greatest(1, coalesce(p_lease_minutes, 5))))
-    )
-    and private.is_product_customer_visible(s.product_id)
-  returning s.id, s.user_id, s.email, s.product_id, s.variant_id, s.delivery_attempts;
+  from candidates c
+  where s.id = c.id
+  returning s.id, s.user_id, s.email, s.product_id, s.variant_id,
+    s.delivery_attempts, s.claim_token, s.email_sent_at, s.notification_sent_at;
 end;
 $$;
 
-revoke all on function private.claim_back_in_stock_deliveries(uuid[], integer, integer) from public, anon, authenticated, service_role;
+revoke all on function private.claim_back_in_stock_deliveries(uuid[], integer, integer, integer) from public, anon, authenticated, service_role;
 
 create or replace function public.claim_back_in_stock_deliveries(
-  p_variant_ids uuid[],
+  p_variant_ids uuid[] default null,
   p_lease_minutes integer default 5,
-  p_max_attempts integer default 5
+  p_max_attempts integer default 5,
+  p_batch_size integer default 100
 )
 returns table (
-  id uuid, user_id uuid, email text, product_id text, variant_id uuid, delivery_attempts integer
+  id uuid,
+  user_id uuid,
+  email text,
+  product_id text,
+  variant_id uuid,
+  delivery_attempts integer,
+  claim_token uuid,
+  email_sent_at timestamptz,
+  notification_sent_at timestamptz
 )
 language sql
 security definer
 set search_path = ''
 as $$
-  select * from private.claim_back_in_stock_deliveries(p_variant_ids, p_lease_minutes, p_max_attempts);
+  select * from private.claim_back_in_stock_deliveries(
+    p_variant_ids, p_lease_minutes, p_max_attempts, p_batch_size
+  );
 $$;
 
-revoke all on function public.claim_back_in_stock_deliveries(uuid[], integer, integer) from public, anon, authenticated;
-grant execute on function public.claim_back_in_stock_deliveries(uuid[], integer, integer) to service_role;
+revoke all on function public.claim_back_in_stock_deliveries(uuid[], integer, integer, integer) from public, anon, authenticated;
+grant execute on function public.claim_back_in_stock_deliveries(uuid[], integer, integer, integer) to service_role;
 
-create or replace function public.mark_back_in_stock_delivery_sent(p_id uuid)
-returns void
-language sql
+-- Channel acknowledgements are fenced by the exact claim token. A worker
+-- whose lease expired cannot acknowledge a newer worker's claim. The row is
+-- terminal only after both independently-idempotent channels have succeeded.
+create or replace function public.mark_back_in_stock_delivery_channel_sent(
+  p_id uuid,
+  p_claim_token uuid,
+  p_channel text
+)
+returns boolean
+language plpgsql
 security definer
 set search_path = ''
 as $$
+declare
+  v_updated integer;
+begin
+  if p_channel not in ('email', 'notification') then
+    raise exception 'INVALID_BACK_IN_STOCK_DELIVERY_CHANNEL';
+  end if;
+
   update public.back_in_stock_subscriptions
-  set delivery_status = 'sent', sent_at = now()
-  where id = p_id;
+  set email_sent_at = case when p_channel = 'email' then coalesce(email_sent_at, now()) else email_sent_at end,
+      notification_sent_at = case when p_channel = 'notification' then coalesce(notification_sent_at, now()) else notification_sent_at end,
+      delivery_status = case
+        when (p_channel = 'email' or email_sent_at is not null)
+          and (p_channel = 'notification' or notification_sent_at is not null)
+          then 'sent'
+        else 'claimed'
+      end,
+      sent_at = case
+        when (p_channel = 'email' or email_sent_at is not null)
+          and (p_channel = 'notification' or notification_sent_at is not null)
+          then coalesce(sent_at, now())
+        else sent_at
+      end,
+      claim_token = case
+        when (p_channel = 'email' or email_sent_at is not null)
+          and (p_channel = 'notification' or notification_sent_at is not null)
+          then null
+        else claim_token
+      end
+  where id = p_id
+    and claim_token = p_claim_token
+    and delivery_status = 'claimed';
+
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
+end;
 $$;
 
-revoke all on function public.mark_back_in_stock_delivery_sent(uuid) from public, anon, authenticated;
-grant execute on function public.mark_back_in_stock_delivery_sent(uuid) to service_role;
+revoke all on function public.mark_back_in_stock_delivery_channel_sent(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.mark_back_in_stock_delivery_channel_sent(uuid, uuid, text) to service_role;
 
 -- Reverts to 'pending' (retryable on a later run) while under the attempts
 -- budget; becomes a permanent, inspectable 'failed' once exhausted -- never
@@ -1253,31 +1387,45 @@ grant execute on function public.mark_back_in_stock_delivery_sent(uuid) to servi
 -- never silently lose the subscription.
 create or replace function public.mark_back_in_stock_delivery_failed(
   p_id uuid,
+  p_claim_token uuid,
   p_error text,
   p_max_attempts integer default 5
 )
-returns void
+returns boolean
 language plpgsql
 security definer
 set search_path = ''
 as $$
 declare
   v_attempts integer;
+  v_updated integer;
 begin
-  select delivery_attempts into v_attempts from public.back_in_stock_subscriptions where id = p_id for update;
+  select delivery_attempts into v_attempts
+  from public.back_in_stock_subscriptions
+  where id = p_id and claim_token = p_claim_token and delivery_status = 'claimed'
+  for update;
   if v_attempts is null then
-    return;
+    return false;
   end if;
   update public.back_in_stock_subscriptions
   set delivery_status = case when v_attempts >= greatest(1, coalesce(p_max_attempts, 5)) then 'failed' else 'pending' end,
       last_delivery_error = left(coalesce(p_error, ''), 2000),
       claim_token = null
-  where id = p_id;
+  where id = p_id and claim_token = p_claim_token and delivery_status = 'claimed';
+  get diagnostics v_updated = row_count;
+  return v_updated = 1;
 end;
 $$;
 
-revoke all on function public.mark_back_in_stock_delivery_failed(uuid, text, integer) from public, anon, authenticated;
-grant execute on function public.mark_back_in_stock_delivery_failed(uuid, text, integer) to service_role;
+revoke all on function public.mark_back_in_stock_delivery_failed(uuid, uuid, text, integer) from public, anon, authenticated;
+grant execute on function public.mark_back_in_stock_delivery_failed(uuid, uuid, text, integer) to service_role;
+
+-- The in-account channel uses a stable delivery key so a process crash after
+-- INSERT but before acknowledgement cannot create a duplicate notification.
+alter table public.user_notifications add column if not exists delivery_key text;
+create unique index if not exists user_notifications_delivery_key_idx
+  on public.user_notifications (delivery_key)
+  where delivery_key is not null;
 
 -- Reject a subscription attempt outright for a product that is not
 -- CURRENTLY customer-visible -- a show_now out-of-stock product is
@@ -1293,6 +1441,19 @@ as $$
 begin
   if tg_op = 'INSERT' and not coalesce(private.is_product_customer_visible(new.product_id), false) then
     raise exception 'PRODUCT_NOT_AVAILABLE_FOR_NOTIFY_ME';
+  end if;
+  if tg_op = 'INSERT' and not exists (
+    select 1
+    from public.product_variants pv
+    where pv.id = new.variant_id
+      and pv.product_id = new.product_id
+      and (
+        pv.quantity <= 0
+        or pv.selling_status <> 'active'
+        or coalesce(pv.is_archived, false) = true
+      )
+  ) then
+    raise exception 'VARIANT_NOT_ELIGIBLE_FOR_NOTIFY_ME';
   end if;
   return new;
 end;
@@ -1371,7 +1532,11 @@ for each row execute function private.enforce_order_item_product_available();
 --     then products, then variants.
 -- ----------------------------------------------------------------------------
 
-create or replace function private.lock_and_verify_intention_cart_visibility(p_cart_snapshot jsonb)
+create or replace function private.lock_and_verify_intention_cart_visibility(
+  p_cart_snapshot jsonb,
+  p_require_current_visibility boolean default true,
+  p_require_current_inventory boolean default true
+)
 returns void
 language plpgsql
 set search_path = ''
@@ -1379,7 +1544,12 @@ as $$
 declare
   v_brand_id uuid;
   v_product_id text;
-  v_item jsonb;
+  v_variant_id uuid;
+  v_variant_product_id text;
+  v_variant_quantity integer;
+  v_variant_selling_status text;
+  v_variant_is_archived boolean;
+  v_requested_quantity integer;
 begin
   for v_brand_id in
     select distinct b.id
@@ -1397,21 +1567,97 @@ begin
     order by 1
   loop
     perform 1 from public.products where id = v_product_id for update;
-    if not coalesce(private.is_product_customer_visible(v_product_id), false) then
+    if p_require_current_visibility
+       and not coalesce(private.is_product_customer_visible(v_product_id), false) then
       raise exception 'PRODUCT_NOT_AVAILABLE_FOR_ORDER: %', v_product_id;
     end if;
   end loop;
 
-  for v_item in select * from jsonb_array_elements(p_cart_snapshot)
+  for v_variant_id in
+    select distinct nullif(item->>'variantId', '')::uuid
+    from jsonb_array_elements(p_cart_snapshot) as item
+    where nullif(item->>'variantId', '') is not null
+    order by 1
   loop
-    if nullif(v_item->>'variantId', '') is not null then
-      perform 1 from public.product_variants where id = (v_item->>'variantId')::uuid for update;
+    select product_id, quantity, selling_status, is_archived
+      into v_variant_product_id, v_variant_quantity, v_variant_selling_status, v_variant_is_archived
+    from public.product_variants
+    where id = v_variant_id
+    for update;
+    if v_variant_product_id is null then
+      raise exception 'PRODUCT_VARIANT_MISMATCH';
+    end if;
+    if not exists (
+      select 1 from jsonb_array_elements(p_cart_snapshot) as item
+      where nullif(item->>'variantId', '')::uuid = v_variant_id
+        and item->>'productId' = v_variant_product_id
+    ) then
+      raise exception 'PRODUCT_VARIANT_MISMATCH';
+    end if;
+    select sum((item->>'quantity')::integer)
+      into v_requested_quantity
+    from jsonb_array_elements(p_cart_snapshot) as item
+    where nullif(item->>'variantId', '')::uuid = v_variant_id;
+    if p_require_current_inventory and (
+      v_variant_selling_status <> 'active'
+      or coalesce(v_variant_is_archived, false)
+      or v_requested_quantity is null
+      or v_requested_quantity <= 0
+      or v_variant_quantity < v_requested_quantity
+    ) then
+      raise exception 'INSUFFICIENT_STOCK: %', v_variant_id;
     end if;
   end loop;
 end;
 $$;
 
-revoke all on function private.lock_and_verify_intention_cart_visibility(jsonb) from public, anon, authenticated, service_role;
+revoke all on function private.lock_and_verify_intention_cart_visibility(jsonb, boolean, boolean) from public, anon, authenticated, service_role;
+
+-- COD snapshots use snake_case keys. Lock every implicated row before any
+-- order/stock work, in the same brand -> product -> variant order used by the
+-- card path, so opposite client array orders cannot deadlock each other.
+create or replace function private.lock_and_verify_cod_cart_visibility(p_items jsonb)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_brand_id uuid;
+  v_product_id text;
+  v_variant_id uuid;
+begin
+  for v_brand_id in
+    select distinct p.brand_id
+    from jsonb_array_elements(p_items) as item
+    join public.products p on p.id = item->>'product_id'
+    order by p.brand_id
+  loop
+    perform 1 from public.brands where id = v_brand_id for update;
+  end loop;
+
+  for v_product_id in
+    select distinct item->>'product_id'
+    from jsonb_array_elements(p_items) as item
+    order by 1
+  loop
+    perform 1 from public.products where id = v_product_id for update;
+    if not coalesce(private.is_product_customer_visible(v_product_id), false) then
+      raise exception 'PRODUCT_NOT_AVAILABLE_FOR_ORDER: %', v_product_id;
+    end if;
+  end loop;
+
+  for v_variant_id in
+    select distinct nullif(item->>'variant_id', '')::uuid
+    from jsonb_array_elements(p_items) as item
+    where nullif(item->>'variant_id', '') is not null
+    order by 1
+  loop
+    perform 1 from public.product_variants where id = v_variant_id for update;
+  end loop;
+end;
+$$;
+
+revoke all on function private.lock_and_verify_cod_cart_visibility(jsonb) from public, anon, authenticated, service_role;
 
 -- ----------------------------------------------------------------------------
 -- 9b. Wishlist: adding a product must require it to be currently
@@ -1593,14 +1839,12 @@ grant execute on function public.create_payment_attempt(
 ) to service_role;
 
 -- ----------------------------------------------------------------------------
--- 12. CORRECTIVE PASS -- COD (private.place_order) and the paid/Paymob
---     fulfillment path (public.place_paid_order) get the same decisive-
---     boundary treatment as create_payment_attempt above: every stock-
---     tracked line item's product is row-locked and rechecked against
---     private.is_product_customer_visible in THIS transaction, immediately
---     before its variant's stock is touched -- not relying solely on an
---     earlier, separate-round-trip read (the cart page / checkout form / the
---     original intention-creation call).
+-- 12. COD (private.place_order) uses the order transaction as its visibility
+--     boundary. Card checkout uses create_payment_attempt as its acceptance
+--     boundary: once Paymob has captured the charge, a later merchant Pause
+--     hides the product from new customers but cannot invalidate the already-
+--     accepted attempt. Both paths pre-lock brands/products/variants in a
+--     deterministic order before item processing.
 --
 --     Both functions are re-declared byte-identical to their prior versions
 --     (private.place_order from 20260814000005_inventory_permission_
@@ -1611,34 +1855,10 @@ grant execute on function public.create_payment_attempt(
 --     reason convention already established there for FULFILLMENT_
 --     TRANSITION_BLOCKS_ORDER and INSUFFICIENT_STOCK.
 --
---     Deliberately per-item, not a single pre-loop lock-and-check pass (the
---     pattern used above for create_payment_attempt): place_paid_order
---     already wraps each fulfillment bucket in its own `begin...exception
---     when others` block so ONE brand's hidden product fails only that
---     bucket, not the customer's entire already-charged payment -- a
---     pre-loop check would raise before that per-bucket handler exists and
---     wrongly abort every bucket over one brand's problem. place_order (COD)
---     has no such per-bucket recovery today (any raised exception already
---     aborts the whole call, same as its existing INSUFFICIENT_STOCK
---     behavior) and is kept consistent with that existing all-or-nothing
---     design rather than changed as a side effect of this pass.
---
---     Lock-ordering note (audited, not just added): both functions already
---     lock each item's variant row (via the plain `update product_variants
---     ... where id = v_variant_id`) in cart/array order, not a sorted order
---     -- this addition's `for update` product-row lock follows that same
---     existing per-item, array-order convention for consistency with what
---     this function already does, rather than introducing a differently-
---     ordered lock scheme within the same loop. This means two concurrent
---     orders referencing the same two products in different array order
---     retain the same pre-existing, already-accepted theoretical deadlock
---     window as the variant locks always have -- Postgres detects and
---     aborts one side of a true deadlock rather than hanging, and this is
---     not a new risk introduced by this pass. A fully sorted lock order
---     across all of a cart's products (matching create_payment_attempt's
---     approach) is a larger, separate refactor of both functions' existing
---     item-processing loop and is flagged as a follow-up, not attempted
---     here.
+--     Stock remains checked/decremented by the existing per-item updates;
+--     pre-locking removes the opposite-array-order deadlock window without
+--     changing the established COD all-or-nothing or paid per-bucket result
+--     semantics.
 -- ----------------------------------------------------------------------------
 
 create or replace function private.place_order(
@@ -1704,6 +1924,8 @@ begin
   if p_items is null or jsonb_array_length(p_items) = 0 then
     raise exception 'EMPTY_CART: no items to order';
   end if;
+
+  perform private.lock_and_verify_cod_cart_visibility(p_items);
 
   v_mo_attempt := 0;
   loop
@@ -2036,6 +2258,14 @@ begin
     update public.payment_attempts set status = 'reflecting', updated_at = now() where id = p_payment_attempt_id;
   end if;
 
+  -- The durable payment attempt is the authorization boundary for card
+  -- purchases. It was accepted only after canonical visibility was checked
+  -- under row locks. Re-lock the same rows deterministically for fulfillment,
+  -- but do not reinterpret a later merchant Pause as grounds to discard an
+  -- already-captured payment.
+  perform private.lock_and_verify_intention_cart_visibility(v_attempt.cart_snapshot, false, false);
+  perform set_config('app.paid_attempt_fulfillment_in_progress', 'on', true);
+
   v_group_id := v_attempt.master_order_id;
   v_coupon_code := nullif(v_attempt.coupon_snapshot ->> 'code', '');
 
@@ -2171,21 +2401,6 @@ begin
           -- true-concurrency window between the two.
           if private.is_brand_fulfillment_transition_open(v_brand_slug) then
             raise exception 'FULFILLMENT_TRANSITION_BLOCKS_ORDER: %', v_item ->> 'name';
-          end if;
-
-          -- CORRECTIVE PASS: same product-row lock + canonical visibility
-          -- recheck as private.place_order above -- the gap here is wider
-          -- (a card payment's webhook can land minutes after intention
-          -- creation, unlike COD's single round trip), which is exactly why
-          -- create_payment_attempt's own pre-charge lock isn't sufficient by
-          -- itself. A hidden product here raises inside THIS bucket's own
-          -- begin/exception block below, so it fails only this brand's
-          -- bucket -- other buckets in the same already-charged payment
-          -- still fulfill normally, same as an INSUFFICIENT_STOCK failure
-          -- here already does today.
-          perform 1 from public.products where id = (v_item ->> 'productId') for update;
-          if not coalesce(private.is_product_customer_visible(v_item ->> 'productId'), false) then
-            raise exception 'PRODUCT_NOT_AVAILABLE_FOR_ORDER: %', v_item ->> 'name';
           end if;
 
           update public.product_variants
