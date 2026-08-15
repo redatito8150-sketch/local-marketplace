@@ -20,7 +20,7 @@ const WORKSPACES = {
   inventory: {
     label: "Inventory workspace",
     items: [
-      { label: "Stock ledger", href: "/admin/inventory", permission: "manage_inventory" },
+      { label: "Overview & activity", href: "/admin/inventory", permission: "manage_inventory" },
       { label: "Low stock", href: "/admin/low-stock", permission: "manage_inventory" },
       { label: "Warehouse", href: "/admin/warehouse", permission: "manage_inventory" },
     ],

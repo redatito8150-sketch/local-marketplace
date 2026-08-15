@@ -1151,6 +1151,87 @@ export async function getLowStockVariantsForAdmin(): Promise<LowStockVariantReco
     .filter((v) => v.stockStatus !== "in_stock");
 }
 
+export interface AdminInventoryOverview {
+  totalVariantCount: number;
+  totalAvailableUnits: number;
+  healthyCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  openTransferCount: number;
+  incomingUnitCount: number;
+  movementsLast24Hours: number;
+  brands: string[];
+}
+
+type InventoryOverviewVariantRow = {
+  quantity: number;
+  low_stock_threshold_override: number | null;
+  products: { default_low_stock_threshold: number; brand_name: string } | null;
+};
+
+type InventoryOverviewTransferRow = {
+  id: string;
+  warehouse_transfer_items: Array<{ requested_qty: number; received_ok_qty: number | null }>;
+};
+
+export async function getInventoryOverviewForAdmin(): Promise<AdminInventoryOverview> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const openWarehouseStatuses = ["pending", "submitted", "approved", "in_transit", "receiving", "partially_received"];
+  const [variantsResult, transfersResult, movementsResult] = await Promise.all([
+    supabaseAdmin
+      .from("product_variants")
+      .select("quantity, low_stock_threshold_override, products!inner(default_low_stock_threshold, brand_name)")
+      .eq("selling_status", "active")
+      .eq("is_archived", false),
+    supabaseAdmin
+      .from("warehouse_transfers")
+      .select("id, warehouse_transfer_items(requested_qty, received_ok_qty)")
+      .eq("direction", "to_local")
+      .in("status", openWarehouseStatuses),
+    supabaseAdmin
+      .from("inventory_movements")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since),
+  ]);
+
+  if (variantsResult.error) throw new Error(`getInventoryOverviewForAdmin variants failed: ${variantsResult.error.message}`);
+  if (transfersResult.error) throw new Error(`getInventoryOverviewForAdmin transfers failed: ${transfersResult.error.message}`);
+  if (movementsResult.error) throw new Error(`getInventoryOverviewForAdmin movements failed: ${movementsResult.error.message}`);
+
+  const variants = (variantsResult.data ?? []) as unknown as InventoryOverviewVariantRow[];
+  const transfers = (transfersResult.data ?? []) as unknown as InventoryOverviewTransferRow[];
+  let healthyCount = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+
+  for (const variant of variants) {
+    if (!variant.products) continue;
+    const threshold = effectiveLowStockThreshold(
+      variant.low_stock_threshold_override,
+      variant.products.default_low_stock_threshold
+    );
+    const status = calculateStockStatus(variant.quantity, threshold);
+    if (status === "out_of_stock") outOfStockCount += 1;
+    else if (status === "low_stock") lowStockCount += 1;
+    else healthyCount += 1;
+  }
+
+  return {
+    totalVariantCount: variants.length,
+    totalAvailableUnits: variants.reduce((sum, variant) => sum + Number(variant.quantity), 0),
+    healthyCount,
+    lowStockCount,
+    outOfStockCount,
+    openTransferCount: transfers.length,
+    incomingUnitCount: transfers.reduce((sum, transfer) => sum + transfer.warehouse_transfer_items.reduce(
+      (itemSum, item) => itemSum + (item.received_ok_qty == null ? Number(item.requested_qty) : 0),
+      0
+    ), 0),
+    movementsLast24Hours: movementsResult.count ?? 0,
+    brands: [...new Set(variants.map((variant) => variant.products?.brand_name).filter((brand): brand is string => Boolean(brand)))].sort(),
+  };
+}
+
 export async function getAuditLogsForEntity(
   entityType: string,
   entityId: string
@@ -1285,6 +1366,12 @@ export interface AdminInventoryMovementRow {
 
 export async function getInventoryMovementsForAdmin(options: {
   productId?: string;
+  q?: string;
+  brand?: string;
+  source?: string;
+  movementType?: string;
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 } = {}): Promise<{ rows: AdminInventoryMovementRow[]; total: number; page: number; limit: number }> {
@@ -1293,12 +1380,52 @@ export async function getInventoryMovementsForAdmin(options: {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
+  let scopedProductIds: string[] | null = null;
+  if (options.brand || options.q) {
+    let brandProductIds: string[] | null = null;
+    if (options.brand) {
+      const { data, error } = await supabaseAdmin.from("products").select("id").eq("brand_name", options.brand);
+      if (error) throw new Error(`getInventoryMovementsForAdmin brand scope failed: ${error.message}`);
+      brandProductIds = (data ?? []).map((product) => product.id as string);
+    }
+
+    let queryProductIds: string[] | null = null;
+    if (options.q) {
+      const pattern = `%${options.q}%`;
+      const [names, brands, variants] = await Promise.all([
+        supabaseAdmin.from("products").select("id").ilike("name", pattern),
+        supabaseAdmin.from("products").select("id").ilike("brand_name", pattern),
+        supabaseAdmin.from("product_variants").select("product_id").ilike("sku", pattern),
+      ]);
+      for (const result of [names, brands, variants]) {
+        if (result.error) throw new Error(`getInventoryMovementsForAdmin search scope failed: ${result.error.message}`);
+      }
+      queryProductIds = [...new Set([
+        ...(names.data ?? []).map((product) => product.id as string),
+        ...(brands.data ?? []).map((product) => product.id as string),
+        ...(variants.data ?? []).map((variant) => variant.product_id as string),
+      ])];
+    }
+
+    const queryProductIdSet = queryProductIds ? new Set(queryProductIds) : null;
+    scopedProductIds = brandProductIds && queryProductIdSet
+      ? brandProductIds.filter((id) => queryProductIdSet.has(id))
+      : brandProductIds ?? queryProductIds ?? [];
+
+    if (scopedProductIds.length === 0) return { rows: [], total: 0, page, limit };
+  }
+
   let query = supabaseAdmin
     .from("inventory_movements")
     .select("id, product_id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
   if (options.productId) query = query.eq("product_id", options.productId);
+  if (scopedProductIds) query = query.in("product_id", scopedProductIds);
+  if (options.source) query = query.eq("source", options.source);
+  if (options.movementType) query = query.eq("movement_type", options.movementType);
+  if (options.from) query = query.gte("created_at", `${options.from}T00:00:00.000Z`);
+  if (options.to) query = query.lte("created_at", `${options.to}T23:59:59.999Z`);
 
   const { data, error, count } = await query;
   if (error) throw new Error(`getInventoryMovementsForAdmin failed: ${error.message}`);
