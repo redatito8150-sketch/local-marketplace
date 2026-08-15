@@ -50,3 +50,17 @@ test("inventory activity filters are database-paginated and preserve the product
   assert.match(page, /productId: params\.productId/);
   assert.match(page, /\/admin\/products\/\$\{row\.productId\}\/edit/);
 });
+
+test("every inventory movement resolves and renders its exact Variant color image", () => {
+  const data = read("lib/data/admin.ts");
+  const page = read("app/admin/inventory/page.tsx");
+
+  assert.match(data, /from\("product_media"\)/);
+  assert.match(data, /getVariantsForProducts\(productIds, supabaseAdmin\)/);
+  assert.match(data, /buildColorImageLookup\(mediaResult\.data \?\? \[\]\)/);
+  assert.match(data, /variantImage: resolveVariantImage\(row\.product_id, variant, colorImages, product\?\.image\)/);
+  assert.match(data, /variantLabel: variant\?\.optionValues/);
+  assert.match(page, /function VariantThumbnail/);
+  assert.match(page, /row\.variantImage/);
+  assert.match(page, /alt=\{`\$\{row\.productName\} — \$\{row\.variantLabel\}`\}/);
+});

@@ -5,6 +5,7 @@ import { toBrandApplicationRecord } from "@/lib/join/applicationService";
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { calculateVariantReadiness } from "@/lib/inventory/readiness";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 import {
   Audience,
   AuditLogRecord,
@@ -1350,10 +1351,11 @@ export interface AdminInventoryMovementRow {
   id: string;
   productId: string;
   productName: string;
-  productImage: string;
+  variantImage: string;
   brandName: string;
   variantId: string;
   variantSku: string;
+  variantLabel: string;
   previousQuantity: number;
   quantityDelta: number;
   newQuantity: number;
@@ -1431,20 +1433,25 @@ export async function getInventoryMovementsForAdmin(options: {
   if (error) throw new Error(`getInventoryMovementsForAdmin failed: ${error.message}`);
 
   const productIds = [...new Set((data ?? []).map((row) => row.product_id))];
-  const variantIds = [...new Set((data ?? []).map((row) => row.variant_id))];
-  const [productsResult, variantsResult] = await Promise.all([
+  const [productsResult, variantsByProduct, mediaResult] = await Promise.all([
     productIds.length
       ? supabaseAdmin.from("products").select("id, name, image, brand_name").in("id", productIds)
       : Promise.resolve({ data: [], error: null }),
-    variantIds.length
-      ? supabaseAdmin.from("product_variants").select("id, sku").in("id", variantIds)
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (productsResult.error) throw new Error(`getInventoryMovementsForAdmin products failed: ${productsResult.error.message}`);
-  if (variantsResult.error) throw new Error(`getInventoryMovementsForAdmin variants failed: ${variantsResult.error.message}`);
+  if (mediaResult.error) throw new Error(`getInventoryMovementsForAdmin media failed: ${mediaResult.error.message}`);
 
   const products = new Map((productsResult.data ?? []).map((product) => [product.id, product]));
-  const variants = new Map((variantsResult.data ?? []).map((variant) => [variant.id, variant]));
+  const variants = new Map([...variantsByProduct.values()].flat().map((variant) => [variant.id, variant]));
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
 
   return {
     rows: (data ?? []).map((row) => {
@@ -1454,10 +1461,11 @@ export async function getInventoryMovementsForAdmin(options: {
         id: row.id,
         productId: row.product_id,
         productName: product?.name ?? row.product_id,
-        productImage: product?.image ?? "",
+        variantImage: resolveVariantImage(row.product_id, variant, colorImages, product?.image),
         brandName: product?.brand_name ?? "Unknown brand",
         variantId: row.variant_id,
         variantSku: variant?.sku ?? row.variant_id,
+        variantLabel: variant?.optionValues.map((value) => value.label).join(" / ") || "Default variant",
         previousQuantity: Number(row.previous_quantity),
         quantityDelta: Number(row.quantity_delta),
         newQuantity: Number(row.new_quantity),
