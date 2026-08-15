@@ -3,6 +3,7 @@ import { NOTIFICATION_TYPE_LABELS } from "@/lib/admin/statuses";
 import { formatDateTime } from "@/lib/format";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type ActivityParams = { q?: string; type?: string; from?: string };
 
@@ -24,6 +25,7 @@ export default async function BrandActivityPage(props: { searchParams: Promise<A
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="brands" activeHref="/admin/products/review" />
       <DashboardPageHeader eyebrow="Brands" title={`Brand activity (${activity.length})`} description="A history of what brand owners and assistants have published, edited, or archived — every change already went live the moment it was saved." />
       <DashboardFilters action="/admin/products/review" clearHref="/admin/products/review" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Activity title or details" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>

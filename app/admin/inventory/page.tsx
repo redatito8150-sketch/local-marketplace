@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import { getInventoryMovementsForAdmin } from "@/lib/data/admin";
 import { formatDateTime } from "@/lib/format";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 const PAGE_SIZE = 50;
 
@@ -27,6 +28,7 @@ export default async function AdminInventoryLedgerPage(props: {
   }
 
   return <div>
+    <AdminWorkspaceNav workspace="inventory" activeHref="/admin/inventory" />
     <DashboardPageHeader
       eyebrow="Inventory audit"
       title={`Inventory ledger (${result.total})`}

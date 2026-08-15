@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getLowStockVariantsForAdmin } from "@/lib/data/admin";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type StockParams = { q?: string; brand?: string; level?: string; sort?: string };
 
@@ -22,6 +23,7 @@ export default async function AdminLowStockPage(props: { searchParams: Promise<S
   const activeCount = [params.q, params.brand, params.level, params.sort].filter(Boolean).length;
   return (
     <div>
+      <AdminWorkspaceNav workspace="inventory" activeHref="/admin/low-stock" />
       <DashboardPageHeader eyebrow="Commerce" title={`Low stock (${variants.length})`} description={`${allVariants.length} variants are currently at or below their configured stock threshold.`} />
       <DashboardFilters action="/admin/low-stock" clearHref="/admin/low-stock" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Product, color or size" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>

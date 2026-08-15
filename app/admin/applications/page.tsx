@@ -5,6 +5,7 @@ import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import { formatDateOnly } from "@/lib/format";
 import type { BrandApplicationRecord } from "@/types";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type ApplicationParams = { q?: string; status?: string; category?: string; from?: string; sort?: string };
 
@@ -32,6 +33,7 @@ export default async function AdminApplicationsPage(props: { searchParams: Promi
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="brands" activeHref="/admin/applications" />
       <DashboardPageHeader eyebrow="Brands" title={`Brand applications (${applications.length})`} description="Review real applications submitted through the storefront and open each record before changing its status." />
       <DashboardFilters action="/admin/applications" clearHref="/admin/applications" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Brand, founder or email" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>

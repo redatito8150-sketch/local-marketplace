@@ -4,15 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowLeft,
   BarChart3,
   Bell,
   BookOpenText,
   Boxes,
   ChevronDown,
-  CreditCard,
-  FileText,
   Grid2X2,
   History,
   LayoutDashboard,
@@ -24,7 +21,6 @@ import {
   Store,
   Tag,
   Users,
-  Warehouse,
 } from "lucide-react";
 import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 import type { PermissionKey } from "@/lib/supabase/permissions";
@@ -40,6 +36,7 @@ interface NavItem {
   minRole?: Role;
   badge?: BadgeKey;
   activePaths?: string[];
+  hideWhenPermission?: PermissionKey;
 }
 
 const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
@@ -47,7 +44,13 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     label: "Run",
     items: [
       { label: "Overview", href: "/admin", icon: LayoutDashboard, permission: "view_analytics" },
-      { label: "Orders", href: "/admin/orders", icon: ShoppingBag, permission: "manage_orders" },
+      {
+        label: "Orders",
+        href: "/admin/orders",
+        icon: ShoppingBag,
+        permission: "manage_orders",
+        activePaths: ["/admin/orders", "/admin/payments"],
+      },
       {
         label: "Inventory",
         href: "/admin/inventory",
@@ -70,13 +73,26 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         minRole: "manager",
         activePaths: ["/admin/categories", "/admin/products/categories", "/admin/content/categories"],
       },
-      { label: "Brands", href: "/admin/brands", icon: Store, permission: "manage_brands" },
+      {
+        label: "Brands",
+        href: "/admin/brands",
+        icon: Store,
+        permission: "manage_brands",
+        activePaths: ["/admin/brands", "/admin/applications", "/admin/products/review"],
+      },
     ],
   },
   {
     label: "Experience",
     items: [
-      { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, permission: "manage_page_studio", minRole: "manager" },
+      {
+        label: "Page Studio",
+        href: "/admin/page-studio",
+        icon: LayoutTemplate,
+        permission: "manage_page_studio",
+        minRole: "manager",
+        activePaths: ["/admin/page-studio", "/admin/content"],
+      },
       { label: "Reviews", href: "/admin/reviews", icon: MessageSquareWarning, permission: "moderate_reviews" },
     ],
   },
@@ -91,14 +107,10 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
 
 const SECONDARY_ITEMS: NavItem[] = [
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3, permission: "view_analytics" },
-  { label: "Payments", href: "/admin/payments", icon: CreditCard, permission: "manage_orders" },
-  { label: "Refund Review", href: "/admin/payments/refund-queue", icon: AlertTriangle, permission: "manage_orders" },
-  { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, permission: "manage_inventory", badge: "lowStock" },
-  { label: "Warehouse", href: "/admin/warehouse", icon: Warehouse, permission: "manage_inventory" },
   { label: "Coupons", href: "/admin/coupons", icon: Tag, permission: "manage_coupons", minRole: "manager" },
-  { label: "Applications", href: "/admin/applications", icon: FileText, permission: "manage_applications" },
-  { label: "Brand Activity", href: "/admin/products/review", icon: History, permission: "manage_products" },
-  { label: "Content Library", href: "/admin/content", icon: BookOpenText, permission: "manage_site_content", minRole: "manager" },
+  { label: "Applications", href: "/admin/applications", icon: Store, permission: "manage_applications", hideWhenPermission: "manage_brands" },
+  { label: "Brand Activity", href: "/admin/products/review", icon: History, permission: "manage_products", hideWhenPermission: "manage_brands" },
+  { label: "Content Library", href: "/admin/content", icon: BookOpenText, permission: "manage_site_content", minRole: "manager", hideWhenPermission: "manage_page_studio" },
   { label: "Audit Log", href: "/admin/audit-log", icon: History, permission: "view_audit_log", minRole: "admin" },
   { label: "Settings", href: "/admin/settings", icon: Settings, permission: "manage_settings", minRole: "manager" },
 ];
@@ -192,7 +204,7 @@ export default function AdminSidebar({ unreadNotifications = 0, lowStockCount = 
   const counts = { notifications: unreadNotifications, lowStock: lowStockCount };
   const canSeeItem = (item: NavItem) => canSeeRole(role, item.minRole) && permissionSet.has(item.permission);
   const groups = PRIMARY_GROUPS.map((group) => ({ ...group, items: group.items.filter(canSeeItem) })).filter((group) => group.items.length > 0);
-  const secondaryItems = SECONDARY_ITEMS.filter(canSeeItem);
+  const secondaryItems = SECONDARY_ITEMS.filter(canSeeItem).filter((item) => !item.hideWhenPermission || !permissionSet.has(item.hideWhenPermission));
   const activeHref = getActiveHref(pathname, [...groups.flatMap((group) => group.items), ...secondaryItems]);
 
   return (

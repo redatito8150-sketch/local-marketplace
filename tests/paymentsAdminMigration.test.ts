@@ -36,8 +36,10 @@ test("orders gains an explicit revoke update from authenticated/anon (belt-and-s
   assert.match(migration, /revoke update on public\.orders from authenticated, anon;/);
 });
 
-test("AdminSidebar links the new /admin/payments index alongside the existing refund-queue entry", () => {
+test("Commerce workspace links the payments index alongside the refund-review queue", () => {
   const sidebar = read("components/admin/AdminSidebar.tsx");
-  assert.match(sidebar, /\{ label: "Payments", href: "\/admin\/payments", icon: CreditCard, permission: "manage_orders" \}/);
-  assert.match(sidebar, /"\/admin\/payments\/refund-queue"/);
+  const workspaceNav = read("components/admin/AdminWorkspaceNav.tsx");
+  assert.match(sidebar, /activePaths: \["\/admin\/orders", "\/admin\/payments"\]/);
+  assert.match(workspaceNav, /label: "Payments", href: "\/admin\/payments", permission: "manage_orders"/);
+  assert.match(workspaceNav, /label: "Refund review", href: "\/admin\/payments\/refund-queue", permission: "manage_orders"/);
 });

@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Clock, XCircle } from "lucide-react";
 import { getAllWarehouseTransfers } from "@/lib/data/warehouse";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type Params = { status?: string };
 
@@ -19,6 +20,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="inventory" activeHref="/admin/warehouse" />
       <DashboardPageHeader
         eyebrow="Commerce"
         title={`Local Warehouse (${transfers.length})`}
