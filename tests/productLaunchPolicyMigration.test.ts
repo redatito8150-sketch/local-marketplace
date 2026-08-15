@@ -57,6 +57,10 @@ test("visibility and durable opening-stock recognition columns are additive", ()
 });
 
 test("legacy positive stock is durably recognized without fabricating a movement", () => {
+  assert.match(
+    migration,
+    /lock table public\.inventory_movements in access exclusive mode;\s*alter table public\.inventory_movements\s*disable trigger inventory_movements_immutable;[\s\S]*?update public\.inventory_movements[\s\S]*?alter table public\.inventory_movements\s*enable trigger inventory_movements_immutable;/
+  );
   assert.match(migration, /opening_stock_recognition_source = case[\s\S]*?'historical_movement'[\s\S]*?'legacy_positive_quantity'/);
   assert.match(migration, /and \(ep\.variant_id is not null or pv\.quantity > 0\);/);
   assert.doesNotMatch(migration, /insert into public\.inventory_movements[\s\S]{0,300}legacy_positive_quantity/);

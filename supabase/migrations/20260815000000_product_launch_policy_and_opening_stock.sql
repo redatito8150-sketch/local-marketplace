@@ -193,6 +193,17 @@ where p.first_visible_at is null
 -- (which only ever looked for an existing is_opening_stock=true row). Once
 -- backfilled, the existing historical row is what's marked — not a later,
 -- unrelated restock.
+--
+-- inventory_movements is protected by an unconditional BEFORE UPDATE OR
+-- DELETE immutability trigger. Take an ACCESS EXCLUSIVE table lock while the
+-- trigger is disabled so no concurrent session can mutate ledger history in
+-- the maintenance window. Both ALTERs and the backfill run in the migration's
+-- transaction, so any error rolls the trigger state and data change back
+-- together.
+lock table public.inventory_movements in access exclusive mode;
+alter table public.inventory_movements
+  disable trigger inventory_movements_immutable;
+
 with earliest_positive as (
   select distinct on (variant_id) id
   from public.inventory_movements
@@ -207,6 +218,9 @@ where im.id = ep.id
     select 1 from public.inventory_movements existing
     where existing.variant_id = im.variant_id and existing.is_opening_stock = true
   );
+
+alter table public.inventory_movements
+  enable trigger inventory_movements_immutable;
 
 with earliest_positive as (
   select distinct on (variant_id) variant_id, created_at
