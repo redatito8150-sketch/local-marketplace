@@ -4,13 +4,19 @@ import { MAX_VARIANT_OPTIONS_PER_PRODUCT } from "../inventory/variantCombination
 export const DESCRIPTION_MAX_LENGTH = 800;
 const VALID_AUDIENCES: Audience[] = ["men", "women", "unisex", "kids_baby"];
 const VALID_SELLING_STATUSES: SellingStatus[] = ["active", "paused", "discontinued"];
+export type ProductLaunchPolicy = "show_now" | "when_stocked";
+const VALID_LAUNCH_POLICIES: ProductLaunchPolicy[] = ["show_now", "when_stocked"];
 
 export interface VariantRowInput {
   id?: string;
   optionValueIds: string[];
-  sku?: string;
+  // Read-only display of the variant's real, current live quantity for an
+  // already-persisted row — never editable from this form, and never a
+  // meaningful value for a brand-new (unsaved) row, which always starts at
+  // 0 server-side regardless of what's sent here. See
+  // lib/admin/variantPersistence.ts and create_variant_with_opening_stock.
   quantity: number;
-  openingStock?: number;
+  sku?: string;
   variantPrice?: number;
   // Mutually exclusive with the product-level discountPercent below — see
   // the check in validateProductSections().
@@ -50,6 +56,12 @@ export interface ProductInput {
   featured?: boolean;
   status: ProductStatus;
   publishDate?: string;
+  // Database-authoritative publish-time choice (see products.launch_policy):
+  // show_now (visible even at 0 stock) or when_stocked (internally
+  // published, hidden until first stock lands). Required once the product
+  // is actually going public; validated against a strict allowlist below —
+  // never trust an arbitrary client string past that check.
+  launchPolicy?: ProductLaunchPolicy;
   defaultLowStockThreshold: number;
   optionTypeIds: string[];
   valueIdsByOptionType: Record<string, string[]>;
@@ -98,9 +110,6 @@ function validateVariants(variants: VariantRowInput[], requireAtLeastOne: boolea
   for (const variant of variants) {
     if (!Number.isInteger(variant.quantity) || variant.quantity < 0) {
       return "Each variant needs a whole, non-negative quantity";
-    }
-    if (!variant.id && (!Number.isInteger(variant.openingStock ?? variant.quantity) || (variant.openingStock ?? variant.quantity) < 0)) {
-      return "Opening Stock must be a whole, non-negative number";
     }
     if (
       variant.lowStockThresholdOverride != null &&
@@ -210,30 +219,21 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
     }
   }
 
-  // Archived is intentionally "not for sale right now" — it still needs
-  // the full product info above, just not live purchasable stock, unlike
-  // Published which does.
-  //
-  // A partner brand is the one deliberate exception: their variants
-  // always start at 0 live quantity (see isPartnerBrand's comment above),
-  // so requiring quantity > 0 here would make publishing permanently
-  // impossible for them — 0 stock right after creation is their normal,
-  // expected state, not a sign the form was left incomplete. They still
-  // need at least one Active variant (not everything paused/discontinued)
-  // — the actual sellable-stock gap is expected to close once Mahaly's
-  // warehouse confirms a transfer, same as any other out-of-stock product.
+  // Product creation/editing manages catalog information only — live stock
+  // is never entered here (see lib/admin/variantPersistence.ts and
+  // create_variant_with_opening_stock), for either a direct or a partner
+  // brand, so publishing can no longer require quantity > 0 for anyone.
+  // Every product — direct or partner — only needs at least one Active
+  // (not paused/discontinued) variant definition to publish; the actual
+  // sellable-stock gap closes later through Inventory (direct) or a
+  // confirmed warehouse receipt (partner), same mechanism for both now.
   if (body.status === "published") {
-    const hasPurchasable = body.isPartnerBrand
-      ? body.variants.some((v) => v.sellingStatus === "active")
-      : body.variants.some((v) => v.sellingStatus === "active" && v.quantity > 0);
-    if (!hasPurchasable) {
-      add(
-        "inventory",
-        body.isPartnerBrand
-          ? "At least one variant needs an Active Selling Status before publishing"
-          : "At least one variant needs stock and an Active Selling Status before publishing",
-        "generated-variants"
-      );
+    const hasActiveVariant = body.variants.some((v) => v.sellingStatus === "active");
+    if (!hasActiveVariant) {
+      add("inventory", "At least one variant needs an Active Selling Status before publishing", "generated-variants");
+    }
+    if (!body.launchPolicy || !VALID_LAUNCH_POLICIES.includes(body.launchPolicy)) {
+      add("visibility", "Choose how this product should launch: show it now, or wait until stock arrives.", "product-launch-policy");
     }
   }
 

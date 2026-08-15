@@ -13,6 +13,7 @@ import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import ProductFilters from "@/components/brand-portal/ProductFilters";
 import ProductRowActions from "@/components/brand-portal/ProductRowActions";
+import ShowNowButton from "@/components/brand-portal/ShowNowButton";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import { needsBrandProductAttention } from "@/lib/brand-portal/productAttention";
 
@@ -42,6 +43,7 @@ type DisplayProduct = BrandProductListItem & {
   statusInfo: { label: string; className: string };
   editHref: string;
   inventoryHref: string;
+  brandParam: string;
 };
 
 export default async function BrandPortalProductsPage(props: { searchParams: Promise<ProductParams> }) {
@@ -110,6 +112,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     statusInfo: getStatusInfo(product),
     editHref: `/brand-portal/products/${product.id}/edit${brandParam}`,
     inventoryHref: buildInventoryHref(product, owner.isImpersonating ? owner.brandSlug ?? undefined : undefined),
+    brandParam,
   }));
   const firstResult = filteredProducts.length ? pageStart + 1 : 0;
   const lastResult = Math.min(pageStart + PAGE_SIZE, filteredProducts.length);
@@ -338,10 +341,28 @@ function QuickViews({
   );
 }
 
+// Plain-language launch state — never raw database terms (launch_policy,
+// first_stocked_at). Only meaningful for a currently-Published, non-paused
+// product; the base status/Paused badges already cover every other case.
+function getLaunchStateBadge(product: DisplayProduct): { label: string; className: string; showNow?: boolean } | null {
+  if (product.status !== "published" || product.pausedByBrand) return null;
+  if (product.publishDate && !isPublishDateLive(product.publishDate)) {
+    return { label: "Scheduled", className: "bg-sky-50 text-sky-700" };
+  }
+  if (product.launchPolicy === "when_stocked" && !product.firstStockedAt) {
+    return { label: "Waiting for stock", className: "bg-amber-50 text-amber-700", showNow: true };
+  }
+  return product.inStock
+    ? { label: "Visible · in stock", className: "bg-emerald-50 text-emerald-700" }
+    : { label: "Visible · out of stock", className: "bg-[#eee9e4] text-[#6f6259]" };
+}
+
 function ProductStatuses({ product }: { product: DisplayProduct }) {
+  const launchState = getLaunchStateBadge(product);
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${product.statusInfo.className}`}>{product.statusInfo.label}</span>
+      {launchState && <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${launchState.className}`}>{launchState.label}</span>}
       {product.featured && (
         <span title="Selected by the marketplace team" className="inline-flex items-center gap-1 rounded-lg bg-[#f8e9e7] px-2.5 py-1 text-[10.5px] font-bold text-mahalyred">
           <Star className="h-3 w-3" fill="currentColor" aria-hidden="true" /> Featured
@@ -349,6 +370,7 @@ function ProductStatuses({ product }: { product: DisplayProduct }) {
       )}
       {product.hasPendingEdit && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Edit pending</span>}
       {product.pausedByBrand && <span className="rounded-lg bg-[#eee9e4] px-2.5 py-1 text-[10.5px] font-bold text-[#6f6259]">Paused</span>}
+      {launchState?.showNow && <ShowNowButton productId={product.id} brandParam={product.brandParam} />}
       {product.reviewNotes && <p className="w-full max-w-xs pt-1 text-[11px] leading-4 text-red-700">{product.reviewNotes}</p>}
     </div>
   );

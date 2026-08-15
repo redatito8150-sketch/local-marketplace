@@ -24,6 +24,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 import { archiveProduct } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -92,6 +93,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         detailLabel: "Brand",
       }
     );
+
+    // Resume respects launch policy + current stock — never auto-visible
+    // just because it was resumed; a no-op unless genuinely eligible now.
+    if (!paused) await stampFirstVisibleIfEligible(params.id);
 
     return NextResponse.json({ ok: true });
   }
@@ -223,7 +228,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: productBody.variants,
     actorId: owner.user.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: owner.isMahalyPartner,
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
@@ -240,6 +244,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  if (productBody.status === "published") {
+    await stampFirstVisibleIfEligible(params.id);
+  }
 
   await checkAndNotifyWishlistPriceDrop(
     params.id,

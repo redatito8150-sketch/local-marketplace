@@ -35,8 +35,12 @@ export interface VariantRow {
   id?: string;
   optionValueIds: string[];
   sku?: string;
+  // Read-only display of an already-persisted variant's real, current live
+  // quantity — never editable from this form, and always 0 for a brand-new
+  // (unsaved) row regardless of anything set here. Stock only ever changes
+  // through Inventory (direct brand) or a confirmed warehouse receipt
+  // (partner) once the product is published — see Inventory instead.
   quantity: number;
-  openingStock?: number;
   variantPrice?: number;
   // Mutually exclusive with the product-level Discount % (ProductForm.tsx)
   // — locked/disabled in the UI whenever the product has its own discount,
@@ -98,9 +102,6 @@ export default function InventoryVariantsSection({
   taxonomyNodes: TaxonomyNode[];
   productTypeId: string;
   inventoryHref?: string;
-  // Zakhnook Partner brand — Opening Stock is locked at 0 server-side no
-  // matter what's typed here (see forceZeroOpeningStock), so the field
-  // itself is locked and relabeled rather than silently ignoring input.
   isPartnerBrand?: boolean;
   optionLoadState?: "idle" | "loading" | "ready" | "error";
   optionLoadError?: string;
@@ -117,11 +118,13 @@ export default function InventoryVariantsSection({
     .map((id) => availableOptionValues.find((v) => v.id === id))
     .filter((v): v is OptionValueOption => Boolean(v));
   const activeVariants = value.variants.filter((variant) => variant.sellingStatus === "active");
-  const openingUnits = value.variants.reduce((sum, variant) => sum + Math.max(0, variant.openingStock ?? variant.quantity), 0);
-  const zeroStockVariants = activeVariants.filter((variant) => (variant.openingStock ?? variant.quantity) === 0).length;
   const customPricedVariants = value.variants.filter((variant) => variant.variantPrice != null || variant.variantDiscountPercent != null).length;
   const missingColorImages = colorValueIds.length >= 2 ? colorValueIds.filter((id) => !value.colorImages[id]).length : 0;
-  const attentionCount = (isPartnerBrand ? 0 : zeroStockVariants) + missingColorImages + (value.variants.length - activeVariants.length);
+  // No zero-stock warning here anymore — stock is never entered in this
+  // editor, so a fresh variant reading 0 is expected, not a sign the form
+  // was left incomplete. Attention is only real gaps: missing color photos
+  // or a variant left paused/discontinued.
+  const attentionCount = missingColorImages + (value.variants.length - activeVariants.length);
 
   const availableColorValues = colorType
     ? availableOptionValues.filter((v) => v.optionTypeId === colorType.id && (!v.isArchived || colorValueIds.includes(v.id)))
@@ -181,10 +184,10 @@ export default function InventoryVariantsSection({
 
   // Toggling an already-added color off inside the Add Color popover itself
   // — a quiet, no-confirm shortcut, but only while the color is still
-  // genuinely empty (no saved variant, no Opening Stock, no Variant Price,
-  // no Low Stock override). The instant any of that exists, this is a
-  // no-op: the color's own "X" in the table (removeColorRow, always
-  // confirms) becomes the only way to remove it.
+  // genuinely empty (not saved, no Variant Price, no Low Stock override).
+  // The instant any of that exists, this is a no-op: the color's own "X"
+  // in the table (removeColorRow, always confirms) becomes the only way to
+  // remove it.
   const quickRemoveColorIfEmpty = (id: string) => {
     if (!colorType) return;
     const affected = value.variants.filter((v) => v.optionValueIds.includes(id));
@@ -220,7 +223,6 @@ export default function InventoryVariantsSection({
     const newRow: VariantRow = {
       optionValueIds: [colorId, sizeId],
       quantity: 0,
-      openingStock: 0,
       sellingStatus: "active",
     };
     set({
@@ -240,11 +242,11 @@ export default function InventoryVariantsSection({
     const comboKey = buildComboKey([colorId, sizeId].sort());
     const existing = value.variants.find((v) => buildComboKey(v.optionValueIds) === comboKey);
     if (!existing) return;
-    const hasData = Boolean(existing.id) || existing.quantity > 0 || existing.variantPrice != null || existing.variantDiscountPercent != null || existing.lowStockThresholdOverride != null;
+    const hasData = Boolean(existing.id) || existing.variantPrice != null || existing.variantDiscountPercent != null || existing.lowStockThresholdOverride != null;
     if (hasData) {
       const message = existing.id
         ? "This variant is saved and may have inventory history. It will be archived, not deleted, when you save. Continue?"
-        : "Remove this variant? It already has Opening Stock, a Variant Price, or a Low Stock override set.";
+        : "Remove this variant? It already has a Variant Price or a Low Stock override set.";
       if (!window.confirm(message)) return;
     }
     set({ variants: value.variants.filter((v) => buildComboKey(v.optionValueIds) !== comboKey) });
@@ -287,7 +289,7 @@ export default function InventoryVariantsSection({
         <div className="grid grid-cols-2 divide-x divide-y divide-[#e9e1d9] sm:grid-cols-4 sm:divide-y-0">
           <div className="flex items-start gap-2.5 px-4 py-3.5"><Boxes className="mt-0.5 h-4 w-4 text-[#C85956]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{value.variants.length}</p><p className="text-[10px] text-[#897b71]">sellable combinations</p></div></div>
           <div className="flex items-start gap-2.5 px-4 py-3.5"><Tags className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{colorValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">colors</span> · {sizeValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">sizes</span></p><p className="text-[10px] text-[#897b71]">option coverage</p></div></div>
-          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{isPartnerBrand ? activeVariants.length : openingUnits}</p><p className="text-[10px] text-[#897b71]">{isPartnerBrand ? "active · stock after receipt" : "opening units"}</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{activeVariants.length}</p><p className="text-[10px] text-[#897b71]">active · stock added from Inventory</p></div></div>
           <div className="flex items-start gap-2.5 px-4 py-3.5"><ImageIcon className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{missingColorImages || customPricedVariants}</p><p className="text-[10px] text-[#897b71]">{missingColorImages ? "color photos missing" : `${customPricedVariants} custom prices`}</p></div></div>
         </div>
       </div>

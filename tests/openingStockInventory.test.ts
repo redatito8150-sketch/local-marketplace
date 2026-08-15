@@ -20,14 +20,18 @@ test("inventory adjustment requires a reason and rejects negative outcomes", () 
   })!, /negative/i);
 });
 
-test("saved variant quantity is never written by product persistence", async () => {
+// Product creation/editing manages catalog information only now — a
+// brand-new variant always starts at live quantity 0 regardless of actor/
+// fulfillment mode, enforced at the RPC boundary (create_variant_with_
+// opening_stock ignores p_opening_stock unconditionally), not merely by
+// omitting a UI field.
+test("saved variant quantity is never written by product persistence, and new variants never smuggle a nonzero opening stock", async () => {
   const source = await readFile(new URL("../lib/admin/variantPersistence.ts", import.meta.url), "utf8");
   const existingUpdate = source.slice(source.indexOf("if (existingId)"), source.indexOf("variantIds.push(existingId)"));
   assert.doesNotMatch(existingUpdate, /quantity:\s*edit\.quantity/);
   assert.match(source, /create_variant_with_opening_stock/);
-  // Zakhnook Partner brands force this to 0 (see forceZeroOpeningStock) —
-  // everyone else still passes the editor's own Opening Stock value.
-  assert.match(source, /p_opening_stock:.*edit\.openingStock/);
+  assert.match(source, /p_opening_stock:\s*0/);
+  assert.doesNotMatch(source, /openingStock/);
 });
 
 test("migration provides immutable ledger, exact-once opening stock, and atomic order history", async () => {
@@ -40,15 +44,14 @@ test("migration provides immutable ledger, exact-once opening stock, and atomic 
   assert.match(sql, /legacy-opening-balance-v1/);
 });
 
-test("Product Editor distinguishes initial available quantity from saved current stock", async () => {
-  // Initial available quantity is edited inline in the unified Variant table
-  // (VariantTable.tsx) — editable only while a variant is unsaved
-  // (`persisted` false); once saved it renders as read-only text with a
-  // deep link into Inventory, and can never be edited from the editor again.
+// Product creation/editing collects catalog information only — no stock
+// input anywhere, for anyone. VariantTable.tsx no longer has a Stock
+// column at all (quantity is only ever visible/managed from Inventory,
+// linked from a saved row's own action cell).
+test("Product Editor never collects stock — no quantity input anywhere in the Variant Matrix", async () => {
   const source = await readFile(new URL("../components/admin/VariantTable.tsx", import.meta.url), "utf8");
-  assert.match(source, /persisted\s*\?/);
-  assert.match(source, /Initial available quantity for/);
-  assert.match(source, /Added after receiving/);
-  assert.match(source, /Managed from Inventory/);
+  assert.doesNotMatch(source, /Initial available quantity for/);
+  assert.doesNotMatch(source, /openingStock/);
+  assert.doesNotMatch(source, /variant\.quantity/);
   assert.match(source, /Open Inventory/);
 });

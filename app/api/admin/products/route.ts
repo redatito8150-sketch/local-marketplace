@@ -13,6 +13,7 @@ import {
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { claimProductStorageAssets } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 import { notify } from "@/lib/notify";
 import { logAudit } from "@/lib/auditLog";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -127,7 +128,6 @@ export async function POST(request: NextRequest) {
     submitted: body.variants,
     actorId: admin.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: Boolean(brandRow.is_mahaly_partner),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product created, but ${variantsResult.error}` }, { status: 500 });
@@ -146,6 +146,10 @@ export async function POST(request: NextRequest) {
   }
 
   const variants = await loadProductVariants(id);
+
+  if (body.status === "published") {
+    await stampFirstVisibleIfEligible(id);
+  }
 
   await notify(
     body.status === "published" ? "product_published" : "product_created",

@@ -19,6 +19,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 import { archiveProduct } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -111,7 +112,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     submitted: body.variants,
     actorId: admin.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: Boolean(brandRow?.is_mahaly_partner),
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product updated. However, ${variantsResult.error}` }, { status: 500 });
@@ -125,6 +125,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (!mediaResult.ok) return NextResponse.json({ error: `Product updated. However, ${mediaResult.error}` }, { status: 500 });
 
   const variants = await loadProductVariants(params.id);
+
+  if (body.status === "published") {
+    await stampFirstVisibleIfEligible(params.id);
+  }
 
   await checkAndNotifyWishlistPriceDrop(
     params.id,

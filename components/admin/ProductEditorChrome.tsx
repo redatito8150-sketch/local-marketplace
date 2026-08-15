@@ -24,7 +24,7 @@ export const PRODUCT_EDITOR_SECTIONS: { id: ProductEditorSectionId; number: stri
 export const PRODUCT_EDITOR_STEPS: { id: ProductEditorSectionId; number: string; label: string }[] = [
   { id: "basic", number: "1", label: "Product basics" },
   { id: "pricing", number: "2", label: "Price" },
-  { id: "inventory", number: "3", label: "Colors, sizes & stock" },
+  { id: "inventory", number: "3", label: "Colors & sizes" },
   { id: "media", number: "4", label: "Photos" },
   { id: "details", number: "5", label: "Details & policies" },
   { id: "visibility", number: "6", label: "Review & publish" },
@@ -99,7 +99,14 @@ export function ProductEditorHeader({
     ? "Saved to your account"
     : "Not saved to your account yet";
   const activeStepIndex = Math.max(0, PRODUCT_EDITOR_STEPS.findIndex((step) => step.id === activeSection));
-  const showPublishAction = !createExperience || activeSection === "visibility";
+  // Creation actions (Save as Draft / Publish) live exclusively in the
+  // bottom action bar (ProductWizardBottomBar) now — the header stays
+  // focused on Back, save state, progress, fulfillment identity, and Live
+  // Preview for the whole wizard, including its last step. This only
+  // affects the create experience; edit mode (an existing, unrelated
+  // experience) keeps its header Save draft/Archive/Publish actions
+  // exactly as before.
+  const showPublishAction = !createExperience;
 
   return (
     <header className={`sticky z-30 mb-6 border-b border-[#e4ddd5] bg-[#FAF8F4]/95 backdrop-blur ${standalone ? "top-0 -mx-4 px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "top-[72px] -mx-4 border-y px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10"}`}>
@@ -168,7 +175,9 @@ export function ProductEditorHeader({
             {previewOpen ? "Hide preview" : "Preview product"}
           </button>
         ) : null}
-        <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-ink hover:bg-[#f4eee8] disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save draft</button>
+        {!createExperience ? (
+          <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-ink hover:bg-[#f4eee8] disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save draft</button>
+        ) : null}
         {!createExperience ? (
           <button
             type="button"
@@ -346,7 +355,6 @@ export function ProductWizardBottomBar({
   submitting,
   canPublish,
   isPartnerBrand,
-  hasPersistedProduct,
   onPrevious,
   onNext,
   onSaveDraft,
@@ -357,7 +365,6 @@ export function ProductWizardBottomBar({
   submitting: boolean;
   canPublish: boolean;
   isPartnerBrand: boolean;
-  hasPersistedProduct: boolean;
   onPrevious: () => void;
   onNext: () => void;
   onSaveDraft: () => void;
@@ -373,7 +380,9 @@ export function ProductWizardBottomBar({
       </button>
       <p className="hidden text-[11px] text-[#8d8076] sm:block">Step {stepIndex + 1} of {stepCount}</p>
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        {!hasPersistedProduct ? <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-[#51473f] hover:bg-[#f4eee8] disabled:opacity-50">Save draft</button> : null}
+        {/* Save as Draft stays available on every creation step — first
+            through last — not just before the product has been persisted. */}
+        <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-[#51473f] hover:bg-[#f4eee8] disabled:opacity-50">Save as Draft</button>
         {isLast ? (
           <button type="button" disabled={submitting || !canPublish} onClick={onPublish} className="min-h-10 rounded-lg bg-[#C85956] px-4 text-[12px] font-bold text-white transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-45">
             {isPartnerBrand ? "Publish & prepare stock" : "Publish product"}

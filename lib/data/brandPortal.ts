@@ -568,6 +568,9 @@ export interface BrandProductListItem {
   hasPendingEdit: boolean;
   reviewNotes?: string;
   deletionRequestedAt?: string;
+  launchPolicy: "show_now" | "when_stocked";
+  firstStockedAt?: string;
+  firstVisibleAt?: string;
 }
 
 interface BrandProductRow {
@@ -588,6 +591,9 @@ interface BrandProductRow {
   pending_changes: unknown;
   review_notes: string | null;
   deletion_requested_at: string | null;
+  launch_policy: "show_now" | "when_stocked" | null;
+  first_stocked_at: string | null;
+  first_visible_at: string | null;
 }
 
 // Every status (pending_review/changes_requested/published/archived) shows
@@ -602,7 +608,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabaseAdmin
     .from("products")
     .select(
-      "id, name, image, price, currency, product_type_id, collection_id, featured, default_low_stock_threshold, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at"
+      "id, name, image, price, currency, product_type_id, collection_id, featured, default_low_stock_threshold, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at, launch_policy, first_stocked_at, first_visible_at"
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
@@ -666,6 +672,9 @@ export async function getProductsForBrand(
       hasPendingEdit: row.pending_changes != null,
       reviewNotes: row.review_notes ?? undefined,
       deletionRequestedAt: row.deletion_requested_at ?? undefined,
+      launchPolicy: row.launch_policy ?? "show_now",
+      firstStockedAt: row.first_stocked_at ?? undefined,
+      firstVisibleAt: row.first_visible_at ?? undefined,
     };
   });
 }

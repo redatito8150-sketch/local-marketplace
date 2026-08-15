@@ -96,9 +96,10 @@ function product(): ProductLookupRow {
     status: "published",
     publish_date: null,
     paused_by_brand: false,
-    brands: { is_active: true, fulfillment_mode: "brand_fulfilled" },
+    brands: { is_active: true },
     image: "https://example.com/linen-shirt.jpg",
     first_stocked_at: "2026-01-01T00:00:00.000Z",
+    launch_policy: "show_now",
   };
 }
 

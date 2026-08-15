@@ -52,6 +52,17 @@ export function buildProductPersistencePayload(
     default_low_stock_threshold: body.defaultLowStockThreshold,
   };
 
+  // launch_policy is a strict two-value DB enum (products_launch_policy_check)
+  // — validateProductSections already rejects anything else once the
+  // product is going public, so this is a plain passthrough of an
+  // already-allowlisted value, never an arbitrary client string reaching
+  // the database unchecked. Omitted entirely for a Draft save (the column
+  // keeps its existing/default value) so saving a draft can never reset an
+  // already-chosen policy before the merchant has actually decided.
+  if (body.launchPolicy && (overrides?.status ?? body.status) !== "draft") {
+    payload.launch_policy = body.launchPolicy;
+  }
+
   // Legacy single-material text, the old per-product Shipping & Returns
   // text, and "New"'s old manual is_new flag are never written by the
   // current editor — only include them if some other caller actually

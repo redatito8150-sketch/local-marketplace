@@ -265,6 +265,7 @@ const baseProduct: ProductInput = {
   isNew: false,
   featured: false,
   status: "draft",
+  launchPolicy: "show_now",
   defaultLowStockThreshold: 5,
   optionTypeIds: [],
   valueIdsByOptionType: {},
@@ -307,18 +308,29 @@ test("validateProductInput rejects duplicate variant combinations", () => {
   assert.equal(result, "Duplicate variant combination detected");
 });
 
-test("validateProductInput requires an active, in-stock variant before publishing", () => {
+// Product creation/editing is catalog-only now — publishing no longer
+// requires positive stock for anyone (direct or partner). Only an Active
+// variant definition is required; the actual sellable-stock gap closes
+// later through Inventory, never this form.
+test("validateProductInput requires an active variant before publishing (quantity is never the gate)", () => {
   const paused = validateProductInput({
     ...baseProduct,
     status: "published",
-    variants: [{ optionValueIds: [], quantity: 5, sellingStatus: "paused" }],
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "paused" }],
   });
-  assert.equal(paused, "At least one variant needs stock and an Active Selling Status before publishing");
+  assert.equal(paused, "At least one variant needs an Active Selling Status before publishing");
 
-  const ok = validateProductInput({
+  const okWithStock = validateProductInput({
     ...baseProduct,
     status: "published",
     variants: [{ optionValueIds: [], quantity: 5, sellingStatus: "active" }],
   });
-  assert.equal(ok, null);
+  assert.equal(okWithStock, null);
+
+  const okWithoutStock = validateProductInput({
+    ...baseProduct,
+    status: "published",
+    variants: [{ optionValueIds: [], quantity: 0, sellingStatus: "active" }],
+  });
+  assert.equal(okWithoutStock, null);
 });

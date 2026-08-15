@@ -151,6 +151,18 @@ async function loadVariantNotifyDetails(variantIds: string[]): Promise<Map<strin
 // — same contract as notify()/notifyUser()/sendEmail(), since this is a
 // side effect hung off unrelated save/adjustment requests and must never
 // fail those.
+//
+// Two conditions must both hold before a subscriber is notified:
+//   1. The variant itself is genuinely purchasable (not archived, Selling
+//      Status Active, quantity > 0 — never for damaged/missing/quarantined/
+//      reserved stock, since none of that ever reaches product_variants.quantity).
+//   2. The PRODUCT is actually customer-visible right now — reuses the one
+//      canonical private.is_product_customer_visible() predicate (via its
+//      public wrapper) so this can never drift from what the storefront
+//      itself would show: paused, archived, an inactive brand, a still-
+//      future publish_date, an open fulfillment transition, or a
+//      when_stocked product whose stock gate hasn't actually passed yet
+//      all correctly suppress the email, not just variant-level state.
 export async function checkAndNotifyRestock(variantIds: string[]): Promise<void> {
   const uniqueIds = [...new Set(variantIds.filter(Boolean))];
   if (uniqueIds.length === 0) return;
@@ -158,47 +170,73 @@ export async function checkAndNotifyRestock(variantIds: string[]): Promise<void>
   try {
     const { data: variants, error } = await supabaseAdmin
       .from("product_variants")
-      .select("id, quantity, selling_status, is_archived")
+      .select("id, product_id, quantity, selling_status, is_archived")
       .in("id", uniqueIds);
     if (error || !variants?.length) return;
 
-    const purchasableIds = variants
-      .filter((row) =>
-        isVariantPurchasable({
-          sellingStatus: row.selling_status,
-          quantity: row.quantity,
-          isArchived: row.is_archived,
-        })
-      )
+    const purchasableVariants = variants.filter((row) =>
+      isVariantPurchasable({
+        sellingStatus: row.selling_status,
+        quantity: row.quantity,
+        isArchived: row.is_archived,
+      })
+    );
+    if (purchasableVariants.length === 0) return;
+
+    const distinctProductIds = [...new Set(purchasableVariants.map((row) => row.product_id as string))];
+    const visibilityEntries = await Promise.all(
+      distinctProductIds.map(async (productId) => {
+        const { data: visible } = await supabaseAdmin.rpc("is_product_customer_visible", { p_product_id: productId });
+        return [productId, Boolean(visible)] as const;
+      })
+    );
+    const visibleProductIds = new Set(visibilityEntries.filter(([, visible]) => visible).map(([productId]) => productId));
+
+    const purchasableIds = purchasableVariants
+      .filter((row) => visibleProductIds.has(row.product_id as string))
       .map((row) => row.id as string);
     if (purchasableIds.length === 0) return;
 
+    // Atomically claims (deletes-and-returns) the matching subscriptions in
+    // one statement — a concurrent second call for the same variant (a
+    // retry, or two stock-increase paths racing in the same window) can
+    // only ever claim whatever this call didn't already delete, so a
+    // subscriber is never emailed twice for the same restock event. No
+    // separate SELECT-then-DELETE round trip to race against.
     const { data: subscriptions, error: subsError } = await supabaseAdmin
       .from("back_in_stock_subscriptions")
-      .select("id, user_id, email, variant_id")
-      .in("variant_id", purchasableIds);
+      .delete()
+      .in("variant_id", purchasableIds)
+      .select("id, user_id, email, variant_id");
     if (subsError || !subscriptions?.length) return;
 
     const details = await loadVariantNotifyDetails([...new Set(subscriptions.map((row) => row.variant_id as string))]);
 
+    // The subscription row is already claimed (deleted) at this point — a
+    // failure sending any one subscriber's email/notification must not
+    // stop the rest of the batch from going out, and must still be
+    // observable (logged) rather than silently swallowed, since there is
+    // no retry path left for that specific subscriber once its row is gone.
     for (const subscription of subscriptions) {
       const detail = details.get(subscription.variant_id as string);
       if (!detail) continue;
-      const { subject, html } = backInStockEmail(detail);
-      await sendEmail({ to: subscription.email as string, subject, html });
-      await notifyUser(
-        subscription.user_id as string,
-        "back_in_stock",
-        `${detail.productName} is back in stock`,
-        detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
-        { relatedEntityType: "product", relatedEntityId: detail.productId }
-      );
+      try {
+        const { subject, html } = backInStockEmail(detail);
+        await sendEmail({ to: subscription.email as string, subject, html });
+        await notifyUser(
+          subscription.user_id as string,
+          "back_in_stock",
+          `${detail.productName} is back in stock`,
+          detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
+          { relatedEntityType: "product", relatedEntityId: detail.productId }
+        );
+      } catch (sendErr) {
+        logError(
+          `checkAndNotifyRestock: delivery failed for subscription ${subscription.id}`,
+          sendErr instanceof Error ? sendErr.message : String(sendErr)
+        );
+      }
     }
-
-    await supabaseAdmin
-      .from("back_in_stock_subscriptions")
-      .delete()
-      .in("id", subscriptions.map((row) => row.id));
   } catch (err) {
     logError("checkAndNotifyRestock failed", err instanceof Error ? err.message : String(err));
   }

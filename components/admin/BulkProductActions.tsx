@@ -42,6 +42,18 @@ function StatusCell({ product }: { product: ProductRecord }) {
       </span>
     );
   }
+  // Internally published but still hidden from every customer-facing
+  // surface — waiting on its launch-policy stock gate, not a mistake in
+  // how "Published" is being read. See private.is_product_customer_visible()
+  // (supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql).
+  if (product.launchPolicy === "when_stocked" && !product.firstStockedAt) {
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>
+        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10.5px] font-semibold text-amber-800" title="Hidden from customers until its first stock is added or received.">Waiting for stock</span>
+      </div>
+    );
+  }
   return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>;
 }
 

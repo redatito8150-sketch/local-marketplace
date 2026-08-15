@@ -8,8 +8,11 @@ import type { SellingStatus } from "@/types";
 export interface VariantEditInput {
   id?: string;
   optionValueIds: string[]; // in the product's declared option order
+  // Read-only passthrough of an already-persisted variant's real quantity —
+  // never written by this module. Irrelevant for a brand-new row, which
+  // always starts at 0 server-side regardless of this value (see
+  // create_variant_with_opening_stock).
   quantity: number;
-  openingStock?: number;
   variantPrice?: number | null;
   variantDiscountPercent?: number | null;
   lowStockThresholdOverride?: number | null;
@@ -45,14 +48,8 @@ export async function syncProductVariants(params: {
   submitted: VariantEditInput[];
   actorId: string;
   operationKey: string;
-  // Zakhnook Partner brands: a brand-new variant always starts at 0 live
-  // stock regardless of what the editor's Opening Stock field said — that
-  // number only feeds product_variants.brand_stock_quantity (managed from
-  // the Local Warehouse page), never the site-visible `quantity`, which
-  // can only rise through a confirmed warehouse transfer receipt.
-  forceZeroOpeningStock?: boolean;
 }): Promise<SyncVariantsResult> {
-  const { productId, productSku, submitted, actorId, operationKey, forceZeroOpeningStock } = params;
+  const { productId, productSku, submitted, actorId, operationKey } = params;
 
   const { data: existingRows, error: existingError } = await supabaseAdmin
     .from("product_variants")
@@ -119,7 +116,10 @@ export async function syncProductVariants(params: {
           p_product_id: productId,
           p_sku: sku,
           p_combo_key: comboKey,
-          p_opening_stock: forceZeroOpeningStock ? 0 : (edit.openingStock ?? edit.quantity ?? 0),
+          // Ignored server-side unconditionally now (see
+          // create_variant_with_opening_stock) — sent as 0 for honesty,
+          // not because the RPC trusts it.
+          p_opening_stock: 0,
           p_variant_price: edit.variantPrice ?? null,
           p_variant_discount_percent: edit.variantDiscountPercent ?? null,
           p_low_stock_threshold_override: edit.lowStockThresholdOverride ?? null,

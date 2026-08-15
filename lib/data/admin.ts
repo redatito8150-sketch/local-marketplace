@@ -65,6 +65,9 @@ interface ProductRow {
   reviewed_at: string | null;
   deletion_requested_at: string | null;
   paused_by_brand: boolean;
+  launch_policy: "show_now" | "when_stocked" | null;
+  first_stocked_at: string | null;
+  first_visible_at: string | null;
 }
 
 // Per-batch lookup context for the display-only fields resolved from
@@ -141,6 +144,9 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     reviewedAt: row.reviewed_at ?? undefined,
     deletionRequestedAt: row.deletion_requested_at ?? undefined,
     pausedByBrand: row.paused_by_brand,
+    launchPolicy: row.launch_policy ?? "show_now",
+    firstStockedAt: row.first_stocked_at ?? undefined,
+    firstVisibleAt: row.first_visible_at ?? undefined,
   };
 }
 

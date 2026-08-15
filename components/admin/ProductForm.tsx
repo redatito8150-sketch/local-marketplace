@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, ArrowUpRight, CalendarClock, Check, CircleAlert, Eye, PackageCheck, Store, Warehouse } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, CircleAlert, Eye, PackageCheck, Store, Warehouse } from "lucide-react";
 import type { Audience, ProductMaterialEntry, ProductRecord, ProductStatus, ProductTaxonomyContent, ProductVariant, TaxonomyNode } from "@/types";
 import {
   validateProductInput,
@@ -126,6 +126,10 @@ interface FormState {
   status: ProductStatus;
   featured: boolean;
   publishDate: string;
+  // "" means "not yet explicitly chosen" — the effective value is derived
+  // (see effectiveLaunchPolicy) from the current brand until the merchant
+  // actually picks a card.
+  launchPolicy: "show_now" | "when_stocked" | "";
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -224,6 +228,10 @@ function toFormState(
     status: product?.status ?? "draft",
     featured: product?.featured ?? false,
     publishDate: product?.publishDate ? toDatetimeLocalValue(product.publishDate) : "",
+    // "" for a brand-new product — the real default is derived from the
+    // current brand at render time (see effectiveLaunchPolicy) until the
+    // merchant explicitly picks a card.
+    launchPolicy: product?.launchPolicy ?? "",
   };
 }
 
@@ -504,6 +512,17 @@ export default function ProductForm({
     ? Boolean(lockedIsPartnerBrand)
     : Boolean(brandOptions.find((b) => b.id === form.brandId)?.isMahalyPartner);
 
+  // Sensible defaults per item 5: direct brand -> Show now as Out of stock,
+  // partner brand -> Publish when stock is ready. A purely derived value
+  // (never written to state by an effect) — form.launchPolicy starts empty
+  // for a brand-new product and only becomes a concrete, sticky choice once
+  // the merchant clicks a card; until then this recomputes from the
+  // currently-selected brand on every render, so it stays correct even if
+  // the admin changes the brand before the first save. An existing
+  // product's real, saved launchPolicy is never overridden.
+  const effectiveLaunchPolicy: FormState["launchPolicy"] =
+    form.launchPolicy || (isPartnerBrand ? "when_stocked" : "show_now");
+
   const buildPayload = (targetStatus: ProductStatus): ProductInput => ({
     name: form.name.trim(),
     brandId: lockedBrand?.id ?? form.brandId,
@@ -533,6 +552,7 @@ export default function ProductForm({
     // writes from ever touching either column here.
     status: targetStatus,
     publishDate: form.publishDate ? new Date(form.publishDate).toISOString() : undefined,
+    launchPolicy: effectiveLaunchPolicy,
     defaultLowStockThreshold: form.inventoryVariants.defaultLowStockThreshold,
     optionTypeIds: form.inventoryVariants.optionTypeIds,
     valueIdsByOptionType: form.inventoryVariants.valueIdsByOptionType,
@@ -746,8 +766,8 @@ export default function ProductForm({
           <p className="text-[12px] font-extrabold text-[#332c27]">{isPartnerBrand ? "Zakhnook fulfilled" : "Brand fulfilled"}</p>
           <p className="mt-1 max-w-[78ch] text-[11.5px] leading-5 text-[#75685f]">
             {isPartnerBrand
-              ? "Create the product and its Variants now. It stays hidden from shoppers until Zakhnook receives the first shipment, then becomes available automatically."
-              : "Add the quantity available for each Variant. Once the required product information is complete, publishing makes it available to shoppers immediately."}
+              ? "Create the product and its Variants now — stock is added later, once Zakhnook receives a shipment. Choose how it should launch on the last step."
+              : "Create the product and its Variants now — stock is added afterward from Inventory. Choose how it should launch on the last step."}
           </p>
         </div>
       </div> : null}
@@ -896,7 +916,7 @@ export default function ProductForm({
 
         {/* 03 — Variants (Inventory) — comes before Media because Media's
             Color images depend on the Colors defined here. */}
-        {(!isCreateExperience || activeSection === "inventory") ? <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Colors, sizes & stock" description={isPartnerBrand ? "Create every sellable combination. Stock is added after Zakhnook confirms a shipment." : "Create every sellable combination and add the quantity currently available."} complete={completedSections.has("inventory")} issues={currentIssues.filter((issue) => issue.section === "inventory")}>
+        {(!isCreateExperience || activeSection === "inventory") ? <FormSection sectionId="inventory" sectionRef={(node) => { sectionRefs.current.inventory = node ?? undefined; }} number="03" title="Colors & sizes" description={isPartnerBrand ? "Create every sellable combination. Stock is added from Inventory after Zakhnook confirms a shipment." : "Create every sellable combination — SKU, price, and low-stock alert. Stock is added from Inventory once the product is published."} complete={completedSections.has("inventory")} issues={currentIssues.filter((issue) => issue.section === "inventory")}>
           <div id="inventory-variants" tabIndex={-1}><InventoryVariantsSection
             value={form.inventoryVariants}
             onChange={(next) => set("inventoryVariants", next)}
@@ -1031,14 +1051,58 @@ export default function ProductForm({
             })}
           </div>
 
-          <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
-            <div><TextField label="Publish Date (optional)" type="datetime-local" value={form.publishDate} onChange={(v) => set("publishDate", v)} /><p className="mt-2 text-[10.5px] leading-4 text-[#8c7f75]">Leave empty to publish as soon as all storefront gates are satisfied.</p></div>
-            <div className={`rounded-[14px] border px-4 py-4 ${isPartnerBrand ? "border-[#e6d1c2] bg-[#fff7f1]" : "border-[#d9e0d4] bg-[#f6f8f3]"}`}>
-              <div className="flex items-start gap-3">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isPartnerBrand ? "bg-[#C85956]/10 text-[#C85956]" : "bg-[#5d6c55]/10 text-[#5d6c55]"}`}>{form.publishDate ? <CalendarClock className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />}</div>
-                <div><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#8c7f75]">Storefront state after publish</p><p className="mt-1.5 text-[13px] font-extrabold text-[#332c27]">{form.publishDate ? "Scheduled listing" : isPartnerBrand ? "Hidden until warehouse receipt" : "Visible to shoppers immediately"}</p><p className="mt-1 text-[11.5px] leading-5 text-[#75685f]">{form.publishDate ? `The listing waits until ${new Date(form.publishDate).toLocaleString("en-GB", { timeZone: "Africa/Cairo", dateStyle: "medium", timeStyle: "short" })}. ${isPartnerBrand ? "It will still require received Zakhnook stock." : "It then becomes purchasable if stock is available."}` : isPartnerBrand ? "Publishing prepares the listing. It becomes visible only after Zakhnook receives the first shipment and an active Variant has available stock." : "The product enters the storefront and New Arrivals after publishing because your brand owns fulfillment and has sellable opening stock."}</p></div>
-              </div>
+          <div className="mt-5">
+            <TextField label="Publish Date (optional)" type="datetime-local" value={form.publishDate} onChange={(v) => set("publishDate", v)} />
+            <p className="mt-2 text-[10.5px] leading-4 text-[#8c7f75]">Leave empty to publish as soon as all storefront gates are satisfied.</p>
+          </div>
+
+          <div className="mt-5">
+            <p className="text-[12px] font-bold text-[#332c27]">How should this product launch?</p>
+            <p className="mt-1 text-[11px] leading-4 text-[#8c7f75]">Both options are available regardless of fulfillment — choose what fits this product.</p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  {
+                    value: "show_now" as const,
+                    title: "Show now as Out of stock",
+                    description: "Customers can discover and save the product, and request a notification when their Variant becomes available.",
+                    icon: <Eye className="h-4 w-4" />,
+                  },
+                  {
+                    value: "when_stocked" as const,
+                    title: "Publish when stock is ready",
+                    description: "Keep the product hidden until its first sellable stock is added or received.",
+                    icon: <PackageCheck className="h-4 w-4" />,
+                  },
+                ]
+              ).map((option) => {
+                const selected = effectiveLaunchPolicy === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set("launchPolicy", option.value)}
+                    aria-pressed={selected}
+                    className={`flex flex-col items-start gap-2 rounded-[14px] border px-4 py-4 text-left transition-colors ${selected ? "border-[#C85956] bg-[#fff7f1] ring-1 ring-[#C85956]/30" : "border-[#ddd3ca] bg-white hover:border-[#C85956]/40"}`}
+                  >
+                    <div className="flex w-full items-center justify-between">
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${selected ? "bg-[#C85956]/10 text-[#C85956]" : "bg-stone-100 text-ink-soft/60"}`}>{option.icon}</div>
+                      {selected ? <Check className="h-4 w-4 text-[#C85956]" /> : null}
+                    </div>
+                    <p className="text-[13px] font-extrabold text-[#332c27]">{option.title}</p>
+                    <p className="text-[11.5px] leading-5 text-[#75685f]">{option.description}</p>
+                  </button>
+                );
+              })}
             </div>
+            <p className="mt-2.5 text-[10.5px] leading-4 text-[#8c7f75]">
+              {effectiveLaunchPolicy === "show_now"
+                ? "Add to Cart stays disabled per Variant until stock is available — Wishlist and Notify Me work immediately."
+                : isPartnerBrand
+                  ? "Hidden from customers until Zakhnook receives and accepts the first shipment — then it becomes visible automatically, no second publish needed."
+                  : "Hidden from customers until the first positive Inventory addition — then it becomes visible automatically, no second publish needed."}
+              {" "}You can switch to Show now later from the Products list.
+            </p>
           </div>
           <p className="mt-3 text-[10.5px] leading-4 text-ink-soft/45">Save it as a Draft if you want to finish it later. Published products are included in New Arrivals for their first 20 days; featured placement remains Admin-managed.</p>
         </FormSection> : null}
@@ -1050,7 +1114,6 @@ export default function ProductForm({
             submitting={submitting}
             canPublish={publishReadinessIssues.length === 0}
             isPartnerBrand={isPartnerBrand}
-            hasPersistedProduct={Boolean(currentProductId)}
             onPrevious={() => moveWizard(-1)}
             onNext={() => moveWizard(1)}
             onSaveDraft={() => submit("draft")}

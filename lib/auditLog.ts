@@ -41,6 +41,10 @@ export type AuditAction =
   | "product_emergency_hidden"
   | "product_deletion_hold_applied"
   | "product_deletion_hold_released"
+  // Explicit "Show now" launch-policy override (supabase/migrations/
+  // 20260815000000_product_launch_policy_and_opening_stock.sql) — a
+  // when_stocked product moved to show_now before stock has arrived.
+  | "product_launch_policy_updated"
   | "save_draft"
   | "discard_draft"
   | "reorder"
@@ -136,6 +140,7 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   product_emergency_hidden: DISCORD_COLORS.red,
   product_deletion_hold_applied: DISCORD_COLORS.orange,
   product_deletion_hold_released: DISCORD_COLORS.green,
+  product_launch_policy_updated: DISCORD_COLORS.green,
 };
 
 // Plain-English past-tense verb per action, used to build the embed's bold
@@ -175,6 +180,7 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   product_emergency_hidden: "hidden by admin",
   product_deletion_hold_applied: "deletion hold applied",
   product_deletion_hold_released: "deletion hold released",
+  product_launch_policy_updated: "set to show now",
 };
 
 function capitalize(value: string): string {

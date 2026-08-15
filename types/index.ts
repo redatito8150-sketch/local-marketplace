@@ -314,6 +314,18 @@ export interface ProductTaxonomyFields {
   // auto-expiry countdown (lib/admin/expireDrafts.ts). undefined for a
   // product that's never been a draft, or predates this feature.
   draftStartedAt?: string;
+  // Database-authoritative publish-time choice — see
+  // lib/admin/productValidation.ts's ProductLaunchPolicy and
+  // private.is_product_customer_visible() (supabase/migrations/
+  // 20260815000000_product_launch_policy_and_opening_stock.sql).
+  launchPolicy?: "show_now" | "when_stocked";
+  // Set once, the first time any variant gets real stock (direct Inventory
+  // add or an accepted partner warehouse receipt) — a when_stocked
+  // product's launch precondition, distinct from visibility itself.
+  firstStockedAt?: string;
+  // Immutable — the first moment this product actually became visible to a
+  // real customer. Never cleared by Pause/Resume.
+  firstVisibleAt?: string;
   defaultLowStockThreshold?: number;
   // Computed fresh on every read from status + publishDate (see
   // lib/newArrivals.ts) — never a stored/editable flag.

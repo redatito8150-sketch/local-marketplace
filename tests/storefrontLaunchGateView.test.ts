@@ -16,6 +16,18 @@ function read(relativePath: string): string {
 const VIEW_PATH = "supabase/migrations/20260814000006_storefront_launch_gate_view.sql";
 const viewMigration = read(VIEW_PATH);
 
+// supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql
+// is the CURRENT, authoritative re-declaration of storefront_products / the
+// products RLS policy / the launch-gate predicate — it replaces
+// fulfillment_mode-keyed gating with the explicit products.launch_policy
+// column (private.is_product_customer_visible), and adds
+// first_visible_at. Tests below that assert on *current* behavior read
+// this file; tests that assert on the superseded 20260814000006 file's own
+// internal consistency (still true statements about that historical file)
+// are left reading viewMigration unchanged.
+const LAUNCH_POLICY_MIGRATION_PATH = "supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql";
+const launchPolicyMigration = read(LAUNCH_POLICY_MIGRATION_PATH);
+
 test("storefront_products is a security_invoker view — RLS/grants on the underlying products/brands tables still apply as the querying role, this only adds the launch-gate condition on top", () => {
   assert.match(viewMigration, /create or replace view public\.storefront_products\s*\nwith \(security_invoker = true\)/);
   // Item 1 (second corrective pass): the launch-gate condition now lives in
@@ -61,16 +73,19 @@ test("item 2: storefront_products also excludes brands with any nonterminal fulf
   assert.match(fn, /bft\.status not in \('completed', 'cancelled', 'failed'\)/);
 });
 
-test("the view never does `select p.*` — only the same explicit public column allowlist PRODUCT_PUBLIC_SELECT already uses, plus first_stocked_at", () => {
-  const withoutComments = viewMigration.replace(/--[^\r\n]*/g, "");
+test("the current storefront_products view (20260815000000) never does `select p.*` — only the same explicit public column allowlist PRODUCT_PUBLIC_SELECT already uses, plus first_stocked_at/launch_policy/first_visible_at", () => {
+  const currentView = launchPolicyMigration.match(/create or replace view public\.storefront_products[\s\S]*?;\n\ngrant select/)![0];
+  const withoutComments = currentView.replace(/--[^\r\n]*/g, "");
   assert.doesNotMatch(withoutComments, /select\s+p\.\*/i);
   const productsTs = read("lib/data/products.ts");
   const selectLine = productsTs.match(/export const PRODUCT_PUBLIC_SELECT =\s*\n?\s*"([^"]+)"/)![1];
   const publicSelectColumns = selectLine.split(",").map((c) => c.trim());
   for (const column of publicSelectColumns) {
-    assert.ok(viewMigration.includes(`p.${column}`), `expected the view to select p.${column}`);
+    assert.ok(currentView.includes(`p.${column}`), `expected the view to select p.${column}`);
   }
-  assert.ok(viewMigration.includes("p.first_stocked_at"));
+  assert.ok(currentView.includes("p.first_stocked_at"));
+  assert.ok(currentView.includes("p.launch_policy"));
+  assert.ok(currentView.includes("p.first_visible_at"));
 });
 
 test("the two new columns the view's WHERE clause depends on are explicitly granted to anon/authenticated — a security_invoker view needs column privilege for WHERE-only references too, not just the output list", () => {
@@ -107,20 +122,21 @@ test("lib/cart/liveValidation.ts (cart validation) sources from storefront_produ
   assert.doesNotMatch(src, /\.from\("products"\)/);
 });
 
-test("checkout (app/api/orders/route.ts, COD) explicitly re-checks the launch gate itself — it can't source from the view directly since it needs the brands!...!inner embed the view can't expose, so the same condition is checked inline", () => {
+test("checkout (app/api/orders/route.ts, COD) explicitly re-checks the launch-policy gate itself — it can't source from the view directly since it needs the brands!...!inner embed the view can't expose, so the same condition is checked inline", () => {
   const src = read("app/api/orders/route.ts");
-  assert.match(src, /first_stocked_at, brands!products_brand_slug_fkey!inner\(is_active, fulfillment_mode\)/);
-  assert.match(src, /const isLaunched = brand\?\.fulfillment_mode !== "zakhnook_fulfilled" \|\| product\?\.first_stocked_at != null;/);
+  assert.match(src, /first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner\(is_active\)/);
+  assert.match(src, /const isLaunched = product\?\.launch_policy !== "when_stocked" \|\| product\?\.first_stocked_at != null;/);
   assert.match(src, /!isLaunched\s*\n\s*\) \{/);
 });
 
-test("checkout (card/Paymob path — lib/payments/intentionCart.ts + the intention route) also explicitly re-checks the launch gate", () => {
+test("checkout (card/Paymob path — lib/payments/intentionCart.ts + the intention route) also explicitly re-checks the launch-policy gate", () => {
   const cartLib = read("lib/payments/intentionCart.ts");
-  assert.match(cartLib, /brands: \{ is_active: boolean; fulfillment_mode: string \} \| null;/);
+  assert.match(cartLib, /brands: \{ is_active: boolean \} \| null;/);
   assert.match(cartLib, /first_stocked_at: string \| null;/);
-  assert.match(cartLib, /const isLaunched = product\?\.brands\?\.fulfillment_mode !== "zakhnook_fulfilled" \|\| product\?\.first_stocked_at != null;/);
+  assert.match(cartLib, /launch_policy: "show_now" \| "when_stocked" \| null;/);
+  assert.match(cartLib, /const isLaunched = product\?\.launch_policy !== "when_stocked" \|\| product\?\.first_stocked_at != null;/);
   assert.match(cartLib, /!isLaunched\s*\n\s*\) \{/);
 
   const route = read("app/api/payments/paymob/intention/route.ts");
-  assert.match(route, /first_stocked_at, brands!products_brand_slug_fkey!inner\(is_active, fulfillment_mode\)/);
+  assert.match(route, /first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner\(is_active\)/);
 });

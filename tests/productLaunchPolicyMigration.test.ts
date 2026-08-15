@@ -1,0 +1,207 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Static assertions against supabase/migrations/
+// 20260815000000_product_launch_policy_and_opening_stock.sql — same
+// convention as tests/stage4WarehouseStorage.test.ts and
+// tests/storefrontLaunchGateView.test.ts. These pin structural/security
+// properties that don't require a live database to verify. Real behavioral
+// coverage of the RPCs lives in tests/productLaunchPolicyIntegration.test.ts,
+// skip-gated on a live migrated database.
+
+const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const migrationPath = "supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql";
+const migration = readFileSync(path.join(rootDir, migrationPath), "utf8");
+
+function compact(value: string): string {
+  return value
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/--[^\r\n]*/g, " ")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+const sql = compact(migration);
+
+function fn(name: string): string {
+  const match = migration.match(new RegExp(`create or replace function ${name}[\\s\\S]*?\\n\\$\\$;`));
+  assert.ok(match, `expected to find function ${name}`);
+  return match![0];
+}
+
+test("no stray comment markers and balanced $$ function-body delimiters", () => {
+  // The exact bug class caught in prior passes: a literal `*/`-forming
+  // substring anywhere in the file (inside a comment, or inside a regex
+  // pattern string) tricks compact()'s /\*...*\// stripper into eating
+  // large chunks of the file, causing spurious failures unrelated to real
+  // SQL correctness.
+  assert.doesNotMatch(migration, /\/\*/);
+  const dollarCount = (migration.match(/\$\$/g) ?? []).length;
+  assert.equal(dollarCount % 2, 0, "expected an even number of $$ delimiters");
+});
+
+test("products.launch_policy is a strict two-value check constraint, defaulting to show_now", () => {
+  assert.ok(sql.includes("altertablepublic.productsaddcolumnifnotexistslaunch_policytextnotnulldefault'show_now'"));
+  assert.ok(sql.includes("altertablepublic.productsaddconstraintproducts_launch_policy_check"));
+  assert.ok(sql.includes("check(launch_policyin('show_now','when_stocked'))"));
+});
+
+test("products.first_visible_at and inventory_movements.is_opening_stock are new, additive columns", () => {
+  assert.ok(sql.includes("altertablepublic.productsaddcolumnifnotexistsfirst_visible_attimestamptz"));
+  assert.ok(sql.includes("altertablepublic.inventory_movementsaddcolumnifnotexistsis_opening_stockbooleannotnulldefaultfalse"));
+});
+
+test("launch_policy is backfilled to preserve the OLD fulfillment_mode-keyed gate exactly, for zakhnook_fulfilled brands only", () => {
+  const backfill = migration.match(/update public\.products p\s*\nset launch_policy = 'when_stocked'[\s\S]*?where b\.id = p\.brand_id and b\.fulfillment_mode = 'zakhnook_fulfilled';/);
+  assert.ok(backfill, "expected the launch_policy backfill to be scoped to zakhnook_fulfilled brands only");
+});
+
+test("first_visible_at backfill only ever sets a currently-null column on a product that is ALREADY visible under the new rule, never a future/fabricated date", () => {
+  const backfill = migration.match(/update public\.products p\s*\nset first_visible_at = least\(now\(\), coalesce\(p\.publish_date, p\.created_at\)\)[\s\S]*?where p\.first_visible_at is null[\s\S]*?;/);
+  assert.ok(backfill, "expected the first_visible_at backfill");
+  const body = backfill![0];
+  assert.match(body, /p\.status = 'published'/);
+  assert.match(body, /coalesce\(p\.paused_by_brand, false\) = false/);
+  assert.match(body, /p\.publish_date is null or p\.publish_date <= now\(\)/);
+  assert.match(body, /b\.is_active = true/);
+  assert.match(body, /p\.launch_policy = 'show_now'/);
+  assert.match(body, /p\.launch_policy = 'when_stocked' and p\.first_stocked_at is not null/);
+  assert.match(body, /bft\.status not in \('completed', 'cancelled', 'failed'\)/);
+});
+
+test("private.is_product_customer_visible is the single canonical predicate, checking every required condition, SECURITY DEFINER with a locked search_path", () => {
+  const body = fn("private\\.is_product_customer_visible");
+  assert.match(body, /p\.status = 'published'/);
+  assert.match(body, /coalesce\(p\.paused_by_brand, false\) = false/);
+  assert.match(body, /p\.publish_date is null or p\.publish_date <= now\(\)/);
+  assert.match(body, /exists \(select 1 from public\.brands b where b\.id = p\.brand_id and b\.is_active = true\)/);
+  assert.match(body, /p\.launch_policy = 'show_now'/);
+  assert.match(body, /p\.launch_policy = 'when_stocked' and p\.first_stocked_at is not null/);
+  assert.match(body, /not exists \(\s*\n\s*select 1 from public\.brand_fulfillment_transitions bft/);
+  assert.match(body, /security definer/);
+  assert.match(body, /set search_path = ''/);
+  assert.ok(sql.includes("revokeallonfunctionprivate.is_product_customer_visible(text)frompublic"));
+  assert.ok(sql.includes("grantexecuteonfunctionprivate.is_product_customer_visible(text)toanon,authenticated,service_role"));
+});
+
+test("public.is_product_customer_visible is a service_role-only wrapper (PostgREST cannot call a private.* function directly)", () => {
+  const body = fn("public\\.is_product_customer_visible");
+  assert.match(body, /select coalesce\(private\.is_product_customer_visible\(p_product_id\), false\);/);
+  assert.ok(sql.includes("revokeallonfunctionpublic.is_product_customer_visible(text)frompublic,anon,authenticated"));
+  assert.ok(sql.includes("grantexecuteonfunctionpublic.is_product_customer_visible(text)toservice_role"));
+});
+
+test("the products RLS policy and storefront_products view both reuse the one canonical predicate — no duplicated/scattered condition list", () => {
+  const policy = migration.match(/create policy "Public can read published products"[\s\S]*?;/)![0];
+  assert.match(policy, /using \(private\.is_product_customer_visible\(products\.id\)\)/);
+  // Nothing else in the policy body — the whole rule lives in the function.
+  assert.doesNotMatch(policy, /status = 'published'/);
+
+  const view = migration.match(/create or replace view public\.storefront_products[\s\S]*?;\n\ngrant select/)![0];
+  assert.match(view, /where private\.is_product_customer_visible\(p\.id\);/);
+  assert.doesNotMatch(view, /where p\.status = 'published'/);
+  assert.match(view, /p\.launch_policy, p\.first_visible_at/);
+  assert.doesNotMatch(view, /select\s+p\.\*/i);
+});
+
+test("the order_items availability trigger reuses the same canonical predicate instead of its old narrower status/paused-only check", () => {
+  const body = fn("private\\.enforce_order_item_product_available");
+  assert.match(body, /if v_product_id is null and new\.variant_id is not null then/);
+  assert.match(body, /select product_id into v_product_id from public\.product_variants where id = new\.variant_id/);
+  assert.match(body, /not coalesce\(private\.is_product_customer_visible\(v_product_id\), false\)/);
+  assert.match(body, /raise exception 'PRODUCT_NOT_AVAILABLE_FOR_ORDER'/);
+  assert.ok(sql.includes("createtriggerorder_items_enforce_product_available"));
+  assert.ok(sql.includes("beforeinsertonpublic.order_items"));
+});
+
+test("create_variant_with_opening_stock keeps its exact old signature but always inserts quantity 0 and creates no inventory_movements row", () => {
+  const body = fn("public\\.create_variant_with_opening_stock");
+  assert.match(body, /p_product_id text,\s*\n\s*p_sku text,\s*\n\s*p_combo_key text,\s*\n\s*p_opening_stock integer,/);
+  assert.match(body, /p_product_id, p_sku, 0, p_variant_price, p_variant_discount_percent,/);
+  assert.doesNotMatch(body, /p_opening_stock,\s*\n\s*p_low_stock_threshold_override/);
+  assert.doesNotMatch(body, /insert into public\.inventory_movements/);
+  assert.doesNotMatch(body, /first_stocked_at/);
+});
+
+test("apply_inventory_adjustments recognizes and tags a variant's first genuine positive-stock movement, then stamps product-level launch state", () => {
+  const body = fn("public\\.apply_inventory_adjustments");
+  assert.match(
+    body,
+    /v_is_opening_stock := v_variant\.quantity = 0 and v_new_quantity > 0 and not exists \(\s*\n\s*select 1 from public\.inventory_movements\s*\n\s*where variant_id = v_variant\.id and is_opening_stock = true\s*\n\s*\);/
+  );
+  assert.match(body, /is_opening_stock\s*\n\s*\) values \([\s\S]*?v_is_opening_stock\s*\n\s*\);/);
+  assert.match(body, /if v_is_opening_stock then\s*\n\s*update public\.products\s*\n\s*set first_stocked_at = coalesce\(first_stocked_at, now\(\)\)/);
+  assert.match(body, /perform private\.stamp_product_first_visible_if_eligible\(v_variant\.product_id\);/);
+  // Every other property (lock order, idempotency-by-operation-key,
+  // zakhnook_fulfilled rejection, open-transition rejection) is unchanged
+  // from the prior canonical version.
+  assert.match(body, /select fulfillment_mode into v_fulfillment_mode from public\.brands where id = p_brand_id for update;/);
+  assert.match(body, /PARTNER_DIRECT_ADJUSTMENT_FORBIDDEN/);
+  assert.match(body, /FULFILLMENT_TRANSITION_IN_PROGRESS/);
+});
+
+test("receive_warehouse_document_canonical restores the first_stocked_at stamp the prior migration's re-declaration had silently dropped, and adds the same is_opening_stock tagging", () => {
+  const body = fn("private\\.receive_warehouse_document_canonical");
+  assert.match(
+    body,
+    /v_is_opening_stock := p_expected_direction = 'to_local'\s*\n\s*and v_variant\.quantity = 0 and v_new_quantity > 0/
+  );
+  // The regression fix: a 'to_local' receipt with received_ok_qty > 0 must
+  // stamp first_stocked_at again (this was dropped by
+  // 20260814010500_partner_replenishment_request.sql's re-declaration).
+  assert.match(
+    body,
+    /if p_expected_direction = 'to_local' and v_ok > 0 then\s*\n\s*update public\.products\s*\n\s*set first_stocked_at = coalesce\(first_stocked_at, now\(\)\)/
+  );
+  assert.match(body, /perform private\.stamp_product_first_visible_if_eligible\(v_variant\.product_id\);/);
+  assert.doesNotMatch(body, /mark_product_first_stocked/);
+  // Unchanged locking/reconciliation behavior from the prior canonical version.
+  assert.match(body, /for update of pv/);
+  assert.match(body, /TRANSFER_ITEM_NOT_RECONCILED/);
+});
+
+test("stamp_product_first_visible_if_eligible is idempotent and concurrency-safe: the UPDATE's own WHERE clause both locks the row and re-checks eligibility at that moment", () => {
+  const body = fn("private\\.stamp_product_first_visible_if_eligible");
+  assert.match(body, /update public\.products\s*\n\s*set first_visible_at = now\(\)\s*\n\s*where id = p_product_id\s*\n\s*and first_visible_at is null\s*\n\s*and private\.is_product_customer_visible\(p_product_id\);/);
+  // The private function itself is never directly grantable to
+  // service_role either — only its public.* wrapper below is callable from
+  // outside this migration's own SQL (from a plpgsql `perform`, which
+  // doesn't need a grant at all).
+  assert.ok(sql.includes("revokeallonfunctionprivate.stamp_product_first_visible_if_eligible(text)frompublic,anon,authenticated,service_role"));
+
+  const wrapper = fn("public\\.stamp_product_first_visible_if_eligible");
+  assert.match(wrapper, /select private\.stamp_product_first_visible_if_eligible\(p_product_id\);/);
+  assert.ok(sql.includes("revokeallonfunctionpublic.stamp_product_first_visible_if_eligible(text)frompublic,anon,authenticated"));
+  assert.ok(sql.includes("grantexecuteonfunctionpublic.stamp_product_first_visible_if_eligible(text)toservice_role"));
+});
+
+test("execute_scheduled_product_visibility_activation claims a bounded batch with FOR UPDATE SKIP LOCKED and reuses the same canonical eligibility check per row", () => {
+  const body = fn("private\\.execute_scheduled_product_visibility_activation");
+  assert.match(body, /where first_visible_at is null\s*\n\s*and status = 'published'/);
+  assert.match(body, /limit greatest\(1, least\(coalesce\(p_batch_size, 100\), 500\)\)\s*\n\s*for update skip locked/);
+  assert.match(body, /if private\.is_product_customer_visible\(v_row\.id\) then/);
+  assert.ok(sql.includes("revokeallonfunctionprivate.execute_scheduled_product_visibility_activation(integer)frompublic,anon,authenticated,service_role"));
+
+  const wrapper = fn("public\\.execute_scheduled_product_visibility_activation");
+  assert.match(wrapper, /select private\.execute_scheduled_product_visibility_activation\(p_batch_size\);/);
+  assert.ok(sql.includes("grantexecuteonfunctionpublic.execute_scheduled_product_visibility_activation(integer)toservice_role"));
+});
+
+test("set_product_launch_policy_show_now verifies ownership, is idempotent, and only ever moves when_stocked -> show_now", () => {
+  const body = fn("public\\.set_product_launch_policy_show_now");
+  assert.match(body, /if p_brand_id is not null and v_product\.brand_id <> p_brand_id then/);
+  assert.match(body, /'code', 'PRODUCT_NOT_OWNED'/);
+  assert.match(body, /if v_product\.launch_policy = 'show_now' then\s*\n\s*return jsonb_build_object\('ok', true, 'code', 'ALREADY_SHOW_NOW'/);
+  assert.match(body, /update public\.products set launch_policy = 'show_now' where id = p_product_id;/);
+  assert.match(body, /perform private\.stamp_product_first_visible_if_eligible\(p_product_id\);/);
+  assert.ok(sql.includes("revokeallonfunctionpublic.set_product_launch_policy_show_now(text,uuid,uuid,text)frompublic,anon,authenticated"));
+  assert.ok(sql.includes("grantexecuteonfunctionpublic.set_product_launch_policy_show_now(text,uuid,uuid,text)toservice_role"));
+});
+
+test("every mutating/gating function in this migration is either security definer with a locked search_path, or a private helper never exposed to anon/authenticated", () => {
+  const definerCount = (sql.match(/securitydefinersetsearch_path=(''|public,pg_temp)/g) ?? []).length;
+  assert.ok(definerCount >= 8, `expected at least 8 security definer functions with a locked search_path, saw ${definerCount}`);
+});

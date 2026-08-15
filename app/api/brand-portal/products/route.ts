@@ -16,6 +16,7 @@ import {
 } from "@/lib/admin/variantPersistence";
 import { loadProductVariants } from "@/lib/admin/loadProductVariants";
 import { claimProductStorageAssets } from "@/lib/admin/productDeletion";
+import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 
@@ -140,7 +141,6 @@ export async function POST(request: NextRequest) {
     submitted: body.variants,
     actorId: owner.user.id,
     operationKey: request.headers.get("idempotency-key") ?? crypto.randomUUID(),
-    forceZeroOpeningStock: owner.isMahalyPartner,
   });
   if (!variantsResult.ok) {
     return NextResponse.json({ error: `Product submitted, but ${variantsResult.error}` }, { status: 500 });
@@ -159,6 +159,10 @@ export async function POST(request: NextRequest) {
   }
 
   const variants = await loadProductVariants(id);
+
+  if (body.status === "published") {
+    await stampFirstVisibleIfEligible(id);
+  }
 
   const auditLogId = await logAudit({
     actorId: owner.user.id,
