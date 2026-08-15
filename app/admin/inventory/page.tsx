@@ -121,19 +121,7 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
 
       <div className="mt-6"><AdminWorkspaceNav workspace="inventory" activeHref="/admin/inventory" /></div>
 
-      <section aria-label="Inventory health" className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.04)]">
-        <div className="grid grid-cols-2 xl:grid-cols-4">
-          {health.map((item) => (
-            <Link key={item.label} href={item.href} className={`group relative min-h-[112px] border-b border-r border-[#eee7e1] px-4 py-4 transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 [&:nth-child(2n)]:border-r-0 [&:nth-child(n+3)]:border-b-0 xl:border-b-0 xl:px-5 xl:[&:nth-child(2n)]:border-r xl:last:border-r-0 ${item.active ? "bg-[#fff8f6]" : "hover:bg-[#fcfaf8]"}`}>
-              <span className={`absolute inset-y-4 left-0 w-[3px] rounded-r-full ${item.tone} ${item.active ? "opacity-100" : "opacity-0 transition-opacity group-hover:opacity-40"}`} aria-hidden="true" />
-              <div className="flex items-start justify-between gap-4"><div><p className={`text-[10.5px] font-bold uppercase tracking-[0.1em] ${item.active ? "text-[#C85956]" : "text-[#8d8076]"}`}>{item.label}</p><p className="mt-1 text-[27px] font-extrabold tabular-nums tracking-[-0.04em] text-[#242424]">{formatCount(item.value)}</p></div><span className={`mt-1 h-2.5 w-2.5 rounded-full ${item.tone}`} aria-hidden="true" /></div>
-              <p className="mt-1 text-[10.5px] text-[#91837a]">{item.note}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section aria-label="Inventory operations" className="mt-4 grid overflow-hidden rounded-[18px] border border-[#eadfd7] bg-[#fcfaf8] sm:grid-cols-3">
+      <section aria-label="Inventory operations" className="grid overflow-hidden rounded-[18px] border border-[#eadfd7] bg-[#fcfaf8] sm:grid-cols-3">
         <OperationalSignal icon={Truck} label="Incoming stock" value={`${formatCount(overview.incomingUnitCount)} units`} note={`${formatCount(overview.openTransferCount)} open warehouse ${overview.openTransferCount === 1 ? "document" : "documents"}`} href="/admin/warehouse" />
         <OperationalSignal icon={Activity} label="Recent activity" value={`${formatCount(overview.movementsLast24Hours)} movements`} note="Recorded in the last 24 hours" />
         <OperationalSignal icon={PackageSearch} label="Catalog coverage" value={`${formatCount(overview.brands.length)} brands`} note={`${formatCount(overview.totalVariantCount)} active variants monitored`} href="/admin/products" />
@@ -150,6 +138,21 @@ export default async function AdminInventoryPage(props: { searchParams: Promise<
           <FilterDate label="To" name="to" value={to ?? ""} />
           <div className="flex h-11 items-center gap-2"><button type="submit" className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20">Apply</button>{activeFilterCount > 0 ? <Link href="/admin/inventory" className="inline-flex h-11 items-center px-1 text-[11px] font-bold text-[#8d8076] hover:text-[#C85956]">Clear</Link> : null}</div>
         </div>
+        <nav aria-label="Inventory health" className="mt-3 grid grid-cols-2 gap-1.5 border-t border-[#eee7e1] pt-3 lg:grid-cols-4">
+          {health.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              title={item.note}
+              className={`group flex h-10 min-w-0 items-center gap-2 rounded-lg px-3 transition-[background-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25 active:scale-[0.98] ${item.active ? "bg-[#fff2ef] text-[#55463d]" : "text-[#75685f] hover:bg-[#fcf8f5] hover:text-[#403730]"}`}
+            >
+              <span className={`h-2 w-2 flex-none rounded-full ${item.tone}`} aria-hidden="true" />
+              <span className="truncate text-[10.5px] font-bold">{item.label}</span>
+              <span className="ml-auto flex-none text-[13px] font-extrabold tabular-nums text-[#302924]">{formatCount(item.value)}</span>
+              <span className="sr-only">{item.note}</span>
+            </Link>
+          ))}
+        </nav>
       </form>
 
       <section className="mt-4 overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
