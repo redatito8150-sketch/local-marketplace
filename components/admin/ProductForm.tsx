@@ -670,13 +670,17 @@ export default function ProductForm({
   const publishReadinessIssues = validateProductSections(buildPayload("published"));
   // Once a product leaves Draft there's no path back to it — no button
   // anywhere ever re-submits "draft" except Save as Draft itself, which
-  // this hides — so the status it had when this edit session started is
-  // enough to know whether it's ever been published: "draft" means it
-  // hasn't; anything else (published, archived, or a legacy pending
-  // status) means it has, or was archived directly without publishing
-  // first — a rare initial choice treated the same way rather than
-  // reopening Draft for it.
-  const hasLeftDraft = currentMode === "edit" && initial?.status !== "draft";
+  // this hides. CORRECTIVE PASS: this used to read initial?.status, which
+  // is only ever the server-loaded snapshot from when the editor first
+  // opened — for a product created and then published in the SAME wizard
+  // session, `initial` stays undefined the whole time (it never existed on
+  // the server at mount), so that check could never observe the
+  // in-session publish and stayed permanently wrong for that path. Reading
+  // form.status instead reflects the CURRENT session truth for both entry
+  // paths: initialized from initial?.status for a real edit-mode open, and
+  // updated to targetStatus by submit() itself after every successful
+  // save (including the wizard's own Publish).
+  const hasLeftDraft = currentMode === "edit" && form.status !== "draft";
   const completedSections = new Set<ProductEditorSectionId>(
     PRODUCT_EDITOR_SECTIONS.filter((section) =>
       section.id === "visibility"
@@ -1107,7 +1111,23 @@ export default function ProductForm({
           <p className="mt-3 text-[10.5px] leading-4 text-ink-soft/45">Save it as a Draft if you want to finish it later. Published products are included in New Arrivals for their first 20 days; featured placement remains Admin-managed.</p>
         </FormSection> : null}
 
-        {isCreateExperience ? (
+        {/* CORRECTIVE PASS: the wizard bottom bar (with its own Save as
+            Draft) is only ever shown while the product is genuinely still a
+            Draft. The instant a create-wizard session successfully
+            publishes, this switches to the normal edit-mode bottom bar
+            below — which, now that hasLeftDraft correctly reads form.status
+            instead of the always-undefined `initial` for this path, hides
+            Save as Draft for a published product exactly like any other
+            edit session. This was the actual client-side bypass: the
+            wizard bar previously kept rendering (and kept offering Save as
+            Draft) forever after a successful in-session publish, since
+            isCreateExperience is derived from the static `mode` prop and
+            never changes. A server-side transition guard
+            (private.enforce_product_lifecycle_transition(), supabase/
+            migrations/20260815000000_product_launch_policy_and_opening_stock.sql)
+            is the real enforcement boundary regardless of what this UI
+            shows. */}
+        {isCreateExperience && form.status === "draft" ? (
           <ProductWizardBottomBar
             stepIndex={activeStepIndex}
             stepCount={PRODUCT_EDITOR_SECTIONS.length}

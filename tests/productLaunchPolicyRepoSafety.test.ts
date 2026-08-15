@@ -72,17 +72,25 @@ test("no checkout/visibility code still keys launch-gating off brands.fulfillmen
   }
 });
 
-test("lib/backInStock.ts's checkAndNotifyRestock checks product-level visibility (not just variant-level purchasability) before sending, and claims subscriptions atomically", () => {
+test("lib/backInStock.ts's checkAndNotifyRestock checks product-level visibility (not just variant-level purchasability) before sending, and claims subscriptions atomically via a durable claim/lease outbox", () => {
   const src = read("lib/backInStock.ts");
-  assert.match(src, /is_product_customer_visible/);
-  // Atomic claim: DELETE ... .select(...) in one call (Supabase's
-  // DELETE...RETURNING equivalent), not a separate SELECT-then-DELETE pair
-  // that a concurrent second call could race.
+  // CORRECTIVE PASS: subscriptions are no longer deleted before delivery
+  // (which had no recovery path on a crash/failure between delete and
+  // send). claim_back_in_stock_deliveries (supabase/migrations/
+  // 20260815000000_product_launch_policy_and_opening_stock.sql) atomically
+  // claims each eligible row into a leased 'claimed' state, checking
+  // product-level visibility as PART of the same claiming UPDATE — not a
+  // separate, staleable read — so a concurrent worker can never double-claim
+  // and a crash before delivery is retried, not silently discarded.
   const fnBody = src.slice(src.indexOf("export async function checkAndNotifyRestock"));
-  const deleteIndex = fnBody.indexOf(".delete()");
-  const selectIndex = fnBody.indexOf('.select("id, user_id, email, variant_id")');
-  assert.ok(deleteIndex >= 0 && selectIndex >= 0, "expected an atomic delete-and-claim (.delete().select(...)) call");
-  assert.ok(selectIndex > deleteIndex && selectIndex - deleteIndex < 100, "expected .select(...) to immediately follow .delete() — a single atomic statement, not a separate SELECT-then-DELETE pair");
+  assert.match(fnBody, /supabaseAdmin\.rpc\("claim_back_in_stock_deliveries"/);
+  assert.match(fnBody, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_sent"/);
+  assert.match(fnBody, /supabaseAdmin\.rpc\("mark_back_in_stock_delivery_failed"/);
+  // Every delivery outcome (email failure, notifyUser failure, no
+  // resolvable detail) is explicitly reported back — never left claimed
+  // forever, never silently treated as sent.
+  assert.match(fnBody, /if \(!emailResult\.ok\)/);
+  assert.match(fnBody, /if \(!notifyResult\.ok\)/);
 });
 
 test("New Arrivals (lib/newArrivals.ts + lib/data/products.ts's getNewArrivals) uses first_visible_at, never publish_date, for both the window membership and the ranking", () => {
@@ -108,12 +116,17 @@ test("the explicit Show now override is only ever performed through the canonica
   for (const file of appLibComponentFiles) {
     const relative = path.relative(rootDir, file).replace(/\\/g, "/");
     const content = readFileSync(file, "utf8");
-    // Only a real write matters here — `.update({...launch_policy...})` or
-    // `.insert({...launch_policy...})` against Supabase directly. Type
+    // Only a real write matters here — `.update({ launch_policy: ... })` or
+    // `.insert({ launch_policy: ... })` against Supabase directly. Type
     // annotations (`launch_policy: "show_now" | "when_stocked"`) and
     // read-time display fallbacks (`row.launch_policy ?? "show_now"`) are
-    // not writes and must not be flagged.
-    if (/\.(update|insert)\(\s*\{[\s\S]*?launch_policy/.test(content)) {
+    // not writes and must not be flagged. Bounded to not cross a `}` (so an
+    // unrelated later object literal, comment, or migration-filename
+    // string elsewhere in the same file — e.g. "..._launch_policy_and_..."
+    // in a corrective-pass doc comment — can't false-positive the match)
+    // and requires an actual `launch_policy:` key, not just the bare
+    // substring appearing anywhere downstream.
+    if (/\.(update|insert)\(\s*\{[^}]*?launch_policy\s*:/.test(content)) {
       offenders.push(relative);
     }
   }

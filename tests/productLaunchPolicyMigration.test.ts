@@ -60,7 +60,12 @@ test("launch_policy is backfilled to preserve the OLD fulfillment_mode-keyed gat
 });
 
 test("first_visible_at backfill only ever sets a currently-null column on a product that is ALREADY visible under the new rule, never a future/fabricated date", () => {
-  const backfill = migration.match(/update public\.products p\s*\nset first_visible_at = least\(now\(\), coalesce\(p\.publish_date, p\.created_at\)\)[\s\S]*?where p\.first_visible_at is null[\s\S]*?;/);
+  // CORRECTIVE PASS: the candidate date is now the LATER of publish-
+  // eligibility time and (for when_stocked products only) first_stocked_at
+  // — a when_stocked product could never have been visible before its
+  // stock gate passed, so publish_date alone could produce an impossibly
+  // early date. Still capped at now() either way.
+  const backfill = migration.match(/update public\.products p\s*\nset first_visible_at = least\(\s*\n\s*now\(\),\s*\n\s*case\s*\n\s*when p\.launch_policy = 'when_stocked'\s*\n\s*then greatest\(coalesce\(p\.publish_date, p\.created_at\), p\.first_stocked_at\)\s*\n\s*else coalesce\(p\.publish_date, p\.created_at\)\s*\n\s*end\s*\n\)[\s\S]*?where p\.first_visible_at is null[\s\S]*?;/);
   assert.ok(backfill, "expected the first_visible_at backfill");
   const body = backfill![0];
   assert.match(body, /p\.status = 'published'/);
@@ -128,9 +133,14 @@ test("create_variant_with_opening_stock keeps its exact old signature but always
 
 test("apply_inventory_adjustments recognizes and tags a variant's first genuine positive-stock movement, then stamps product-level launch state", () => {
   const body = fn("public\\.apply_inventory_adjustments");
+  // CORRECTIVE PASS: historical evidence (any prior movement that itself
+  // landed positive stock, not just an existing is_opening_stock=true
+  // marker) also disqualifies a later movement from being wrongly
+  // recognized as opening stock — closes the gap for a legacy variant that
+  // reached positive stock, sold back to 0, and carries no marker.
   assert.match(
     body,
-    /v_is_opening_stock := v_variant\.quantity = 0 and v_new_quantity > 0 and not exists \(\s*\n\s*select 1 from public\.inventory_movements\s*\n\s*where variant_id = v_variant\.id and is_opening_stock = true\s*\n\s*\);/
+    /v_is_opening_stock := v_variant\.quantity = 0 and v_new_quantity > 0 and not exists \(\s*\n\s*select 1 from public\.inventory_movements\s*\n\s*where variant_id = v_variant\.id and \(is_opening_stock = true or new_quantity > 0\)\s*\n\s*\);/
   );
   assert.match(body, /is_opening_stock\s*\n\s*\) values \([\s\S]*?v_is_opening_stock\s*\n\s*\);/);
   assert.match(body, /if v_is_opening_stock then\s*\n\s*update public\.products\s*\n\s*set first_stocked_at = coalesce\(first_stocked_at, now\(\)\)/);
@@ -181,8 +191,16 @@ test("stamp_product_first_visible_if_eligible is idempotent and concurrency-safe
 test("execute_scheduled_product_visibility_activation claims a bounded batch with FOR UPDATE SKIP LOCKED and reuses the same canonical eligibility check per row", () => {
   const body = fn("private\\.execute_scheduled_product_visibility_activation");
   assert.match(body, /where first_visible_at is null\s*\n\s*and status = 'published'/);
+  // CORRECTIVE PASS — starvation fix: the canonical eligibility check now
+  // runs INSIDE the candidate query's own WHERE clause, before LIMIT/FOR
+  // UPDATE SKIP LOCKED, not as a redundant in-loop `if` after the batch is
+  // already fetched. The original in-loop check let a persistent block of
+  // ineligible rows sorted early re-consume every batch forever, starving
+  // any eligible row sorted after them — moving the check into WHERE means
+  // only already-eligible rows are ever claimed.
+  assert.match(body, /and private\.is_product_customer_visible\(id\)\s*\n\s*order by publish_date nulls first, created_at/);
   assert.match(body, /limit greatest\(1, least\(coalesce\(p_batch_size, 100\), 500\)\)\s*\n\s*for update skip locked/);
-  assert.match(body, /if private\.is_product_customer_visible\(v_row\.id\) then/);
+  assert.doesNotMatch(body, /if private\.is_product_customer_visible\(v_row\.id\) then/);
   assert.ok(sql.includes("revokeallonfunctionprivate.execute_scheduled_product_visibility_activation(integer)frompublic,anon,authenticated,service_role"));
 
   const wrapper = fn("public\\.execute_scheduled_product_visibility_activation");

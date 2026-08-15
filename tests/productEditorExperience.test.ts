@@ -255,7 +255,14 @@ test("new products use a six-step wizard with a prominent, reversible customer p
   const chromeSource = readFileSync(new URL("../components/admin/ProductEditorChrome.tsx", import.meta.url), "utf8");
   const previewSource = readFileSync(new URL("../components/admin/ProductLivePreview.tsx", import.meta.url), "utf8");
 
-  assert.match(formSource, /isCreateExperience \? \(/);
+  // CORRECTIVE PASS: the wizard bottom bar (with its own Save as Draft) is
+  // only shown while the create-session product is still genuinely a
+  // Draft — the instant an in-session publish succeeds, this switches to
+  // the normal edit-mode bottom bar, which correctly hides Save as Draft
+  // for a published product. This closes the bypass where the wizard bar
+  // (gated only on the static `mode` prop, which never changes mid-session)
+  // kept offering Save as Draft forever after a successful publish.
+  assert.match(formSource, /isCreateExperience && form\.status === "draft" \? \(/);
   assert.match(formSource, /<ProductWizardBottomBar/);
   assert.match(formSource, /activeSection === "inventory"/);
   assert.doesNotMatch(chromeSource, /label: "Shipping"/);

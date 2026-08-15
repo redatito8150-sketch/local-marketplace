@@ -44,6 +44,13 @@ type DisplayProduct = BrandProductListItem & {
   editHref: string;
   inventoryHref: string;
   brandParam: string;
+  // Show Now is an owner-only action (per the role model — an assistant
+  // may pause/retire but not change launch policy), server-re-verified
+  // regardless of this. Hidden here rather than shown-disabled/always-403:
+  // an assistant or an admin viewing via impersonation (a read-only
+  // safeguard — impersonation must never let an admin act as the brand)
+  // never even sees the control.
+  canShowNow: boolean;
 };
 
 export default async function BrandPortalProductsPage(props: { searchParams: Promise<ProductParams> }) {
@@ -107,12 +114,14 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   const currentPage = Math.min(requestedPage, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
   const paginatedProducts = filteredProducts.slice(pageStart, pageStart + PAGE_SIZE);
+  const canShowNow = owner.accessLevel === "owner" && !owner.isImpersonating;
   const displayProducts: DisplayProduct[] = paginatedProducts.map((product) => ({
     ...product,
     statusInfo: getStatusInfo(product),
     editHref: `/brand-portal/products/${product.id}/edit${brandParam}`,
     inventoryHref: buildInventoryHref(product, owner.isImpersonating ? owner.brandSlug ?? undefined : undefined),
     brandParam,
+    canShowNow,
   }));
   const firstResult = filteredProducts.length ? pageStart + 1 : 0;
   const lastResult = Math.min(pageStart + PAGE_SIZE, filteredProducts.length);
@@ -370,7 +379,7 @@ function ProductStatuses({ product }: { product: DisplayProduct }) {
       )}
       {product.hasPendingEdit && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Edit pending</span>}
       {product.pausedByBrand && <span className="rounded-lg bg-[#eee9e4] px-2.5 py-1 text-[10.5px] font-bold text-[#6f6259]">Paused</span>}
-      {launchState?.showNow && <ShowNowButton productId={product.id} brandParam={product.brandParam} />}
+      {launchState?.showNow && product.canShowNow && <ShowNowButton productId={product.id} brandParam={product.brandParam} />}
       {product.reviewNotes && <p className="w-full max-w-xs pt-1 text-[11px] leading-4 text-red-700">{product.reviewNotes}</p>}
     </div>
   );

@@ -58,11 +58,36 @@ export async function subscribeToRestock(
     .insert({ user_id: userId, email, product_id: productId, variant_id: variantId });
   // A unique_violation just means they already subscribed — treat that as
   // success rather than an error the shopper needs to see.
-  if (insertError && insertError.code !== "23505") {
+  if (insertError) {
+    if (insertError.code === "23505") return { ok: true };
+    // CORRECTIVE PASS: the database's own back_in_stock_subscriptions_
+    // enforce_visibility trigger (supabase/migrations/
+    // 20260815000000_product_launch_policy_and_opening_stock.sql) rejects
+    // an INSERT outright for a product that isn't currently
+    // customer-visible (PRODUCT_NOT_AVAILABLE_FOR_NOTIFY_ME) — a hidden
+    // when_stocked, paused, future-scheduled, inactive-brand, archived, or
+    // transition-blocked product. A show_now out-of-stock product is
+    // unaffected (it's visible, so the trigger never fires). This is the
+    // hard boundary; this check just turns the raw DB exception into a
+    // clean, user-facing message.
+    if (insertError.message.includes("PRODUCT_NOT_AVAILABLE_FOR_NOTIFY_ME")) {
+      return { ok: false, error: "This product isn't currently available to customers." };
+    }
     logError("subscribeToRestock failed", insertError.message);
     return { ok: false, error: "Something went wrong. Please try again." };
   }
   return { ok: true };
+}
+
+// Shape of a row returned by claim_back_in_stock_deliveries (supabase/
+// migrations/20260815000000_product_launch_policy_and_opening_stock.sql) —
+// not in the generated Supabase types since that migration is still
+// unapplied (see the RPC call site below).
+interface ClaimedBackInStockDelivery {
+  id: string;
+  variant_id: string;
+  user_id: string;
+  email: string;
 }
 
 interface VariantNotifyDetail {
@@ -152,17 +177,21 @@ async function loadVariantNotifyDetails(variantIds: string[]): Promise<Map<strin
 // side effect hung off unrelated save/adjustment requests and must never
 // fail those.
 //
-// Two conditions must both hold before a subscriber is notified:
-//   1. The variant itself is genuinely purchasable (not archived, Selling
-//      Status Active, quantity > 0 — never for damaged/missing/quarantined/
-//      reserved stock, since none of that ever reaches product_variants.quantity).
-//   2. The PRODUCT is actually customer-visible right now — reuses the one
-//      canonical private.is_product_customer_visible() predicate (via its
-//      public wrapper) so this can never drift from what the storefront
-//      itself would show: paused, archived, an inactive brand, a still-
-//      future publish_date, an open fulfillment transition, or a
-//      when_stocked product whose stock gate hasn't actually passed yet
-//      all correctly suppress the email, not just variant-level state.
+// CORRECTIVE PASS — durable delivery: subscriptions are no longer deleted
+// before (or instead of) confirmed delivery. claim_back_in_stock_deliveries
+// (supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql)
+// atomically claims each eligible row (variant purchasable — checked here
+// — AND the product currently customer-visible — checked as PART of the
+// same claiming UPDATE, not a separate stale read) into a 'claimed' lease.
+// A concurrent worker can never double-claim: the claiming UPDATE's WHERE
+// clause only matches 'pending' rows or 'claimed' rows whose lease has
+// expired, so two simultaneous calls simply serialize and the second only
+// ever claims whatever the first didn't. Delivery success/failure is then
+// reported back explicitly (mark_..._sent / mark_..._failed) — a failed
+// send (or a process crash before either call lands) leaves the row
+// 'claimed' until its lease expires, then it's retried on a later call, up
+// to a bounded attempts budget; only then does it become a permanent,
+// inspectable 'failed' row. Nothing is ever silently discarded.
 export async function checkAndNotifyRestock(variantIds: string[]): Promise<void> {
   const uniqueIds = [...new Set(variantIds.filter(Boolean))];
   if (uniqueIds.length === 0) return;
@@ -174,68 +203,86 @@ export async function checkAndNotifyRestock(variantIds: string[]): Promise<void>
       .in("id", uniqueIds);
     if (error || !variants?.length) return;
 
-    const purchasableVariants = variants.filter((row) =>
-      isVariantPurchasable({
-        sellingStatus: row.selling_status,
-        quantity: row.quantity,
-        isArchived: row.is_archived,
-      })
-    );
-    if (purchasableVariants.length === 0) return;
-
-    const distinctProductIds = [...new Set(purchasableVariants.map((row) => row.product_id as string))];
-    const visibilityEntries = await Promise.all(
-      distinctProductIds.map(async (productId) => {
-        const { data: visible } = await supabaseAdmin.rpc("is_product_customer_visible", { p_product_id: productId });
-        return [productId, Boolean(visible)] as const;
-      })
-    );
-    const visibleProductIds = new Set(visibilityEntries.filter(([, visible]) => visible).map(([productId]) => productId));
-
-    const purchasableIds = purchasableVariants
-      .filter((row) => visibleProductIds.has(row.product_id as string))
+    // Variant-level purchasability (Selling Status Active, quantity > 0,
+    // not archived — never for damaged/missing/quarantined/reserved
+    // stock, since none of that ever reaches product_variants.quantity).
+    // Product-level visibility is checked next, atomically, inside the
+    // claim itself.
+    const purchasableIds = variants
+      .filter((row) =>
+        isVariantPurchasable({
+          sellingStatus: row.selling_status,
+          quantity: row.quantity,
+          isArchived: row.is_archived,
+        })
+      )
       .map((row) => row.id as string);
     if (purchasableIds.length === 0) return;
 
-    // Atomically claims (deletes-and-returns) the matching subscriptions in
-    // one statement — a concurrent second call for the same variant (a
-    // retry, or two stock-increase paths racing in the same window) can
-    // only ever claim whatever this call didn't already delete, so a
-    // subscriber is never emailed twice for the same restock event. No
-    // separate SELECT-then-DELETE round trip to race against.
-    const { data: subscriptions, error: subsError } = await supabaseAdmin
-      .from("back_in_stock_subscriptions")
-      .delete()
-      .in("variant_id", purchasableIds)
-      .select("id, user_id, email, variant_id");
-    if (subsError || !subscriptions?.length) return;
+    // CORRECTIVE PASS: claim_back_in_stock_deliveries isn't in the
+    // generated Supabase types yet (its migration is still unapplied — see
+    // this migration's own header — so `supabase gen types` has never run
+    // against it), which makes `.rpc()`'s return type unknown[] rather than
+    // a real row shape. Cast explicitly to the RPC's documented return
+    // columns (supabase/migrations/20260815000000_product_launch_policy_
+    // and_opening_stock.sql, private/public.claim_back_in_stock_deliveries)
+    // instead of leaving this untyped.
+    const { data: claimedRaw, error: claimError } = await supabaseAdmin.rpc("claim_back_in_stock_deliveries", {
+      p_variant_ids: purchasableIds,
+    });
+    if (claimError || !claimedRaw?.length) {
+      if (claimError) logError("checkAndNotifyRestock: claim failed", claimError.message);
+      return;
+    }
+    const claimed = claimedRaw as unknown as ClaimedBackInStockDelivery[];
 
-    const details = await loadVariantNotifyDetails([...new Set(subscriptions.map((row) => row.variant_id as string))]);
+    const details = await loadVariantNotifyDetails([...new Set(claimed.map((row) => row.variant_id))]);
 
-    // The subscription row is already claimed (deleted) at this point — a
-    // failure sending any one subscriber's email/notification must not
-    // stop the rest of the batch from going out, and must still be
-    // observable (logged) rather than silently swallowed, since there is
-    // no retry path left for that specific subscriber once its row is gone.
-    for (const subscription of subscriptions) {
-      const detail = details.get(subscription.variant_id as string);
-      if (!detail) continue;
-      try {
-        const { subject, html } = backInStockEmail(detail);
-        await sendEmail({ to: subscription.email as string, subject, html });
-        await notifyUser(
-          subscription.user_id as string,
-          "back_in_stock",
-          `${detail.productName} is back in stock`,
-          detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
-          { relatedEntityType: "product", relatedEntityId: detail.productId }
-        );
-      } catch (sendErr) {
-        logError(
-          `checkAndNotifyRestock: delivery failed for subscription ${subscription.id}`,
-          sendErr instanceof Error ? sendErr.message : String(sendErr)
-        );
+    // Each claimed row is delivered independently — one subscriber's
+    // failure must never stop the rest of the batch, and every outcome
+    // (success or failure) is explicitly reported back to the database so
+    // the row's state always reflects reality, never assumed.
+    for (const claim of claimed) {
+      const detail = details.get(claim.variant_id);
+      if (!detail) {
+        // No resolvable detail (e.g. the variant was deleted between claim
+        // and delivery) — nothing meaningful to send; record it as a
+        // failure so it's retried/eventually surfaced rather than left
+        // claimed forever.
+        await supabaseAdmin.rpc("mark_back_in_stock_delivery_failed", {
+          p_id: claim.id, p_error: "No variant/product detail resolvable at delivery time",
+        });
+        continue;
       }
+      const { subject, html } = backInStockEmail(detail);
+      const emailResult = await sendEmail({ to: claim.email, subject, html });
+      if (!emailResult.ok) {
+        await supabaseAdmin.rpc("mark_back_in_stock_delivery_failed", {
+          p_id: claim.id, p_error: emailResult.error ?? "sendEmail failed",
+        });
+        continue;
+      }
+      const notifyResult = await notifyUser(
+        claim.user_id,
+        "back_in_stock",
+        `${detail.productName} is back in stock`,
+        detail.variantLabel ? `${detail.variantLabel} is available again.` : "It's available again.",
+        { relatedEntityType: "product", relatedEntityId: detail.productId }
+      );
+      if (!notifyResult.ok) {
+        // The email already sent successfully — recording the in-account
+        // notification failed, which is a real but lesser failure. Still
+        // marked failed (not sent) so it's retried: sendEmail is expected
+        // to be safely re-callable by the shopper's own inbox (a duplicate
+        // "back in stock" email is a much smaller harm than a silently
+        // lost account notification), and the alternative — marking this
+        // 'sent' despite a known partial failure — would hide the gap.
+        await supabaseAdmin.rpc("mark_back_in_stock_delivery_failed", {
+          p_id: claim.id, p_error: notifyResult.error ?? "notifyUser failed",
+        });
+        continue;
+      }
+      await supabaseAdmin.rpc("mark_back_in_stock_delivery_sent", { p_id: claim.id });
     }
   } catch (err) {
     logError("checkAndNotifyRestock failed", err instanceof Error ? err.message : String(err));

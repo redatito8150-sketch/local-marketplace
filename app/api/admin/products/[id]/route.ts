@@ -52,6 +52,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   if (body.status === "archived" && existing.status !== "published") {
     return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
   }
+  // CORRECTIVE PASS: a Published product can never revert to Draft — the
+  // database trigger (private.enforce_product_lifecycle_transition())
+  // enforces this for every caller regardless of what this route does;
+  // this guard just returns a clear application-level error instead of a
+  // raw DB exception bubbling up as a 500.
+  if (existing.status === "published" && body.status === "draft") {
+    return NextResponse.json({ error: "A Published product cannot be reverted to Draft." }, { status: 409 });
+  }
   if (body.status === "archived") {
     const result = await archiveProduct(params.id, null, admin.id, admin.email ?? admin.id);
     if (!result.ok) return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
