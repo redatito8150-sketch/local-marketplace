@@ -9,7 +9,7 @@ import { formatDateTime } from "@/lib/format";
 const PAGE_SIZE = 30;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
-const CONTROL = "h-11 min-w-0 rounded-xl border-0 bg-[#fffaf6]/70 px-3 text-[12.5px] font-medium text-[#3f3630] outline-none shadow-[0_10px_28px_rgba(72,50,36,.07)] backdrop-blur-xl placeholder:text-[#897b71] focus-visible:bg-[#fffaf6]/85 focus-visible:ring-2 focus-visible:ring-[#C85956]/25";
+const CONTROL = "h-11 min-w-0 rounded-xl border-0 bg-[#f0e2d8]/75 px-3 text-[12.5px] font-medium text-[#3f3630] outline-none shadow-[0_10px_28px_rgba(72,50,36,.09)] backdrop-blur-xl placeholder:text-[#75675e] focus-visible:bg-[#f0e2d8]/90 focus-visible:ring-2 focus-visible:ring-[#C85956]/20";
 const SOURCE_OPTIONS = [
   ["admin", "Admin adjustment"],
   ["brand_portal", "Brand adjustment"],
@@ -159,7 +159,7 @@ function BrandDirectory({ summaries, view, query }: { summaries: AdminInventoryB
 function BrandCard({ brand, view }: { brand: AdminInventoryBrandSummary; view: InventoryView }) {
   const issues = brand.lowStockCount + brand.outOfStockCount;
   return (
-    <Link href={`/admin/inventory?view=${view}&brand=${encodeURIComponent(brand.slug)}`} className="group flex min-h-[148px] flex-col rounded-[22px] border-0 bg-[#fffaf6]/68 p-4 shadow-[0_12px_32px_rgba(72,50,36,.065)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-[#fffaf6]/82 hover:shadow-[0_16px_36px_rgba(72,50,36,.09)]">
+    <Link href={`/admin/inventory?view=${view}&brand=${encodeURIComponent(brand.slug)}`} className="group flex min-h-[148px] flex-col rounded-[22px] border-0 bg-[#f0e2d8]/72 p-4 shadow-[0_12px_32px_rgba(72,50,36,.085)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-[#f0e2d8]/88 hover:shadow-[0_16px_36px_rgba(72,50,36,.11)]">
       <div className="flex items-start gap-3">
         <BrandMark brand={brand} />
         <div className="min-w-0">
