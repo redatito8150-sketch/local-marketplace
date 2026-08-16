@@ -44,6 +44,17 @@ test("brand product inventory resolves the exact Variant image and health", () =
   assert.match(page, /variant\.stockStatus/);
 });
 
+test("brand identity never falls back to a product image and products start collapsed", () => {
+  const data = read("lib/data/admin.ts");
+  const page = read("app/admin/inventory/page.tsx");
+  assert.doesNotMatch(data, /coverImage/);
+  assert.match(page, /brand\.logoImage \?/);
+  assert.doesNotMatch(page, /logoImage \|\|/);
+  assert.match(page, /<details className="group/);
+  assert.doesNotMatch(page, /<details[^>]*\sopen(?:=|\s|>)/);
+  assert.match(page, /group-open:rotate-90/);
+});
+
 test("movement ledger is database-paginated inside a selected brand and product", () => {
   const data = read("lib/data/admin.ts");
   const page = read("app/admin/inventory/page.tsx");

@@ -1247,7 +1247,6 @@ export interface AdminInventoryBrandSummary {
   healthyCount: number;
   lowStockCount: number;
   outOfStockCount: number;
-  coverImage: string | null;
 }
 
 export interface AdminInventoryVariantDetail {
@@ -1356,7 +1355,6 @@ export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInvento
       healthyCount,
       lowStockCount,
       outOfStockCount,
-      coverImage: brandProducts.find((product) => Boolean(product.image))?.image ?? null,
     };
   });
 }
