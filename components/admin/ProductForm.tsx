@@ -621,6 +621,22 @@ export default function ProductForm({
       setLastSavedAt(new Date());
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2500);
+      // A first-time Publish from the creation wizard is a distinct case
+      // from every other save (an ordinary edit-mode save, or Save as
+      // Draft while still creating): the owner/assistant just finished
+      // building a brand-new product and expects to land back on the
+      // products list and see it actually there, the same confirmation
+      // Save as Draft's own "leave" path already gives via
+      // saveDraftAndLeave/handleCancel. Scoped to isCreateExperience (the
+      // static `mode` prop, never mutated mid-session — unlike
+      // currentMode, which flips to "edit" a few lines above) so this
+      // never fires for an ordinary publish of an already-existing draft
+      // reached via the edit route, where staying on the page to see the
+      // Live Preview/confirmation is still the right behavior.
+      if (isCreateExperience && targetStatus === "published") {
+        router.push(cancelHref);
+        return true;
+      }
       router.refresh();
       return true;
     } catch {
