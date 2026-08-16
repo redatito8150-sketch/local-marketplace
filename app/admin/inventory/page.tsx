@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, Boxes, ChevronLeft, ChevronRight, PackageSearch, Search, Warehouse } from "lucide-react";
 import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
-import { DashboardEmptyState, DashboardPageHeader, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
+import { DashboardEmptyState, DashboardPageHeader, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import { getInventoryBrandDetailForAdmin, getInventoryBrandSummariesForAdmin, getInventoryMovementsForAdmin, type AdminInventoryBrandDetail, type AdminInventoryBrandSummary } from "@/lib/data/admin";
 import { formatDateTime } from "@/lib/format";
 
@@ -45,19 +45,19 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
   const allUnits = summaries.reduce((sum, brand) => sum + brand.totalUnits, 0);
 
   return <div>
-    <DashboardPageHeader eyebrow="Inventory control" title="Inventory" description={selectedProduct ? "Every immutable stock movement recorded for this product." : "Open one focused workspace at a time: Zakhnook warehouse, the full marketplace inventory, or a brand-led movement ledger."} actions={<><Link href="/admin/low-stock" className={dashboardButtonSecondary}>Review low stock</Link><Link href="/admin/warehouse" className={dashboardButtonPrimary}><Warehouse className="mr-2 h-4 w-4" />Warehouse documents</Link></>} />
+    <DashboardPageHeader title="Inventory" description={selectedProduct ? "Every immutable stock movement recorded for this product." : undefined} actions={<Link href="/admin/warehouse" className={dashboardButtonPrimary}><Warehouse className="mr-2 h-4 w-4" />Warehouse documents</Link>} />
     <div className="mt-6"><AdminWorkspaceNav workspace="inventory" activeHref="/admin/inventory" /></div>
     <nav aria-label="Inventory areas" className="grid overflow-hidden rounded-[18px] border border-[#eadfd7] bg-[#fcfaf8] md:grid-cols-3">
       <Area icon={Warehouse} label="Zakhnook warehouse" value={`${formatCount(partnerUnits)} units`} note={`${formatCount(partnerBrands.length)} partner brands only`} href="/admin/inventory?view=warehouse" active={view === "warehouse"} />
       <Area icon={PackageSearch} label="All inventory" value={`${formatCount(allUnits)} units`} note={`${formatCount(summaries.length)} marketplace brands`} href="/admin/inventory?view=catalog" active={view === "catalog"} />
-      <Area icon={Activity} label="Movement history" value="Brand-led ledger" note="Follow one brand or product" href="/admin/inventory?view=activity" active={view === "activity"} />
+      <Area icon={Activity} label="Movement history" note="Follow one brand or product" href="/admin/inventory?view=activity" active={view === "activity"} />
     </nav>
     {view === "activity" ? <ActivityWorkspace summaries={summaries} detail={detail} params={params} result={movementResult} source={source} movementType={movementType} from={from} to={to} page={page} /> : detail ? <BrandInventory detail={detail} view={view} /> : <BrandDirectory summaries={directoryBrands} view={view} query={params.q ?? ""} />}
   </div>;
 }
 
-function Area({ icon: Icon, label, value, note, href, active }: { icon: React.ElementType; label: string; value: string; note: string; href: string; active: boolean }) {
-  return <Link href={href} aria-current={active ? "page" : undefined} className={`group flex min-h-[88px] items-center gap-3 border-b border-[#eadfd7] px-4 py-3 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${active ? "bg-white" : "hover:bg-white/70"}`}><span className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl shadow-[0_1px_5px_rgba(72,50,36,.07)] ${active ? "bg-[#fff0ed] text-[#C85956]" : "bg-white text-[#9d8f85]"}`}><Icon className="h-4 w-4" /></span><span className="min-w-0"><span className="block text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">{label}</span><span className="mt-0.5 block text-[13px] font-extrabold tabular-nums text-[#403730]">{value}</span><span className="mt-0.5 block text-[9.5px] text-[#94867c]">{note}</span></span><ChevronRight className={`ml-auto h-4 w-4 ${active ? "text-[#C85956]" : "text-[#b6aaa1] group-hover:text-[#C85956]"}`} /></Link>;
+function Area({ icon: Icon, label, value, note, href, active }: { icon: React.ElementType; label: string; value?: string; note: string; href: string; active: boolean }) {
+  return <Link href={href} aria-current={active ? "page" : undefined} className={`group flex min-h-[88px] items-center gap-3 border-b border-[#eadfd7] px-4 py-3 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${active ? "bg-white" : "hover:bg-white/70"}`}><span className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl shadow-[0_1px_5px_rgba(72,50,36,.07)] ${active ? "bg-[#fff0ed] text-[#C85956]" : "bg-white text-[#9d8f85]"}`}><Icon className="h-4 w-4" /></span><span className="min-w-0"><span className="block text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">{label}</span>{value ? <span className="mt-0.5 block text-[13px] font-extrabold tabular-nums text-[#403730]">{value}</span> : null}<span className="mt-0.5 block text-[9.5px] text-[#94867c]">{note}</span></span><ChevronRight className={`ml-auto h-4 w-4 ${active ? "text-[#C85956]" : "text-[#b6aaa1] group-hover:text-[#C85956]"}`} /></Link>;
 }
 
 function BrandDirectory({ summaries, view, query }: { summaries: AdminInventoryBrandSummary[]; view: InventoryView; query: string }) {
