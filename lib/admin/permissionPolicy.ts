@@ -31,6 +31,7 @@ const ADMIN_PATH_RULES: ReadonlyArray<{
   {
     matches: (path) =>
       path.startsWith("/api/admin/inventory") ||
+      path.startsWith("/admin/inventory") ||
       path.startsWith("/api/admin/warehouse") ||
       path.startsWith("/admin/warehouse") ||
       path.startsWith("/admin/low-stock"),

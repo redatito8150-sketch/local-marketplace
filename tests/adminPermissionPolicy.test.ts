@@ -13,6 +13,8 @@ const cases = [
   ["/admin/products/categories", "manage_products"],
   ["/admin/categories", "manage_products"],
   ["/api/admin/inventory/adjustments", "manage_inventory"],
+  ["/admin/inventory", "manage_inventory"],
+  ["/admin/inventory/variant-history", "manage_inventory"],
   ["/admin/brands/acme/edit", "manage_brands"],
   ["/api/admin/applications/123/create-brand", "manage_applications"],
   ["/admin/reviews", "moderate_reviews"],
