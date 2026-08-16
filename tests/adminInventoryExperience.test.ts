@@ -2,32 +2,54 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const read = (path: string) =>
+  readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("admin Inventory is split into three focused brand-led workspaces", () => {
   const page = read("app/admin/inventory/page.tsx");
-  for (const label of ["Zakhnook warehouse", "All inventory", "Movement history"]) {
+  for (const label of [
+    "Zakhnook warehouse",
+    "All inventory",
+    "Movement history",
+  ]) {
     assert.match(page, new RegExp(label));
   }
-  assert.ok(page.indexOf('label="All inventory"') < page.indexOf('label="Zakhnook warehouse"'));
-  assert.ok(page.indexOf('label="Zakhnook warehouse"') < page.indexOf('label="Movement history"'));
+  assert.ok(
+    page.indexOf('label="All inventory"') <
+      page.indexOf('label="Zakhnook warehouse"'),
+  );
+  assert.ok(
+    page.indexOf('label="Zakhnook warehouse"') <
+      page.indexOf('label="Movement history"'),
+  );
   assert.match(page, /view === "warehouse"/);
   assert.match(page, /fulfillmentMode === "zakhnook_fulfilled"/);
   assert.match(page, /Choose a brand first/);
-  assert.match(page, /Nothing from other brands is mixed into it/);
+  assert.match(page, /Nothing from other brands is\s+mixed into it/);
   assert.match(page, /new Intl\.NumberFormat\("en-US"\)/);
-  assert.doesNotMatch(page, /Review low stock|Brand-led ledger|Open one focused workspace at a time|eyebrow="Inventory control"|All inventory by brand|Partner and non-partner inventory/);
+  assert.doesNotMatch(
+    page,
+    /Review low stock|Brand-led ledger|Open one focused workspace at a time|eyebrow="Inventory control"|All inventory by brand|Partner and non-partner inventory/,
+  );
 });
 
 test("inventory directory groups variants under brands and products without stock writes", () => {
   const data = read("lib/data/admin.ts");
-  const start = data.indexOf("export async function getInventoryBrandSummariesForAdmin()");
-  const end = data.indexOf("export async function getAuditLogsForEntity", start);
+  const start = data.indexOf(
+    "export async function getInventoryBrandSummariesForAdmin()",
+  );
+  const end = data.indexOf(
+    "export async function getAuditLogsForEntity",
+    start,
+  );
   const directory = start >= 0 && end > start ? data.slice(start, end) : "";
   assert.ok(directory);
   assert.match(directory, /from\("brands"\)/);
   assert.match(directory, /fulfillment_mode/);
-  assert.match(directory, /getVariantsForProducts\(productIds, supabaseAdmin\)/);
+  assert.match(
+    directory,
+    /getVariantsForProducts\(productIds, supabaseAdmin\)/,
+  );
   assert.match(directory, /calculateStockStatus/);
   assert.match(directory, /getInventoryBrandDetailForAdmin/);
   assert.doesNotMatch(directory, /\.update\(|\.insert\(|\.delete\(/);
@@ -38,8 +60,11 @@ test("brand product inventory resolves the exact Variant image and health", () =
   const page = read("app/admin/inventory/page.tsx");
   assert.match(data, /from\("product_media"\)/);
   assert.match(data, /buildColorImageLookup\(mediaResult\.data \?\? \[\]\)/);
-  assert.match(data, /image: resolveVariantImage\(product\.id, variant, colorImages, product\.image\)/);
-  assert.match(page, /grouped by product and variant/);
+  assert.match(
+    data,
+    /image: resolveVariantImage\(product\.id, variant, colorImages, product\.image\)/,
+  );
+  assert.match(page, /grouped by product and\s+variant/);
   assert.match(page, /function VariantIdentity/);
   assert.match(page, /variant\.image/);
   assert.match(page, /variant\.stockStatus/);
@@ -56,10 +81,22 @@ test("brand identity never falls back to a product image and products start coll
   assert.match(page, /group-open:rotate-90/);
 });
 
+test("inventory frames use transparent surfaces while preserving dark readable text", () => {
+  const page = read("app/admin/inventory/page.tsx");
+  assert.match(page, /bg-white\/20/);
+  assert.match(page, /bg-white\/25/);
+  assert.match(page, /backdrop-blur-sm/);
+  assert.match(page, /text-\[#302924\]|text-\[#3f3630\]/);
+  assert.doesNotMatch(page, /border border-\[#eadfd7\] bg-white(?:\s|\")/);
+});
+
 test("movement ledger is database-paginated inside a selected brand and product", () => {
   const data = read("lib/data/admin.ts");
   const page = read("app/admin/inventory/page.tsx");
-  assert.match(data, /getInventoryMovementsForAdmin\(options: \{[\s\S]*?productId\?: string;[\s\S]*?brand\?: string;[\s\S]*?source\?: string;/);
+  assert.match(
+    data,
+    /getInventoryMovementsForAdmin\(options: \{[\s\S]*?productId\?: string;[\s\S]*?brand\?: string;[\s\S]*?source\?: string;/,
+  );
   assert.match(data, /\.range\(from, to\)/);
   assert.match(page, /brand: detail\.name/);
   assert.match(page, /productId: selectedProduct\?\.id/);
