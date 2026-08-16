@@ -81,13 +81,15 @@ test("brand identity never falls back to a product image and products start coll
   assert.match(page, /group-open:rotate-90/);
 });
 
-test("inventory frames use transparent surfaces while preserving dark readable text", () => {
+test("inventory frames use readable milky glass while brand cards and search stay borderless", () => {
   const page = read("app/admin/inventory/page.tsx");
-  assert.match(page, /bg-white\/20/);
-  assert.match(page, /bg-white\/25/);
-  assert.match(page, /backdrop-blur-sm/);
+  assert.match(page, /bg-\[#fffaf6\]\/60/);
+  assert.match(page, /bg-\[#fffaf6\]\/68/);
+  assert.match(page, /backdrop-blur-xl/);
   assert.match(page, /text-\[#302924\]|text-\[#3f3630\]/);
-  assert.doesNotMatch(page, /border border-\[#eadfd7\] bg-white(?:\s|\")/);
+  assert.match(page, /const CONTROL = ".*border-0/);
+  assert.match(page, /function BrandCard[\s\S]*?rounded-\[22px\] border-0/);
+  assert.doesNotMatch(page, /border border-\[#ddcfc5\]/);
 });
 
 test("movement ledger is database-paginated inside a selected brand and product", () => {
