@@ -16,7 +16,7 @@ test("admin Inventory is split into three focused brand-led workspaces", () => {
   assert.match(page, /Choose a brand first/);
   assert.match(page, /Nothing from other brands is mixed into it/);
   assert.match(page, /new Intl\.NumberFormat\("en-US"\)/);
-  assert.doesNotMatch(page, /Review low stock|Brand-led ledger|Open one focused workspace at a time|eyebrow="Inventory control"/);
+  assert.doesNotMatch(page, /Review low stock|Brand-led ledger|Open one focused workspace at a time|eyebrow="Inventory control"|All inventory by brand|Partner and non-partner inventory/);
 });
 
 test("inventory directory groups variants under brands and products without stock writes", () => {
