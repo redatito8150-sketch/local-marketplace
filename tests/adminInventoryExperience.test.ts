@@ -9,8 +9,8 @@ test("admin Inventory is split into three focused brand-led workspaces", () => {
   for (const label of ["Zakhnook warehouse", "All inventory", "Movement history"]) {
     assert.match(page, new RegExp(label));
   }
-  assert.ok(page.indexOf('label="Zakhnook warehouse"') < page.indexOf('label="All inventory"'));
-  assert.ok(page.indexOf('label="All inventory"') < page.indexOf('label="Movement history"'));
+  assert.ok(page.indexOf('label="All inventory"') < page.indexOf('label="Zakhnook warehouse"'));
+  assert.ok(page.indexOf('label="Zakhnook warehouse"') < page.indexOf('label="Movement history"'));
   assert.match(page, /view === "warehouse"/);
   assert.match(page, /fulfillmentMode === "zakhnook_fulfilled"/);
   assert.match(page, /Choose a brand first/);
