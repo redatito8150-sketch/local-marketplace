@@ -9,7 +9,7 @@ import { formatDateTime } from "@/lib/format";
 const PAGE_SIZE = 30;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const NUMBER_FORMAT = new Intl.NumberFormat("en-US");
-const CONTROL = "h-11 min-w-0 rounded-xl border-0 bg-[#f0e2d8]/75 px-3 text-[12.5px] font-medium text-[#3f3630] outline-none shadow-[0_10px_28px_rgba(72,50,36,.09)] backdrop-blur-xl placeholder:text-[#75675e] focus-visible:bg-[#f0e2d8]/90 focus-visible:ring-2 focus-visible:ring-[#C85956]/20";
+const CONTROL = "h-11 min-w-0 rounded-xl border-0 bg-[#f1e5dd] px-3 text-[12.5px] font-medium text-[#3f3630] outline-none shadow-[0_10px_28px_rgba(72,50,36,.08)] placeholder:text-[#75675e] focus-visible:bg-[#eadbd1] focus-visible:ring-2 focus-visible:ring-[#C85956]/20";
 const SOURCE_OPTIONS = [
   ["admin", "Admin adjustment"],
   ["brand_portal", "Brand adjustment"],
@@ -97,7 +97,7 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
       <div className="mt-6">
         <AdminWorkspaceNav workspace="inventory" activeHref="/admin/inventory" />
       </div>
-      <nav aria-label="Inventory areas" className="grid overflow-hidden rounded-[22px] border border-white/70 bg-[#fffaf6]/60 shadow-[0_14px_38px_rgba(72,50,36,.06)] backdrop-blur-xl md:grid-cols-3">
+      <nav aria-label="Inventory areas" className="grid gap-4 md:grid-cols-3">
         <Area icon={PackageSearch} label="All inventory" value={`${formatCount(allUnits)} units`} note={`${formatCount(summaries.length)} marketplace brands`} href="/admin/inventory?view=catalog" active={view === "catalog"} />
         <Area icon={Warehouse} label="Zakhnook warehouse" value={`${formatCount(partnerUnits)} units`} note={`${formatCount(partnerBrands.length)} partner brands only`} href="/admin/inventory?view=warehouse" active={view === "warehouse"} />
         <Area icon={Activity} label="Movement history" note="Follow one brand or product" href="/admin/inventory?view=activity" active={view === "activity"} />
@@ -109,8 +109,8 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
 
 function Area({ icon: Icon, label, value, note, href, active }: { icon: React.ElementType; label: string; value?: string; note: string; href: string; active: boolean }) {
   return (
-    <Link href={href} aria-current={active ? "page" : undefined} className={`group flex min-h-[88px] items-center gap-3 border-b border-white/55 px-4 py-3 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0 ${active ? "bg-[#fffaf6]/75" : "hover:bg-[#fffaf6]/55"}`}>
-      <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${active ? "bg-[#f7dfd9]/80 text-[#C85956]" : "bg-white/55 text-[#75685f]"}`}>
+    <Link href={href} aria-current={active ? "page" : undefined} className={`group flex min-h-[88px] items-center gap-3 rounded-[22px] border-0 px-4 py-3 shadow-[0_12px_32px_rgba(72,50,36,.07)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(72,50,36,.1)] ${active ? "bg-[#eadbd1]" : "bg-[#f4ebe5] hover:bg-[#efe2da]"}`}>
+      <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${active ? "bg-[#f5dcd5] text-[#C85956]" : "bg-[#fbf7f3] text-[#75685f]"}`}>
         <Icon className="h-4 w-4" />
       </span>
       <span className="min-w-0">
@@ -159,7 +159,7 @@ function BrandDirectory({ summaries, view, query }: { summaries: AdminInventoryB
 function BrandCard({ brand, view }: { brand: AdminInventoryBrandSummary; view: InventoryView }) {
   const issues = brand.lowStockCount + brand.outOfStockCount;
   return (
-    <Link href={`/admin/inventory?view=${view}&brand=${encodeURIComponent(brand.slug)}`} className="group flex min-h-[148px] flex-col rounded-[22px] border-0 bg-[#f0e2d8]/72 p-4 shadow-[0_12px_32px_rgba(72,50,36,.085)] backdrop-blur-xl transition hover:-translate-y-0.5 hover:bg-[#f0e2d8]/88 hover:shadow-[0_16px_36px_rgba(72,50,36,.11)]">
+    <Link href={`/admin/inventory?view=${view}&brand=${encodeURIComponent(brand.slug)}`} className="group flex min-h-[148px] flex-col rounded-[22px] border-0 bg-[#f4ebe5] p-4 shadow-[0_12px_32px_rgba(72,50,36,.08)] transition hover:-translate-y-0.5 hover:bg-[#efe2da] hover:shadow-[0_16px_36px_rgba(72,50,36,.11)]">
       <div className="flex items-start gap-3">
         <BrandMark brand={brand} />
         <div className="min-w-0">
@@ -179,7 +179,7 @@ function BrandCard({ brand, view }: { brand: AdminInventoryBrandSummary; view: I
 }
 
 function BrandMark({ brand }: { brand: { name: string; logoImage: string | null } }) {
-  return <span className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-xl border-0 bg-white/60 text-[14px] font-extrabold text-[#C85956] backdrop-blur-xl">{brand.logoImage ? <Image src={brand.logoImage} alt={`${brand.name} logo`} fill sizes="44px" className="object-contain p-1" /> : brand.name.slice(0, 1).toUpperCase()}</span>;
+  return <span className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-xl border-0 bg-[#fbf7f3] text-[14px] font-extrabold text-[#C85956]">{brand.logoImage ? <Image src={brand.logoImage} alt={`${brand.name} logo`} fill sizes="44px" className="object-contain p-1" /> : brand.name.slice(0, 1).toUpperCase()}</span>;
 }
 function Metric({ label, value }: { label: string; value: number }) {
   return (
@@ -193,7 +193,7 @@ function Metric({ label, value }: { label: string; value: number }) {
 function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; view: InventoryView }) {
   return (
     <section className="mt-5">
-      <div className="mb-4 flex flex-col gap-3 rounded-[22px] border border-white/65 bg-[#fffaf6]/60 px-4 py-4 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl sm:flex-row sm:items-center">
+      <div className="mb-4 flex flex-col gap-3 rounded-[22px] border-0 bg-[#f4ebe5] px-4 py-4 shadow-[0_12px_32px_rgba(72,50,36,.07)] sm:flex-row sm:items-center">
         <Link href={`/admin/inventory?view=${view}`} className="inline-flex h-9 w-fit items-center gap-1.5 rounded-xl border border-[#e6dbd3] px-3 text-[10.5px] font-bold text-[#62564d] hover:text-[#C85956]">
           <ArrowLeft className="h-3.5 w-3.5" />
           All brands
@@ -218,7 +218,7 @@ function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; v
           ))}
         </div>
       ) : (
-        <div className="rounded-[22px] border border-white/65 bg-[#fffaf6]/60 backdrop-blur-xl">
+        <div className="rounded-[22px] border-0 bg-[#f4ebe5] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
           <DashboardEmptyState title="No products in this brand" description="Products will appear here after they are created." />
         </div>
       )}
@@ -228,8 +228,8 @@ function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; v
 
 function ProductCard({ product }: { product: AdminInventoryBrandDetail["products"][number] }) {
   return (
-    <details className="group overflow-hidden rounded-[22px] border border-white/65 bg-[#fffaf6]/60 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl">
-      <summary className="flex cursor-pointer list-none items-center gap-3 bg-white/20 px-4 py-3.5 outline-none transition-colors hover:bg-white/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden">
+    <details className="group overflow-hidden rounded-[22px] border-0 bg-[#f4ebe5] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
+      <summary className="flex cursor-pointer list-none items-center gap-3 bg-[#f4ebe5] px-4 py-3.5 outline-none transition-colors hover:bg-[#efe2da] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden">
         <span className="relative h-14 w-12 flex-none overflow-hidden rounded-xl bg-[#f1eae4]">{product.image ? <Image src={product.image} alt="" fill sizes="48px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
         <div className="min-w-0">
           <h3 className="truncate text-[13px] font-extrabold text-[#403730]">{product.name}</h3>
@@ -327,7 +327,7 @@ function StockBadge({ status }: { status: "in_stock" | "low_stock" | "out_of_sto
 function ActivityWorkspace({ summaries, detail, params, result, source, movementType, from, to, page }: { summaries: AdminInventoryBrandSummary[]; detail: AdminInventoryBrandDetail | null; params: Params; result: MovementResult | null; source?: string; movementType?: string; from?: string; to?: string; page: number }) {
   if (!params.brand || !detail)
     return (
-      <section className="mt-5 overflow-hidden rounded-[22px] border border-white/65 bg-[#fffaf6]/60 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl">
+      <section className="mt-5 overflow-hidden rounded-[22px] border-0 bg-[#f4ebe5] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
         <header className="border-b border-[#eee7e1] px-5 py-4">
           <p className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-[#C85956]">Movement ledger</p>
           <h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">Choose a brand first</h2>
@@ -353,7 +353,7 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
   };
   return (
     <section className="mt-5">
-      <div className="mb-4 flex items-center gap-3 rounded-[22px] border border-white/65 bg-[#fffaf6]/60 px-4 py-3 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl">
+      <div className="mb-4 flex items-center gap-3 rounded-[22px] border-0 bg-[#f4ebe5] px-4 py-3 shadow-[0_12px_32px_rgba(72,50,36,.07)]">
         <Link href="/admin/inventory?view=activity" className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#e6dbd3] px-3 text-[10.5px] font-bold text-[#62564d] hover:text-[#C85956]">
           <ArrowLeft className="h-3.5 w-3.5" />
           All brands
@@ -364,7 +364,7 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
         </div>
       </div>
       <MovementFilters detail={detail} params={params} source={source} movementType={movementType} from={from} to={to} clearHref={clearHref} />
-      <div className="mt-4 overflow-hidden rounded-[22px] border border-white/65 bg-[#fffaf6]/60 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl">
+      <div className="mt-4 overflow-hidden rounded-[22px] border-0 bg-[#f4ebe5] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
         <header className="flex items-center justify-between border-b border-[#eee7e1] px-5 py-4">
           <div>
             <h3 className="text-[12px] font-extrabold text-[#302924]">{params.productId ? (detail.products.find((product) => product.id === params.productId)?.name ?? detail.name) : `${detail.name} timeline`}</h3>
@@ -384,7 +384,7 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
         {result?.rows.length ? <ActivityRows rows={result.rows} /> : <DashboardEmptyState title="No movements found" description="Adjust the filters or wait for the first inventory change." />}
       </div>
       {totalPages > 1 ? (
-        <nav className="mt-4 flex items-center justify-between rounded-[22px] border border-white/65 bg-[#fffaf6]/60 px-4 py-3 backdrop-blur-xl">
+        <nav className="mt-4 flex items-center justify-between rounded-[22px] border-0 bg-[#f4ebe5] px-4 py-3 shadow-[0_12px_32px_rgba(72,50,36,.07)]">
           <span>
             {page > 1 ? (
               <Link href={pageHref(page - 1)} className="inline-flex h-9 items-center gap-1 rounded-xl border border-[#e4d9d1] px-3 text-[10.5px] font-bold">
@@ -413,7 +413,7 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
 function MovementFilters({ detail, params, source, movementType, from, to, clearHref }: { detail: AdminInventoryBrandDetail; params: Params; source?: string; movementType?: string; from?: string; to?: string; clearHref: string }) {
   const active = [params.productId, source, movementType, from, to].some(Boolean);
   return (
-    <form action="/admin/inventory" className="rounded-[22px] border border-white/65 bg-[#fffaf6]/60 p-4 shadow-[0_12px_32px_rgba(72,50,36,.05)] backdrop-blur-xl">
+    <form action="/admin/inventory" className="rounded-[22px] border-0 bg-[#f4ebe5] p-4 shadow-[0_12px_32px_rgba(72,50,36,.07)]">
       <input type="hidden" name="view" value="activity" />
       <input type="hidden" name="brand" value={detail.slug} />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(230px,1.3fr)_190px_190px_150px_150px_auto] xl:items-end">

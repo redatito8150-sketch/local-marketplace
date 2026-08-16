@@ -81,14 +81,15 @@ test("brand identity never falls back to a product image and products start coll
   assert.match(page, /group-open:rotate-90/);
 });
 
-test("inventory frames use readable milky glass while brand cards and search stay borderless", () => {
+test("inventory frames use solid cream panels while brand cards and search stay borderless", () => {
   const page = read("app/admin/inventory/page.tsx");
-  assert.match(page, /bg-\[#fffaf6\]\/60/);
-  assert.match(page, /bg-\[#f0e2d8\]\/72/);
-  assert.match(page, /backdrop-blur-xl/);
+  assert.match(page, /bg-\[#f4ebe5\]/);
+  assert.match(page, /bg-\[#f1e5dd\]/);
+  assert.doesNotMatch(page, /bg-\[#f4ebe5\]\//);
+  assert.doesNotMatch(page, /backdrop-blur-xl/);
   assert.match(page, /text-\[#302924\]|text-\[#3f3630\]/);
   assert.match(page, /const CONTROL = ".*border-0/);
-  assert.match(page, /const CONTROL = ".*bg-\[#f0e2d8\]\/75/);
+  assert.match(page, /const CONTROL = ".*bg-\[#f1e5dd\]/);
   assert.match(page, /function BrandCard[\s\S]*?rounded-\[22px\] border-0/);
   assert.doesNotMatch(page, /border border-\[#ddcfc5\]/);
 });
