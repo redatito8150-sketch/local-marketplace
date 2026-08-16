@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Activity, ArrowDownLeft, ArrowLeft, ArrowUpRight, Boxes, ChevronLeft, ChevronRight, PackageSearch, Search, Warehouse } from "lucide-react";
-import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 import { DashboardEmptyState, DashboardPageHeader, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import { getInventoryBrandDetailForAdmin, getInventoryBrandSummariesForAdmin, getInventoryMovementsForAdmin, type AdminInventoryBrandDetail, type AdminInventoryBrandSummary } from "@/lib/data/admin";
 import { formatDateTime } from "@/lib/format";
@@ -94,10 +93,7 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
           </Link>
         }
       />
-      <div className="mt-6">
-        <AdminWorkspaceNav workspace="inventory" activeHref="/admin/inventory" />
-      </div>
-      <nav aria-label="Inventory areas" className="grid gap-4 md:grid-cols-3">
+      <nav aria-label="Inventory areas" className="mt-6 grid gap-4 md:grid-cols-3">
         <Area icon={PackageSearch} label="All inventory" value={`${formatCount(allUnits)} units`} note={`${formatCount(summaries.length)} marketplace brands`} href="/admin/inventory?view=catalog" active={view === "catalog"} />
         <Area icon={Warehouse} label="Zakhnook warehouse" value={`${formatCount(partnerUnits)} units`} note={`${formatCount(partnerBrands.length)} partner brands only`} href="/admin/inventory?view=warehouse" active={view === "warehouse"} />
         <Area icon={Activity} label="Movement history" note="Follow one brand or product" href="/admin/inventory?view=activity" active={view === "activity"} />

@@ -31,6 +31,7 @@ test("admin Inventory is split into three focused brand-led workspaces", () => {
     page,
     /Review low stock|Brand-led ledger|Open one focused workspace at a time|eyebrow="Inventory control"|All inventory by brand|Partner and non-partner inventory/,
   );
+  assert.doesNotMatch(page, /<AdminWorkspaceNav/);
 });
 
 test("inventory directory groups variants under brands and products without stock writes", () => {

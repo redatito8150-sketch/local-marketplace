@@ -54,7 +54,6 @@ test("each workspace landing page renders its local navigation", () => {
     ["app/admin/orders/page.tsx", "commerce", "/admin/orders"],
     ["app/admin/payments/page.tsx", "commerce", "/admin/payments"],
     ["app/admin/payments/refund-queue/page.tsx", "commerce", "/admin/payments/refund-queue"],
-    ["app/admin/inventory/page.tsx", "inventory", "/admin/inventory"],
     ["app/admin/low-stock/page.tsx", "inventory", "/admin/low-stock"],
     ["app/admin/warehouse/page.tsx", "inventory", "/admin/warehouse"],
     ["app/admin/brands/page.tsx", "brands", "/admin/brands"],
