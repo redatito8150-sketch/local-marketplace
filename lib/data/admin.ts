@@ -1233,6 +1233,205 @@ export async function getInventoryOverviewForAdmin(): Promise<AdminInventoryOver
   };
 }
 
+export type AdminInventoryFulfillmentMode = "zakhnook_fulfilled" | "brand_fulfilled";
+
+export interface AdminInventoryBrandSummary {
+  id: string;
+  slug: string;
+  name: string;
+  logoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+  productCount: number;
+  variantCount: number;
+  totalUnits: number;
+  healthyCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  coverImage: string | null;
+}
+
+export interface AdminInventoryVariantDetail {
+  id: string;
+  sku: string;
+  label: string;
+  image: string;
+  quantity: number;
+  threshold: number;
+  stockStatus: "in_stock" | "low_stock" | "out_of_stock";
+  sellingStatus: string;
+}
+
+export interface AdminInventoryProductDetail {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  totalUnits: number;
+  issueCount: number;
+  variants: AdminInventoryVariantDetail[];
+}
+
+export interface AdminInventoryBrandDetail {
+  id: string;
+  slug: string;
+  name: string;
+  logoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+  products: AdminInventoryProductDetail[];
+}
+
+type InventoryDirectoryBrandRow = {
+  id: string;
+  slug: string;
+  name: string;
+  logo_image: string | null;
+  fulfillment_mode: AdminInventoryFulfillmentMode;
+};
+
+type InventoryDirectoryProductRow = {
+  id: string;
+  brand_id: string;
+  name: string;
+  image: string;
+  status: string;
+  default_low_stock_threshold: number;
+};
+
+// The admin inventory entry point is brand-led rather than one enormous
+// variant list. This keeps warehouse-only partner stock and marketplace-wide
+// stock easy to navigate while still deriving every number from variants.
+export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInventoryBrandSummary[]> {
+  const [brandsResult, productsResult] = await Promise.all([
+    supabaseAdmin
+      .from("brands")
+      .select("id, slug, name, logo_image, fulfillment_mode")
+      .order("name", { ascending: true }),
+    supabaseAdmin
+      .from("products")
+      .select("id, brand_id, name, image, status, default_low_stock_threshold")
+      .neq("status", "archived"),
+  ]);
+  if (brandsResult.error) throw new Error(`getInventoryBrandSummariesForAdmin brands failed: ${brandsResult.error.message}`);
+  if (productsResult.error) throw new Error(`getInventoryBrandSummariesForAdmin products failed: ${productsResult.error.message}`);
+
+  const brands = (brandsResult.data ?? []) as InventoryDirectoryBrandRow[];
+  const products = (productsResult.data ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const variantsByProduct = await getVariantsForProducts(productIds, supabaseAdmin);
+  const productsByBrand = new Map<string, InventoryDirectoryProductRow[]>();
+  for (const product of products) {
+    const current = productsByBrand.get(product.brand_id) ?? [];
+    current.push(product);
+    productsByBrand.set(product.brand_id, current);
+  }
+
+  return brands.map((brand) => {
+    const brandProducts = productsByBrand.get(brand.id) ?? [];
+    let variantCount = 0;
+    let totalUnits = 0;
+    let healthyCount = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    for (const product of brandProducts) {
+      for (const variant of variantsByProduct.get(product.id) ?? []) {
+        if (variant.sellingStatus === "discontinued") continue;
+        const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+        const stockStatus = calculateStockStatus(variant.quantity, threshold);
+        variantCount += 1;
+        totalUnits += variant.quantity;
+        if (stockStatus === "out_of_stock") outOfStockCount += 1;
+        else if (stockStatus === "low_stock") lowStockCount += 1;
+        else healthyCount += 1;
+      }
+    }
+    return {
+      id: brand.id,
+      slug: brand.slug,
+      name: brand.name,
+      logoImage: brand.logo_image,
+      fulfillmentMode: brand.fulfillment_mode,
+      productCount: brandProducts.length,
+      variantCount,
+      totalUnits,
+      healthyCount,
+      lowStockCount,
+      outOfStockCount,
+      coverImage: brandProducts.find((product) => Boolean(product.image))?.image ?? null,
+    };
+  });
+}
+
+export async function getInventoryBrandDetailForAdmin(
+  slug: string,
+  options: { warehouseOnly?: boolean } = {}
+): Promise<AdminInventoryBrandDetail | null> {
+  const { data: brandData, error: brandError } = await supabaseAdmin
+    .from("brands")
+    .select("id, slug, name, logo_image, fulfillment_mode")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (brandError) throw new Error(`getInventoryBrandDetailForAdmin brand failed: ${brandError.message}`);
+  if (!brandData) return null;
+  const brand = brandData as InventoryDirectoryBrandRow;
+  if (options.warehouseOnly && brand.fulfillment_mode !== "zakhnook_fulfilled") return null;
+
+  const { data: productData, error: productsError } = await supabaseAdmin
+    .from("products")
+    .select("id, brand_id, name, image, status, default_low_stock_threshold")
+    .eq("brand_id", brand.id)
+    .neq("status", "archived")
+    .order("name", { ascending: true });
+  if (productsError) throw new Error(`getInventoryBrandDetailForAdmin products failed: ${productsError.message}`);
+  const products = (productData ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const [variantsByProduct, mediaResult] = await Promise.all([
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (mediaResult.error) throw new Error(`getInventoryBrandDetailForAdmin media failed: ${mediaResult.error.message}`);
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
+
+  return {
+    id: brand.id,
+    slug: brand.slug,
+    name: brand.name,
+    logoImage: brand.logo_image,
+    fulfillmentMode: brand.fulfillment_mode,
+    products: products.map((product) => {
+      const variants = (variantsByProduct.get(product.id) ?? [])
+        .filter((variant) => variant.sellingStatus !== "discontinued")
+        .map((variant) => {
+          const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+          return {
+            id: variant.id,
+            sku: variant.sku,
+            label: variant.optionValues.map((value) => value.label).join(" / ") || "Default variant",
+            image: resolveVariantImage(product.id, variant, colorImages, product.image),
+            quantity: variant.quantity,
+            threshold,
+            stockStatus: calculateStockStatus(variant.quantity, threshold),
+            sellingStatus: variant.sellingStatus,
+          } satisfies AdminInventoryVariantDetail;
+        });
+      return {
+        id: product.id,
+        name: product.name,
+        image: product.image,
+        status: product.status,
+        totalUnits: variants.reduce((sum, variant) => sum + variant.quantity, 0),
+        issueCount: variants.filter((variant) => variant.stockStatus !== "in_stock").length,
+        variants,
+      };
+    }),
+  };
+}
+
 export async function getAuditLogsForEntity(
   entityType: string,
   entityId: string

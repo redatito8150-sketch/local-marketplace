@@ -4,63 +4,55 @@ import test from "node:test";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("admin Inventory uses the same health-and-activity operating model as Brand Portal", () => {
-  const admin = read("app/admin/inventory/page.tsx");
-  const brandPortal = read("app/brand-portal/stock/page.tsx");
-  const brandInventoryManager = read("components/brand-portal/InventoryManager.tsx");
-
-  for (const label of ["Inventory health", "All variants", "Healthy", "Low stock", "Out of stock", "Inventory activity"]) {
-    assert.match(admin, new RegExp(label));
-    assert.match(`${brandPortal}\n${brandInventoryManager}`, new RegExp(label));
+test("admin Inventory is split into three focused brand-led workspaces", () => {
+  const page = read("app/admin/inventory/page.tsx");
+  for (const label of ["Zakhnook warehouse", "All inventory", "Movement history"]) {
+    assert.match(page, new RegExp(label));
   }
-
-  assert.match(admin, /Overview & activity|workspace="inventory"/);
-  assert.match(admin, /Incoming stock/);
-  assert.match(admin, /Recent activity/);
-  assert.match(admin, /Catalog coverage/);
-  assert.match(admin, /new Intl\.NumberFormat\("en-US"\)/);
-  assert.doesNotMatch(admin, /\.toLocaleString\(\)/);
-  assert.doesNotMatch(admin, /min-h-\[112px\]/);
-  assert.ok(admin.indexOf('<form action="/admin/inventory"') < admin.indexOf('aria-label="Inventory health"'));
+  assert.ok(page.indexOf('label="Zakhnook warehouse"') < page.indexOf('label="All inventory"'));
+  assert.ok(page.indexOf('label="All inventory"') < page.indexOf('label="Movement history"'));
+  assert.match(page, /view === "warehouse"/);
+  assert.match(page, /fulfillmentMode === "zakhnook_fulfilled"/);
+  assert.match(page, /Choose a brand first/);
+  assert.match(page, /Nothing from other brands is mixed into it/);
+  assert.match(page, /new Intl\.NumberFormat\("en-US"\)/);
 });
 
-test("inventory overview computes marketplace health without changing stock", () => {
+test("inventory directory groups variants under brands and products without stock writes", () => {
   const data = read("lib/data/admin.ts");
-  const start = data.indexOf("export async function getInventoryOverviewForAdmin()");
+  const start = data.indexOf("export async function getInventoryBrandSummariesForAdmin()");
   const end = data.indexOf("export async function getAuditLogsForEntity", start);
-  const overview = start >= 0 && end > start ? data.slice(start, end) : "";
-
-  assert.ok(overview);
-  assert.match(overview, /Promise\.all\(/);
-  assert.match(overview, /calculateStockStatus/);
-  assert.match(overview, /totalAvailableUnits/);
-  assert.match(overview, /openTransferCount/);
-  assert.match(overview, /movementsLast24Hours/);
-  assert.doesNotMatch(overview, /\.update\(|\.insert\(|\.delete\(/);
+  const directory = start >= 0 && end > start ? data.slice(start, end) : "";
+  assert.ok(directory);
+  assert.match(directory, /from\("brands"\)/);
+  assert.match(directory, /fulfillment_mode/);
+  assert.match(directory, /getVariantsForProducts\(productIds, supabaseAdmin\)/);
+  assert.match(directory, /calculateStockStatus/);
+  assert.match(directory, /getInventoryBrandDetailForAdmin/);
+  assert.doesNotMatch(directory, /\.update\(|\.insert\(|\.delete\(/);
 });
 
-test("inventory activity filters are database-paginated and preserve the product audit link", () => {
+test("brand product inventory resolves the exact Variant image and health", () => {
   const data = read("lib/data/admin.ts");
   const page = read("app/admin/inventory/page.tsx");
-
-  assert.match(data, /getInventoryMovementsForAdmin\(options: \{[\s\S]*?q\?: string;[\s\S]*?brand\?: string;[\s\S]*?source\?: string;[\s\S]*?movementType\?: string;/);
-  assert.match(data, /\.range\(from, to\)/);
-  assert.match(data, /query\.eq\("source", options\.source\)/);
-  assert.match(data, /query\.eq\("movement_type", options\.movementType\)/);
-  assert.match(page, /productId: params\.productId/);
-  assert.match(page, /\/admin\/products\/\$\{row\.productId\}\/edit/);
-});
-
-test("every inventory movement resolves and renders its exact Variant color image", () => {
-  const data = read("lib/data/admin.ts");
-  const page = read("app/admin/inventory/page.tsx");
-
   assert.match(data, /from\("product_media"\)/);
-  assert.match(data, /getVariantsForProducts\(productIds, supabaseAdmin\)/);
   assert.match(data, /buildColorImageLookup\(mediaResult\.data \?\? \[\]\)/);
-  assert.match(data, /variantImage: resolveVariantImage\(row\.product_id, variant, colorImages, product\?\.image\)/);
-  assert.match(data, /variantLabel: variant\?\.optionValues/);
-  assert.match(page, /function VariantThumbnail/);
+  assert.match(data, /image: resolveVariantImage\(product\.id, variant, colorImages, product\.image\)/);
+  assert.match(page, /grouped by product and variant/);
+  assert.match(page, /function VariantIdentity/);
+  assert.match(page, /variant\.image/);
+  assert.match(page, /variant\.stockStatus/);
+});
+
+test("movement ledger is database-paginated inside a selected brand and product", () => {
+  const data = read("lib/data/admin.ts");
+  const page = read("app/admin/inventory/page.tsx");
+  assert.match(data, /getInventoryMovementsForAdmin\(options: \{[\s\S]*?productId\?: string;[\s\S]*?brand\?: string;[\s\S]*?source\?: string;/);
+  assert.match(data, /\.range\(from, to\)/);
+  assert.match(page, /brand: detail\.name/);
+  assert.match(page, /productId: selectedProduct\?\.id/);
+  assert.match(page, /All products in \{detail\.name\}/);
+  assert.match(page, /sequential, immutable movements/);
   assert.match(page, /row\.variantImage/);
-  assert.match(page, /alt=\{`\$\{row\.productName\} — \$\{row\.variantLabel\}`\}/);
+  assert.match(page, /formatDateTime\(row\.createdAt\)/);
 });
