@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Archive, MoreHorizontal, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
 
 type PendingAction = "archive" | "delete_draft" | "delete_archived" | null;
@@ -87,6 +87,31 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
 
   const isDelete = pendingAction === "delete_draft" || pendingAction === "delete_archived";
   const canConfirm = !busy && (!isDelete || confirmText === name);
+
+  // Native <details> only closes on its own summary being clicked again —
+  // it does not close on an outside click by itself. Closes on any
+  // pointerdown outside the menu (mousedown, not click, so it fires before
+  // a click on another row's own trigger opens THAT one — no flicker of
+  // both being briefly open) and on Escape, matching ordinary dropdown/menu
+  // behavior elsewhere in the app.
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const menu = menuRef.current;
+      if (!menu?.open) return;
+      if (event.target instanceof Node && !menu.contains(event.target)) {
+        menu.removeAttribute("open");
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") menuRef.current?.removeAttribute("open");
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
   return (
     <>
