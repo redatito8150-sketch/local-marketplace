@@ -30,7 +30,13 @@ test("variant stock is grouped by product, then color, with group selection", ()
   assert.match(inventory, /product\.colors\.values\(\)/);
   assert.match(inventory, /openProduct\(group: ProductVariantGroup\)/);
   assert.match(inventory, /openColor\(group: ColorVariantGroup\)/);
-  assert.match(inventory, /<VariantImage variant=\{color\.variants\[0\]\}/);
+  // CORRECTIVE PASS: the collapsed product row now shows the product's own
+  // designated cover photo (productImage), not the first-sorted color's
+  // own photo — VariantImage takes explicit image/alt props instead of a
+  // whole variant object, so a color's own photo is still exactly what the
+  // per-color row (this assertion) renders.
+  assert.match(inventory, /<VariantImage image=\{color\.variants\[0\]\.image\}/);
+  assert.match(inventory, /<VariantImage image=\{product\.productImage\}/);
   assert.match(inventory, /onToggleVariants\(product\.variants\.map/);
   assert.match(inventory, /onToggleVariants\(color\.variants\.map/);
   assert.doesNotMatch(inventory, /if \(!open\) onToggleVariants/);
