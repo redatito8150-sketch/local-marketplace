@@ -4,6 +4,7 @@ import test from "node:test";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260817192829_warehouse_receipts_and_corrections.sql");
+const privilegeHardening = read("supabase/migrations/20260817202810_harden_warehouse_document_table_privileges.sql");
 
 test("physical receipts are separate immutable facts with explicit expected and actual Variants", () => {
   assert.match(migration, /create table if not exists public\.warehouse_receipts/);
@@ -82,7 +83,9 @@ test("new tables are RLS protected and all writes stay service-role RPC only", (
   for (const table of ["warehouse_receipts", "warehouse_receipt_lines", "warehouse_corrections", "warehouse_correction_lines"]) {
     assert.match(migration, new RegExp(`alter table public\\.${table} enable row level security`));
   }
-  assert.match(migration, /revoke insert, update, delete on public\.warehouse_receipts, public\.warehouse_receipt_lines,[\s\S]*?from public, anon, authenticated, service_role/);
+  assert.match(migration, /revoke all on public\.warehouse_receipts, public\.warehouse_receipt_lines,[\s\S]*?from public, anon, authenticated, service_role/);
+  assert.match(privilegeHardening, /revoke all on public\.warehouse_receipts, public\.warehouse_receipt_lines,[\s\S]*?from public, anon, authenticated, service_role/);
+  assert.match(privilegeHardening, /grant select on public\.warehouse_receipts, public\.warehouse_receipt_lines,[\s\S]*?to authenticated, service_role/);
   assert.match(migration, /grant execute on function public\.receive_warehouse_document_v2[\s\S]*?to service_role/);
   assert.match(migration, /grant execute on function public\.request_warehouse_correction[\s\S]*?to service_role/);
   assert.match(migration, /grant execute on function public\.approve_warehouse_correction[\s\S]*?to service_role/);

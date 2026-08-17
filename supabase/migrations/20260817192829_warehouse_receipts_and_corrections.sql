@@ -322,12 +322,12 @@ using (
   )
 );
 
+revoke all on public.warehouse_receipts, public.warehouse_receipt_lines,
+  public.warehouse_corrections, public.warehouse_correction_lines
+  from public, anon, authenticated, service_role;
 grant select on public.warehouse_receipts, public.warehouse_receipt_lines,
   public.warehouse_corrections, public.warehouse_correction_lines
   to authenticated, service_role;
-revoke insert, update, delete on public.warehouse_receipts, public.warehouse_receipt_lines,
-  public.warehouse_corrections, public.warehouse_correction_lines
-  from public, anon, authenticated, service_role;
 
 -- Receipt history is immutable once posted. Correction headers can only be
 -- transitioned by the trusted functions below; lines never change.
