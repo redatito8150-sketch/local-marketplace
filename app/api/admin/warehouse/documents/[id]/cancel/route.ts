@@ -12,11 +12,12 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   if (!receiver) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
   const body = (await request.json().catch(() => null)) as { note?: string } | null;
+  if (!body?.note?.trim()) return NextResponse.json({ error: "A cancellation reason is required" }, { status: 400 });
 
   const { data: result, error } = await supabaseAdmin.rpc("cancel_warehouse_document", {
     p_transfer_id: params.id,
     p_actor_id: receiver.id,
-    p_note: body?.note ?? null,
+    p_note: body.note.trim(),
   } as never);
   if (error) return safeErrorResponse("admin.warehouse.documents.cancel", error, "Failed to cancel the document", 400);
 
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     entityType: "warehouse_transfer",
     entityId: params.id,
     action: "delete",
-    after: { Note: body?.note || undefined },
+    after: { Note: body.note.trim() },
   });
 
   return NextResponse.json(result);

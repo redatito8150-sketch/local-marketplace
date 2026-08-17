@@ -117,7 +117,7 @@ test("the products RLS policy and storefront_products view both reuse the one ca
   // Nothing else in the policy body — the whole rule lives in the function.
   assert.doesNotMatch(policy, /status = 'published'/);
 
-  const view = migration.match(/create or replace view public\.storefront_products[\s\S]*?;\n\ngrant select/)![0];
+  const view = migration.match(/create or replace view public\.storefront_products[\s\S]*?;\r?\n\r?\ngrant select/)![0];
   assert.match(view, /where private\.is_product_customer_visible\(p\.id\);/);
   assert.doesNotMatch(view, /where p\.status = 'published'/);
   assert.match(view, /p\.launch_policy, p\.first_visible_at/);

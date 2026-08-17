@@ -7,6 +7,7 @@ import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
 import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
 import DateRangePicker from "@/components/ui/DateRangePicker";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type OrderSearchParams = { q?: string; status?: string; brand?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -38,6 +39,7 @@ export default async function AdminOrdersPage(props: { searchParams: Promise<Ord
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="commerce" activeHref="/admin/orders" />
       <DashboardPageHeader eyebrow="Commerce" title={`Orders (${filtered.length})`} description="Search and review real customer orders, then open an order to update its operational status." actions={
         // A file download endpoint, not a navigable page.
         // eslint-disable-next-line @next/next/no-html-link-for-pages

@@ -4,6 +4,7 @@ import { ExternalLink, Home, Layers3 } from "lucide-react";
 import { getDraftPageSections, getPageVersions } from "@/lib/data/pageStudio";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { formatDateTime } from "@/lib/format";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 export default async function PageStudioPage() {
   const staff = await requireStaffRole("manager");
@@ -20,6 +21,7 @@ export default async function PageStudioPage() {
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="storefront" activeHref="/admin/page-studio" />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tightest text-[var(--admin-text)]">Page Studio</h1>

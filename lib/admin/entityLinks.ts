@@ -32,7 +32,7 @@ export function getEntityAdminPath(entityType: string, entityId: string): string
     case "option_value":
       return `/admin/products/categories`;
     case "inventory":
-      return `/admin/low-stock`;
+      return `/admin/inventory`;
     case "warehouse_transfer":
       return `/admin/warehouse/${entityId}`;
     case "role":

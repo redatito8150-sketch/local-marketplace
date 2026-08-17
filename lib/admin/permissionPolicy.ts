@@ -31,9 +31,9 @@ const ADMIN_PATH_RULES: ReadonlyArray<{
   {
     matches: (path) =>
       path.startsWith("/api/admin/inventory") ||
+      path.startsWith("/admin/inventory") ||
       path.startsWith("/api/admin/warehouse") ||
-      path.startsWith("/admin/warehouse") ||
-      path.startsWith("/admin/low-stock"),
+      path.startsWith("/admin/warehouse"),
     permission: "manage_inventory",
   },
   {
@@ -46,6 +46,7 @@ const ADMIN_PATH_RULES: ReadonlyArray<{
     matches: (path) =>
       path.startsWith("/api/admin/product-options") ||
       path.startsWith("/api/admin/products") ||
+      path.startsWith("/admin/categories") ||
       path.startsWith("/admin/products"),
     permission: "manage_products",
   },

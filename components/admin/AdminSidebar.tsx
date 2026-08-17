@@ -4,252 +4,221 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowLeft,
   BarChart3,
   Bell,
+  BookOpenText,
+  Boxes,
   ChevronDown,
-  CreditCard,
-  FileText,
+  Grid2X2,
   History,
   LayoutDashboard,
   LayoutTemplate,
-  Package,
   MessageSquareWarning,
+  Package,
   Settings,
   ShoppingBag,
   Store,
   Tag,
   Users,
-  Warehouse,
 } from "lucide-react";
 import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarContext";
 import type { PermissionKey } from "@/lib/supabase/permissions";
 
 type Role = "staff" | "manager" | "admin";
+type BadgeKey = "notifications" | "pendingRequests";
 
 interface NavItem {
   label: string;
   href: string;
   icon: React.ElementType;
-  minRole?: Role;
-  badge?: "notifications" | "lowStock";
   permission: PermissionKey;
-}
-
-interface NavGroupItem {
-  label: string;
-  icon: React.ElementType;
   minRole?: Role;
-  permission?: PermissionKey;
-  children: NavItem[];
+  badge?: BadgeKey;
+  activePaths?: string[];
+  hideWhenPermission?: PermissionKey;
 }
 
-function isNavGroupItem(item: NavItem | NavGroupItem): item is NavGroupItem {
-  return "children" in item;
-}
-
-const NAV_GROUPS: { label?: string; items: (NavItem | NavGroupItem)[] }[] = [
+const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
+    label: "Run",
     items: [
       { label: "Overview", href: "/admin", icon: LayoutDashboard, permission: "view_analytics" },
-      { label: "Analytics", href: "/admin/analytics", icon: BarChart3, permission: "view_analytics" },
+      {
+        label: "Orders",
+        href: "/admin/orders",
+        icon: ShoppingBag,
+        permission: "manage_orders",
+        activePaths: ["/admin/orders", "/admin/payments"],
+      },
+      {
+        label: "Inventory",
+        href: "/admin/inventory",
+        icon: Boxes,
+        permission: "manage_inventory",
+        badge: "pendingRequests",
+        activePaths: ["/admin/inventory", "/admin/warehouse"],
+      },
     ],
   },
   {
-    label: "Commerce",
+    label: "Build",
     items: [
-      { label: "Orders", href: "/admin/orders", icon: ShoppingBag, permission: "manage_orders" },
-      { label: "Payments", href: "/admin/payments", icon: CreditCard, permission: "manage_orders" },
-      { label: "Refund Review", href: "/admin/payments/refund-queue", icon: AlertTriangle, permission: "manage_orders" },
       { label: "Products", href: "/admin/products", icon: Package, permission: "manage_products" },
       {
         label: "Categories",
-        icon: LayoutTemplate,
-        minRole: "manager",
+        href: "/admin/categories",
+        icon: Grid2X2,
         permission: "manage_products",
-        children: [
-          { label: "Product Taxonomy", href: "/admin/products/categories", icon: LayoutTemplate, minRole: "manager", permission: "manage_products" },
-          { label: "Category Heroes", href: "/admin/content/categories", icon: LayoutTemplate, minRole: "manager", permission: "manage_site_content" },
-        ],
+        minRole: "manager",
+        activePaths: ["/admin/categories", "/admin/products/categories", "/admin/content/categories"],
       },
-      { label: "Inventory Ledger", href: "/admin/inventory", icon: History, permission: "manage_inventory" },
-      { label: "Low Stock", href: "/admin/low-stock", icon: AlertTriangle, badge: "lowStock", permission: "manage_inventory" },
-      { label: "Local Warehouse", href: "/admin/warehouse", icon: Warehouse, permission: "manage_inventory" },
-      { label: "Review Moderation", href: "/admin/reviews", icon: MessageSquareWarning, permission: "moderate_reviews" },
-      { label: "Coupons", href: "/admin/coupons", icon: Tag, minRole: "manager", permission: "manage_coupons" },
+      {
+        label: "Brands",
+        href: "/admin/brands",
+        icon: Store,
+        permission: "manage_brands",
+        activePaths: ["/admin/brands", "/admin/applications", "/admin/products/review"],
+      },
     ],
   },
   {
-    label: "Brands",
+    label: "Experience",
     items: [
-      { label: "All Brands", href: "/admin/brands", icon: Store, permission: "manage_brands" },
-      { label: "Applications", href: "/admin/applications", icon: FileText, permission: "manage_applications" },
-      { label: "Brand Activity", href: "/admin/products/review", icon: History, permission: "manage_products" },
+      {
+        label: "Page Studio",
+        href: "/admin/page-studio",
+        icon: LayoutTemplate,
+        permission: "manage_page_studio",
+        minRole: "manager",
+        activePaths: ["/admin/page-studio", "/admin/content"],
+      },
+      { label: "Reviews", href: "/admin/reviews", icon: MessageSquareWarning, permission: "moderate_reviews" },
     ],
   },
   {
-    label: "People & Content",
+    label: "Workspace",
     items: [
-      { label: "Customers & Permissions", href: "/admin/users", icon: Users, permission: "manage_users" },
-      { label: "Page Studio", href: "/admin/page-studio", icon: LayoutTemplate, minRole: "manager", permission: "manage_page_studio" },
-      { label: "Notifications", href: "/admin/notifications", icon: Bell, badge: "notifications", permission: "view_admin_notifications" },
-    ],
-  },
-  {
-    label: "Operations",
-    items: [
-      { label: "Audit Log", href: "/admin/audit-log", icon: History, minRole: "admin", permission: "view_audit_log" },
-      { label: "Settings", href: "/admin/settings", icon: Settings, minRole: "manager", permission: "manage_settings" },
+      { label: "Customers & Access", href: "/admin/users", icon: Users, permission: "manage_users" },
+      { label: "Notifications", href: "/admin/notifications", icon: Bell, permission: "view_admin_notifications", badge: "notifications" },
     ],
   },
 ];
 
+const SECONDARY_ITEMS: NavItem[] = [
+  { label: "Analytics", href: "/admin/analytics", icon: BarChart3, permission: "view_analytics" },
+  { label: "Coupons", href: "/admin/coupons", icon: Tag, permission: "manage_coupons", minRole: "manager" },
+  { label: "Applications", href: "/admin/applications", icon: Store, permission: "manage_applications", hideWhenPermission: "manage_brands" },
+  { label: "Brand Activity", href: "/admin/products/review", icon: History, permission: "manage_products", hideWhenPermission: "manage_brands" },
+  { label: "Content Library", href: "/admin/content", icon: BookOpenText, permission: "manage_site_content", minRole: "manager", hideWhenPermission: "manage_page_studio" },
+  { label: "Audit Log", href: "/admin/audit-log", icon: History, permission: "view_audit_log", minRole: "admin" },
+  { label: "Settings", href: "/admin/settings", icon: Settings, permission: "manage_settings", minRole: "manager" },
+];
+
 const ROLE_RANK: Record<string, number> = { staff: 1, manager: 2, admin: 3 };
-const canSee = (role: string, minRole: Role = "staff") => (ROLE_RANK[role] ?? 0) >= ROLE_RANK[minRole];
+const canSeeRole = (role: string, minRole: Role = "staff") => (ROLE_RANK[role] ?? 0) >= ROLE_RANK[minRole];
 
-type BadgeCounts = Record<"notifications" | "lowStock", number>;
-
-function isActiveHref(pathname: string, href: string): boolean {
-  return href === "/admin" ? pathname === "/admin" : pathname === href || pathname.startsWith(`${href}/`);
+function matchesPath(pathname: string, path: string): boolean {
+  if (path === "/admin") return pathname === path;
+  return pathname === path || pathname.startsWith(`${path}/`);
 }
 
-function NavLink({
-  item,
-  active,
-  count,
-  indent = false,
-}: {
-  item: NavItem;
-  active: boolean;
-  count: number;
-  indent?: boolean;
-}) {
+function itemMatchesPath(pathname: string, item: NavItem): boolean {
+  return (item.activePaths ?? [item.href]).some((path) => matchesPath(pathname, path));
+}
+
+function getActiveHref(pathname: string, items: NavItem[]): string | undefined {
+  return items
+    .filter((item) => itemMatchesPath(pathname, item))
+    .sort((a, b) => {
+      const aLength = Math.max(...(a.activePaths ?? [a.href]).filter((path) => matchesPath(pathname, path)).map((path) => path.length));
+      const bLength = Math.max(...(b.activePaths ?? [b.href]).filter((path) => matchesPath(pathname, path)).map((path) => path.length));
+      return bLength - aLength;
+    })[0]?.href;
+}
+
+function NavigationLink({ item, active, count }: { item: NavItem; active: boolean; count: number }) {
   const { collapsed } = useDashboardSidebar();
+  const Icon = item.icon;
+
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
       aria-label={item.label}
-      title={collapsed ? item.label : undefined}
-      className={`group flex min-h-10 items-center rounded-xl border-l-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${collapsed ? "justify-center gap-0 px-2" : `gap-3 px-3 ${indent ? "ml-3" : ""}`} ${active ? "border-[var(--admin-primary)] bg-[var(--admin-selected)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+      className={`group relative flex items-center text-[13px] font-semibold transition-[background-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 active:scale-[0.96] ${collapsed ? "h-10 w-10 justify-center rounded-full" : "min-h-10 gap-3 rounded-lg px-3 py-2.5"} ${active ? (collapsed ? "bg-[var(--admin-text)] text-white shadow-[0_6px_16px_rgba(52,39,31,0.2),inset_0_0_0_1px_rgba(200,89,86,0.35)]" : "bg-[var(--admin-selected)] text-[var(--admin-text)]") : "text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
     >
-      <item.icon className={`h-[17px] w-[17px] ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
-      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
-      {count > 0 && <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold text-[var(--admin-primary)]">{count}</span>}
+      {active && !collapsed ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--admin-primary)]" aria-hidden="true" /> : null}
+      <Icon aria-hidden="true" className={`h-[17px] w-[17px] flex-none transition-[color,transform] duration-200 ${collapsed ? "group-hover:scale-125 group-focus-visible:scale-125" : ""} ${active ? (collapsed ? "text-white" : "text-[var(--admin-primary)]") : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
+      {collapsed ? (
+        <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-[12px] font-semibold text-[var(--admin-text)] opacity-0 shadow-[0_8px_22px_rgba(67,45,29,0.13)] transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100">
+          {item.label}
+        </span>
+      ) : <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+      {count > 0 ? <span className={`${collapsed ? "absolute -right-1 -top-1" : ""} flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1.5 text-[10px] font-bold tabular-nums text-[var(--admin-primary)]`}>{count}</span> : null}
     </Link>
   );
 }
 
-function NavGroupDisclosure({
-  group,
-  pathname,
-  role,
-  counts,
-  permissions,
-}: {
-  group: NavGroupItem;
-  pathname: string;
-  role: string;
-  counts: BadgeCounts;
-  permissions: Set<PermissionKey>;
-}) {
+function NavigationGroup({ label, items, activeHref, counts }: { label: string; items: NavItem[]; activeHref?: string; counts: Record<BadgeKey, number> }) {
   const { collapsed } = useDashboardSidebar();
-  const visibleChildren = group.children.filter(
-    (child) => canSee(role, child.minRole) && permissions.has(child.permission)
-  );
-  const containsActiveRoute = visibleChildren.some((child) => isActiveHref(pathname, child.href));
-  const [open, setOpen] = useState(containsActiveRoute);
 
-  // Keep the group open automatically whenever navigation lands on one of
-  // its child routes, even if the user had previously collapsed it — an
-  // in-render state adjustment (guarded so it only fires on an actual
-  // change) rather than an effect.
+  return (
+    <section aria-label={label} className={collapsed ? "mx-auto w-14 rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]" : undefined}>
+      {!collapsed ? <p className="mb-1.5 flex items-center gap-2 px-3 text-[10.5px] font-semibold tracking-[-0.01em] text-[var(--admin-text-muted)]/70"><span className="h-1 w-1 rounded-full bg-[var(--admin-primary)]/70" aria-hidden="true" />{label}</p> : null}
+      <div className={collapsed ? "space-y-1" : "space-y-0.5"}>
+        {items.map((item) => <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
+      </div>
+    </section>
+  );
+}
+
+function MoreTools({ items, activeHref, counts }: { items: NavItem[]; activeHref?: string; counts: Record<BadgeKey, number> }) {
+  const { collapsed } = useDashboardSidebar();
+  const containsActiveRoute = items.some((item) => item.href === activeHref);
+  const [open, setOpen] = useState(containsActiveRoute);
   const [wasActive, setWasActive] = useState(containsActiveRoute);
+
   if (containsActiveRoute !== wasActive) {
     setWasActive(containsActiveRoute);
     if (containsActiveRoute) setOpen(true);
   }
 
-  if (!visibleChildren.length) return null;
-  const groupId = `admin-nav-group-${group.label.toLowerCase().replace(/\s+/g, "-")}`;
-
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls={groupId}
-        aria-label={group.label}
-        title={collapsed ? group.label : undefined}
-        className={`group flex min-h-10 w-full items-center rounded-xl border-l-2 text-[13px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${collapsed ? "justify-center gap-0 px-2" : "gap-3 px-3"} ${containsActiveRoute ? "border-[var(--admin-primary)] text-[var(--admin-primary)]" : "border-transparent text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
-      >
-        <group.icon className={`h-[17px] w-[17px] ${containsActiveRoute ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
-        {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{group.label}</span>}
-        {!collapsed && <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />}
+    <div className={collapsed ? "mx-auto w-14 rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]" : "border-t border-[var(--admin-border)] pt-3"}>
+      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="admin-more-tools" aria-label="More tools" className={`group relative flex items-center font-semibold text-[var(--admin-text-muted)] transition-[background-color,color,transform] duration-200 hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 active:scale-[0.96] ${collapsed ? "h-10 w-10 justify-center rounded-full" : "min-h-10 w-full gap-3 rounded-lg px-3 py-2.5 text-[13px]"}`}>
+        <Grid2X2 aria-hidden="true" className="h-[17px] w-[17px] flex-none text-[var(--admin-text-muted)]/70 transition-transform duration-200 group-hover:scale-110" strokeWidth={1.8} />
+        {!collapsed ? <span className="min-w-0 flex-1 text-left">More tools</span> : null}
+        {!collapsed ? <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} /> : null}
+        {collapsed ? <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-[12px] font-semibold text-[var(--admin-text)] opacity-0 shadow-[0_8px_22px_rgba(67,45,29,0.13)] transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100">More tools</span> : null}
       </button>
-      {open && (
-        <div id={groupId} className="mt-1 space-y-1">
-          {visibleChildren.map((child) => (
-            <NavLink key={child.href} item={child} active={isActiveHref(pathname, child.href)} count={child.badge ? counts[child.badge] : 0} indent />
-          ))}
-        </div>
-      )}
+      {open ? <div id="admin-more-tools" className={`mt-1 space-y-1 ${collapsed ? "pt-1" : "pl-2"}`}>{items.map((item) => <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}</div> : null}
     </div>
   );
 }
 
-export default function AdminSidebar({
-  unreadNotifications = 0,
-  lowStockCount = 0,
-  role = "admin",
-  permissions = [],
-}: {
-  unreadNotifications?: number;
-  lowStockCount?: number;
-  role?: string;
-  permissions?: PermissionKey[];
-}) {
+export default function AdminSidebar({ unreadNotifications = 0, pendingRequestCount = 0, role = "admin", permissions = [] }: { unreadNotifications?: number; pendingRequestCount?: number; role?: string; permissions?: PermissionKey[] }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
-  const counts = { notifications: unreadNotifications, lowStock: lowStockCount };
   const permissionSet = new Set(permissions);
+  const counts = { notifications: unreadNotifications, pendingRequests: pendingRequestCount };
+  const canSeeItem = (item: NavItem) => canSeeRole(role, item.minRole) && permissionSet.has(item.permission);
+  const groups = PRIMARY_GROUPS.map((group) => ({ ...group, items: group.items.filter(canSeeItem) })).filter((group) => group.items.length > 0);
+  const secondaryItems = SECONDARY_ITEMS.filter(canSeeItem).filter((item) => !item.hideWhenPermission || !permissionSet.has(item.hideWhenPermission));
+  const activeHref = getActiveHref(pathname, [...groups.flatMap((group) => group.items), ...secondaryItems]);
 
   return (
-    <nav aria-label="Admin navigation" className="space-y-6">
-      {NAV_GROUPS.map((group, index) => {
-        const items = group.items.filter(
-          (item) =>
-            canSee(role, item.minRole) &&
-            (isNavGroupItem(item)
-              ? item.children.some((child) => permissionSet.has(child.permission))
-              : permissionSet.has(item.permission))
-        );
-        if (!items.length) return null;
-        return (
-          <div key={group.label ?? index}>
-            {group.label && !collapsed && <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--admin-text-muted)]/75">{group.label}</p>}
-            <div className="space-y-1">
-              {items.map((item) =>
-                isNavGroupItem(item) ? (
-                  <NavGroupDisclosure key={item.label} group={item} pathname={pathname} role={role} counts={counts} permissions={permissionSet} />
-                ) : (
-                  <NavLink key={item.href} item={item} active={isActiveHref(pathname, item.href)} count={item.badge ? counts[item.badge] : 0} />
-                )
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      <div className="border-t border-[var(--admin-border)] pt-4">
-        <Link href="/brand-portal" aria-label="Brand Portal" title={collapsed ? "Brand Portal" : undefined} className={`flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
-          <Store className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> {!collapsed && "Brand Portal"}
-        </Link>
-        <Link href="/" aria-label="Storefront" title={collapsed ? "Storefront" : undefined} className={`mt-1 flex items-center rounded-xl py-2.5 text-[13px] font-semibold text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)] ${collapsed ? "justify-center px-2" : "gap-3 px-3"}`}>
-          <ArrowLeft className="h-[17px] w-[17px] text-[var(--admin-text-muted)]/70" /> {!collapsed && "Storefront"}
-        </Link>
+    <nav aria-label="Admin navigation" className="flex min-h-full flex-col">
+      <div className={collapsed ? "space-y-3 pt-4" : "space-y-5"}>
+        {groups.map((group) => <NavigationGroup key={group.label} label={group.label} items={group.items} activeHref={activeHref} counts={counts} />)}
+        {secondaryItems.length > 0 ? <MoreTools items={secondaryItems} activeHref={activeHref} counts={counts} /> : null}
+      </div>
+      <div className={collapsed ? "mt-auto pt-3" : "mt-auto border-t border-[var(--admin-border)] pt-4"}>
+        {!collapsed ? <p className="mb-2 px-3 text-[10px] font-medium text-[var(--admin-text-muted)]/70">Switch workspace</p> : null}
+        <div className={collapsed ? "mx-auto w-14 rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]" : "space-y-0.5"}>
+          <NavigationLink item={{ label: "Brand Portal", href: "/brand-portal", icon: Store, permission: "manage_brands" }} active={false} count={0} />
+          <NavigationLink item={{ label: "Storefront", href: "/", icon: ArrowLeft, permission: "view_analytics" }} active={false} count={0} />
+        </div>
       </div>
     </nav>
   );

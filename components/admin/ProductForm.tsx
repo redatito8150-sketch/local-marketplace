@@ -709,7 +709,7 @@ export default function ProductForm({
   const inventoryHref = currentProductId
     ? (isBrandPortal
         ? `/brand-portal/stock?product=${encodeURIComponent(currentProductId)}${brandSlug ? `&brand=${encodeURIComponent(brandSlug)}` : ""}`
-        : `/admin/low-stock?product=${encodeURIComponent(currentProductId)}`)
+        : `/admin/inventory`)
     : undefined;
   const mediaColorIds = colorType ? form.inventoryVariants.valueIdsByOptionType[colorType.id] ?? [] : [];
   const activeStepIndex = Math.max(0, PRODUCT_EDITOR_SECTIONS.findIndex((section) => section.id === activeSection));

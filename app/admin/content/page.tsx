@@ -4,6 +4,7 @@ import { Home, LayoutGrid, Newspaper, Store, GalleryHorizontal, Sparkles, Waves 
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { getSiteContentRowForAdmin } from "@/lib/data/admin";
 import { formatDateTime } from "@/lib/format";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 const SECTIONS = [
   {
@@ -67,6 +68,7 @@ export default async function AdminContentPage() {
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="storefront" activeHref="/admin/content" />
       <h1 className="text-2xl font-bold tracking-tightest text-ink">Site Content</h1>
       <p className="mt-1.5 text-[13.5px] text-ink-soft/60">
         Edit marketing copy directly — changes go live immediately, no code

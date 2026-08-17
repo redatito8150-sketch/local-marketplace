@@ -7,6 +7,7 @@ import BrandQuickToggle from "@/components/admin/BrandQuickToggle";
 import BrandSponsorControl from "@/components/admin/BrandSponsorControl";
 import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
+import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 type BrandSearchParams = { q?: string; category?: string; ownership?: string; city?: string; sort?: string };
 
@@ -29,6 +30,7 @@ export default async function AdminBrandsPage(props: { searchParams: Promise<Bra
 
   return (
     <div>
+      <AdminWorkspaceNav workspace="brands" activeHref="/admin/brands" />
       <DashboardPageHeader eyebrow="Brands" title={`All brands (${brands.length})`} description={`${allBrands.length} marketplace brands. Review ownership links and open any brand's portal without changing its public page.`} actions={<Link href="/admin/brands/new" className={dashboardButtonPrimary}><Plus className="mr-2 h-4 w-4" />Add brand</Link>} />
       <DashboardFilters action="/admin/brands" clearHref="/admin/brands" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Brand, slug or category" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>

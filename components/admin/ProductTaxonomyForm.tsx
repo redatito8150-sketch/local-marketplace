@@ -22,16 +22,20 @@ function SimpleListEditor({
           <div key={i} className="flex items-center gap-2">
             <input
               type="text"
+              name={`${label.toLowerCase()}-${i + 1}`}
+              aria-label={`${label} ${i + 1}`}
+              autoComplete="off"
               value={item}
               onChange={(e) => onChange(items.map((it, idx) => (idx === i ? e.target.value : it)))}
-              className="w-full rounded-md border border-stone-150 bg-white px-3 py-2 text-[13.5px] text-ink outline-none focus:border-ink/30"
+              className="w-full rounded-md border border-stone-150 bg-white px-3 py-2 text-[13.5px] text-ink outline-none focus:border-ink/30 focus-visible:ring-2 focus-visible:ring-mahalyred/20"
             />
             <button
               type="button"
+              aria-label={`Remove ${label.toLowerCase()} ${i + 1}`}
               onClick={() => onChange(items.filter((_, idx) => idx !== i))}
-              className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700"
+              className="rounded-md p-2 text-ink-soft/50 hover:bg-stone-100 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30"
             >
-              <Trash2 className="h-4 w-4" strokeWidth={1.6} />
+              <Trash2 aria-hidden="true" className="h-4 w-4" strokeWidth={1.6} />
             </button>
           </div>
         ))}
@@ -39,9 +43,9 @@ function SimpleListEditor({
       <button
         type="button"
         onClick={() => onChange([...items, ""])}
-        className="mt-2 flex items-center gap-1.5 text-[12.5px] font-semibold text-ink hover:underline"
+        className="mt-2 flex items-center gap-1.5 text-[12.5px] font-semibold text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30"
       >
-        <Plus className="h-3.5 w-3.5" strokeWidth={2} />
+        <Plus aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2} />
         Add
       </button>
     </div>
@@ -50,7 +54,7 @@ function SimpleListEditor({
 
 // Category/Product Type and Collection are no longer edited here — they're
 // driven by the real taxonomy_nodes hierarchy (see the read-only tree above
-// this form on /admin/products/categories) and the brand-owned `collections`
+// this form on /admin/categories) and the brand-owned `collections`
 // table, respectively. This form still exists for Materials/Fits, and keeps
 // whatever categories/typesByCategory/collections values were already
 // stored, passed through unchanged on every save — nothing here can modify
@@ -102,14 +106,16 @@ export default function ProductTaxonomyForm({ initial }: { initial: ProductTaxon
       <SimpleListEditor label="Materials" items={materials} onChange={setMaterials} />
       <SimpleListEditor label="Fits" items={fits} onChange={setFits} />
 
-      {error && <p className="text-[13px] text-red-600">{error}</p>}
-      {saved && !error && <p className="text-[13px] text-green-700">Saved.</p>}
+      <div aria-live="polite">
+        {error && <p className="text-[13px] text-red-600">{error}</p>}
+        {saved && !error && <p className="text-[13px] text-green-700">Saved.</p>}
+      </div>
 
       <div className="flex items-center gap-3 border-t border-stone-150 pt-6">
         <button
           type="submit"
           disabled={submitting}
-          className="rounded-md bg-mahalyred px-5 py-2.5 text-[13px] font-semibold text-cream disabled:opacity-60"
+          className="rounded-md bg-mahalyred px-5 py-2.5 text-[13px] font-semibold text-cream focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-60"
         >
           {submitting ? "Saving…" : "Save changes"}
         </button>

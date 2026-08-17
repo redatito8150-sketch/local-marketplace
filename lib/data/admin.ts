@@ -5,6 +5,7 @@ import { toBrandApplicationRecord } from "@/lib/join/applicationService";
 import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { calculateVariantReadiness } from "@/lib/inventory/readiness";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
+import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 import {
   Audience,
   AuditLogRecord,
@@ -1151,6 +1152,370 @@ export async function getLowStockVariantsForAdmin(): Promise<LowStockVariantReco
     .filter((v) => v.stockStatus !== "in_stock");
 }
 
+export interface AdminInventoryOverview {
+  totalVariantCount: number;
+  totalAvailableUnits: number;
+  healthyCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  openTransferCount: number;
+  incomingUnitCount: number;
+  movementsLast24Hours: number;
+  brands: string[];
+}
+
+type InventoryOverviewVariantRow = {
+  quantity: number;
+  low_stock_threshold_override: number | null;
+  products: { default_low_stock_threshold: number; brand_name: string } | null;
+};
+
+type InventoryOverviewTransferRow = {
+  id: string;
+  warehouse_transfer_items: Array<{ requested_qty: number; received_ok_qty: number | null }>;
+};
+
+export async function getInventoryOverviewForAdmin(): Promise<AdminInventoryOverview> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const openWarehouseStatuses = ["pending", "submitted", "approved", "in_transit", "receiving", "partially_received"];
+  const [variantsResult, transfersResult, movementsResult] = await Promise.all([
+    supabaseAdmin
+      .from("product_variants")
+      .select("quantity, low_stock_threshold_override, products!inner(default_low_stock_threshold, brand_name)")
+      .eq("selling_status", "active")
+      .eq("is_archived", false),
+    supabaseAdmin
+      .from("warehouse_transfers")
+      .select("id, warehouse_transfer_items(requested_qty, received_ok_qty)")
+      .eq("direction", "to_local")
+      .in("status", openWarehouseStatuses),
+    supabaseAdmin
+      .from("inventory_movements")
+      .select("id", { count: "exact", head: true })
+      .gte("created_at", since),
+  ]);
+
+  if (variantsResult.error) throw new Error(`getInventoryOverviewForAdmin variants failed: ${variantsResult.error.message}`);
+  if (transfersResult.error) throw new Error(`getInventoryOverviewForAdmin transfers failed: ${transfersResult.error.message}`);
+  if (movementsResult.error) throw new Error(`getInventoryOverviewForAdmin movements failed: ${movementsResult.error.message}`);
+
+  const variants = (variantsResult.data ?? []) as unknown as InventoryOverviewVariantRow[];
+  const transfers = (transfersResult.data ?? []) as unknown as InventoryOverviewTransferRow[];
+  let healthyCount = 0;
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+
+  for (const variant of variants) {
+    if (!variant.products) continue;
+    const threshold = effectiveLowStockThreshold(
+      variant.low_stock_threshold_override,
+      variant.products.default_low_stock_threshold
+    );
+    const status = calculateStockStatus(variant.quantity, threshold);
+    if (status === "out_of_stock") outOfStockCount += 1;
+    else if (status === "low_stock") lowStockCount += 1;
+    else healthyCount += 1;
+  }
+
+  return {
+    totalVariantCount: variants.length,
+    totalAvailableUnits: variants.reduce((sum, variant) => sum + Number(variant.quantity), 0),
+    healthyCount,
+    lowStockCount,
+    outOfStockCount,
+    openTransferCount: transfers.length,
+    incomingUnitCount: transfers.reduce((sum, transfer) => sum + transfer.warehouse_transfer_items.reduce(
+      (itemSum, item) => itemSum + (item.received_ok_qty == null ? Number(item.requested_qty) : 0),
+      0
+    ), 0),
+    movementsLast24Hours: movementsResult.count ?? 0,
+    brands: [...new Set(variants.map((variant) => variant.products?.brand_name).filter((brand): brand is string => Boolean(brand)))].sort(),
+  };
+}
+
+export type AdminInventoryFulfillmentMode = "zakhnook_fulfilled" | "brand_fulfilled";
+
+export interface AdminInventoryBrandSummary {
+  id: string;
+  slug: string;
+  name: string;
+  logoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+  productCount: number;
+  variantCount: number;
+  totalUnits: number;
+  healthyCount: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  searchText: string;
+}
+
+export interface AdminInventoryVariantDetail {
+  id: string;
+  sku: string;
+  label: string;
+  image: string;
+  quantity: number;
+  threshold: number;
+  stockStatus: "in_stock" | "low_stock" | "out_of_stock";
+  sellingStatus: string;
+  color: string | null;
+  size: string | null;
+}
+
+export interface AdminInventoryProductDetail {
+  id: string;
+  name: string;
+  image: string;
+  status: string;
+  totalUnits: number;
+  issueCount: number;
+  variants: AdminInventoryVariantDetail[];
+}
+
+export interface AdminInventoryBrandDetail {
+  id: string;
+  slug: string;
+  name: string;
+  logoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+  products: AdminInventoryProductDetail[];
+}
+
+type InventoryDirectoryBrandRow = {
+  id: string;
+  slug: string;
+  name: string;
+  logo_image: string | null;
+  fulfillment_mode: AdminInventoryFulfillmentMode;
+};
+
+type InventoryDirectoryProductRow = {
+  id: string;
+  brand_id: string;
+  name: string;
+  image: string;
+  status: string;
+  default_low_stock_threshold: number;
+};
+
+// The admin inventory entry point is brand-led rather than one enormous
+// variant list. This keeps warehouse-only partner stock and marketplace-wide
+// stock easy to navigate while still deriving every number from variants.
+export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInventoryBrandSummary[]> {
+  const [brandsResult, productsResult] = await Promise.all([
+    supabaseAdmin
+      .from("brands")
+      .select("id, slug, name, logo_image, fulfillment_mode")
+      .order("name", { ascending: true }),
+    supabaseAdmin
+      .from("products")
+      .select("id, brand_id, name, image, status, default_low_stock_threshold")
+      .neq("status", "archived"),
+  ]);
+  if (brandsResult.error) throw new Error(`getInventoryBrandSummariesForAdmin brands failed: ${brandsResult.error.message}`);
+  if (productsResult.error) throw new Error(`getInventoryBrandSummariesForAdmin products failed: ${productsResult.error.message}`);
+
+  const brands = (brandsResult.data ?? []) as InventoryDirectoryBrandRow[];
+  const products = (productsResult.data ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const variantsByProduct = await getVariantsForProducts(productIds, supabaseAdmin);
+  const productsByBrand = new Map<string, InventoryDirectoryProductRow[]>();
+  for (const product of products) {
+    const current = productsByBrand.get(product.brand_id) ?? [];
+    current.push(product);
+    productsByBrand.set(product.brand_id, current);
+  }
+
+  return brands.map((brand) => {
+    const brandProducts = productsByBrand.get(brand.id) ?? [];
+    let variantCount = 0;
+    let totalUnits = 0;
+    let healthyCount = 0;
+    let lowStockCount = 0;
+    let outOfStockCount = 0;
+    const searchTerms = [brand.name];
+    for (const product of brandProducts) {
+      searchTerms.push(product.name);
+      for (const variant of variantsByProduct.get(product.id) ?? []) {
+        if (variant.sellingStatus === "discontinued") continue;
+        searchTerms.push(variant.sku, ...variant.optionValues.map((value) => value.label));
+        const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+        const stockStatus = calculateStockStatus(variant.quantity, threshold);
+        variantCount += 1;
+        totalUnits += variant.quantity;
+        if (stockStatus === "out_of_stock") outOfStockCount += 1;
+        else if (stockStatus === "low_stock") lowStockCount += 1;
+        else healthyCount += 1;
+      }
+    }
+    return {
+      id: brand.id,
+      slug: brand.slug,
+      name: brand.name,
+      logoImage: brand.logo_image,
+      fulfillmentMode: brand.fulfillment_mode,
+      productCount: brandProducts.length,
+      variantCount,
+      totalUnits,
+      healthyCount,
+      lowStockCount,
+      outOfStockCount,
+      searchText: searchTerms.join(" ").toLocaleLowerCase("en-US"),
+    };
+  });
+}
+
+export async function getInventoryBrandDetailForAdmin(slug: string): Promise<AdminInventoryBrandDetail | null> {
+  const { data: brandData, error: brandError } = await supabaseAdmin
+    .from("brands")
+    .select("id, slug, name, logo_image, fulfillment_mode")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (brandError) throw new Error(`getInventoryBrandDetailForAdmin brand failed: ${brandError.message}`);
+  if (!brandData) return null;
+  const brand = brandData as InventoryDirectoryBrandRow;
+
+  const { data: productData, error: productsError } = await supabaseAdmin
+    .from("products")
+    .select("id, brand_id, name, image, status, default_low_stock_threshold")
+    .eq("brand_id", brand.id)
+    .neq("status", "archived")
+    .order("name", { ascending: true });
+  if (productsError) throw new Error(`getInventoryBrandDetailForAdmin products failed: ${productsError.message}`);
+  const products = (productData ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const [variantsByProduct, mediaResult] = await Promise.all([
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (mediaResult.error) throw new Error(`getInventoryBrandDetailForAdmin media failed: ${mediaResult.error.message}`);
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
+
+  return {
+    id: brand.id,
+    slug: brand.slug,
+    name: brand.name,
+    logoImage: brand.logo_image,
+    fulfillmentMode: brand.fulfillment_mode,
+    products: products.map((product) => {
+      const variants = (variantsByProduct.get(product.id) ?? [])
+        .filter((variant) => variant.sellingStatus !== "discontinued")
+        .map((variant) => {
+          const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+          const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
+          const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
+          return {
+            id: variant.id,
+            sku: variant.sku,
+            label: variant.optionValues.map((value) => value.label).join(" / ") || "Default variant",
+            image: resolveVariantImage(product.id, variant, colorImages, product.image),
+            quantity: variant.quantity,
+            threshold,
+            stockStatus: calculateStockStatus(variant.quantity, threshold),
+            sellingStatus: variant.sellingStatus,
+            color,
+            size,
+          } satisfies AdminInventoryVariantDetail;
+        });
+      return {
+        id: product.id,
+        name: product.name,
+        image: product.image,
+        status: product.status,
+        totalUnits: variants.reduce((sum, variant) => sum + variant.quantity, 0),
+        issueCount: variants.filter((variant) => variant.stockStatus !== "in_stock").length,
+        variants,
+      };
+    }),
+  };
+}
+
+export interface AdminInventoryProductWithBrand extends AdminInventoryProductDetail {
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  brandLogoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+}
+
+// Flat, all-brands product list for the Inventory landing view — every
+// product across every brand at once, so an admin doesn't have to open a
+// brand first just to see what's in stock. Brand becomes a filter, not a
+// navigation step.
+export async function getInventoryProductsForAdmin(): Promise<AdminInventoryProductWithBrand[]> {
+  const [brandsResult, productsResult] = await Promise.all([
+    supabaseAdmin.from("brands").select("id, slug, name, logo_image, fulfillment_mode"),
+    supabaseAdmin
+      .from("products")
+      .select("id, brand_id, name, image, status, default_low_stock_threshold")
+      .neq("status", "archived")
+      .order("name", { ascending: true }),
+  ]);
+  if (brandsResult.error) throw new Error(`getInventoryProductsForAdmin brands failed: ${brandsResult.error.message}`);
+  if (productsResult.error) throw new Error(`getInventoryProductsForAdmin products failed: ${productsResult.error.message}`);
+
+  const brandsById = new Map((brandsResult.data as InventoryDirectoryBrandRow[] ?? []).map((brand) => [brand.id, brand]));
+  const products = (productsResult.data ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const [variantsByProduct, mediaResult] = await Promise.all([
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (mediaResult.error) throw new Error(`getInventoryProductsForAdmin media failed: ${mediaResult.error.message}`);
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
+
+  return products.flatMap((product) => {
+    const brand = brandsById.get(product.brand_id);
+    if (!brand) return [];
+    const variants = (variantsByProduct.get(product.id) ?? [])
+      .filter((variant) => variant.sellingStatus !== "discontinued")
+      .map((variant) => {
+        const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+        const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
+        const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
+        return {
+          id: variant.id,
+          sku: variant.sku,
+          label: variant.optionValues.map((value) => value.label).join(" / ") || "Default variant",
+          image: resolveVariantImage(product.id, variant, colorImages, product.image),
+          quantity: variant.quantity,
+          threshold,
+          stockStatus: calculateStockStatus(variant.quantity, threshold),
+          sellingStatus: variant.sellingStatus,
+          color,
+          size,
+        } satisfies AdminInventoryVariantDetail;
+      });
+    return [{
+      id: product.id,
+      name: product.name,
+      image: product.image,
+      status: product.status,
+      totalUnits: variants.reduce((sum, variant) => sum + variant.quantity, 0),
+      issueCount: variants.filter((variant) => variant.stockStatus !== "in_stock").length,
+      variants,
+      brandId: brand.id,
+      brandSlug: brand.slug,
+      brandName: brand.name,
+      brandLogoImage: brand.logo_image,
+      fulfillmentMode: brand.fulfillment_mode,
+    } satisfies AdminInventoryProductWithBrand];
+  });
+}
+
 export async function getAuditLogsForEntity(
   entityType: string,
   entityId: string
@@ -1269,10 +1634,11 @@ export interface AdminInventoryMovementRow {
   id: string;
   productId: string;
   productName: string;
-  productImage: string;
+  variantImage: string;
   brandName: string;
   variantId: string;
   variantSku: string;
+  variantLabel: string;
   previousQuantity: number;
   quantityDelta: number;
   newQuantity: number;
@@ -1285,6 +1651,13 @@ export interface AdminInventoryMovementRow {
 
 export async function getInventoryMovementsForAdmin(options: {
   productId?: string;
+  variantId?: string;
+  q?: string;
+  brand?: string;
+  source?: string;
+  movementType?: string;
+  from?: string;
+  to?: string;
   page?: number;
   limit?: number;
 } = {}): Promise<{ rows: AdminInventoryMovementRow[]; total: number; page: number; limit: number }> {
@@ -1293,31 +1666,77 @@ export async function getInventoryMovementsForAdmin(options: {
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
+  let scopedProductIds: string[] | null = null;
+  if (options.brand || options.q) {
+    let brandProductIds: string[] | null = null;
+    if (options.brand) {
+      const { data, error } = await supabaseAdmin.from("products").select("id").eq("brand_name", options.brand);
+      if (error) throw new Error(`getInventoryMovementsForAdmin brand scope failed: ${error.message}`);
+      brandProductIds = (data ?? []).map((product) => product.id as string);
+    }
+
+    let queryProductIds: string[] | null = null;
+    if (options.q) {
+      const pattern = `%${options.q}%`;
+      const [names, brands, variants] = await Promise.all([
+        supabaseAdmin.from("products").select("id").ilike("name", pattern),
+        supabaseAdmin.from("products").select("id").ilike("brand_name", pattern),
+        supabaseAdmin.from("product_variants").select("product_id").ilike("sku", pattern),
+      ]);
+      for (const result of [names, brands, variants]) {
+        if (result.error) throw new Error(`getInventoryMovementsForAdmin search scope failed: ${result.error.message}`);
+      }
+      queryProductIds = [...new Set([
+        ...(names.data ?? []).map((product) => product.id as string),
+        ...(brands.data ?? []).map((product) => product.id as string),
+        ...(variants.data ?? []).map((variant) => variant.product_id as string),
+      ])];
+    }
+
+    const queryProductIdSet = queryProductIds ? new Set(queryProductIds) : null;
+    scopedProductIds = brandProductIds && queryProductIdSet
+      ? brandProductIds.filter((id) => queryProductIdSet.has(id))
+      : brandProductIds ?? queryProductIds ?? [];
+
+    if (scopedProductIds.length === 0) return { rows: [], total: 0, page, limit };
+  }
+
   let query = supabaseAdmin
     .from("inventory_movements")
     .select("id, product_id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
   if (options.productId) query = query.eq("product_id", options.productId);
+  if (options.variantId) query = query.eq("variant_id", options.variantId);
+  if (scopedProductIds) query = query.in("product_id", scopedProductIds);
+  if (options.source) query = query.eq("source", options.source);
+  if (options.movementType) query = query.eq("movement_type", options.movementType);
+  if (options.from) query = query.gte("created_at", `${options.from}T00:00:00.000Z`);
+  if (options.to) query = query.lte("created_at", `${options.to}T23:59:59.999Z`);
 
   const { data, error, count } = await query;
   if (error) throw new Error(`getInventoryMovementsForAdmin failed: ${error.message}`);
 
   const productIds = [...new Set((data ?? []).map((row) => row.product_id))];
-  const variantIds = [...new Set((data ?? []).map((row) => row.variant_id))];
-  const [productsResult, variantsResult] = await Promise.all([
+  const [productsResult, variantsByProduct, mediaResult] = await Promise.all([
     productIds.length
       ? supabaseAdmin.from("products").select("id, name, image, brand_name").in("id", productIds)
       : Promise.resolve({ data: [], error: null }),
-    variantIds.length
-      ? supabaseAdmin.from("product_variants").select("id, sku").in("id", variantIds)
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (productsResult.error) throw new Error(`getInventoryMovementsForAdmin products failed: ${productsResult.error.message}`);
-  if (variantsResult.error) throw new Error(`getInventoryMovementsForAdmin variants failed: ${variantsResult.error.message}`);
+  if (mediaResult.error) throw new Error(`getInventoryMovementsForAdmin media failed: ${mediaResult.error.message}`);
 
   const products = new Map((productsResult.data ?? []).map((product) => [product.id, product]));
-  const variants = new Map((variantsResult.data ?? []).map((variant) => [variant.id, variant]));
+  const variants = new Map([...variantsByProduct.values()].flat().map((variant) => [variant.id, variant]));
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
 
   return {
     rows: (data ?? []).map((row) => {
@@ -1327,10 +1746,11 @@ export async function getInventoryMovementsForAdmin(options: {
         id: row.id,
         productId: row.product_id,
         productName: product?.name ?? row.product_id,
-        productImage: product?.image ?? "",
+        variantImage: resolveVariantImage(row.product_id, variant, colorImages, product?.image),
         brandName: product?.brand_name ?? "Unknown brand",
         variantId: row.variant_id,
         variantSku: variant?.sku ?? row.variant_id,
+        variantLabel: variant?.optionValues.map((value) => value.label).join(" / ") || "Default variant",
         previousQuantity: Number(row.previous_quantity),
         quantityDelta: Number(row.quantity_delta),
         newQuantity: Number(row.new_quantity),

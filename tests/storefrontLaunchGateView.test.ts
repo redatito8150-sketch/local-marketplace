@@ -74,7 +74,7 @@ test("item 2: storefront_products also excludes brands with any nonterminal fulf
 });
 
 test("the current storefront_products view (20260815000000) never does `select p.*` — only the same explicit public column allowlist PRODUCT_PUBLIC_SELECT already uses, plus first_stocked_at/launch_policy/first_visible_at", () => {
-  const currentView = launchPolicyMigration.match(/create or replace view public\.storefront_products[\s\S]*?;\n\ngrant select/)![0];
+  const currentView = launchPolicyMigration.match(/create or replace view public\.storefront_products[\s\S]*?;\r?\n\r?\ngrant select/)![0];
   const withoutComments = currentView.replace(/--[^\r\n]*/g, "");
   assert.doesNotMatch(withoutComments, /select\s+p\.\*/i);
   const productsTs = read("lib/data/products.ts");

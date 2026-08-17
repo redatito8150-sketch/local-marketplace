@@ -4,9 +4,9 @@ import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { getUserPermissions } from "@/lib/supabase/permissions";
 import {
   getUnreadNotificationCount,
-  getLowStockVariantsForAdmin,
   getAllNotificationsForAdmin,
 } from "@/lib/data/admin";
+import { getPendingWarehouseTransferCount } from "@/lib/data/warehouse";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 import AdminQuickSearch from "@/components/admin/AdminQuickSearch";
 import AdminNotificationBell from "@/components/admin/AdminNotificationBell";
@@ -33,17 +33,17 @@ export default async function AdminLayout({
   const canViewNotifications = permissions.has("view_admin_notifications");
   const canViewInventory = permissions.has("manage_inventory");
 
-  const [unreadNotifications, lowStockVariants, recentNotifications] =
+  const [unreadNotifications, pendingRequestCount, recentNotifications] =
     await Promise.all([
       canViewNotifications ? getUnreadNotificationCount() : Promise.resolve(0),
-      canViewInventory ? getLowStockVariantsForAdmin() : Promise.resolve([]),
+      canViewInventory ? getPendingWarehouseTransferCount() : Promise.resolve(0),
       canViewNotifications ? getAllNotificationsForAdmin(5) : Promise.resolve([]),
     ]);
 
   const sidebar = (
     <AdminSidebar
           unreadNotifications={unreadNotifications}
-          lowStockCount={lowStockVariants.length}
+          pendingRequestCount={pendingRequestCount}
           role={profile.role}
           permissions={[...permissions]}
     />
