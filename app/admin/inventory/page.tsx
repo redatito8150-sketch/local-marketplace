@@ -40,6 +40,9 @@ type Params = {
   from?: string;
   to?: string;
   productId?: string;
+  variantId?: string;
+  stock?: string;
+  status?: string;
   page?: string;
 };
 type MovementResult = Awaited<ReturnType<typeof getInventoryMovementsForAdmin>>;
@@ -64,11 +67,13 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
   const from = params.from && DATE_PATTERN.test(params.from) ? params.from : undefined;
   const to = params.to && DATE_PATTERN.test(params.to) ? params.to : undefined;
   const selectedProduct = detail?.products.find((product) => product.id === params.productId);
+  const selectedVariant = detail?.products.flatMap((product) => product.variants).find((variant) => variant.id === params.variantId);
   const movementResult =
     view === "activity" && detail
       ? await getInventoryMovementsForAdmin({
           brand: detail.name,
           productId: selectedProduct?.id,
+          variantId: selectedVariant?.id,
           source,
           movementType,
           from,
@@ -93,35 +98,36 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
           </Link>
         }
       />
-      <nav aria-label="Inventory areas" className="mt-6 grid gap-4 md:grid-cols-3">
-        <Area icon={PackageSearch} label="All inventory" value={`${formatCount(allUnits)} units`} note={`${formatCount(summaries.length)} marketplace brands`} href="/admin/inventory?view=catalog" active={view === "catalog"} />
-        <Area icon={Warehouse} label="Zakhnook warehouse" value={`${formatCount(partnerUnits)} units`} note={`${formatCount(partnerBrands.length)} partner brands only`} href="/admin/inventory?view=warehouse" active={view === "warehouse"} />
-        <Area icon={Activity} label="Movement history" note="Follow one brand or product" href="/admin/inventory?view=activity" active={view === "activity"} />
-      </nav>
-      {view === "activity" ? <ActivityWorkspace summaries={summaries} detail={detail} params={params} result={movementResult} source={source} movementType={movementType} from={from} to={to} page={page} /> : detail ? <BrandInventory detail={detail} view={view} /> : <BrandDirectory summaries={directoryBrands} view={view} query={params.q ?? ""} />}
+      <InventoryNavigation view={view} allUnits={allUnits} partnerUnits={partnerUnits} />
+      {view === "activity" ? <ActivityWorkspace summaries={summaries} detail={detail} params={params} result={movementResult} source={source} movementType={movementType} from={from} to={to} page={page} /> : detail ? <BrandInventory detail={detail} view={view} params={params} /> : <BrandDirectory summaries={directoryBrands} view={view} query={params.q ?? ""} />}
     </div>
   );
 }
 
-function Area({ icon: Icon, label, value, note, href, active }: { icon: React.ElementType; label: string; value?: string; note: string; href: string; active: boolean }) {
+function InventoryNavigation({ view, allUnits, partnerUnits }: { view: InventoryView; allUnits: number; partnerUnits: number }) {
+  const areas = [
+    { view: "catalog" as const, icon: PackageSearch, label: "Inventory", meta: `${formatCount(allUnits)} units`, href: "/admin/inventory?view=catalog" },
+    { view: "warehouse" as const, icon: Warehouse, label: "Warehouse", meta: `${formatCount(partnerUnits)} units`, href: "/admin/inventory?view=warehouse" },
+    { view: "activity" as const, icon: Activity, label: "Variant movements", meta: "Full ledger", href: "/admin/inventory?view=activity" },
+  ];
   return (
-    <Link href={href} aria-current={active ? "page" : undefined} className={`group flex min-h-[88px] items-center gap-3 rounded-[22px] border-0 px-4 py-3 shadow-[0_12px_32px_rgba(72,50,36,.07)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(72,50,36,.1)] ${active ? "bg-[#ddd7cf]" : "bg-[#ece7e0] hover:bg-[#e4ded6]"}`}>
-      <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-xl ${active ? "bg-[#f5dcd5] text-[#C85956]" : "bg-[#fbf7f3] text-[#75685f]"}`}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#75685f]">{label}</span>
-        {value ? <span className="mt-0.5 block text-[13px] font-extrabold tabular-nums text-[#302924]">{value}</span> : null}
-        <span className="mt-0.5 block text-[9.5px] font-medium text-[#75685f]">{note}</span>
-      </span>
-      <ChevronRight className={`ml-auto h-4 w-4 ${active ? "text-[#C85956]" : "text-[#9f9187] group-hover:text-[#C85956]"}`} />
-    </Link>
+    <nav aria-label="Inventory areas" className="mt-5 grid grid-cols-1 gap-1 rounded-2xl bg-[#e6e0d8] p-1 sm:grid-cols-3">
+      {areas.map((area) => {
+        const active = view === area.view;
+        const Icon = area.icon;
+        return <Link key={area.view} href={area.href} aria-current={active ? "page" : undefined} className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3.5 py-2 text-[11px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25 ${active ? "bg-[#f8f4f0] text-[#302924] shadow-[0_5px_14px_rgba(72,50,36,.08)]" : "text-[#75685f] hover:bg-[#ded7cf] hover:text-[#403730]"}`}>
+          <Icon className={`h-4 w-4 flex-none ${active ? "text-[#C85956]" : "text-[#92847a]"}`} />
+          <span>{area.label}</span>
+          <span className={`ml-auto text-[9px] font-semibold tabular-nums ${active ? "text-[#75685f]" : "text-[#9b8d83]"}`}>{area.meta}</span>
+        </Link>;
+      })}
+    </nav>
   );
 }
 
 function BrandDirectory({ summaries, view, query }: { summaries: AdminInventoryBrandSummary[]; view: InventoryView; query: string }) {
   const term = query.trim().toLocaleLowerCase("en-US");
-  const brands = summaries.filter((brand) => !term || brand.name.toLocaleLowerCase("en-US").includes(term));
+  const brands = summaries.filter((brand) => !term || brand.searchText.includes(term));
   const warehouse = view === "warehouse";
   return (
     <section className="mt-5 overflow-hidden rounded-[20px] border-0 bg-transparent shadow-none">
@@ -136,7 +142,7 @@ function BrandDirectory({ summaries, view, query }: { summaries: AdminInventoryB
         <form action="/admin/inventory" className="relative w-full sm:w-[270px]">
           <input type="hidden" name="view" value={view} />
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2948a]" />
-          <input name="q" defaultValue={query} placeholder="Find a brand…" className={`${CONTROL} w-full pl-10`} />
+          <input name="q" defaultValue={query} placeholder="Brand, product or SKU" className={`${CONTROL} w-full pl-10`} />
         </form>
       </header>
       {brands.length ? (
@@ -186,7 +192,18 @@ function Metric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; view: InventoryView }) {
+function BrandInventory({ detail, view, params }: { detail: AdminInventoryBrandDetail; view: InventoryView; params: Params }) {
+  const term = (params.q ?? "").trim().toLocaleLowerCase("en-US");
+  const stock = params.stock === "healthy" || params.stock === "low_stock" || params.stock === "out_of_stock" ? params.stock : "";
+  const status = params.status === "draft" || params.status === "published" ? params.status : "";
+  const products = detail.products.filter((product) => {
+    const searchable = [product.name, product.status, ...product.variants.flatMap((variant) => [variant.sku, variant.label, variant.color ?? "", variant.size ?? ""])].join(" ").toLocaleLowerCase("en-US");
+    if (term && !searchable.includes(term)) return false;
+    if (status && product.status !== status) return false;
+    if (stock === "healthy" && !product.variants.some((variant) => variant.stockStatus === "in_stock")) return false;
+    if (stock && stock !== "healthy" && !product.variants.some((variant) => variant.stockStatus === stock)) return false;
+    return true;
+  });
   return (
     <section className="mt-5">
       <div className="mb-4 flex flex-col gap-3 rounded-[22px] border-0 bg-[#ece7e0] px-4 py-4 shadow-[0_12px_32px_rgba(72,50,36,.07)] sm:flex-row sm:items-center">
@@ -199,7 +216,7 @@ function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; v
           <div>
             <p className="text-[9px] font-bold uppercase tracking-[0.09em] text-[#C85956]">{detail.fulfillmentMode === "zakhnook_fulfilled" ? "Zakhnook warehouse" : "Marketplace inventory"}</p>
             <h2 className="text-[16px] font-extrabold text-[#302924]">{detail.name}</h2>
-            <p className="mt-0.5 text-[10px] text-[#8d8076]">{formatCount(detail.products.length)} products · grouped by product and variant</p>
+            <p className="mt-0.5 text-[10px] text-[#8d8076]">{formatCount(detail.products.length)} products, grouped by color and size</p>
           </div>
         </div>
         <Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(detail.slug)}`} className="inline-flex h-9 w-fit items-center gap-2 rounded-xl bg-[#242424] px-3.5 text-[10.5px] font-bold text-white sm:ml-auto">
@@ -207,22 +224,75 @@ function BrandInventory({ detail, view }: { detail: AdminInventoryBrandDetail; v
           Open movement history
         </Link>
       </div>
-      {detail.products.length ? (
+      <CatalogFilters detail={detail} view={view} query={params.q ?? ""} stock={stock} status={status} />
+      {products.length ? (
         <div className="space-y-3">
-          {detail.products.map((product) => (
-            <ProductCard key={product.id} product={product} />
+          <p className="px-1 text-[9.5px] font-semibold text-[#8d8076]">Showing {formatCount(products.length)} of {formatCount(detail.products.length)} products</p>
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} brandSlug={detail.slug} />
           ))}
         </div>
       ) : (
         <div className="rounded-[22px] border-0 bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
-          <DashboardEmptyState title="No products in this brand" description="Products will appear here after they are created." />
+          <DashboardEmptyState title="No matching products" description="Clear the filters or search for another product, color, size or SKU." />
         </div>
       )}
     </section>
   );
 }
 
-function ProductCard({ product }: { product: AdminInventoryBrandDetail["products"][number] }) {
+function CatalogFilters({ detail, view, query, stock, status }: { detail: AdminInventoryBrandDetail; view: InventoryView; query: string; stock: string; status: string }) {
+  const active = Boolean(query || stock || status);
+  return (
+    <form action="/admin/inventory" className="mb-4 grid gap-2 rounded-2xl bg-[#e6e0d8] p-2 sm:grid-cols-2 lg:grid-cols-[minmax(240px,1fr)_160px_160px_auto]">
+      <input type="hidden" name="view" value={view} />
+      <input type="hidden" name="brand" value={detail.slug} />
+      <label className="relative sm:col-span-2 lg:col-span-1">
+        <span className="sr-only">Search inventory</span>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9b8d83]" />
+        <input name="q" defaultValue={query} placeholder="Product, color, size or SKU" className={`${CONTROL} w-full pl-9`} />
+      </label>
+      <label>
+        <span className="sr-only">Stock status</span>
+        <select name="stock" defaultValue={stock} className={`${CONTROL} w-full`}>
+          <option value="">All stock levels</option>
+          <option value="healthy">Healthy</option>
+          <option value="low_stock">Low stock</option>
+          <option value="out_of_stock">Out of stock</option>
+        </select>
+      </label>
+      <label>
+        <span className="sr-only">Product status</span>
+        <select name="status" defaultValue={status} className={`${CONTROL} w-full`}>
+          <option value="">All product states</option>
+          <option value="published">Published</option>
+          <option value="draft">Draft</option>
+        </select>
+      </label>
+      <div className="flex items-center gap-2">
+        <button className="h-11 rounded-xl bg-[#C85956] px-4 text-[11px] font-bold text-white transition-colors hover:bg-[#b84e4b]">Apply</button>
+        {active ? <Link href={`/admin/inventory?view=${view}&brand=${encodeURIComponent(detail.slug)}`} className="px-2 text-[10px] font-bold text-[#75685f] hover:text-[#C85956]">Clear</Link> : null}
+      </div>
+    </form>
+  );
+}
+
+type ColorGroup = { key: string; label: string; variants: AdminInventoryBrandDetail["products"][number]["variants"] };
+
+function groupProductColors(product: AdminInventoryBrandDetail["products"][number]): ColorGroup[] {
+  const groups = new Map<string, ColorGroup>();
+  for (const variant of product.variants) {
+    const label = variant.color?.trim() || "Default";
+    const key = label.toLocaleLowerCase("en-US");
+    const group = groups.get(key) ?? { key, label, variants: [] };
+    group.variants.push(variant);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function ProductCard({ product, brandSlug }: { product: AdminInventoryBrandDetail["products"][number]; brandSlug: string }) {
+  const colors = groupProductColors(product);
   return (
     <details className="group overflow-hidden rounded-[22px] border-0 bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
       <summary className="flex cursor-pointer list-none items-center gap-3 bg-[#ece7e0] px-4 py-3.5 outline-none transition-colors hover:bg-[#e4ded6] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden">
@@ -230,7 +300,7 @@ function ProductCard({ product }: { product: AdminInventoryBrandDetail["products
         <div className="min-w-0">
           <h3 className="truncate text-[13px] font-extrabold text-[#403730]">{product.name}</h3>
           <p className="mt-1 text-[9.5px] text-[#8d8076]">
-            {titleCase(product.status)} · {formatCount(product.variants.length)} variants
+            {titleCase(product.status)} · {formatCount(colors.length)} {colors.length === 1 ? "color" : "colors"} · {formatCount(product.variants.length)} {product.variants.length === 1 ? "size" : "sizes"}
           </p>
         </div>
         <div className="ml-auto text-right">
@@ -241,73 +311,60 @@ function ProductCard({ product }: { product: AdminInventoryBrandDetail["products
         <ChevronRight aria-hidden="true" className="ml-1 h-4 w-4 flex-none text-[#a99b91] transition-transform group-open:rotate-90 group-open:text-[#C85956]" />
       </summary>
       <div className="border-t border-[#eee7e1]">
-        <div className="flex justify-end bg-transparent px-4 py-2">
+        <div className="flex items-center justify-between bg-[#e7e1da] px-4 py-2">
+          <p className="text-[9px] font-semibold text-[#8d8076]">Open a color to inspect its sizes and stock.</p>
           <Link href={`/admin/products/${product.id}/edit`} className="text-[9.5px] font-bold text-[#8d8076] hover:text-[#C85956] hover:underline">
             Edit product
           </Link>
         </div>
-        {product.variants.length ? <VariantTable product={product} /> : <DashboardEmptyState title="No variants" description="This product does not have an active inventory variant yet." />}
+        {colors.length ? <div className="space-y-2 p-2.5 sm:p-3">{colors.map((color) => <ColorInventoryGroup key={color.key} product={product} color={color} brandSlug={brandSlug} />)}</div> : <DashboardEmptyState title="No variants" description="This product does not have an active inventory variant yet." />}
       </div>
     </details>
   );
 }
 
-function VariantTable({ product }: { product: AdminInventoryBrandDetail["products"][number] }) {
+function ColorInventoryGroup({ product, color, brandSlug }: { product: AdminInventoryBrandDetail["products"][number]; color: ColorGroup; brandSlug: string }) {
+  const total = color.variants.reduce((sum, variant) => sum + variant.quantity, 0);
+  const issues = color.variants.filter((variant) => variant.stockStatus !== "in_stock").length;
+  const image = color.variants[0]?.image ?? product.image;
   return (
-    <>
-      <div className="hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[720px] text-left">
-          <thead className="border-b border-[#eee7e1] text-[9px] font-bold uppercase tracking-[0.08em] text-[#94867c]">
-            <tr>
-              <th className="px-4 py-2.5">Variant</th>
-              <th>Available</th>
-              <th>Alert level</th>
-              <th>Selling</th>
-              <th className="pr-4 text-right">Stock status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#f0e9e3]">
-            {product.variants.map((variant) => (
-              <tr key={variant.id}>
-                <td className="px-4 py-3">
-                  <VariantIdentity image={variant.image} productName={product.name} label={variant.label} sku={variant.sku} />
-                </td>
-                <td className="text-[12px] font-extrabold tabular-nums text-[#403730]">{formatCount(variant.quantity)}</td>
-                <td className="text-[11px] tabular-nums text-[#756960]">{formatCount(variant.threshold)}</td>
-                <td className="text-[10px] font-semibold text-[#756960]">{titleCase(variant.sellingStatus)}</td>
-                <td className="pr-4 text-right">
-                  <StockBadge status={variant.stockStatus} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <details className="group/color overflow-hidden rounded-2xl bg-[#f7f3ef]">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 outline-none transition-colors hover:bg-[#f1ebe5] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/20 [&::-webkit-details-marker]:hidden sm:px-4">
+        <ChevronRight className="h-3.5 w-3.5 flex-none text-[#9f9187] transition-transform group-open/color:rotate-90 group-open/color:text-[#C85956]" />
+        <span className="relative h-12 w-10 flex-none overflow-hidden rounded-xl bg-[#eee7e1]">{image ? <Image src={image} alt={`${product.name} in ${color.label}`} fill sizes="40px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-[11.5px] font-extrabold text-[#403730]">{color.label}</span>
+          <span className="mt-1 block text-[9px] text-[#8d8076]">{formatCount(color.variants.length)} {color.variants.length === 1 ? "size" : "sizes"}</span>
+        </span>
+        <span className="ml-auto text-right">
+          <span className="block text-[13px] font-extrabold tabular-nums text-[#302924]">{formatCount(total)}</span>
+          <span className="block text-[8px] font-semibold text-[#94867c]">available</span>
+        </span>
+        {issues ? <span className="hidden rounded-lg bg-amber-50 px-2 py-1 text-[8.5px] font-bold text-amber-800 sm:inline-flex">{formatCount(issues)} need attention</span> : <span className="hidden sm:inline-flex"><StockBadge status="in_stock" /></span>}
+      </summary>
+      <div className="border-t border-[#e8dfd8] bg-[#fcfaf8]">
+        <div className="hidden grid-cols-[minmax(180px,1fr)_90px_90px_110px_120px] items-center px-4 py-2 text-[8.5px] font-bold uppercase tracking-[0.07em] text-[#94867c] md:grid">
+          <span>Size / SKU</span><span>Available</span><span>Alert at</span><span>Selling</span><span>Status</span>
+        </div>
+        <div className="divide-y divide-[#eee7e1]">{color.variants.map((variant) => <VariantSizeRow key={variant.id} variant={variant} product={product} brandSlug={brandSlug} />)}</div>
       </div>
-      <div className="divide-y divide-[#eee7e1] md:hidden">
-        {product.variants.map((variant) => (
-          <div key={variant.id} className="px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <VariantIdentity image={variant.image} productName={product.name} label={variant.label} sku={variant.sku} />
-              <StockBadge status={variant.stockStatus} />
-            </div>
-            <div className="mt-3 grid grid-cols-3 rounded-xl border border-white/35 bg-white/20 px-3 py-2">
-              <Metric label="Available" value={variant.quantity} />
-              <Metric label="Alert at" value={variant.threshold} />
-              <span>
-                <span className="block text-[8.5px] font-bold uppercase text-[#9a8c82]">Selling</span>
-                <span className="text-[10px] font-bold text-[#403730]">{titleCase(variant.sellingStatus)}</span>
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </>
+    </details>
   );
+}
+
+function VariantSizeRow({ variant, product, brandSlug }: { variant: AdminInventoryBrandDetail["products"][number]["variants"][number]; product: AdminInventoryBrandDetail["products"][number]; brandSlug: string }) {
+  return <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(180px,1fr)_90px_90px_110px_120px] md:items-center">
+    <div className="min-w-0"><p className="text-[10.5px] font-bold text-[#51473f]">{variant.size || "One size"}</p><code className="mt-1 block truncate text-[8.5px] text-[#94867c]">{variant.sku}</code></div>
+    <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Available</span><span className="text-[12px] font-extrabold tabular-nums text-[#403730]">{formatCount(variant.quantity)}</span></div>
+    <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Alert at</span><span className="text-[10.5px] tabular-nums text-[#756960]">{formatCount(variant.threshold)}</span></div>
+    <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Selling</span><span className="text-[9.5px] font-semibold text-[#756960]">{titleCase(variant.sellingStatus)}</span></div>
+    <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Status</span><Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(brandSlug)}&productId=${encodeURIComponent(product.id)}&variantId=${encodeURIComponent(variant.id)}`} aria-label={`Open movement history for ${variant.sku}`}><StockBadge status={variant.stockStatus} /></Link></div>
+  </div>;
 }
 function VariantIdentity({ image, productName, label, sku }: { image: string; productName: string; label: string; sku: string }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
-      <span className="relative h-11 w-9 flex-none overflow-hidden rounded-lg bg-[#f1eae4]">{image ? <Image src={image} alt={`${productName} — ${label}`} fill sizes="36px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
+      <span className="relative h-11 w-9 flex-none overflow-hidden rounded-lg bg-[#f1eae4]">{image ? <Image src={image} alt={`${productName}, ${label}`} fill sizes="36px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
       <span className="min-w-0">
         <span className="block truncate text-[11px] font-bold text-[#403730]">{label}</span>
         <code className="mt-1 block truncate text-[9px] text-[#91837a]">{sku}</code>
@@ -363,7 +420,7 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
       <div className="mt-4 overflow-hidden rounded-[22px] border-0 bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
         <header className="flex items-center justify-between border-b border-[#eee7e1] px-5 py-4">
           <div>
-            <h3 className="text-[12px] font-extrabold text-[#302924]">{params.productId ? (detail.products.find((product) => product.id === params.productId)?.name ?? detail.name) : `${detail.name} timeline`}</h3>
+            <h3 className="text-[12px] font-extrabold text-[#302924]">{params.variantId ? (detail.products.flatMap((product) => product.variants).find((variant) => variant.id === params.variantId)?.sku ?? detail.name) : params.productId ? (detail.products.find((product) => product.id === params.productId)?.name ?? detail.name) : `${detail.name} timeline`}</h3>
             <p className="mt-1 text-[10px] text-[#8d8076]">{formatCount(result?.total ?? 0)} sequential, immutable movements.</p>
           </div>
           <div className="hidden gap-2 text-[9.5px] font-bold text-[#8d8076] sm:flex">
@@ -407,18 +464,26 @@ function ActivityWorkspace({ summaries, detail, params, result, source, movement
 }
 
 function MovementFilters({ detail, params, source, movementType, from, to, clearHref }: { detail: AdminInventoryBrandDetail; params: Params; source?: string; movementType?: string; from?: string; to?: string; clearHref: string }) {
-  const active = [params.productId, source, movementType, from, to].some(Boolean);
+  const active = [params.productId, params.variantId, source, movementType, from, to].some(Boolean);
   return (
     <form action="/admin/inventory" className="rounded-[22px] border-0 bg-[#ece7e0] p-4 shadow-[0_12px_32px_rgba(72,50,36,.07)]">
       <input type="hidden" name="view" value="activity" />
       <input type="hidden" name="brand" value={detail.slug} />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(230px,1.3fr)_190px_190px_150px_150px_auto] xl:items-end">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(190px,1.15fr)_minmax(190px,1.2fr)_155px_155px_135px_135px_auto] xl:items-end">
         <Select label="Product" name="productId" value={params.productId ?? ""}>
           <option value="">All products in {detail.name}</option>
           {detail.products.map((product) => (
             <option key={product.id} value={product.id}>
               {product.name}
             </option>
+          ))}
+        </Select>
+        <Select label="Variant" name="variantId" value={params.variantId ?? ""}>
+          <option value="">All variants</option>
+          {detail.products.filter((product) => !params.productId || product.id === params.productId).map((product) => (
+            <optgroup key={product.id} label={product.name}>
+              {product.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.color || "Default"} / {variant.size || "One size"} / {variant.sku}</option>)}
+            </optgroup>
           ))}
         </Select>
         <Select label="Source" name="source" value={source ?? ""}>

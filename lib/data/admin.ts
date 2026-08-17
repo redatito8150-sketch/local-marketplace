@@ -1247,6 +1247,7 @@ export interface AdminInventoryBrandSummary {
   healthyCount: number;
   lowStockCount: number;
   outOfStockCount: number;
+  searchText: string;
 }
 
 export interface AdminInventoryVariantDetail {
@@ -1258,6 +1259,8 @@ export interface AdminInventoryVariantDetail {
   threshold: number;
   stockStatus: "in_stock" | "low_stock" | "out_of_stock";
   sellingStatus: string;
+  color: string | null;
+  size: string | null;
 }
 
 export interface AdminInventoryProductDetail {
@@ -1331,9 +1334,12 @@ export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInvento
     let healthyCount = 0;
     let lowStockCount = 0;
     let outOfStockCount = 0;
+    const searchTerms = [brand.name];
     for (const product of brandProducts) {
+      searchTerms.push(product.name);
       for (const variant of variantsByProduct.get(product.id) ?? []) {
         if (variant.sellingStatus === "discontinued") continue;
+        searchTerms.push(variant.sku, ...variant.optionValues.map((value) => value.label));
         const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
         const stockStatus = calculateStockStatus(variant.quantity, threshold);
         variantCount += 1;
@@ -1355,6 +1361,7 @@ export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInvento
       healthyCount,
       lowStockCount,
       outOfStockCount,
+      searchText: searchTerms.join(" ").toLocaleLowerCase("en-US"),
     };
   });
 }
@@ -1406,6 +1413,8 @@ export async function getInventoryBrandDetailForAdmin(
         .filter((variant) => variant.sellingStatus !== "discontinued")
         .map((variant) => {
           const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+          const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
+          const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
           return {
             id: variant.id,
             sku: variant.sku,
@@ -1415,6 +1424,8 @@ export async function getInventoryBrandDetailForAdmin(
             threshold,
             stockStatus: calculateStockStatus(variant.quantity, threshold),
             sellingStatus: variant.sellingStatus,
+            color,
+            size,
           } satisfies AdminInventoryVariantDetail;
         });
       return {
@@ -1565,6 +1576,7 @@ export interface AdminInventoryMovementRow {
 
 export async function getInventoryMovementsForAdmin(options: {
   productId?: string;
+  variantId?: string;
   q?: string;
   brand?: string;
   source?: string;
@@ -1620,6 +1632,7 @@ export async function getInventoryMovementsForAdmin(options: {
     .order("created_at", { ascending: false })
     .range(from, to);
   if (options.productId) query = query.eq("product_id", options.productId);
+  if (options.variantId) query = query.eq("variant_id", options.variantId);
   if (scopedProductIds) query = query.in("product_id", scopedProductIds);
   if (options.source) query = query.eq("source", options.source);
   if (options.movementType) query = query.eq("movement_type", options.movementType);
