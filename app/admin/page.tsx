@@ -86,7 +86,7 @@ export default async function AdminOverviewPage() {
         <DashboardPanel title="Important alerts" description="Live operational signals">
           <div className="divide-y divide-slate-100">
             <AlertRow label="Confirmed orders" value={pendingOrders.length} href="/admin/orders?status=confirmed" tone="warning" />
-            <AlertRow label="Low-stock variants" value={lowStock.length} href="/admin/low-stock" tone="danger" />
+            <AlertRow label="Low-stock variants" value={lowStock.length} href="/admin/inventory?issues=1" tone="danger" />
             <AlertRow label="New brand applications" value={newApplications.length} href="/admin/applications" tone="info" />
           </div>
         </DashboardPanel>
@@ -154,7 +154,7 @@ export default async function AdminOverviewPage() {
           <QuickAction label="Add a product" href="/admin/products/new" icon={Package} />
           <QuickAction label="Add a brand" href="/admin/brands/new" icon={Store} />
           <QuickAction label="Review applications" href="/admin/applications" icon={FileText} />
-          <QuickAction label="View low stock" href="/admin/low-stock" icon={AlertTriangle} />
+          <QuickAction label="View low stock" href="/admin/inventory?issues=1" icon={AlertTriangle} />
         </div>
       </DashboardPanel>
     </div>

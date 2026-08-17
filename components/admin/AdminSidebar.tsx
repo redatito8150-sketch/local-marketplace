@@ -26,7 +26,7 @@ import { useDashboardSidebar } from "@/components/dashboard/DashboardSidebarCont
 import type { PermissionKey } from "@/lib/supabase/permissions";
 
 type Role = "staff" | "manager" | "admin";
-type BadgeKey = "notifications" | "lowStock";
+type BadgeKey = "notifications" | "pendingRequests";
 
 interface NavItem {
   label: string;
@@ -56,8 +56,8 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         href: "/admin/inventory",
         icon: Boxes,
         permission: "manage_inventory",
-        badge: "lowStock",
-        activePaths: ["/admin/inventory", "/admin/low-stock", "/admin/warehouse"],
+        badge: "pendingRequests",
+        activePaths: ["/admin/inventory", "/admin/warehouse"],
       },
     ],
   },
@@ -197,11 +197,11 @@ function MoreTools({ items, activeHref, counts }: { items: NavItem[]; activeHref
   );
 }
 
-export default function AdminSidebar({ unreadNotifications = 0, lowStockCount = 0, role = "admin", permissions = [] }: { unreadNotifications?: number; lowStockCount?: number; role?: string; permissions?: PermissionKey[] }) {
+export default function AdminSidebar({ unreadNotifications = 0, pendingRequestCount = 0, role = "admin", permissions = [] }: { unreadNotifications?: number; pendingRequestCount?: number; role?: string; permissions?: PermissionKey[] }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const permissionSet = new Set(permissions);
-  const counts = { notifications: unreadNotifications, lowStock: lowStockCount };
+  const counts = { notifications: unreadNotifications, pendingRequests: pendingRequestCount };
   const canSeeItem = (item: NavItem) => canSeeRole(role, item.minRole) && permissionSet.has(item.permission);
   const groups = PRIMARY_GROUPS.map((group) => ({ ...group, items: group.items.filter(canSeeItem) })).filter((group) => group.items.length > 0);
   const secondaryItems = SECONDARY_ITEMS.filter(canSeeItem).filter((item) => !item.hideWhenPermission || !permissionSet.has(item.hideWhenPermission));

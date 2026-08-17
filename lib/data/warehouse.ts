@@ -1,5 +1,16 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+// Cheap count-only query for nav badges (sidebar + workspace nav) — avoids
+// the full transfer+items fetch that getAllWarehouseTransfers does.
+export async function getPendingWarehouseTransferCount(): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("warehouse_transfers")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "pending");
+  if (error) throw new Error(`getPendingWarehouseTransferCount failed: ${error.message}`);
+  return count ?? 0;
+}
+
 export interface WarehouseVariantRow {
   variantId: string;
   productId: string;
@@ -16,6 +27,7 @@ export interface WarehouseTransferItemRow {
   id: string;
   variantId: string;
   productName: string;
+  productImage: string | null;
   sku: string;
   optionLabel: string;
   requestedQty: number;
@@ -30,6 +42,7 @@ export interface WarehouseTransferRow {
   id: string;
   brandId: string;
   brandName: string;
+  brandSlug: string;
   direction: "to_local" | "to_brand";
   status: "draft" | "pending" | "submitted" | "approved" | "in_transit" | "receiving" | "partially_received" | "received" | "rejected" | "cancelled";
   requestedAt: string;
@@ -120,7 +133,7 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
 
   const { data: itemRows } = await supabaseAdmin
     .from("warehouse_transfer_items")
-    .select("id, transfer_id, variant_id, requested_qty, received_ok_qty, damaged_qty, missing_qty, unit_cost, item_note, product_variants(sku, products(name))")
+    .select("id, transfer_id, variant_id, requested_qty, received_ok_qty, damaged_qty, missing_qty, unit_cost, item_note, product_variants(sku, products(name, image))")
     .in("transfer_id", transfers.map((t) => t.id));
 
   const variantIds = (itemRows ?? []).map((row) => row.variant_id as string);
@@ -136,12 +149,13 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
   }
 
   for (const row of itemRows ?? []) {
-    const variant = row.product_variants as unknown as { sku: string; products: { name: string } | null } | null;
+    const variant = row.product_variants as unknown as { sku: string; products: { name: string; image: string | null } | null } | null;
     const list = itemsByTransfer.get(row.transfer_id as string) ?? [];
     list.push({
       id: row.id as string,
       variantId: row.variant_id as string,
       productName: variant?.products?.name ?? "",
+      productImage: variant?.products?.image ?? null,
       sku: variant?.sku ?? "",
       optionLabel: joinOptionLabel(labelsByVariant.get(row.variant_id as string)),
       requestedQty: row.requested_qty as number,
@@ -165,7 +179,7 @@ async function emailFor(userId: string | null): Promise<string | null> {
 export async function getBrandWarehouseTransfers(brandId: string): Promise<WarehouseTransferRow[]> {
   const { data: transferRows, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name)")
+    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name, slug)")
     .eq("brand_id", brandId)
     .order("requested_at", { ascending: false });
   if (error) throw new Error(`getBrandWarehouseTransfers(${brandId}) failed: ${error.message}`);
@@ -175,7 +189,8 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
   return transfers.map((t) => ({
     id: t.id as string,
     brandId: t.brand_id as string,
-    brandName: (t.brands as unknown as { name: string } | null)?.name ?? "",
+    brandName: (t.brands as unknown as { name: string; slug: string } | null)?.name ?? "",
+    brandSlug: (t.brands as unknown as { name: string; slug: string } | null)?.slug ?? "",
     direction: t.direction as WarehouseTransferRow["direction"],
     status: t.status as WarehouseTransferRow["status"],
     requestedAt: t.requested_at as string,
@@ -191,7 +206,7 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
 export async function getAllWarehouseTransfers(status?: "pending" | "received" | "rejected"): Promise<WarehouseTransferRow[]> {
   let query = supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name)")
+    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name, slug)")
     .order("requested_at", { ascending: false });
   if (status) query = query.eq("status", status);
   const { data: transferRows, error } = await query;
@@ -209,7 +224,8 @@ export async function getAllWarehouseTransfers(status?: "pending" | "received" |
   return transfers.map((t) => ({
     id: t.id as string,
     brandId: t.brand_id as string,
-    brandName: (t.brands as unknown as { name: string } | null)?.name ?? "",
+    brandName: (t.brands as unknown as { name: string; slug: string } | null)?.name ?? "",
+    brandSlug: (t.brands as unknown as { name: string; slug: string } | null)?.slug ?? "",
     direction: t.direction as WarehouseTransferRow["direction"],
     status: t.status as WarehouseTransferRow["status"],
     requestedAt: t.requested_at as string,
@@ -225,7 +241,7 @@ export async function getAllWarehouseTransfers(status?: "pending" | "received" |
 export async function getWarehouseTransferById(id: string): Promise<WarehouseTransferRow | null> {
   const { data: t, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name)")
+    .select("id, brand_id, status, direction, requested_at, requested_by, brand_note, decided_at, decided_by, receiving_note, brands(name, slug)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`getWarehouseTransferById(${id}) failed: ${error.message}`);
@@ -235,7 +251,8 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
   return {
     id: t.id as string,
     brandId: t.brand_id as string,
-    brandName: (t.brands as unknown as { name: string } | null)?.name ?? "",
+    brandName: (t.brands as unknown as { name: string; slug: string } | null)?.name ?? "",
+    brandSlug: (t.brands as unknown as { name: string; slug: string } | null)?.slug ?? "",
     direction: t.direction as WarehouseTransferRow["direction"],
     status: t.status as WarehouseTransferRow["status"],
     requestedAt: t.requested_at as string,

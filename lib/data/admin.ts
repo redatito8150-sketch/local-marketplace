@@ -1366,10 +1366,7 @@ export async function getInventoryBrandSummariesForAdmin(): Promise<AdminInvento
   });
 }
 
-export async function getInventoryBrandDetailForAdmin(
-  slug: string,
-  options: { warehouseOnly?: boolean } = {}
-): Promise<AdminInventoryBrandDetail | null> {
+export async function getInventoryBrandDetailForAdmin(slug: string): Promise<AdminInventoryBrandDetail | null> {
   const { data: brandData, error: brandError } = await supabaseAdmin
     .from("brands")
     .select("id, slug, name, logo_image, fulfillment_mode")
@@ -1378,7 +1375,6 @@ export async function getInventoryBrandDetailForAdmin(
   if (brandError) throw new Error(`getInventoryBrandDetailForAdmin brand failed: ${brandError.message}`);
   if (!brandData) return null;
   const brand = brandData as InventoryDirectoryBrandRow;
-  if (options.warehouseOnly && brand.fulfillment_mode !== "zakhnook_fulfilled") return null;
 
   const { data: productData, error: productsError } = await supabaseAdmin
     .from("products")
@@ -1439,6 +1435,85 @@ export async function getInventoryBrandDetailForAdmin(
       };
     }),
   };
+}
+
+export interface AdminInventoryProductWithBrand extends AdminInventoryProductDetail {
+  brandId: string;
+  brandSlug: string;
+  brandName: string;
+  brandLogoImage: string | null;
+  fulfillmentMode: AdminInventoryFulfillmentMode;
+}
+
+// Flat, all-brands product list for the Inventory landing view — every
+// product across every brand at once, so an admin doesn't have to open a
+// brand first just to see what's in stock. Brand becomes a filter, not a
+// navigation step.
+export async function getInventoryProductsForAdmin(): Promise<AdminInventoryProductWithBrand[]> {
+  const [brandsResult, productsResult] = await Promise.all([
+    supabaseAdmin.from("brands").select("id, slug, name, logo_image, fulfillment_mode"),
+    supabaseAdmin
+      .from("products")
+      .select("id, brand_id, name, image, status, default_low_stock_threshold")
+      .neq("status", "archived")
+      .order("name", { ascending: true }),
+  ]);
+  if (brandsResult.error) throw new Error(`getInventoryProductsForAdmin brands failed: ${brandsResult.error.message}`);
+  if (productsResult.error) throw new Error(`getInventoryProductsForAdmin products failed: ${productsResult.error.message}`);
+
+  const brandsById = new Map((brandsResult.data as InventoryDirectoryBrandRow[] ?? []).map((brand) => [brand.id, brand]));
+  const products = (productsResult.data ?? []) as InventoryDirectoryProductRow[];
+  const productIds = products.map((product) => product.id);
+  const [variantsByProduct, mediaResult] = await Promise.all([
+    getVariantsForProducts(productIds, supabaseAdmin),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (mediaResult.error) throw new Error(`getInventoryProductsForAdmin media failed: ${mediaResult.error.message}`);
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
+
+  return products.flatMap((product) => {
+    const brand = brandsById.get(product.brand_id);
+    if (!brand) return [];
+    const variants = (variantsByProduct.get(product.id) ?? [])
+      .filter((variant) => variant.sellingStatus !== "discontinued")
+      .map((variant) => {
+        const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
+        const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
+        const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
+        return {
+          id: variant.id,
+          sku: variant.sku,
+          label: variant.optionValues.map((value) => value.label).join(" / ") || "Default variant",
+          image: resolveVariantImage(product.id, variant, colorImages, product.image),
+          quantity: variant.quantity,
+          threshold,
+          stockStatus: calculateStockStatus(variant.quantity, threshold),
+          sellingStatus: variant.sellingStatus,
+          color,
+          size,
+        } satisfies AdminInventoryVariantDetail;
+      });
+    return [{
+      id: product.id,
+      name: product.name,
+      image: product.image,
+      status: product.status,
+      totalUnits: variants.reduce((sum, variant) => sum + variant.quantity, 0),
+      issueCount: variants.filter((variant) => variant.stockStatus !== "in_stock").length,
+      variants,
+      brandId: brand.id,
+      brandSlug: brand.slug,
+      brandName: brand.name,
+      brandLogoImage: brand.logo_image,
+      fulfillmentMode: brand.fulfillment_mode,
+    } satisfies AdminInventoryProductWithBrand];
+  });
 }
 
 export async function getAuditLogsForEntity(

@@ -12,7 +12,7 @@ test("admin navigation keeps the daily workflow short and groups operational rou
   }
 
   assert.match(sidebar, /More tools/);
-  for (const href of ["/admin/payments", "/admin/low-stock", "/admin/warehouse", "/admin/applications", "/admin/products/review", "/admin/content"]) {
+  for (const href of ["/admin/payments", "/admin/warehouse", "/admin/applications", "/admin/products/review", "/admin/content"]) {
     assert.match(sidebar, new RegExp(href.replaceAll("/", "\\/")));
   }
   assert.match(sidebar, /hideWhenPermission: "manage_brands"/);
@@ -33,7 +33,6 @@ test("workspace tabs connect commerce, inventory, brands, and storefront without
     "/admin/payments",
     "/admin/payments/refund-queue",
     "/admin/inventory",
-    "/admin/low-stock",
     "/admin/warehouse",
     "/admin/brands",
     "/admin/applications",
@@ -54,7 +53,6 @@ test("each workspace landing page renders its local navigation", () => {
     ["app/admin/orders/page.tsx", "commerce", "/admin/orders"],
     ["app/admin/payments/page.tsx", "commerce", "/admin/payments"],
     ["app/admin/payments/refund-queue/page.tsx", "commerce", "/admin/payments/refund-queue"],
-    ["app/admin/low-stock/page.tsx", "inventory", "/admin/low-stock"],
     ["app/admin/warehouse/page.tsx", "inventory", "/admin/warehouse"],
     ["app/admin/brands/page.tsx", "brands", "/admin/brands"],
     ["app/admin/applications/page.tsx", "brands", "/admin/applications"],
@@ -66,6 +64,13 @@ test("each workspace landing page renders its local navigation", () => {
   for (const [page, workspace, activeHref] of pages) {
     assert.match(read(page), new RegExp(`AdminWorkspaceNav workspace="${workspace}" activeHref="${activeHref.replaceAll("/", "\\/")}"`));
   }
+
+  // Inventory switches between its catalog and movement-ledger views, so its
+  // activeHref is computed rather than a fixed string — assert the pattern
+  // that computation follows instead of one literal href.
+  const inventoryPage = read("app/admin/inventory/page.tsx");
+  assert.match(inventoryPage, /AdminWorkspaceNav workspace="inventory" activeHref=\{activeHref\}/);
+  assert.match(inventoryPage, /const activeHref = view === "activity" \? "\/admin\/inventory\?view=activity" : "\/admin\/inventory";/);
 });
 
 test("Categories is one primary workspace with product structure and storefront tabs", () => {
