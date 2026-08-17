@@ -251,6 +251,16 @@ export interface BrandVariant {
   productId: string;
   productName: string;
   image: string;
+  // The product's own designated cover photo (products.image), never a
+  // color-specific fallback — distinct from `image` above, which resolves
+  // to this specific variant's own color photo when one exists. Used for
+  // the collapsed, product-level row in the grouped Inventory table
+  // (components/brand-portal/InventoryManager.tsx); `image` stays what
+  // the expanded per-color/size rows use. Only populated by
+  // getInventoryPageForBrand — getVariantsForBrand (the Overview
+  // snapshot, which never renders a collapsed product row) leaves it
+  // equal to `image`.
+  productImage: string;
   sku: string;
   optionSummary: string;
   color?: string;
@@ -399,6 +409,7 @@ export async function getVariantsForBrand(
       productId: row.product_id,
       productName: row.products!.name,
       image: (colorValue ? mediaByColor.get(`${row.product_id}:${colorValue.optionValueId}`) : undefined) ?? row.products!.image,
+      productImage: row.products!.image,
       sku: row.sku,
       optionSummary: optionValues.map((option) => `${option.optionTypeName}: ${option.label}`).join(" / ") || "Default",
       color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
@@ -445,6 +456,7 @@ interface InventoryPageRpcItem {
   productId: string;
   productName: string;
   image: string | null;
+  productImage: string | null;
   color: string | null;
   size: string | null;
   sku: string;
@@ -519,6 +531,7 @@ export async function getInventoryPageForBrand(
       productId: item.productId,
       productName: item.productName,
       image: item.image ?? "",
+      productImage: item.productImage ?? item.image ?? "",
       sku: item.sku,
       optionSummary: [
         item.color ? `Color: ${item.color}` : null,

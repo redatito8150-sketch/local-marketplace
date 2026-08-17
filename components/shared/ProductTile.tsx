@@ -53,7 +53,7 @@ export default function ProductTile({
         {badge && (
           <span
             className={`absolute left-3 top-3 z-10 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-cream ${
-              badge.kind === "soldOut" ? "bg-ink/85" : "bg-mahalyred"
+              badge.kind === "soldOut" || badge.kind === "comingSoon" ? "bg-ink/85" : "bg-mahalyred"
             }`}
           >
             {badge.label}

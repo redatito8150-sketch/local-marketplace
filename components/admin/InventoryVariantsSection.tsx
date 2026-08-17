@@ -281,19 +281,6 @@ export default function InventoryVariantsSection({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[16px] border border-[#e4dcd4] bg-[#fbf8f4]">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e9e1d9] px-4 py-3.5">
-          <div><p className="text-[12px] font-extrabold text-[#352e29]">Variant summary</p><p className="mt-0.5 text-[10.5px] text-[#897b71]">Updates instantly as colors and sizes change.</p></div>
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${attentionCount ? "bg-[#fff0eb] text-[#a24e4b]" : "bg-emerald-50 text-emerald-700"}`}>{attentionCount ? `${attentionCount} need attention` : value.variants.length ? "Ready" : "Start with a color"}</span>
-        </div>
-        <div className="grid grid-cols-2 divide-x divide-y divide-[#e9e1d9] sm:grid-cols-4 sm:divide-y-0">
-          <div className="flex items-start gap-2.5 px-4 py-3.5"><Boxes className="mt-0.5 h-4 w-4 text-[#C85956]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{value.variants.length}</p><p className="text-[10px] text-[#897b71]">sellable combinations</p></div></div>
-          <div className="flex items-start gap-2.5 px-4 py-3.5"><Tags className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{colorValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">colors</span> · {sizeValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">sizes</span></p><p className="text-[10px] text-[#897b71]">option coverage</p></div></div>
-          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{activeVariants.length}</p><p className="text-[10px] text-[#897b71]">active · stock added from Inventory</p></div></div>
-          <div className="flex items-start gap-2.5 px-4 py-3.5"><ImageIcon className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{missingColorImages || customPricedVariants}</p><p className="text-[10px] text-[#897b71]">{missingColorImages ? "color photos missing" : `${customPricedVariants} custom prices`}</p></div></div>
-        </div>
-      </div>
-
       {/* Variants — one unified Color-first table. Add Color, then Add Size
           inside each Color row; every Size is a real, immediately editable
           Variant row (Opening Stock/Low Stock/Variant Price inline). No
@@ -356,6 +343,19 @@ export default function InventoryVariantsSection({
           </div>
         </div>
       )}
+
+      <div className="overflow-hidden rounded-[16px] border border-[#e4dcd4] bg-[#fbf8f4]">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[#e9e1d9] px-4 py-3.5">
+          <div><p className="text-[12px] font-extrabold text-[#352e29]">Variant summary</p><p className="mt-0.5 text-[10.5px] text-[#897b71]">Updates instantly as colors and sizes change.</p></div>
+          <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${attentionCount ? "bg-[#fff0eb] text-[#a24e4b]" : "bg-emerald-50 text-emerald-700"}`}>{attentionCount ? `${attentionCount} need attention` : value.variants.length ? "Ready" : "Start with a color"}</span>
+        </div>
+        <div className="grid grid-cols-2 divide-x divide-y divide-[#e9e1d9] sm:grid-cols-4 sm:divide-y-0">
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Boxes className="mt-0.5 h-4 w-4 text-[#C85956]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{value.variants.length}</p><p className="text-[10px] text-[#897b71]">sellable combinations</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><Tags className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{colorValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">colors</span> · {sizeValueIds.length} <span className="text-[10px] font-semibold text-[#897b71]">sizes</span></p><p className="text-[10px] text-[#897b71]">option coverage</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><PackageOpen className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{activeVariants.length}</p><p className="text-[10px] text-[#897b71]">active · stock added from Inventory</p></div></div>
+          <div className="flex items-start gap-2.5 px-4 py-3.5"><ImageIcon className="mt-0.5 h-4 w-4 text-[#7a685c]" /><div><p className="tabular-nums text-[15px] font-extrabold text-[#352e29]">{missingColorImages || customPricedVariants}</p><p className="text-[10px] text-[#897b71]">{missingColorImages ? "color photos missing" : `${customPricedVariants} custom prices`}</p></div></div>
+        </div>
+      </div>
 
       {/* Legacy custom option (pre-rebuild data only) */}
       {legacyOptionTypeIds.map((optionTypeId) => {

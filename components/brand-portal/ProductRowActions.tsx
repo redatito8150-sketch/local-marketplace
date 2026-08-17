@@ -1,17 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { Archive, MoreHorizontal, Pause, Pencil, Play, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
 
 type PendingAction = "archive" | "delete_draft" | "delete_archived" | null;
 
 export default function ProductRowActions({ productId, name, editHref }: { productId: string; name: string; editHref: string }) {
   const router = useRouter();
-  const menuRef = useRef<HTMLDetailsElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
   const operationKeyRef = useRef("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Fixed-position coordinates computed from the trigger button, not CSS
+  // absolute positioning relative to the row it's in — the row lives
+  // inside a horizontally (and, per the CSS overflow spec, therefore also
+  // vertically) clipped table wrapper (`overflow-x-auto`), which was
+  // silently cutting the menu off for rows near the bottom of the visible
+  // area. Rendering the menu through a portal into document.body, at
+  // fixed screen coordinates, escapes that ancestor entirely regardless
+  // of which row it's opened from.
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [eligibility, setEligibility] = useState<ProductDeletionEligibility | null>(null);
   const [loading, setLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -31,6 +43,17 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
     }
   }
 
+  function openMenu() {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) setMenuPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
+    setMenuOpen(true);
+    if (!eligibility) loadEligibility();
+  }
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
   async function togglePause() {
     if (!eligibility) return;
     setLoading(true);
@@ -42,7 +65,7 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
         body: JSON.stringify({ action: "toggle-pause", pausedByBrand: eligibility.lifecycle !== "paused" }),
       });
       if (response.ok) {
-        menuRef.current?.removeAttribute("open");
+        closeMenu();
         setEligibility({ ...eligibility, lifecycle: eligibility.lifecycle === "paused" ? "published" : "paused" });
         router.refresh();
       }
@@ -57,7 +80,7 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
     setReason("");
     setError("");
     operationKeyRef.current = action.startsWith("delete_") ? crypto.randomUUID() : "";
-    menuRef.current?.removeAttribute("open");
+    closeMenu();
   }
 
   async function confirm() {
@@ -88,14 +111,57 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
   const isDelete = pendingAction === "delete_draft" || pendingAction === "delete_archived";
   const canConfirm = !busy && (!isDelete || confirmText === name);
 
+  // Closes on any pointerdown outside both the trigger and the (portaled,
+  // so not a DOM descendant of the trigger anymore) menu panel, and on
+  // Escape — matching ordinary dropdown/menu behavior. Also closes on
+  // scroll (capture phase, since the table wrapper's own scroll doesn't
+  // bubble to window otherwise) and on resize, since a fixed-position menu
+  // doesn't reposition itself as the page underneath it moves.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!(event.target instanceof Node)) return;
+      if (triggerRef.current?.contains(event.target)) return;
+      if (menuPanelRef.current?.contains(event.target)) return;
+      closeMenu();
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeMenu();
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [menuOpen]);
+
   return (
     <>
-      <details ref={menuRef} className="relative" onToggle={(event) => event.currentTarget.open && !eligibility && loadEligibility()}>
-        <summary className="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg text-[#75685f] hover:bg-[#f1eae2]" aria-label={`Actions for ${name}`}>
-          <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-        </summary>
-        <div className="absolute right-0 z-20 mt-1 w-60 rounded-xl border border-[#e3dcd3] bg-white p-1.5 shadow-xl">
-          <Link href={editHref} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => (menuOpen ? closeMenu() : openMenu())}
+        aria-label={`Actions for ${name}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className="flex h-9 w-9 items-center justify-center rounded-lg text-[#75685f] hover:bg-[#f1eae2]"
+      >
+        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
+      </button>
+
+      {menuOpen && menuPos && createPortal(
+        <div
+          ref={menuPanelRef}
+          role="menu"
+          style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}
+          className="z-50 w-60 rounded-xl border border-[#e3dcd3] bg-white p-1.5 shadow-xl"
+        >
+          <Link href={editHref} onClick={closeMenu} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
             <Pencil className="h-4 w-4" aria-hidden="true" /> Edit product
           </Link>
           {loading && <p className="px-3 py-2 text-[11.5px] text-[#8a7d73]">Checking product…</p>}
@@ -115,8 +181,9 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
               <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete pristine Draft
             </button>
           )}
-        </div>
-      </details>
+        </div>,
+        document.body
+      )}
 
       {pendingAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="product-action-title">

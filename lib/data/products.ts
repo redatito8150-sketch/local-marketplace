@@ -97,13 +97,19 @@ export interface ProductRow {
   // real customer. Drives the "New" window (lib/newArrivals.ts) instead of
   // publish_date, which can be hidden behind a when_stocked launch policy.
   first_visible_at: string | null;
+  // Set once, the first time any variant genuinely gets positive stock
+  // (direct Inventory add or an accepted warehouse receipt) — never
+  // cleared afterward. Drives the Coming Soon vs. Sold Out distinction on
+  // product cards (lib/brandProfile.ts's productCardBadge): a product that
+  // has NEVER been stocked yet is Coming Soon, not Sold Out.
+  first_stocked_at: string | null;
 }
 
 // Keep public catalog reads aligned with the database's column grants. New
 // workflow/moderation columns must be added deliberately instead of leaking
 // automatically through select("*") when the schema evolves.
 export const PRODUCT_PUBLIC_SELECT =
-  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at, first_visible_at" as const;
+  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at, first_visible_at, first_stocked_at" as const;
 
 // Per-request lookup context for the display-only fields resolved from
 // product_type_id/collection_id — loaded once and reused across a batch
@@ -182,6 +188,7 @@ export function toProductCard(row: ProductRow, ctx: DisplayContext): Product {
     discountEndsAt: row.discount_ends_at ?? undefined,
     featured: row.featured,
     isNew: isWithinNewArrivalWindow(row.status, row.first_visible_at),
+    firstStockedAt: row.first_stocked_at ?? undefined,
   };
 }
 
