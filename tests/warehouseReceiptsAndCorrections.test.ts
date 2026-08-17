@@ -5,6 +5,7 @@ import test from "node:test";
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const migration = read("supabase/migrations/20260817192829_warehouse_receipts_and_corrections.sql");
 const privilegeHardening = read("supabase/migrations/20260817202810_harden_warehouse_document_table_privileges.sql");
+const receiptExpressionHotfix = read("supabase/migrations/20260817204327_fix_warehouse_receipt_conditional_expressions.sql");
 
 test("physical receipts are separate immutable facts with explicit expected and actual Variants", () => {
   assert.match(migration, /create table if not exists public\.warehouse_receipts/);
@@ -27,6 +28,15 @@ test("receipt v2 credits only the actual Variant and never treats missing units 
   assert.match(fn, /if v_damaged > 0 then[\s\S]*?'warehouse_quarantine_hold'/);
   assert.doesNotMatch(fn, /if v_missing > 0 then[\s\S]*?'warehouse_quarantine_hold'/);
   assert.match(fn, /when v_actual\.id is distinct from v_expected\.id then 'substitution'/);
+});
+
+test("receipt quantity bounds use PostgreSQL conditional expressions without invalid schema qualification", () => {
+  assert.doesNotMatch(migration, /pg_catalog\.(?:greatest|least)\s*\(/i);
+  assert.match(migration, /v_missing := greatest\(v_line\.requested_qty - v_physical, 0\)/);
+  assert.match(migration, /v_legacy_good := least\(v_good, v_line\.requested_qty\)/);
+  assert.match(receiptExpressionHotfix, /pg_catalog\.pg_get_functiondef\(v_signature\)/);
+  assert.match(receiptExpressionHotfix, /'pg_catalog\.greatest\(',\s*'greatest\('/);
+  assert.match(receiptExpressionHotfix, /'pg_catalog\.least\(',\s*'least\('/);
 });
 
 test("receipt and correction idempotency rejects conflicting payloads", () => {
