@@ -23,7 +23,7 @@ const WORKSPACES = {
   inventory: {
     label: "Inventory workspace",
     items: [
-      { label: "Inventory control", href: "/admin/inventory", icon: Boxes, permission: "manage_inventory" },
+      { label: "Inventory overview", href: "/admin/inventory", icon: Boxes, permission: "manage_inventory" },
       { label: "Stock requests", href: "/admin/warehouse", icon: ClipboardList, permission: "manage_inventory" },
       { label: "Variant movements", href: "/admin/inventory?view=activity", icon: Activity, permission: "manage_inventory" },
     ],

@@ -6,14 +6,27 @@ import { logAudit } from "@/lib/auditLog";
 import { notify, notifyUser } from "@/lib/notify";
 import { checkAndNotifyRestock } from "@/lib/backInStock";
 import { describeInventoryAdjustments } from "@/lib/admin/describeInventoryAdjustment";
+import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
 
 type ReceiveItemInput = {
   itemId: string;
-  receivedOkQty: number;
+  receivedOkQty?: number;
+  actualVariantId?: string | null;
+  goodQty?: number;
   damagedQty: number;
-  missingQty: number;
+  missingQty?: number;
+  unidentifiedQty?: number;
+  unidentifiedSku?: string;
   itemNote?: string;
 };
+
+type ReceiveDocumentResult = {
+  items: { variant_id: string | null; received_ok_qty: number; damaged_qty: number; missing_qty: number; excess_qty?: number; new_quantity: number; outcome?: string }[];
+  status: "partially_received" | "received";
+  remaining_unreconciled: number;
+};
+
+const RECEIVABLE_STATUSES = new Set(["pending", "submitted", "approved", "in_transit", "partially_received"]);
 
 // Zakhnook's own warehouse staff (or an admin) confirming a physical
 // delivery against its transfer request — every line must be fully
@@ -31,7 +44,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     .eq("id", params.id)
     .maybeSingle();
   if (!transfer) return NextResponse.json({ error: "Transfer not found" }, { status: 404 });
-  if (transfer.status !== "pending") return NextResponse.json({ error: "This transfer has already been decided" }, { status: 400 });
+  if (!RECEIVABLE_STATUSES.has(transfer.status)) return NextResponse.json({ error: "This document cannot receive stock in its current stage" }, { status: 400 });
   const isReturn = transfer.direction === "to_brand";
 
   const body = await request.json().catch(() => null) as { items?: ReceiveItemInput[]; note?: string } | null;
@@ -40,16 +53,27 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   if (new Set(submittedIds).size !== submittedIds.length) {
     return NextResponse.json({ error: "Each transfer item must appear exactly once" }, { status: 400 });
   }
+  const usesActualReceiptModel = !isReturn && body.items.some((item) => item.goodQty !== undefined || item.actualVariantId !== undefined || item.unidentifiedQty !== undefined);
   for (const item of body.items) {
-    if (![item.receivedOkQty, item.damagedQty, item.missingQty].every((n) => Number.isInteger(n) && n >= 0)) {
-      return NextResponse.json({ error: "Received, damaged, and missing counts must be whole, non-negative numbers" }, { status: 400 });
+    const quantities = usesActualReceiptModel
+      ? [item.goodQty ?? 0, item.damagedQty, item.unidentifiedQty ?? 0]
+      : [item.receivedOkQty ?? 0, item.damagedQty, item.missingQty ?? 0];
+    if (!quantities.every((n) => Number.isInteger(n) && n >= 0)) {
+      return NextResponse.json({ error: "Every receipt count must be a whole, non-negative number" }, { status: 400 });
+    }
+    if (usesActualReceiptModel && !item.actualVariantId && (item.goodQty ?? 0) + item.damagedQty > 0) {
+      return NextResponse.json({ error: "Choose the Variant that physically arrived, or record the units as unidentified" }, { status: 400 });
+    }
+    if (usesActualReceiptModel && (item.unidentifiedQty ?? 0) > 0 && !item.unidentifiedSku?.trim()) {
+      return NextResponse.json({ error: "A scanned SKU or package reference is required for unidentified units" }, { status: 400 });
     }
   }
 
   const { data: expectedItems, error: expectedItemsError } = await supabaseAdmin
     .from("warehouse_transfer_items")
-    .select("id")
-    .eq("transfer_id", params.id);
+    .select("id, received_ok_qty")
+    .eq("transfer_id", params.id)
+    .in("id", submittedIds);
   if (expectedItemsError) {
     return safeErrorResponse(
       "admin.warehouse.transfers.receive-items",
@@ -57,29 +81,52 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       "Failed to load transfer items"
     );
   }
-  const expectedIds = new Set((expectedItems ?? []).map((item) => item.id));
-  if (
-    expectedIds.size !== submittedIds.length ||
-    submittedIds.some((itemId) => !expectedIds.has(itemId))
-  ) {
+  const expectedIds = new Set((expectedItems ?? []).filter((item) => item.received_ok_qty == null).map((item) => item.id));
+  if (expectedIds.size !== submittedIds.length || submittedIds.some((itemId) => !expectedIds.has(itemId))) {
     return NextResponse.json(
-      { error: "Every transfer item must be reconciled exactly once" },
+      { error: "Every submitted line must belong to this document and still be awaiting receipt" },
       { status: 400 }
     );
   }
 
-  const { data: results, error } = await supabaseAdmin.rpc(isReturn ? "receive_warehouse_return" : "receive_warehouse_transfer", {
-    p_transfer_id: params.id,
-    p_actor_id: receiver.id,
-    p_items: body.items.map((item) => ({
-      item_id: item.itemId,
-      received_ok_qty: item.receivedOkQty,
-      damaged_qty: item.damagedQty,
-      missing_qty: item.missingQty,
-      item_note: item.itemNote ?? null,
-    })),
-    p_note: body.note ?? null,
-  } as never);
+  const operationKey = usesActualReceiptModel
+    ? parseOrderIdempotencyKey(request.headers.get("idempotency-key"))
+    : null;
+  if (usesActualReceiptModel && !operationKey) {
+    return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 });
+  }
+
+  const rpcName = usesActualReceiptModel ? "receive_warehouse_document_v2" : "receive_warehouse_document";
+  const rpcArgs = usesActualReceiptModel
+    ? {
+      p_transfer_id: params.id,
+      p_actor_id: receiver.id,
+      p_lines: body.items.map((item) => ({
+        item_id: item.itemId,
+        actual_variant_id: item.actualVariantId ?? null,
+        good_qty: item.goodQty ?? 0,
+        damaged_qty: item.damagedQty,
+        unidentified_qty: item.unidentifiedQty ?? 0,
+        unidentified_sku: item.unidentifiedSku?.trim() || null,
+        item_note: item.itemNote ?? null,
+      })),
+      p_note: body.note ?? null,
+      p_operation_key: operationKey,
+    }
+    : {
+      p_transfer_id: params.id,
+      p_actor_id: receiver.id,
+      p_items: body.items.map((item) => ({
+        item_id: item.itemId,
+        received_ok_qty: item.receivedOkQty ?? 0,
+        damaged_qty: item.damagedQty,
+        missing_qty: item.missingQty ?? 0,
+        item_note: item.itemNote ?? null,
+      })),
+      p_note: body.note ?? null,
+      p_direction: transfer.direction,
+    };
+  const { data: result, error } = await supabaseAdmin.rpc(rpcName, rpcArgs as never);
   if (error) return safeErrorResponse("admin.warehouse.transfers.receive", error, isReturn ? "Failed to confirm the return" : "Failed to confirm receipt", 400);
 
   // The RPC above already committed the actual receipt (transfer status +
@@ -100,21 +147,28 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .select("id, variant_id, product_variants(sku)")
       .eq("transfer_id", params.id)
       .in("id", body.items!.map((item) => item.itemId));
-    const skuByVariantId = new Map(
-      (itemRows ?? []).map((row) => [row.variant_id as string, (row.product_variants as unknown as { sku: string } | null)?.sku ?? row.variant_id])
-    );
-    const receivedResults = (results ?? []) as { variant_id: string; received_ok_qty: number; damaged_qty: number; missing_qty: number; new_quantity: number }[];
+    const documentResult = (result ?? { items: [], status: "received", remaining_unreconciled: 0 }) as unknown as ReceiveDocumentResult;
+    const receivedResults = documentResult.items ?? [];
+    const actualVariantIds = [...new Set(receivedResults.map((item) => item.variant_id).filter((id): id is string => Boolean(id)))];
+    const { data: actualVariantRows } = actualVariantIds.length
+      ? await supabaseAdmin.from("product_variants").select("id, sku").in("id", actualVariantIds)
+      : { data: [] as Array<{ id: string; sku: string }> };
+    const skuByVariantId = new Map<string, string>([
+      ...(itemRows ?? []).map((row) => [row.variant_id as string, (row.product_variants as unknown as { sku: string } | null)?.sku ?? row.variant_id] as const),
+      ...(actualVariantRows ?? []).map((row) => [row.id as string, row.sku as string] as const),
+    ]);
     const changeSummary = describeInventoryAdjustments(
       receivedResults
         .filter((r) => isReturn ? r.received_ok_qty + r.damaged_qty + r.missing_qty > 0 : r.received_ok_qty > 0)
         .map((r) => {
           const delta = isReturn ? -(r.received_ok_qty + r.damaged_qty + r.missing_qty) : r.received_ok_qty;
-          return { sku: skuByVariantId.get(r.variant_id) ?? r.variant_id, previousQuantity: r.new_quantity - delta, newQuantity: r.new_quantity };
+          const variantLabel = r.variant_id ? skuByVariantId.get(r.variant_id) ?? r.variant_id : "Unidentified stock";
+          return { sku: variantLabel, previousQuantity: r.new_quantity - delta, newQuantity: r.new_quantity };
         })
     );
     const discrepancySummary = receivedResults
       .filter((r) => r.damaged_qty > 0 || r.missing_qty > 0)
-      .map((r) => `${skuByVariantId.get(r.variant_id) ?? r.variant_id}: damaged ${r.damaged_qty}, missing ${r.missing_qty}`)
+      .map((r) => `${r.variant_id ? skuByVariantId.get(r.variant_id) ?? r.variant_id : "Unidentified stock"}: damaged ${r.damaged_qty}, missing ${r.missing_qty}`)
       .join("\n");
 
     await logAudit({
@@ -131,10 +185,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       brandSlug: brand?.slug ?? undefined,
     });
 
-    const hasDiscrepancy = body.items!.some((item) => item.damagedQty > 0 || item.missingQty > 0);
+    const hasDiscrepancy = body.items!.some((item) => item.damagedQty > 0 || (item.missingQty ?? 0) > 0 || (item.unidentifiedQty ?? 0) > 0 || (usesActualReceiptModel && item.actualVariantId !== itemRows?.find((row) => row.id === item.itemId)?.variant_id));
+    const partial = documentResult.status === "partially_received";
     await notify(
       "warehouse_transfer_received",
-      `Local Warehouse ${isReturn ? "return" : "transfer"} confirmed: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
+      `Local Warehouse ${isReturn ? "return" : "transfer"} ${partial ? "partially received" : "confirmed"}: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
       body.note ?? "",
       {
         relatedEntityType: "warehouse_transfer",
@@ -147,21 +202,23 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       await notifyUser(
         brand.owner_user_id,
         "warehouse_transfer_received",
-        isReturn
-          ? (hasDiscrepancy ? "Your return was confirmed — with some discrepancies" : "Your return was confirmed in full")
-          : (hasDiscrepancy ? "Your transfer was received — with some discrepancies" : "Your transfer was received in full"),
+        partial
+          ? `Zakhnook partially received your ${isReturn ? "return" : "restock"} document`
+          : isReturn
+            ? (hasDiscrepancy ? "Your return was confirmed — with some discrepancies" : "Your return was confirmed in full")
+            : (hasDiscrepancy ? "Your transfer was received — with some discrepancies" : "Your transfer was received in full"),
         body.note ?? "",
         { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
       );
     }
 
     if (!isReturn) {
-      const variantIds = ((results as { variant_id: string; received_ok_qty: number }[] | null) ?? [])
-        .filter((r) => r.received_ok_qty > 0)
-        .map((r) => r.variant_id);
+      const variantIds = receivedResults
+        .filter((r) => r.received_ok_qty > 0 && r.variant_id)
+        .map((r) => r.variant_id as string);
       if (variantIds.length) await checkAndNotifyRestock(variantIds);
     }
   });
 
-  return NextResponse.json({ ok: true, results });
+  return NextResponse.json({ ok: true, result });
 }

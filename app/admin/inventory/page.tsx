@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Activity, ArrowDownLeft, ArrowUpRight, Boxes, ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { Activity, ArrowDownLeft, ArrowUpRight, Boxes, ChevronDown, ChevronLeft, ChevronRight, Search, SlidersHorizontal } from "lucide-react";
 import { DashboardEmptyState, DashboardPageHeader } from "@/components/dashboard/DashboardUI";
 import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 import {
@@ -68,7 +68,7 @@ export default async function AdminInventoryPage({ searchParams }: { searchParam
   return (
     <div>
       <AdminWorkspaceNav workspace="inventory" activeHref={activeHref} />
-      <DashboardPageHeader title="Inventory" description="Brands manage their own stock — this is a monitoring view only." />
+      <DashboardPageHeader title="Inventory" description="Monitor stock across every brand, product, color and size from one place." />
       {view === "activity" ? (
         <ActivityWorkspaceLoader summaries={summaries} params={params} />
       ) : (
@@ -135,7 +135,7 @@ function AllProductsCatalog({ products, brands, params }: { products: AdminInven
       <CatalogFilters brands={brands} query={params.q ?? ""} brand={brandFilter} fulfillment={fulfillment} issuesOnly={issuesOnly} stock={stock} status={status} />
       {filtered.length ? (
         <div className="space-y-3">
-          <p className="px-1 text-[9.5px] font-semibold text-[#8d8076]">Showing {formatCount(filtered.length)} of {formatCount(products.length)} products</p>
+          <p className="px-1 text-[10.5px] font-semibold text-[#756960]">Showing {formatCount(filtered.length)} of {formatCount(products.length)} products</p>
           {filtered.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
@@ -232,33 +232,33 @@ function ProductCard({ product }: { product: AdminInventoryProductWithBrand }) {
       <summary className="flex cursor-pointer list-none items-center gap-3 bg-[#ece7e0] px-4 py-3.5 outline-none transition-colors hover:bg-[#e4ded6] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden">
         <span className="relative h-14 w-12 flex-none overflow-hidden rounded-xl bg-[#f1eae4]">{product.image ? <Image src={product.image} alt="" fill sizes="48px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
         <div className="min-w-0">
-          <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.06em] text-[#C85956]">
-            <span className="relative flex h-4 w-4 flex-none items-center justify-center overflow-hidden rounded-md bg-[#fbf7f3] text-[7px] font-extrabold">
-              {product.brandLogoImage ? <Image src={product.brandLogoImage} alt="" fill sizes="16px" className="object-contain p-0.5" /> : product.brandName.slice(0, 1).toUpperCase()}
+          <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.06em] text-[#B94F4C]">
+            <span className="relative flex h-[18px] w-[18px] flex-none items-center justify-center overflow-hidden rounded-md bg-[#fbf7f3] text-[8px] font-extrabold">
+              {product.brandLogoImage ? <Image src={product.brandLogoImage} alt="" fill sizes="18px" className="object-contain p-0.5" /> : product.brandName.slice(0, 1).toUpperCase()}
             </span>
             <span className="truncate">{product.brandName}</span>
           </p>
-          <h3 className="truncate text-[13px] font-extrabold text-[#403730]">{product.name}</h3>
-          <p className="mt-1 text-[9.5px] text-[#8d8076]">
+          <h3 className="truncate text-[14px] font-extrabold text-[#403730]">{product.name}</h3>
+          <p className="mt-1 text-[10.5px] text-[#756960]">
             {titleCase(product.status)} · {formatCount(colors.length)} {colors.length === 1 ? "color" : "colors"} · {formatCount(product.variants.length)} {product.variants.length === 1 ? "size" : "sizes"}
           </p>
         </div>
         <div className="ml-auto text-right">
           <p className="text-[14px] font-extrabold tabular-nums text-[#302924]">{formatCount(product.totalUnits)}</p>
-          <p className="text-[8.5px] font-bold uppercase tracking-[0.07em] text-[#94867c]">available units</p>
-          {product.issueCount ? <p className="mt-1 text-[9px] font-bold text-amber-700">{formatCount(product.issueCount)} need attention</p> : null}
+          <p className="text-[9.5px] font-bold uppercase tracking-[0.07em] text-[#756960]">available units</p>
+          {product.issueCount ? <p className="mt-1 inline-flex rounded-full bg-amber-50 px-2 py-1 text-[9.5px] font-bold text-amber-800">{formatCount(product.issueCount)} need attention</p> : null}
         </div>
         <ChevronRight aria-hidden="true" className="ml-1 h-4 w-4 flex-none text-[#a99b91] transition-transform group-open:rotate-90 group-open:text-[#C85956]" />
       </summary>
       <div className="border-t border-[#eee7e1]">
         <div className="flex items-center justify-between bg-[#e7e1da] px-4 py-2">
-          <p className="text-[9px] font-semibold text-[#8d8076]">Open a color to inspect its sizes and stock.</p>
+          <p className="text-[10px] font-semibold text-[#756960]">Open a color to inspect its sizes and stock.</p>
           <div className="flex items-center gap-3">
-            <Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(product.brandSlug)}&productId=${encodeURIComponent(product.id)}`} className="inline-flex items-center gap-1 text-[9.5px] font-bold text-[#8d8076] hover:text-[#C85956] hover:underline">
+            <Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(product.brandSlug)}&productId=${encodeURIComponent(product.id)}`} className="inline-flex items-center gap-1 text-[10.5px] font-bold text-[#756960] hover:text-[#C85956] hover:underline">
               <Activity className="h-3 w-3" />
               All movements
             </Link>
-            <Link href={`/admin/products/${product.id}/edit`} className="text-[9.5px] font-bold text-[#8d8076] hover:text-[#C85956] hover:underline">
+            <Link href={`/admin/products/${product.id}/edit`} className="text-[10.5px] font-bold text-[#756960] hover:text-[#C85956] hover:underline">
               Edit product
             </Link>
           </div>
@@ -279,17 +279,17 @@ function ColorInventoryGroup({ product, color }: { product: AdminInventoryProduc
         <ChevronRight className="h-3.5 w-3.5 flex-none text-[#9f9187] transition-transform group-open/color:rotate-90 group-open/color:text-[#C85956]" />
         <span className="relative h-12 w-10 flex-none overflow-hidden rounded-xl bg-[#eee7e1]">{image ? <Image src={image} alt={`${product.name} in ${color.label}`} fill sizes="40px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}</span>
         <span className="min-w-0">
-          <span className="block truncate text-[11.5px] font-extrabold text-[#403730]">{color.label}</span>
-          <span className="mt-1 block text-[9px] text-[#8d8076]">{formatCount(color.variants.length)} {color.variants.length === 1 ? "size" : "sizes"}</span>
+          <span className="block truncate text-[12.5px] font-extrabold text-[#403730]">{color.label}</span>
+          <span className="mt-1 block text-[10px] text-[#756960]">{formatCount(color.variants.length)} {color.variants.length === 1 ? "size" : "sizes"}</span>
         </span>
         <span className="ml-auto text-right">
           <span className="block text-[13px] font-extrabold tabular-nums text-[#302924]">{formatCount(total)}</span>
-          <span className="block text-[8px] font-semibold text-[#94867c]">available</span>
+          <span className="block text-[9px] font-semibold text-[#756960]">available</span>
         </span>
         {issues ? <span className="hidden rounded-lg bg-amber-50 px-2 py-1 text-[8.5px] font-bold text-amber-800 sm:inline-flex">{formatCount(issues)} need attention</span> : <span className="hidden sm:inline-flex"><StockBadge status="in_stock" /></span>}
       </summary>
       <div className="border-t border-[#e8dfd8] bg-[#fcfaf8]">
-        <div className="hidden grid-cols-[minmax(180px,1fr)_90px_90px_110px_140px] items-center px-4 py-2 text-[8.5px] font-bold uppercase tracking-[0.07em] text-[#94867c] md:grid">
+        <div className="hidden grid-cols-[minmax(180px,1fr)_90px_90px_110px_150px] items-center px-4 py-2 text-[9.5px] font-bold uppercase tracking-[0.07em] text-[#756960] md:grid">
           <span>Size / SKU</span><span>Available</span><span>Alert at</span><span>Selling</span><span>Status / movements</span>
         </div>
         <div className="divide-y divide-[#eee7e1]">{color.variants.map((variant) => <VariantSizeRow key={variant.id} variant={variant} product={product} />)}</div>
@@ -301,14 +301,14 @@ function ColorInventoryGroup({ product, color }: { product: AdminInventoryProduc
 function VariantSizeRow({ variant, product }: { variant: AdminInventoryProductWithBrand["variants"][number]; product: AdminInventoryProductWithBrand }) {
   const movementsHref = `/admin/inventory?view=activity&brand=${encodeURIComponent(product.brandSlug)}&productId=${encodeURIComponent(product.id)}&variantId=${encodeURIComponent(variant.id)}`;
   return (
-    <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(180px,1fr)_90px_90px_110px_140px] md:items-center">
-      <div className="min-w-0"><p className="text-[10.5px] font-bold text-[#51473f]">{variant.size || "One size"}</p><code className="mt-1 block truncate text-[8.5px] text-[#94867c]">{variant.sku}</code></div>
-      <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Available</span><span className="text-[12px] font-extrabold tabular-nums text-[#403730]">{formatCount(variant.quantity)}</span></div>
-      <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Alert at</span><span className="text-[10.5px] tabular-nums text-[#756960]">{formatCount(variant.threshold)}</span></div>
-      <div className="flex items-center justify-between md:block"><span className="text-[8.5px] font-bold uppercase text-[#9a8c82] md:hidden">Selling</span><span className="text-[9.5px] font-semibold text-[#756960]">{titleCase(variant.sellingStatus)}</span></div>
+    <div className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(180px,1fr)_90px_90px_110px_150px] md:items-center">
+      <div className="min-w-0"><p className="text-[11.5px] font-bold text-[#51473f]">{variant.size || "One size"}</p><code className="mt-1 block truncate text-[9.5px] text-[#756960]">{variant.sku}</code></div>
+      <div className="flex items-center justify-between md:block"><span className="text-[9.5px] font-bold uppercase text-[#756960] md:hidden">Available</span><span className="text-[12px] font-extrabold tabular-nums text-[#403730]">{formatCount(variant.quantity)}</span></div>
+      <div className="flex items-center justify-between md:block"><span className="text-[9.5px] font-bold uppercase text-[#756960] md:hidden">Alert at</span><span className="text-[10.5px] tabular-nums text-[#756960]">{formatCount(variant.threshold)}</span></div>
+      <div className="flex items-center justify-between md:block"><span className="text-[9.5px] font-bold uppercase text-[#756960] md:hidden">Selling</span><span className="text-[10.5px] font-semibold text-[#756960]">{titleCase(variant.sellingStatus)}</span></div>
       <div className="flex items-center justify-between gap-2 md:justify-start">
         <StockBadge status={variant.stockStatus} />
-        <Link href={movementsHref} aria-label={`View movement history for ${variant.sku}`} className="inline-flex items-center gap-1 rounded-lg bg-[#e6e0d8] px-2 py-1 text-[9px] font-bold text-[#5b5049] transition-colors hover:bg-[#242424] hover:text-white">
+        <Link href={movementsHref} aria-label={`View movement history for ${variant.sku}`} className="inline-flex items-center gap-1 rounded-lg bg-[#e6e0d8] px-2.5 py-1.5 text-[9.5px] font-bold text-[#51473f] transition-colors hover:bg-[#242424] hover:text-white">
           <Activity className="h-3 w-3" />
           Movements
         </Link>
@@ -383,11 +383,12 @@ function ActivityWorkspace({ summaries, detail, selectedBrand, params, result, s
 
 function MovementFilters({ summaries, detail, selectedBrand, params, source, movementType, from, to, clearHref }: { summaries: AdminInventoryBrandSummary[]; detail: AdminInventoryBrandDetail | null; selectedBrand: AdminInventoryBrandSummary | null; params: Params; source?: string; movementType?: string; from?: string; to?: string; clearHref: string }) {
   const active = Boolean(params.q || params.brand || params.productId || params.variantId || source || movementType || from || to);
+  const advancedActive = Boolean(source || movementType || from || to);
   return (
-    <form action="/admin/inventory" className="rounded-[22px] border-0 bg-[#ece7e0] p-4 shadow-[0_12px_32px_rgba(72,50,36,.07)]">
+    <form action="/admin/inventory" className="rounded-[22px] border-0 bg-[#ece7e0] p-3 shadow-[0_12px_32px_rgba(72,50,36,.07)] sm:p-4">
       <input type="hidden" name="view" value="activity" />
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(190px,1.1fr)_150px_minmax(160px,1fr)_minmax(160px,1fr)_140px_140px_120px_120px_auto] xl:items-end">
-        <label>
+      <div className={`grid min-w-0 gap-3 md:grid-cols-2 ${detail ? "xl:grid-cols-[minmax(220px,1.25fr)_170px_minmax(180px,1fr)_minmax(220px,1.25fr)_auto]" : "xl:grid-cols-[minmax(260px,1fr)_190px_auto]"} xl:items-end`}>
+        <label className="min-w-0">
           <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#8d8076]">Search</span>
           <div className="relative mt-1.5">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9b8d83]" />
@@ -422,25 +423,7 @@ function MovementFilters({ summaries, detail, selectedBrand, params, source, mov
             </Select>
           </>
         ) : null}
-        <Select label="Source" name="source" value={source ?? ""}>
-          <option value="">All sources</option>
-          {SOURCE_OPTIONS.map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <Select label="Movement" name="movement" value={movementType ?? ""}>
-          <option value="">All movements</option>
-          {MOVEMENT_OPTIONS.map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </Select>
-        <DateFilter label="From" name="from" value={from ?? ""} />
-        <DateFilter label="To" name="to" value={to ?? ""} />
-        <div className="flex h-11 items-center gap-2">
+        <div className="flex h-11 items-center gap-2 xl:justify-end">
           <button className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white">Apply</button>
           {active ? (
             <Link href={clearHref} className="text-[10.5px] font-bold text-[#8d8076] hover:text-[#C85956]">
@@ -449,6 +432,30 @@ function MovementFilters({ summaries, detail, selectedBrand, params, source, mov
           ) : null}
         </div>
       </div>
+      <details className="group/filters mt-3 border-t border-[#d9cec5] pt-3" open={advancedActive || undefined}>
+        <summary className="flex w-fit cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1 text-[10.5px] font-bold text-[#665a52] outline-none hover:text-[#C85956] focus-visible:ring-2 focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          More filters
+          {advancedActive ? <span className="rounded-full bg-[#f2dedd] px-2 py-0.5 text-[9px] text-[#A94442]">Active</span> : null}
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open/filters:rotate-180" />
+        </summary>
+        <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Select label="Source" name="source" value={source ?? ""}>
+            <option value="">All sources</option>
+            {SOURCE_OPTIONS.map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </Select>
+          <Select label="Movement" name="movement" value={movementType ?? ""}>
+            <option value="">All movements</option>
+            {MOVEMENT_OPTIONS.map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </Select>
+          <DateFilter label="From" name="from" value={from ?? ""} />
+          <DateFilter label="To" name="to" value={to ?? ""} />
+        </div>
+      </details>
     </form>
   );
 }

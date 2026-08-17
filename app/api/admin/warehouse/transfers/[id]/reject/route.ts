@@ -19,14 +19,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     .eq("id", params.id)
     .maybeSingle();
   if (!transfer) return NextResponse.json({ error: "Transfer not found" }, { status: 404 });
-  if (transfer.status !== "pending") return NextResponse.json({ error: "This transfer has already been decided" }, { status: 400 });
+  if (!["pending", "submitted", "approved", "in_transit"].includes(transfer.status)) {
+    return NextResponse.json({ error: "This document cannot be rejected in its current stage" }, { status: 400 });
+  }
 
   const body = await request.json().catch(() => ({})) as { note?: string };
+  if (!body.note?.trim()) return NextResponse.json({ error: "A rejection reason is required" }, { status: 400 });
 
-  const { error } = await supabaseAdmin.rpc("reject_warehouse_transfer", {
+  const { error } = await supabaseAdmin.rpc("reject_warehouse_document", {
     p_transfer_id: params.id,
     p_actor_id: receiver.id,
-    p_note: body.note?.trim() || null,
+    p_note: body.note.trim(),
   });
   if (error) return safeErrorResponse("admin.warehouse.transfers.reject", error, "Failed to reject the transfer");
 

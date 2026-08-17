@@ -76,7 +76,8 @@ test("warehouse APIs enforce exact lines and persistent operation keys", () => {
 
   assert.match(receive, /expectedIds\.size !== submittedIds\.length/);
   assert.match(receive, /Each transfer item must appear exactly once/);
-  assert.match(reject, /\.rpc\("reject_warehouse_transfer"/);
+  assert.match(reject, /\.rpc\("reject_warehouse_document"/);
+  assert.match(reject, /A rejection reason is required/);
   assert.match(transfer, /parseOrderIdempotencyKey/);
   assert.match(warehouseReturn, /parseOrderIdempotencyKey/);
   assert.match(warehouseClient, /"Idempotency-Key": returnOperationKey\.current/);

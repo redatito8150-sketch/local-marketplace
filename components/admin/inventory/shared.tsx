@@ -21,7 +21,7 @@ export function BrandMark({ brand }: { brand: { name: string; logoImage: string 
 export function Metric({ label, value }: { label: string; value: number }) {
   return (
     <span>
-      <span className="block text-[8.5px] font-bold uppercase tracking-[0.07em] text-[#9a8c82]">{label}</span>
+      <span className="block text-[9.5px] font-bold uppercase tracking-[0.07em] text-[#756960]">{label}</span>
       <span className="mt-0.5 block text-[12px] font-extrabold tabular-nums text-[#403730]">{formatCount(value)}</span>
     </span>
   );
@@ -29,7 +29,7 @@ export function Metric({ label, value }: { label: string; value: number }) {
 
 export function StockBadge({ status }: { status: "in_stock" | "low_stock" | "out_of_stock" }) {
   const style = status === "in_stock" ? "bg-emerald-50/55 text-emerald-800" : status === "low_stock" ? "bg-amber-50/55 text-amber-800" : "bg-red-50/55 text-red-800";
-  return <span className={`inline-flex rounded-lg px-2 py-1 text-[9px] font-extrabold ${style}`}>{status === "in_stock" ? "Healthy" : status === "low_stock" ? "Low stock" : "Out of stock"}</span>;
+  return <span className={`inline-flex rounded-lg px-2 py-1 text-[10px] font-extrabold ${style}`}>{status === "in_stock" ? "Healthy" : status === "low_stock" ? "Low stock" : "Out of stock"}</span>;
 }
 
 export function VariantIdentity({ image, productName, label, sku }: { image: string | null; productName: string; label: string; sku: string }) {
@@ -39,8 +39,8 @@ export function VariantIdentity({ image, productName, label, sku }: { image: str
         {image ? <Image src={image} alt={`${productName}, ${label}`} fill sizes="36px" className="object-cover" /> : <Boxes className="absolute inset-0 m-auto h-4 w-4 text-[#b2a49a]" />}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-[11px] font-bold text-[#403730]">{label}</span>
-        <code className="mt-1 block truncate text-[9px] text-[#91837a]">{sku}</code>
+        <span className="block truncate text-[12px] font-bold text-[#403730]">{label}</span>
+        <code className="mt-1 block truncate text-[10px] text-[#756960]">{sku}</code>
       </span>
     </div>
   );
@@ -48,9 +48,9 @@ export function VariantIdentity({ image, productName, label, sku }: { image: str
 
 // A generic status pill for request-style badges (Warehouse), sharing the
 // same soft-tint language as StockBadge instead of the old slate look.
-export function TonePill({ label, tone, icon: Icon }: { label: string; tone: "amber" | "emerald" | "red" | "neutral"; icon?: React.ElementType }) {
+export function TonePill({ label, tone, icon: Icon }: { label: string; tone: "amber" | "emerald" | "red" | "neutral" | "blue" | "violet"; icon?: React.ElementType }) {
   const style =
-    tone === "amber" ? "bg-amber-50/70 text-amber-800" : tone === "emerald" ? "bg-emerald-50/70 text-emerald-800" : tone === "red" ? "bg-red-50/70 text-red-800" : "bg-[#e6e0d8] text-[#5b5049]";
+    tone === "amber" ? "bg-amber-50/70 text-amber-800" : tone === "emerald" ? "bg-emerald-50/70 text-emerald-800" : tone === "red" ? "bg-red-50/70 text-red-800" : tone === "blue" ? "bg-sky-50/70 text-sky-800" : tone === "violet" ? "bg-violet-50/70 text-violet-800" : "bg-[#e6e0d8] text-[#5b5049]";
   return (
     <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[10px] font-extrabold ${style}`}>
       {Icon ? <Icon className="h-3 w-3" /> : null}

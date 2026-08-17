@@ -40,6 +40,6 @@ test("Commerce workspace links the payments index alongside the refund-review qu
   const sidebar = read("components/admin/AdminSidebar.tsx");
   const workspaceNav = read("components/admin/AdminWorkspaceNav.tsx");
   assert.match(sidebar, /activePaths: \["\/admin\/orders", "\/admin\/payments"\]/);
-  assert.match(workspaceNav, /label: "Payments", href: "\/admin\/payments", permission: "manage_orders"/);
-  assert.match(workspaceNav, /label: "Refund review", href: "\/admin\/payments\/refund-queue", permission: "manage_orders"/);
+  assert.match(workspaceNav, /label: "Payments", href: "\/admin\/payments",[^}]*permission: "manage_orders"/);
+  assert.match(workspaceNav, /label: "Refund review", href: "\/admin\/payments\/refund-queue",[^}]*permission: "manage_orders"/);
 });
