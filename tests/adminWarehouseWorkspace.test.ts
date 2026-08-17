@@ -33,22 +33,47 @@ test("Stock requests is a searchable, paginated operational queue with stable gl
   assert.match(page, /allTransfers\.filter\(\(transfer\) => ACTION_REQUIRED_WAREHOUSE_STATUSES/);
 });
 
-test("warehouse details show lifecycle, formal metadata, audit trail, printing, partial receipt, and discrepancy resolution", () => {
+test("warehouse details show one combined document history, printing, partial receipt, and discrepancy resolution", () => {
   const page = read("app/admin/warehouse/[id]/page.tsx");
   const receive = read("components/admin/warehouse/TransferReceiveForm.tsx");
   const resolution = read("components/admin/warehouse/QuarantineResolutionForm.tsx");
-  const actions = read("components/admin/warehouse/WarehouseDocumentActions.tsx");
 
-  assert.match(page, /LifecycleTimeline/);
+  assert.match(page, /DocumentHistory/);
+  assert.doesNotMatch(page, /function LifecycleTimeline/);
+  assert.doesNotMatch(page, /function MetadataCard/);
+  assert.doesNotMatch(page, /function AuditTrail/);
+  assert.match(page, /Request, outcome and audit trail/);
+  assert.doesNotMatch(page, /DocumentFact/);
+  assert.doesNotMatch(page, /Document totals/);
+  assert.doesNotMatch(page, /label: "Review"/);
+  assert.doesNotMatch(page, /label: "Approved"/);
+  assert.doesNotMatch(page, /label: "In transit"/);
+  assert.match(page, /transfer\.status === "received" \? "Accepted"/);
+  assert.match(page, /activity\.sort/);
+  assert.doesNotMatch(page, /AdminWorkspaceNav/);
+  assert.match(page, /text-\[9\.5px\][^>]*>[\s\S]*?<ArrowLeft[^>]*>[\s\S]*?All requests[\s\S]*?<div className="flex flex-col gap-4 lg:flex-row lg:items-center">[\s\S]*?<BrandMark/);
+  assert.doesNotMatch(page, /All requests<\/Link>\s*<BrandMark/);
   assert.match(page, /getAuditLogsForEntity\("warehouse_transfer"/);
   assert.match(page, /PrintWarehouseDocumentButton/);
-  assert.match(page, /WarehouseDocumentActions/);
-  assert.match(page, /QuarantineResolutionForm/);
-  assert.match(page, /item\.itemNote/);
-  assert.match(receive, /Expected vs actual/);
-  assert.match(receive, /Record what physically arrived/);
+  assert.doesNotMatch(page, /WarehouseDocumentActions/);
+  assert.doesNotMatch(page, /DocumentItems/);
+  assert.match(receive, /QuarantineResolutionForm/);
+  assert.match(receive, /item\.itemNote/);
+  assert.match(receive, /Document lines/);
+  assert.match(receive, /Every Variant and its reconciliation result/);
+  assert.match(receive, /formatCount\(items\.length\).*variants.*formatCount\(totalRequested\).*units/);
+  assert.match(receive, /formatCount\(totalAccepted\).*accepted so far/);
+  assert.doesNotMatch(receive, /Expected vs actual/);
+  assert.doesNotMatch(receive, /Record what physically arrived/);
+  assert.match(receive, /EditableQuantity label=\{isReturn \? "Returned" : "Received"\}/);
+  assert.match(receive, /EditableQuantity label="Damaged"/);
+  assert.match(receive, /EditableQuantity label="Missing"/);
+  assert.match(receive, /Review receipt ·/);
+  assert.match(receive, /issueOpen/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Substitution/);
+  assert.match(page, /showLedger=\{\["received", "partially_received", "rejected"\]\.includes\(transfer\.status\)\}/);
+  assert.match(receive, /\{showLedger \? <Link[\s\S]*?>Ledger<\/Link> : null\}/);
   assert.match(receive, /Final receipt review/);
   assert.match(receive, /Idempotency-Key/);
   assert.match(receive, /new Set\(\)/);
@@ -56,7 +81,6 @@ test("warehouse details show lifecycle, formal metadata, audit trail, printing, 
   assert.match(resolution, /written_off/);
   assert.match(resolution, /returned_to_brand/);
   assert.match(resolution, /restored_to_sellable/);
-  assert.match(actions, /A clear reason is required/);
 });
 
 test("partial receiving API accepts only unreconciled submitted lines and uses the canonical document RPC", () => {
@@ -75,14 +99,10 @@ test("partial receiving API accepts only unreconciled submitted lines and uses t
   assert.doesNotMatch(route, /expectedIds\.size !== submittedIds\.length \|\|\s*submittedIds\.some[\s\S]*Every transfer item must be reconciled exactly once/);
 });
 
-test("rejection and cancellation require an audit reason at both UI and route boundaries", () => {
+test("rejection and cancellation require an audit reason at route boundaries", () => {
   const reject = read("app/api/admin/warehouse/transfers/[id]/reject/route.ts");
   const cancel = read("app/api/admin/warehouse/documents/[id]/cancel/route.ts");
-  const actions = read("components/admin/warehouse/WarehouseDocumentActions.tsx");
   assert.match(reject, /A rejection reason is required/);
   assert.match(reject, /reject_warehouse_document/);
   assert.match(cancel, /A cancellation reason is required/);
-  assert.match(actions, /Required reason/);
-  assert.match(actions, /Confirm rejection/);
-  assert.match(actions, /Confirm cancellation/);
 });

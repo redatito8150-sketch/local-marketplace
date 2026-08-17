@@ -22,6 +22,13 @@ test("admin navigation keeps the daily workflow short and groups operational rou
   assert.doesNotMatch(sidebar, /label: "Warehouse"/);
 });
 
+test("admin quick search tolerates browser-injected form attributes without hiding page-level hydration errors", () => {
+  const search = read("components/admin/AdminQuickSearch.tsx");
+
+  assert.match(search, /fdprocessedid/);
+  assert.match(search, /<input[\s\S]*?suppressHydrationWarning[\s\S]*?type="text"/);
+});
+
 test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 

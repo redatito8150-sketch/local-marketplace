@@ -110,7 +110,9 @@ test("admin UX records actual Variants and never edits a closed receipt in place
   const receiveRoute = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
   const approveRoute = read("app/api/admin/warehouse/corrections/[id]/approve/route.ts");
 
-  assert.match(receive, /Expected vs actual/);
+  assert.match(receive, /Document lines/);
+  assert.doesNotMatch(receive, /Expected vs actual/);
+  assert.match(receive, /Review receipt ·/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Unidentified SKU — hold for mapping/);
   assert.match(receive, /Idempotency-Key/);

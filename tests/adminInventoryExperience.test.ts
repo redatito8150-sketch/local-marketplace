@@ -109,7 +109,8 @@ test("Stock requests uses consistent English copy and pinned English dates", () 
   assert.doesNotMatch(warehouse, /اذن صرف مخزن/);
   assert.match(warehouse, /formatDateTime\(transfer\.requestedAt\)/);
   assert.match(detail, /formatDateTime\(transfer\.requestedAt\)/);
-  assert.match(detail, /formatDateTime\(transfer\.decidedAt\)/);
+  assert.match(detail, /timestamp: transfer\.decidedAt/);
+  assert.match(detail, /formatDateTime\(entry\.timestamp\)/);
   assert.doesNotMatch(warehouse, /toLocaleString\(\)/);
   assert.doesNotMatch(detail, /toLocaleString\(\)/);
 });
