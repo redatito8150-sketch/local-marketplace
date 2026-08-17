@@ -645,15 +645,15 @@ begin
 
     v_physical := v_good + v_damaged + v_unidentified;
     if v_actual.id = v_expected.id and v_unidentified = 0 then
-      v_missing := pg_catalog.greatest(v_line.requested_qty - v_physical, 0);
-      v_excess := pg_catalog.greatest(v_physical - v_line.requested_qty, 0);
-      v_legacy_good := pg_catalog.least(v_good, v_line.requested_qty);
+      v_missing := greatest(v_line.requested_qty - v_physical, 0);
+      v_excess := greatest(v_physical - v_line.requested_qty, 0);
+      v_legacy_good := least(v_good, v_line.requested_qty);
       v_remaining_expected := v_line.requested_qty - v_legacy_good;
-      v_legacy_damaged := pg_catalog.least(v_damaged, v_remaining_expected);
+      v_legacy_damaged := least(v_damaged, v_remaining_expected);
       v_legacy_missing := v_line.requested_qty - v_legacy_good - v_legacy_damaged;
     else
       v_missing := v_line.requested_qty;
-      v_excess := pg_catalog.greatest(v_physical - v_line.requested_qty, 0);
+      v_excess := greatest(v_physical - v_line.requested_qty, 0);
       v_legacy_good := 0;
       v_legacy_damaged := 0;
       v_legacy_missing := v_line.requested_qty;
