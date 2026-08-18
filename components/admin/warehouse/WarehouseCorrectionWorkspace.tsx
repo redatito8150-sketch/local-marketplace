@@ -508,14 +508,14 @@ export default function WarehouseCorrectionWorkspace({
 
               {itemDrafts.length ? <div className="mt-3 flex flex-wrap gap-1.5">{itemDrafts.map((draft) => <span key={draft.id} className="rounded-lg bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-800">Draft · {draft.label}</span>)}</div> : null}
 
-              {rowCorrectionGroups.length ? <details className="group mt-3 overflow-hidden rounded-xl bg-[#f8f4f0]">
-                <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 px-3 py-2 text-[9.5px] font-extrabold text-[#62564d] outline-none transition hover:bg-[#f3ece6] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956] [&::-webkit-details-marker]:hidden">
-                  <FilePenLine className="h-3.5 w-3.5 text-[#C85956]" />
+              {rowCorrectionGroups.length ? <details className="group mt-3 w-fit max-w-full open:w-full">
+                <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-lg bg-[#f8f4f0] px-2.5 py-1.5 text-[9px] font-extrabold text-[#62564d] outline-none transition hover:bg-[#f3ece6] focus-visible:ring-2 focus-visible:ring-[#C85956] [&::-webkit-details-marker]:hidden">
+                  <FilePenLine className="h-3 w-3 text-[#C85956]" />
                   Corrected · {formatCount(rowCorrectionCount)} change{rowCorrectionCount === 1 ? "" : "s"}
-                  <span className="text-[8.5px] font-medium text-[#94867c]">{formatCount(rowCorrectionGroups.length)} CRN{rowCorrectionGroups.length === 1 ? "" : "s"}</span>
-                  <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                  <span className="text-[8px] font-medium text-[#94867c]">{formatCount(rowCorrectionGroups.length)} CRN{rowCorrectionGroups.length === 1 ? "" : "s"}</span>
+                  <ChevronDown className="ml-0.5 h-3 w-3 transition-transform group-open:rotate-180" />
                 </summary>
-                <div className="border-t border-[#e7ded7] bg-white px-3">
+                <div className="mt-2 overflow-hidden rounded-xl border border-[#e7ded7] bg-white px-3">
                   {rowCorrectionGroups.map(({ correction, lines }, correctionIndex) => {
                     const ownsDocumentControls = lines.some((line) => line.id === correction.lines[0]?.id);
                     const canReverse = correction.status === "posted" && !correction.reversesCorrectionId && correction.lines.length > 0 && correction.lines.every((line) => ["reclassify", "adjust_in", "adjust_out"].includes(line.action) && !line.sourceReceiptLineId && !line.sourceCorrectionLineId);

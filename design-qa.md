@@ -96,3 +96,15 @@ final result: passed
 ## Final result
 
 **Passed.** The new hierarchy is materially shorter, preserves operational and audit information, matches the existing warehouse visual language, and works in both Admin and Brand Portal across desktop and mobile.
+
+### Compact correction-button refinement
+
+- Before: the closed correction disclosure occupied the full 937 px Variant row width.
+- After: `Corrected · 2 changes · 2 CRNs` is a 191 × 32 px content-sized button (20.3% of the Variant row width).
+- Opening the button still reveals the full 897 px correction timeline beneath it.
+- The disclosure opens and closes correctly, retains its focus state, and produced no browser console errors.
+- Collapsed implementation: `design-qa-artifacts/warehouse-corrections-compact-button-collapsed.png`
+- Expanded implementation: `design-qa-artifacts/warehouse-corrections-compact-button.png`
+- Before/after comparison: `design-qa-artifacts/warehouse-corrections-compact-button-comparison.png`
+
+final result: passed
