@@ -60,7 +60,7 @@ function AccountPageContent() {
 
   useEffect(() => {
     if (!user || loading || mfaChallenge || mfaError || !profile) return;
-    router.replace(decidePostAuthDestination(profile.onboardingCompletedAt, nextParam));
+    router.replace(decidePostAuthDestination(profile, nextParam));
   }, [user, profile, loading, mfaChallenge, mfaError, router, nextParam]);
 
   const switchMode = (value: "sign-in" | "create") => {
