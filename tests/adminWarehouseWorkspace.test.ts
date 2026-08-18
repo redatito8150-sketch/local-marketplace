@@ -31,6 +31,9 @@ test("Stock requests is a searchable, paginated operational queue with stable gl
   assert.match(page, /transfer\.documentNumber/);
   assert.match(page, /BrandMark/);
   assert.match(page, /allTransfers\.filter\(\(transfer\) => ACTION_REQUIRED_WAREHOUSE_STATUSES/);
+  assert.equal((page.match(/suppressHydrationWarning/g) ?? []).length, 9);
+  assert.match(page, /<input suppressHydrationWarning name="q"/);
+  assert.match(page, /<select suppressHydrationWarning name="status"/);
 });
 
 test("warehouse details show one combined document history, printing, partial receipt, and discrepancy resolution", () => {

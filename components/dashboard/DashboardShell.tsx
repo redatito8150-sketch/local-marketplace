@@ -86,6 +86,7 @@ export default function DashboardShell({
       <header className={`sticky top-0 z-40 border-b backdrop-blur ${isAdmin ? "border-[var(--admin-border)] bg-[color-mix(in_srgb,var(--admin-surface)_94%,transparent)]" : "border-slate-200/80 bg-white/95"}`}>
         <div className="flex h-[72px] w-full items-center gap-3 px-4 sm:px-6 lg:px-8 xl:px-10">
           <button
+            suppressHydrationWarning
             type="button"
             onClick={() => setMobileOpen(true)}
             className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 lg:hidden ${isAdmin ? "border-[var(--admin-border)] text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] focus-visible:ring-[var(--admin-primary)]/25" : "border-slate-200 text-slate-700 hover:bg-slate-50 focus-visible:ring-mahalyred/30"}`}
@@ -111,6 +112,9 @@ export default function DashboardShell({
       >
         <aside className={`relative hidden border-r px-3 py-6 transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-x-visible ${isAdmin ? "lg:overflow-y-auto border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "lg:overflow-y-visible border-[#e3dcd3] bg-[#fffdf9]"}`}>
           <button
+            // Browser extensions may add `fdprocessedid` before hydration.
+            // Keep suppression scoped to the shell's native controls.
+            suppressHydrationWarning
             type="button"
             onClick={() => setCollapsed((value) => !value)}
             aria-expanded={!collapsed}
@@ -130,6 +134,7 @@ export default function DashboardShell({
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Dashboard navigation">
           <button
+            suppressHydrationWarning
             type="button"
             className="absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]"
             aria-label="Close navigation"
@@ -148,6 +153,7 @@ export default function DashboardShell({
                 <p className={isAdmin ? "mt-0.5 text-[11px] text-[var(--admin-text-muted)]" : "mt-0.5 text-[11px] text-slate-500"}>Navigation</p>
               </div>
               <button
+                suppressHydrationWarning
                 type="button"
                 onClick={() => setMobileOpen(false)}
                 className={isAdmin ? "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--admin-border)] text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)]" : "inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"}

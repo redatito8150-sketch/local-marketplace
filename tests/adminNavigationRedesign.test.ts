@@ -41,6 +41,13 @@ test("notification bells tolerate browser-injected attributes without suppressin
   }
 });
 
+test("the shared dashboard shell scopes browser-extension hydration tolerance to its controls", () => {
+  const shell = read("components/dashboard/DashboardShell.tsx");
+  assert.match(shell, /fdprocessedid/);
+  assert.equal((shell.match(/suppressHydrationWarning/g) ?? []).length, 4);
+  assert.doesNotMatch(shell, /<div[^>]*suppressHydrationWarning/);
+});
+
 test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 
