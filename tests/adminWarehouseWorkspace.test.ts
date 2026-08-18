@@ -67,6 +67,7 @@ test("warehouse details show one combined document history, printing, partial re
   assert.doesNotMatch(page, /function MetadataCard/);
   assert.doesNotMatch(page, /function AuditTrail/);
   assert.match(history, /Request, outcome and audit trail/);
+  assert.match(history, /border border-\[#e6ded7\] bg-white/);
   assert.doesNotMatch(page, /DocumentFact/);
   assert.doesNotMatch(page, /Document totals/);
   assert.doesNotMatch(history, /label: "Review"/);
@@ -86,6 +87,8 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(receive, /QuarantineResolutionForm/);
   assert.match(receive, /item\.itemNote/);
   assert.match(receive, /Document lines/);
+  assert.match(receive, /border border-\[#e6ded7\] bg-white/);
+  assert.match(read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx"), /border border-\[#e6ded7\] bg-white/);
   assert.match(receive, /Every Variant and its reconciliation result/);
   assert.match(receive, /formatCount\(items\.length\).*variants.*formatCount\(totalRequested\).*units/);
   assert.match(receive, /formatCount\(totalAccepted\).*accepted so far/);

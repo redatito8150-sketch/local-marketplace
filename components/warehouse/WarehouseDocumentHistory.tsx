@@ -77,7 +77,7 @@ export default function WarehouseDocumentHistory({
 
   activity.sort((first, second) => Date.parse(first.timestamp) - Date.parse(second.timestamp));
 
-  return <section aria-label="Document history" className="overflow-hidden rounded-[22px] bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
+  return <section aria-label="Document history" className="overflow-hidden rounded-[22px] border border-[#e6ded7] bg-white shadow-[0_10px_30px_rgba(72,50,36,.045)]">
     <header className="flex items-center justify-between gap-4 border-b border-[#ddd4cc] px-5 py-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document history</p><h2 className="mt-1 text-[14px] font-extrabold text-[#302924]">Request, outcome and audit trail</h2></div><Clock3 className="h-4 w-4 text-[#9b8e84]" /></header>
     <ol className="px-5 py-5">{activity.map((entry, index) => { const latest = index === activity.length - 1; return <li key={entry.id} className="grid grid-cols-[20px_1fr] gap-3"><div className="flex flex-col items-center"><span className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full ${latest ? "bg-[#C85956] text-white" : "bg-[#e2dcd4] text-[#8a7d73]"}`}>{latest ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5 fill-current" />}</span>{index < activity.length - 1 ? <span className="min-h-8 w-px flex-1 bg-[#d8cec6]" /> : null}</div><div className="pb-4 last:pb-0"><p className="text-[11.5px] font-extrabold text-[#403730]">{entry.label}</p><p className="mt-0.5 text-[9.5px] text-[#94867c]">{formatDateTime(entry.timestamp)}</p><p className="mt-1 text-[10.5px] leading-4 text-[#756960]">{entry.detail}</p></div></li>; })}</ol>
   </section>;

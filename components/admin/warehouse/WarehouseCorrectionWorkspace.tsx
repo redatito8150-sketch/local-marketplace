@@ -372,7 +372,7 @@ export default function WarehouseCorrectionWorkspace({
   }
 
   return (
-    <section className="overflow-hidden rounded-[22px] bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
+    <section className="overflow-hidden rounded-[22px] border border-[#e6ded7] bg-white shadow-[0_10px_30px_rgba(72,50,36,.045)]">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[#ddd4cc] px-5 py-4">
         <div><p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document lines</p><h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">Every Variant and its recorded receipt</h2></div>
         <div className="text-right"><p className="text-[11px] font-extrabold text-[#403730]">{formatCount(items.length)} variants · {formatCount(totalRequested)} units</p><p className="mt-0.5 text-[9.5px] text-[#8d8076]">{formatCount(totalAccepted)} accepted</p></div>

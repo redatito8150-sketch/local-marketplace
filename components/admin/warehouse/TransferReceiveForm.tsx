@@ -250,7 +250,7 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
   if (!items.length) return null;
 
   return (
-    <section className="overflow-hidden rounded-[22px] bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
+    <section className="overflow-hidden rounded-[22px] border border-[#e6ded7] bg-white shadow-[0_10px_30px_rgba(72,50,36,.045)]">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[#ddd4cc] px-5 py-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document lines</p>
