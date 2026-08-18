@@ -28,6 +28,9 @@ export default function AccountNotificationBell({
   return (
     <div ref={containerRef} className="relative">
       <button
+        // Form-filling browser extensions may mutate this button before React
+        // hydrates it. Suppress only that external attribute mismatch.
+        suppressHydrationWarning
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"

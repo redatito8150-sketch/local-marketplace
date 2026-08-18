@@ -29,6 +29,18 @@ test("admin quick search tolerates browser-injected form attributes without hidi
   assert.match(search, /<input[\s\S]*?suppressHydrationWarning[\s\S]*?type="text"/);
 });
 
+test("notification bells tolerate browser-injected attributes without suppressing the full header", () => {
+  for (const path of [
+    "components/admin/AdminNotificationBell.tsx",
+    "components/account/AccountNotificationBell.tsx",
+  ]) {
+    const bell = read(path);
+    assert.match(bell, /fdprocessedid|Form-filling browser extensions/);
+    assert.match(bell, /<button[\s\S]*?suppressHydrationWarning[\s\S]*?aria-label="Notifications"/);
+    assert.doesNotMatch(bell, /<div[^>]*suppressHydrationWarning/);
+  }
+});
+
 test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 
