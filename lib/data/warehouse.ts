@@ -297,17 +297,38 @@ async function emailFor(userId: string | null): Promise<string | null> {
   return data.user?.email ?? null;
 }
 
+function resolveWarehouseReconciliationStatus(
+  transfer: {
+    status: unknown;
+    reconciliation_status?: unknown;
+    warehouse_receipts?: Array<{ id: string }> | null;
+  },
+  items: WarehouseTransferItemRow[],
+): WarehouseTransferRow["reconciliationStatus"] {
+  const stored = transfer.reconciliation_status as WarehouseTransferRow["reconciliationStatus"] | undefined;
+  const hasCanonicalReceipt = (transfer.warehouse_receipts ?? []).length > 0;
+  if (hasCanonicalReceipt || stored === "settled" || stored === "corrected") return stored ?? "unreviewed";
+
+  const hasUnresolvedLegacyDiscrepancy = items.some((item) =>
+    ((item.damagedQty ?? 0) + (item.missingQty ?? 0)) > 0 && !item.quarantineResolvedAt
+  );
+  if (hasUnresolvedLegacyDiscrepancy) return "open_discrepancy";
+  return transfer.status === "received" ? "clean" : stored ?? "unreviewed";
+}
+
 export async function getBrandWarehouseTransfers(brandId: string): Promise<WarehouseTransferRow[]> {
   const { data: transferRows, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .eq("brand_id", brandId)
     .order("requested_at", { ascending: false });
   if (error) throw new Error(`getBrandWarehouseTransfers(${brandId}) failed: ${error.message}`);
 
   const transfers = transferRows ?? [];
   const itemsByTransfer = await attachItems(transfers);
-  return transfers.map((t) => ({
+  return transfers.map((t) => {
+    const items = itemsByTransfer.get(t.id as string) ?? [];
+    return {
     id: t.id as string,
     brandId: t.brand_id as string,
     brandName: (t.brands as unknown as { name: string; slug: string; logo_image: string | null } | null)?.name ?? "",
@@ -318,7 +339,7 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     documentNumber: t.document_number as string | null,
     documentType: t.document_type as WarehouseTransferRow["documentType"],
     hasDiscrepancy: Boolean(t.has_discrepancy),
-    reconciliationStatus: t.has_discrepancy ? "open_discrepancy" : t.status === "received" ? "clean" : "unreviewed",
+    reconciliationStatus: resolveWarehouseReconciliationStatus(t, items),
     requestedAt: t.requested_at as string,
     requestedByEmail: null,
     brandNote: t.brand_note as string | null,
@@ -328,10 +349,11 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     updatedAt: t.updated_at as string,
-    items: itemsByTransfer.get(t.id as string) ?? [],
+    items,
     receipts: [],
     corrections: [],
-  }));
+    };
+  });
 }
 
 async function getWarehouseDocumentHistory(transferId: string): Promise<{
@@ -493,7 +515,7 @@ export async function getWarehouseReceiptVariantOptions(brandId: string): Promis
 export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus): Promise<WarehouseTransferRow[]> {
   let query = supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .order("requested_at", { ascending: false });
   if (status) query = query.eq("status", status);
   const { data: transferRows, error } = await query;
@@ -502,7 +524,10 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
   const transfers = transferRows ?? [];
   const itemsByTransfer = await attachItems(transfers);
 
-  return transfers.map((t) => ({
+  return transfers.map((t) => {
+    const items = itemsByTransfer.get(t.id as string) ?? [];
+
+    return {
     id: t.id as string,
     brandId: t.brand_id as string,
     brandName: (t.brands as unknown as { name: string; slug: string; logo_image: string | null } | null)?.name ?? "",
@@ -513,7 +538,7 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     documentNumber: t.document_number as string | null,
     documentType: t.document_type as WarehouseTransferRow["documentType"],
     hasDiscrepancy: Boolean(t.has_discrepancy),
-    reconciliationStatus: t.has_discrepancy ? "open_discrepancy" : t.status === "received" ? "clean" : "unreviewed",
+    reconciliationStatus: resolveWarehouseReconciliationStatus(t, items),
     requestedAt: t.requested_at as string,
     requestedByEmail: null,
     brandNote: t.brand_note as string | null,
@@ -523,16 +548,17 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     updatedAt: t.updated_at as string,
-    items: itemsByTransfer.get(t.id as string) ?? [],
+    items,
     receipts: [],
     corrections: [],
-  }));
+    };
+  });
 }
 
 export async function getWarehouseTransferById(id: string): Promise<WarehouseTransferRow | null> {
   const { data: t, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`getWarehouseTransferById(${id}) failed: ${error.message}`);
@@ -562,11 +588,7 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
       ? "corrected"
       : history.receipts.some((receipt) => receipt.settlementStatus === "open_discrepancy" || receipt.settlementStatus === "partially_settled")
         ? "open_discrepancy"
-        : t.has_discrepancy
-          ? "open_discrepancy"
-          : t.status === "received"
-            ? "clean"
-            : "unreviewed",
+        : t.reconciliation_status as WarehouseTransferRow["reconciliationStatus"],
     requestedAt: t.requested_at as string,
     requestedByEmail,
     brandNote: t.brand_note as string | null,

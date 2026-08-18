@@ -22,7 +22,9 @@ test("Brand Portal exposes the same warehouse correction record as a read-only d
 
 test("only the full Admin rank receives immediate atomic correction posting", () => {
   const route = read("app/api/admin/warehouse/corrections/route.ts");
+  const approvalRoute = read("app/api/admin/warehouse/corrections/[id]/approve/route.ts");
   const migration = read("supabase/migrations/20260818011358_admin_auto_approve_warehouse_corrections.sql");
+  const guardFix = read("supabase/migrations/20260818131120_fix_admin_correction_posting_guard.sql");
   const normalized = migration.replace(/\s+/g, " ").toLowerCase();
 
   assert.match(route, /requireStaffRole\("admin"\)/);
@@ -35,6 +37,26 @@ test("only the full Admin rank receives immediate atomic correction posting", ()
   assert.ok(normalized.includes("set search_path = ''"));
   assert.ok(normalized.includes("revoke all on function public.request_and_post_warehouse_admin_correction(uuid, uuid, text, text, text, jsonb, text) from public, anon, authenticated;"));
   assert.ok(normalized.includes("grant execute on function public.request_and_post_warehouse_admin_correction(uuid, uuid, text, text, text, jsonb, text) to service_role;"));
+  assert.match(approvalRoute, /requireStaffRole\("admin"\)/);
+  assert.match(approvalRoute, /post_existing_warehouse_admin_correction/);
+  assert.match(guardFix, /app\.warehouse_admin_auto_post_in_progress/);
+  assert.match(guardFix, /FULL_ADMIN_REQUIRED/);
+  assert.match(guardFix, /ADMIN_CAN_ONLY_AUTO_POST_OWN_CORRECTION/);
+  assert.ok(guardFix.replace(/\s+/g, " ").toLowerCase().includes("revoke all on function public.post_existing_warehouse_admin_correction(uuid, uuid) from public, anon, authenticated;"));
+  assert.ok(guardFix.replace(/\s+/g, " ").toLowerCase().includes("grant execute on function public.post_existing_warehouse_admin_correction(uuid, uuid) to service_role;"));
+});
+
+test("legacy quarantine resolution closes the canonical queue status without touching GRN documents", () => {
+  const migration = read("supabase/migrations/20260818131835_sync_legacy_warehouse_reconciliation.sql");
+  const normalized = migration.replace(/\s+/g, " ").toLowerCase();
+
+  assert.match(migration, /sync_legacy_warehouse_transfer_reconciliation/);
+  assert.match(migration, /after update of quarantine_resolved_at, quarantine_resolution/);
+  assert.match(migration, /wt\.status = 'received'/);
+  assert.match(migration, /not exists \([\s\S]*?public\.warehouse_receipts/);
+  assert.match(migration, /quarantine_resolved_at is null or wti\.quarantine_resolution is null/);
+  assert.ok(normalized.includes("set search_path = ''"));
+  assert.ok(normalized.includes("revoke all on function private.sync_legacy_warehouse_transfer_reconciliation() from public, anon, authenticated;"));
 });
 
 test("correction details are shared while actor identity remains in Document history", () => {

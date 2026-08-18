@@ -2,6 +2,7 @@
 
 - Source visual truth: `C:\Users\pc\.codex\generated_images\01a0032c-1c17-7022-b30e-2582ba8cb71c\exec-c5f61ebe-b48c-47c7-9233-343be7702364.png`
 - Rendered implementation: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\stock-requests-redesign-implementation.png`
+- Latest refinement verification: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\stock-requests-redesign-latest.png`
 - Combined comparison: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\stock-requests-redesign-comparison.png`
 - Browser/CSS viewport: 1440 × 1024, desktop, device scale factor 1
 - Source pixels: 1486 × 1058
@@ -11,7 +12,7 @@
 
 ## Full-view comparison evidence
 
-The combined comparison shows the same compact hierarchy as the selected mockup: workspace navigation, inline title counters, a toolbar attached to the queue, four essential filters, one merged Status column, permanent Created/Updated timestamps, colored state rails, dense rows, and no per-row Resolve action.
+The combined comparison shows the same compact hierarchy as the selected mockup: workspace navigation, a compact document count, a toolbar attached to the queue, four essential filters, one merged Status column, permanent Created/Updated timestamps, colored state rails, dense rows, and no per-row Resolve action. The latest refinement removes the duplicate unresolved title counter, displays a non-zero count inside Needs review, and makes the document number the primary row label with the brand name beneath it.
 
 The implementation intentionally retains the product's existing Admin workspace tab treatment and the live database's true document statuses. These are product-system constraints rather than design drift.
 

@@ -17,7 +17,6 @@ import {
   ACTION_REQUIRED_WAREHOUSE_STATUSES,
   OPEN_WAREHOUSE_STATUSES,
   WAREHOUSE_STATUS_META,
-  hasUnresolvedQuarantine,
   warehouseDocumentLabel,
 } from "@/components/admin/warehouse/warehouseUi";
 import { formatDateTime } from "@/lib/format";
@@ -51,6 +50,10 @@ function isWarehouseStatus(value: string | undefined): value is WarehouseTransfe
   return Boolean(value && value in WAREHOUSE_STATUS_META);
 }
 
+function hasOpenWarehouseIssue(transfer: WarehouseTransferRow): boolean {
+  return transfer.reconciliationStatus === "open_discrepancy" || transfer.reconciliationStatus === "partially_settled";
+}
+
 export default async function AdminWarehousePage(props: { searchParams: Promise<Params> }) {
   const params = await props.searchParams;
   const allTransfers = await getAllWarehouseTransfers();
@@ -65,18 +68,20 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const sort = params.sort === "oldest" || params.sort === "status" ? params.sort : "newest";
   const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
-  const openDiscrepancies = allTransfers.filter((transfer) => transfer.items.some(hasUnresolvedQuarantine));
+  const needsReviewCount = allTransfers.filter((transfer) =>
+    ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) || hasOpenWarehouseIssue(transfer)
+  ).length;
   const brandOptions = [...new Map(allTransfers.map((transfer) => [transfer.brandSlug, transfer.brandName])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
 
   const filtered = allTransfers.filter((transfer) => {
-    const hasOpenDiscrepancy = transfer.items.some(hasUnresolvedQuarantine);
+    const hasOpenDiscrepancy = hasOpenWarehouseIssue(transfer);
     if (status === "action_required" && !ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) && !hasOpenDiscrepancy) return false;
     if (status === "open" && !OPEN_WAREHOUSE_STATUSES.has(transfer.status)) return false;
     if (isWarehouseStatus(status) && transfer.status !== status) return false;
     if (direction && transfer.direction !== direction) return false;
     if (brand && transfer.brandSlug !== brand) return false;
-    const hasResolvedDiscrepancy = transfer.items.some((item) => Boolean(item.quarantineResolvedAt));
+    const hasResolvedDiscrepancy = transfer.reconciliationStatus === "settled" || transfer.reconciliationStatus === "corrected" || transfer.items.some((item) => Boolean(item.quarantineResolvedAt));
     if (discrepancy === "open" && !hasOpenDiscrepancy) return false;
     if (discrepancy === "resolved" && !hasResolvedDiscrepancy) return false;
     const requestedAt = new Date(transfer.requestedAt).getTime();
@@ -96,7 +101,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   }).sort((a, b) => {
     if (sort === "oldest") return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
     if (sort === "status") return WAREHOUSE_STATUS_META[a.status].order - WAREHOUSE_STATUS_META[b.status].order || new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime();
-    const issuePriority = Number(b.items.some(hasUnresolvedQuarantine)) - Number(a.items.some(hasUnresolvedQuarantine));
+    const issuePriority = Number(hasOpenWarehouseIssue(b)) - Number(hasOpenWarehouseIssue(a));
     if (issuePriority) return issuePriority;
     return new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime();
   });
@@ -111,13 +116,12 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
           <h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Stock requests</h1>
           <span className="text-[11px] font-semibold text-[#81746b]">{formatCount(allTransfers.length)} documents</span>
-          <Link href="/admin/warehouse?discrepancy=open" className="inline-flex items-center gap-2 text-[11px] font-semibold text-[#81746b] transition hover:text-[#C85956]"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-[#C85956]" />{formatCount(openDiscrepancies.length)} unresolved</Link>
         </div>
         <p className="mt-2 text-[11.5px] leading-5 text-[#756960]">Review and resolve incoming warehouse stock requests.</p>
       </header>
 
       <section className="mt-5 overflow-visible rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
-        <WarehouseQueueFilters key={`${q}-${status}-${brand}-${from}-${to}`} q={q} status={status} brand={brand} from={from} to={to} brandOptions={brandOptions} />
+        <WarehouseQueueFilters key={`${q}-${status}-${brand}-${from}-${to}`} q={q} status={status} brand={brand} from={from} to={to} brandOptions={brandOptions} needsReviewCount={needsReviewCount} />
         {visibleTransfers.length === 0 ? (
           <DashboardEmptyState title={status === "action_required" ? "No documents need review" : "No matching documents"} description={status === "action_required" ? "Every submitted warehouse document has been reviewed." : "Clear or adjust the filters to see more warehouse documents."} />
         ) : (
@@ -138,17 +142,17 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
 function TransferRow({ transfer }: { transfer: WarehouseTransferRow }) {
   const meta = WAREHOUSE_STATUS_META[transfer.status];
   const totalRequested = transfer.items.reduce((sum, item) => sum + item.requestedQty, 0);
-  const unresolved = transfer.items.filter(hasUnresolvedQuarantine);
+  const needsReview = hasOpenWarehouseIssue(transfer);
   const documentNumber = transfer.documentNumber ?? `Legacy · ${transfer.id.slice(0, 8).toUpperCase()}`;
-  const tone = unresolved.length > 0 ? "red" : meta.tone;
-  const StatusIcon = unresolved.length > 0 ? AlertTriangle : meta.icon;
-  const statusLabel = unresolved.length > 0 ? `Needs review · ${formatCount(unresolved.length)} ${unresolved.length === 1 ? "issue" : "issues"}` : meta.shortLabel;
+  const tone = needsReview ? "red" : meta.tone;
+  const StatusIcon = needsReview ? AlertTriangle : meta.icon;
+  const statusLabel = needsReview ? "Needs review" : meta.shortLabel;
   const railClass = tone === "amber" ? "bg-amber-400" : tone === "emerald" ? "bg-emerald-500" : tone === "red" ? "bg-red-500" : tone === "blue" ? "bg-sky-500" : tone === "violet" ? "bg-violet-500" : "bg-stone-400";
   const statusClass = tone === "amber" ? "text-amber-800" : tone === "emerald" ? "text-emerald-800" : tone === "red" ? "text-red-700" : tone === "blue" ? "text-sky-800" : tone === "violet" ? "text-violet-800" : "text-stone-600";
   return (
     <Link href={`/admin/warehouse/${transfer.id}`} className="group relative grid gap-3 px-4 py-4 transition-colors hover:bg-[#fdfbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 sm:px-5 lg:grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] lg:items-center lg:gap-4">
       <span aria-hidden="true" className={`absolute bottom-0 left-0 top-0 w-[3px] ${railClass}`} />
-      <div className="flex min-w-0 items-center gap-3"><BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} /><div className="min-w-0"><p className="truncate text-[12px] font-extrabold text-[#302924]">{transfer.brandName}</p><p className="mt-1 truncate text-[10px] font-medium text-[#81746b]">{documentNumber}</p></div></div>
+      <div className="flex min-w-0 items-center gap-3"><BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} /><div className="min-w-0"><p className="truncate text-[12px] font-extrabold text-[#302924]">{documentNumber}</p><p className="mt-1 truncate text-[10px] font-medium text-[#81746b]">{transfer.brandName}</p></div></div>
       <div><p className="text-[12px] font-extrabold tabular-nums text-[#302924]">{formatCount(transfer.items.length)} / {formatCount(totalRequested)}</p><p className="mt-1 text-[9px] text-[#8d8076]">variants / units</p></div>
       <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>
       <div><p className="text-[10.5px] font-semibold text-[#4f453e]"><span className="font-extrabold">Created</span> {formatDateTime(transfer.requestedAt)}</p><p className="mt-1 text-[9.5px] text-[#8d8076]">Updated {formatDateTime(transfer.updatedAt)}</p></div>

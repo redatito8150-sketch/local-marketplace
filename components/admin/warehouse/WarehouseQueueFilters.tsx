@@ -21,6 +21,7 @@ export default function WarehouseQueueFilters({
   from,
   to,
   brandOptions,
+  needsReviewCount,
 }: {
   q: string;
   status: string;
@@ -28,6 +29,7 @@ export default function WarehouseQueueFilters({
   from: string;
   to: string;
   brandOptions: [string, string][];
+  needsReviewCount: number;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -95,7 +97,12 @@ export default function WarehouseQueueFilters({
                   onClick={() => navigate({ status: filter.value })}
                   className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}
                 >
-                  {filter.label}
+                  <span>{filter.label}</span>
+                  {filter.value === "action_required" && needsReviewCount > 0 ? (
+                    <span className={`ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-extrabold tabular-nums ${active ? "bg-[#C85956] text-white" : "bg-[#f4dfdc] text-[#b64d4a]"}`}>
+                      {needsReviewCount}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
