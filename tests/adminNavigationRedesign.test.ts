@@ -48,6 +48,16 @@ test("the shared dashboard shell scopes browser-extension hydration tolerance to
   assert.doesNotMatch(shell, /<div[^>]*suppressHydrationWarning/);
 });
 
+test("the sidebar toggle stays visible outside the scroll area and matches the Brand Portal interaction", () => {
+  const shell = read("components/dashboard/DashboardShell.tsx");
+  assert.match(shell, /lg:overflow-visible/);
+  assert.match(shell, /isAdmin && !collapsed \? "overflow-y-auto overflow-x-hidden" : "overflow-visible"/);
+  assert.match(shell, /right-0 top-2 z-20/);
+  assert.match(shell, /hover:-translate-y-px/);
+  assert.match(shell, /active:scale-\[0\.96\]/);
+  assert.match(shell, /hover:text-\[#C85956\]/);
+});
+
 test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 
