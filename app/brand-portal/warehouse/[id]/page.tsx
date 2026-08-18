@@ -24,11 +24,14 @@ export default async function BrandPortalWarehouseDocumentPage(props: {
   const brandQuery = owner.isImpersonating ? `?brand=${encodeURIComponent(owner.brandSlug)}` : "";
   // This client workspace never receives staff/owner email addresses. Actor
   // details remain available only to the server-rendered Admin history.
+  const publicActor = (actor: typeof transfer.requestedByActor) => actor
+    ? { ...actor, displayName: actor.isStaff ? "Zakhnook Staff Team" : actor.displayName, email: null, roleLabel: actor.isStaff ? "Zakhnook staff" : actor.roleLabel }
+    : null;
   const publicCorrections = transfer.corrections.map((correction) => ({
     ...correction,
-    requestedByActor: correction.requestedByActor ? { ...correction.requestedByActor, email: null } : null,
-    approvedByActor: correction.approvedByActor ? { ...correction.approvedByActor, email: null } : null,
-    rejectedByActor: correction.rejectedByActor ? { ...correction.rejectedByActor, email: null } : null,
+    requestedByActor: publicActor(correction.requestedByActor),
+    approvedByActor: publicActor(correction.approvedByActor),
+    rejectedByActor: publicActor(correction.rejectedByActor),
   }));
 
   return <div>

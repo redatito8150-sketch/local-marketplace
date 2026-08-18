@@ -1087,6 +1087,7 @@ export interface AuditLogRecord {
   // row logged before this existed.
   actorName?: string;
   actorIsStaff?: boolean;
+  actorRoleLabel?: string;
   entityType: string;
   entityId: string;
   action: string;

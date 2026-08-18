@@ -85,6 +85,6 @@ test("correction details are shared while actor identity remains in Document his
   assert.match(history, /#warehouse-correction-\$\{correction\.id\}/);
   assert.match(history, /Zakhnook Staff Team/);
   assert.match(history, /canRevealActorIdentity/);
-  assert.match(data, /\.select\("id, full_name, email, is_admin"\)/);
+  assert.match(data, /\.select\("id, full_name, email, is_admin, role"\)/);
   assert.match(data, /productImage: resolveVariantImage/);
 });

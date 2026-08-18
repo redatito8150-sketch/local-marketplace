@@ -18,14 +18,18 @@ type TransferItemInput = { variantId: string; requestedQty: number; unitCost?: n
 // app/api/admin/warehouse/transfers/[id]/receive/route.ts).
 export async function POST(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
-  if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  if (!owner?.brandId || owner.isImpersonating || owner.accessLevel !== "owner") return NextResponse.json({ error: "Only a brand owner can create a warehouse request" }, { status: 403 });
   if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Zakhnook Partner" }, { status: 403 });
   if (!checkRateLimit(`warehouse-transfer-request:${owner.user.id}`, 20, 10 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
-  const body = await request.json().catch(() => null) as { items?: TransferItemInput[]; note?: string } | null;
+  const body = await request.json().catch(() => null) as { items?: TransferItemInput[]; note?: string; expectedArrivalAt?: string } | null;
   if (!body?.items?.length) return NextResponse.json({ error: "Select at least one variant to transfer" }, { status: 400 });
+  const expectedArrivalAt = body.expectedArrivalAt ? new Date(body.expectedArrivalAt) : null;
+  if (!expectedArrivalAt || Number.isNaN(expectedArrivalAt.getTime()) || expectedArrivalAt.getTime() < Date.now() - 5 * 60 * 1000) {
+    return NextResponse.json({ error: "Choose a valid future arrival date and time" }, { status: 400 });
+  }
   if (new Set(body.items.map((item) => item.variantId)).size !== body.items.length) {
     return NextResponse.json({ error: "Each variant can appear only once" }, { status: 400 });
   }
@@ -48,7 +52,7 @@ export async function POST(request: NextRequest) {
   if (!operationKey) {
     return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 });
   }
-  const { data: transferId, error } = await supabaseAdmin.rpc("request_warehouse_transfer", {
+  const { data: transferId, error } = await supabaseAdmin.rpc("request_warehouse_transfer_with_arrival", {
     p_brand_id: owner.brandId,
     p_actor_id: owner.user.id,
     p_items: body.items.map((item) => ({
@@ -59,6 +63,7 @@ export async function POST(request: NextRequest) {
     })),
     p_note: body.note ?? null,
     p_operation_key: operationKey,
+    p_expected_arrival_at: expectedArrivalAt.toISOString(),
   } as never);
   if (error) return replenishmentErrorResponse("brand-portal.warehouse.transfers.request", error);
 
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
     entityType: "warehouse_transfer",
     entityId: transferId as string,
     action: "create",
-    after: { "Transfer requested": requestedSummary, Note: body.note || undefined },
+    after: { "Transfer requested": requestedSummary, "Expected arrival": expectedArrivalAt.toISOString(), Note: body.note || undefined },
     brandSlug: owner.brandSlug ?? undefined,
   });
   // Deliberately NOT resolvable (no auditLogId) — Approve/Revert is the
@@ -86,7 +91,10 @@ export async function POST(request: NextRequest) {
       relatedEntityType: "warehouse_transfer",
       relatedEntityId: transferId as string,
       actorLabel: owner.user.email ?? owner.user.id,
-      meta: [{ label: "Items", value: String(body.items.length) }],
+      meta: [
+        { label: "Items", value: String(body.items.length) },
+        { label: "Expected arrival", value: expectedArrivalAt.toLocaleString("en-GB", { timeZone: "Africa/Cairo", dateStyle: "medium", timeStyle: "short" }) },
+      ],
     }
   );
 

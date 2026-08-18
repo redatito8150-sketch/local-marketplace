@@ -20,21 +20,48 @@ test("brand cancellation is atomic, ownership-scoped, requested-only and service
 });
 
 test("the database and receive route both require acceptance before physical receipt", () => {
-  const migration = read("supabase/migrations/20260818195105_warehouse_request_acceptance_gate.sql");
+  const gateMigration = read("supabase/migrations/20260818195105_warehouse_request_acceptance_gate.sql");
+  const ownerScheduleMigration = read("supabase/migrations/20260818202448_warehouse_owner_arrival_schedule.sql");
   const receiveRoute = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
   const adminPage = read("app/admin/warehouse/[id]/page.tsx");
+  const approveRoute = read("app/api/admin/warehouse/documents/[id]/approve/route.ts");
+  const actions = read("components/warehouse/WarehouseDocumentLifecycleActions.tsx");
 
-  assert.match(migration, /old\.status in \('pending', 'submitted'\)[\s\S]*?new\.status in \('in_transit', 'receiving', 'partially_received', 'received'\)/);
-  assert.match(migration, /WAREHOUSE_DOCUMENT_ACCEPTANCE_REQUIRED/);
-  assert.match(migration, /add column if not exists expected_arrival_at timestamptz/);
-  assert.match(migration, /create or replace function public\.accept_warehouse_document/);
-  assert.match(migration, /EXPECTED_ARRIVAL_REQUIRED/);
-  assert.match(migration, /set status = 'approved',[\s\S]*?expected_arrival_at = p_expected_arrival_at/);
-  assert.doesNotMatch(migration.match(/create or replace function public\.accept_warehouse_document\([\s\S]*?\n\$\$;/i)?.[0] ?? "", /product_variants|inventory_movements/);
+  assert.match(gateMigration, /add column if not exists expected_arrival_at timestamptz/);
+  assert.match(ownerScheduleMigration, /old\.status in \('pending', 'submitted'\)[\s\S]*?new\.status in \('in_transit', 'receiving', 'partially_received', 'received'\)/);
+  assert.match(ownerScheduleMigration, /WAREHOUSE_DOCUMENT_ACCEPTANCE_REQUIRED/);
+  assert.match(ownerScheduleMigration, /create or replace function public\.accept_warehouse_document\(\s*p_transfer_id uuid,\s*p_actor_id uuid\s*\)/);
+  const canonicalAccept = ownerScheduleMigration.match(/create or replace function public\.accept_warehouse_document\(\s*p_transfer_id uuid,\s*p_actor_id uuid\s*\)[\s\S]*?\n\$\$;/i)?.[0] ?? "";
+  assert.doesNotMatch(canonicalAccept, /p_expected_arrival_at|expected_arrival_at\s*=/);
+  assert.doesNotMatch(canonicalAccept, /product_variants|inventory_movements/);
   assert.match(receiveRoute, /new Set\(\["approved", "in_transit", "partially_received"\]\)/);
   assert.doesNotMatch(receiveRoute, /new Set\(\["pending", "submitted"/);
   assert.match(adminPage, /AcceptWarehouseRequestButton/);
-  assert.match(adminPage, /Acceptance confirms that Zakhnook expects this delivery\. It does not add stock/);
+  assert.match(adminPage, /The brand has already chosen the expected arrival/);
+  assert.doesNotMatch(approveRoute, /request\.json|p_expected_arrival_at/);
+  assert.doesNotMatch(actions, /type="datetime-local"/);
+  assert.match(actions, /Expected arrival chosen by brand/);
+});
+
+test("only a brand owner schedules arrival while creating an atomic restock request", () => {
+  const migration = read("supabase/migrations/20260818202448_warehouse_owner_arrival_schedule.sql");
+  const route = read("app/api/brand-portal/warehouse/transfers/route.ts");
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  const page = read("app/brand-portal/stock/page.tsx");
+  const sql = compact(migration);
+
+  assert.match(route, /owner\.accessLevel !== "owner"/);
+  assert.match(route, /expectedArrivalAt/);
+  assert.match(route, /request_warehouse_transfer_with_arrival/);
+  assert.match(inventory, /accessLevel === "owner"/);
+  assert.match(inventory, /type="datetime-local"/);
+  assert.match(inventory, /expectedArrivalAt: new Date\(restockExpectedArrival\)\.toISOString\(\)/);
+  assert.match(page, /accessLevel=\{owner\.accessLevel\}/);
+  assert.match(migration, /v_transfer_id := public\.request_warehouse_transfer/);
+  assert.match(migration, /where id = v_transfer_id\s*\n\s*for update/);
+  assert.match(migration, /v_transfer\.expected_arrival_at is distinct from p_expected_arrival_at/);
+  assert.ok(sql.includes("revoke all on function public.request_warehouse_transfer_with_arrival(uuid, uuid, jsonb, text, text, timestamptz) from public, anon, authenticated;"));
+  assert.ok(sql.includes("grant execute on function public.request_warehouse_transfer_with_arrival(uuid, uuid, jsonb, text, text, timestamptz) to service_role;"));
 });
 
 test("Brand Portal offers cancellation only while Requested and never while impersonating", () => {
@@ -51,12 +78,20 @@ test("Brand Portal offers cancellation only while Requested and never while impe
 
 test("history masks staff, exposes brand display names, and reveals email only to full Admin", () => {
   const history = read("components/warehouse/WarehouseDocumentHistory.tsx");
+  const actorLabel = read("components/warehouse/WarehouseActorLabel.tsx");
+  const data = read("lib/data/warehouse.ts");
   const adminPage = read("app/admin/warehouse/[id]/page.tsx");
   const brandPage = read("app/brand-portal/warehouse/[id]/page.tsx");
 
-  assert.match(history, /actor\?\.isStaff \? "Zakhnook Staff Team"/);
-  assert.match(history, /`@\$\{actor\.displayName\}`/);
-  assert.match(history, /canReveal && actor\?\.email/);
+  assert.match(actorLabel, /actor\?\.isStaff \? "Zakhnook Staff Team"/);
+  assert.match(actorLabel, /`@\$\{actor\.displayName\}`/);
+  assert.match(actorLabel, /canReveal && actor\?\.email/);
+  assert.match(actorLabel, /document\.addEventListener\("pointerdown", closeOnOutside\)/);
+  assert.match(actorLabel, /rootRef\.current\?\.contains/);
+  assert.match(actorLabel, /actor\.roleLabel/);
+  assert.match(data, /Brand owner/);
+  assert.match(data, /Brand assistant/);
+  assert.match(data, /roleLabel: warehouseActorRoleLabel/);
   assert.match(adminPage, /requireStaffRole\("admin"\)/);
   assert.match(adminPage, /canRevealActorIdentity=\{Boolean\(fullAdmin\)\}/);
   assert.match(brandPage, /canRevealActorIdentity=\{false\}/);

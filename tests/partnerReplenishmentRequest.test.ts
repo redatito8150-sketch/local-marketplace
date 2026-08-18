@@ -199,7 +199,7 @@ test("transition-state behavior: a request IS still allowed for a brand_fulfille
   );
 });
 
-test("signature and grants for request_warehouse_transfer are unchanged — every existing caller (app/api/brand-portal/warehouse/transfers/route.ts) keeps working with the identical endpoint and payload shape", () => {
+test("the legacy request signature stays compatible while the app uses the arrival-aware wrapper", () => {
   assert.match(
     migration,
     /create or replace function public\.request_warehouse_transfer\(\s*\n\s*p_brand_id uuid,\s*\n\s*p_actor_id uuid,\s*\n\s*p_items jsonb,\s*\n\s*p_note text,\s*\n\s*p_operation_key text\s*\n\s*\)/
@@ -207,9 +207,10 @@ test("signature and grants for request_warehouse_transfer are unchanged — ever
   assert.ok(sql.includes("revokeallonfunctionpublic.request_warehouse_transfer(uuid,uuid,jsonb,text,text)frompublic,anon,authenticated;"));
   assert.ok(sql.includes("grantexecuteonfunctionpublic.request_warehouse_transfer(uuid,uuid,jsonb,text,text)toservice_role;"));
   const route = read("app/api/brand-portal/warehouse/transfers/route.ts");
-  assert.match(route, /\.rpc\("request_warehouse_transfer"/);
+  assert.match(route, /\.rpc\("request_warehouse_transfer_with_arrival"/);
   assert.match(route, /p_brand_id: owner\.brandId/);
   assert.match(route, /p_items: body\.items\.map/);
+  assert.match(route, /p_expected_arrival_at: expectedArrivalAt\.toISOString\(\)/);
 });
 
 // ---------------------------------------------------------------------------

@@ -1032,11 +1032,31 @@ async function getFullNamesByActorId(rows: AuditLogRow[]): Promise<Map<string, s
   return nameByActorId;
 }
 
-async function getStaffActorIds(rows: AuditLogRow[]): Promise<Set<string>> {
+async function getActorRoleMetadata(rows: AuditLogRow[]): Promise<Map<string, { isStaff: boolean; roleLabel: string }>> {
   const actorIds = [...new Set(rows.map((row) => row.actor_id).filter((id): id is string => Boolean(id)))];
-  if (!actorIds.length) return new Set();
-  const { data } = await supabaseAdmin.from("profiles").select("id, is_admin").in("id", actorIds);
-  return new Set((data ?? []).filter((profile) => profile.is_admin).map((profile) => profile.id as string));
+  const metadata = new Map<string, { isStaff: boolean; roleLabel: string }>();
+  if (!actorIds.length) return metadata;
+  const [{ data: profiles }, { data: memberships }] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id, is_admin, role").in("id", actorIds),
+    supabaseAdmin.from("brand_staff").select("user_id, access_level").in("user_id", actorIds),
+  ]);
+  const brandAccessByActor = new Map<string, string>();
+  for (const membership of memberships ?? []) {
+    const actorId = membership.user_id as string;
+    if (membership.access_level === "owner" || !brandAccessByActor.has(actorId)) {
+      brandAccessByActor.set(actorId, membership.access_level as string);
+    }
+  }
+  for (const profile of profiles ?? []) {
+    const isStaff = Boolean(profile.is_admin);
+    const roleLabel = isStaff
+      ? profile.role === "admin" ? "Admin" : profile.role === "manager" ? "Manager" : "Staff"
+      : brandAccessByActor.get(profile.id as string) === "owner" || profile.role === "brand_owner" ? "Brand owner"
+        : brandAccessByActor.get(profile.id as string) === "assistant" || profile.role === "brand_assistant" ? "Brand assistant"
+          : "Brand member";
+    metadata.set(profile.id as string, { isStaff, roleLabel });
+  }
+  return metadata;
 }
 
 export interface AuditLogFilters {
@@ -1538,13 +1558,14 @@ export async function getAuditLogsForEntity(
     throw new Error(`getAuditLogsForEntity(${entityType}, ${entityId}) failed: ${error.message}`);
   }
   const rows = data as AuditLogRow[];
-  const [nameByActorId, staffActorIds] = await Promise.all([
+  const [nameByActorId, roleMetadataByActorId] = await Promise.all([
     getFullNamesByActorId(rows),
-    getStaffActorIds(rows),
+    getActorRoleMetadata(rows),
   ]);
   return rows.map((row) => ({
     ...toAuditLogRecord(row, nameByActorId),
-    actorIsStaff: Boolean(row.actor_id && staffActorIds.has(row.actor_id)),
+    actorIsStaff: Boolean(row.actor_id && roleMetadataByActorId.get(row.actor_id)?.isStaff),
+    actorRoleLabel: row.actor_id ? roleMetadataByActorId.get(row.actor_id)?.roleLabel : undefined,
   }));
 }
 

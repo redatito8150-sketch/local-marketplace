@@ -120,6 +120,7 @@ export interface WarehouseActorIdentity {
   displayName: string;
   email: string | null;
   isStaff: boolean;
+  roleLabel: string;
 }
 
 export interface WarehouseReceiptVariantOption {
@@ -306,18 +307,32 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
   return itemsByTransfer;
 }
 
-async function actorIdentityFor(userId: string | null): Promise<WarehouseActorIdentity | null> {
+function warehouseActorRoleLabel(profileRole: string | null | undefined, isStaff: boolean, brandAccessLevel?: string | null): string {
+  if (isStaff) {
+    if (profileRole === "admin") return "Admin";
+    if (profileRole === "manager") return "Manager";
+    return "Staff";
+  }
+  if (brandAccessLevel === "owner" || profileRole === "brand_owner") return "Brand owner";
+  if (brandAccessLevel === "assistant" || profileRole === "brand_assistant") return "Brand assistant";
+  return "Brand member";
+}
+
+async function actorIdentityFor(userId: string | null, brandId: string): Promise<WarehouseActorIdentity | null> {
   if (!userId) return null;
-  const [{ data: profile }, authResult] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, full_name, email, is_admin").eq("id", userId).maybeSingle(),
+  const [{ data: profile }, { data: membership }, authResult] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id, full_name, email, is_admin, role").eq("id", userId).maybeSingle(),
+    supabaseAdmin.from("brand_staff").select("access_level").eq("brand_id", brandId).eq("user_id", userId).maybeSingle(),
     supabaseAdmin.auth.admin.getUserById(userId),
   ]);
   const email = (profile?.email as string | null)?.trim() || authResult.data.user?.email || null;
+  const isStaff = Boolean(profile?.is_admin);
   return {
     id: userId,
     displayName: (profile?.full_name as string | null)?.trim() || email?.split("@")[0] || "Team member",
     email,
-    isStaff: Boolean(profile?.is_admin),
+    isStaff,
+    roleLabel: warehouseActorRoleLabel(profile?.role as string | null, isStaff, membership?.access_level as string | null),
   };
 }
 
@@ -398,7 +413,7 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
   });
 }
 
-async function getWarehouseDocumentHistory(transferId: string): Promise<{
+async function getWarehouseDocumentHistory(transferId: string, brandId: string): Promise<{
   receipts: WarehouseReceiptRow[];
   corrections: WarehouseCorrectionRow[];
 }> {
@@ -476,18 +491,22 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
   const actorIds = [...new Set((correctionRows ?? []).flatMap((row) => [row.requested_by, row.approved_by, row.rejected_by]).filter((id): id is string => typeof id === "string"))];
   const actorById = new Map<string, WarehouseActorIdentity>();
   if (actorIds.length) {
-    const { data: actors, error: actorError } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email, is_admin")
-      .in("id", actorIds);
+    const [{ data: actors, error: actorError }, { data: memberships, error: membershipError }] = await Promise.all([
+      supabaseAdmin.from("profiles").select("id, full_name, email, is_admin, role").in("id", actorIds),
+      supabaseAdmin.from("brand_staff").select("user_id, access_level").eq("brand_id", brandId).in("user_id", actorIds),
+    ]);
     if (actorError) throw new Error(`getWarehouseDocumentHistory(${transferId}) actors failed: ${actorError.message}`);
+    if (membershipError) throw new Error(`getWarehouseDocumentHistory(${transferId}) memberships failed: ${membershipError.message}`);
+    const accessByActorId = new Map((memberships ?? []).map((membership) => [membership.user_id as string, membership.access_level as string]));
     for (const actor of actors ?? []) {
       const email = (actor.email as string | null)?.trim() || null;
+      const isStaff = Boolean(actor.is_admin);
       actorById.set(actor.id as string, {
         id: actor.id as string,
         displayName: (actor.full_name as string | null)?.trim() || email?.split("@")[0] || "Team member",
         email,
-        isStaff: Boolean(actor.is_admin),
+        isStaff,
+        roleLabel: warehouseActorRoleLabel(actor.role as string | null, isStaff, accessByActorId.get(actor.id as string)),
       });
     }
   }
@@ -643,12 +662,12 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
 
   const [itemsByTransfer, history] = await Promise.all([
     attachItems([t]),
-    getWarehouseDocumentHistory(id),
+    getWarehouseDocumentHistory(id, t.brand_id as string),
   ]);
   const [requestedByActor, approvedByActor, decidedByActor, expectedArrivalAt] = await Promise.all([
-    actorIdentityFor(t.requested_by as string | null),
-    actorIdentityFor(t.approved_by as string | null),
-    actorIdentityFor(t.decided_by as string | null),
+    actorIdentityFor(t.requested_by as string | null, t.brand_id as string),
+    actorIdentityFor(t.approved_by as string | null, t.brand_id as string),
+    actorIdentityFor(t.decided_by as string | null, t.brand_id as string),
     expectedArrivalForTransfer(id),
   ]);
   return {

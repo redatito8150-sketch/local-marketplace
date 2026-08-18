@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
 import type { BrandVariant, InventoryMovement } from "@/lib/data/brandPortal";
 import { INVENTORY_REASONS, type InventoryAdjustmentType } from "@/lib/inventory/adjustmentValidation";
 import { formatDateTime } from "@/lib/format";
@@ -11,6 +11,10 @@ import { formatDateTime } from "@/lib/format";
 type InventoryView = "inventory" | "activity";
 
 const fieldClass = "mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] bg-white px-3 text-[12px] text-[#4d433c] outline-none focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8";
+
+function localDateTimeValue(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+}
 
 function statusMeta(status: BrandVariant["stockStatus"]) {
   if (status === "out_of_stock") return { label: "Out of stock", badge: "bg-red-50 text-red-700", dot: "bg-red-500" };
@@ -40,6 +44,25 @@ function activityCsv(history: InventoryMovement[], variants: Map<string, BrandVa
 
 function VariantImage({ image, alt }: { image: string; alt: string }) {
   return <div className="relative h-14 w-12 flex-none overflow-hidden rounded-xl bg-[#f3ede7]">{image ? <Image src={image} alt={alt} fill sizes="48px" className="object-cover" /> : <div className="flex h-full items-center justify-center text-[#b2a49a]"><PackagePlus aria-hidden="true" className="h-4 w-4" /></div>}</div>;
+}
+
+function SelectedVariantChips({ variants, onRemove }: { variants: BrandVariant[]; onRemove: (variantId: string) => void }) {
+  return <div className="border-t border-[#eee7e1] px-4 py-2.5">
+    <div className="flex gap-2 overflow-x-auto pb-0.5 [scrollbar-width:thin]">
+      {variants.map((variant) => <div key={variant.variantId} className="flex min-w-fit items-center gap-2 rounded-xl bg-[#f4eee9] py-1.5 pl-2.5 pr-1.5 text-[#51473f]">
+        <span className="max-w-48 truncate text-[9.5px] font-bold">{variant.color || "No color"} · {variant.size || "One size"}</span>
+        <button
+          type="button"
+          aria-label={`Remove ${variant.sku} from selection`}
+          title="Remove from selection"
+          onClick={() => onRemove(variant.variantId)}
+          className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-lg text-[#8d8076] transition-colors hover:bg-white hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25"
+        >
+          <X aria-hidden="true" className="h-3.5 w-3.5" />
+        </button>
+      </div>)}
+    </div>
+  </div>;
 }
 
 function StockInsight({ variant }: { variant: BrandVariant }) {
@@ -197,7 +220,7 @@ function GroupStatus({ summary, className = "" }: { summary: ReturnType<typeof s
   return <td className={className}>{summary.issueCount ? <span className="text-[9.5px] font-bold text-[#C85956]">{summary.issueCount} need restock</span> : <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${summary.status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${summary.status.dot}`} />Healthy</span>}</td>;
 }
 
-export default function InventoryManager({ variants, activityVariants, history, brandSlug, isMahalyPartner, readOnly, view, totalMatching }: {
+export default function InventoryManager({ variants, activityVariants, history, brandSlug, isMahalyPartner, accessLevel, readOnly, view, totalMatching }: {
   // The current page's variants only (server-paginated — see
   // lib/data/brandPortal.ts's getInventoryPageForBrand) when view is
   // "inventory"; ignored when view is "activity".
@@ -210,6 +233,7 @@ export default function InventoryManager({ variants, activityVariants, history, 
   history: InventoryMovement[];
   brandSlug?: string;
   isMahalyPartner: boolean;
+  accessLevel: "owner" | "assistant";
   readOnly: boolean;
   view: InventoryView;
   totalMatching?: number;
@@ -227,6 +251,8 @@ export default function InventoryManager({ variants, activityVariants, history, 
   const [busy, setBusy] = useState(false);
   const [restockQuantities, setRestockQuantities] = useState<Record<string, number>>({});
   const [restockNote, setRestockNote] = useState("");
+  const [restockExpectedArrival, setRestockExpectedArrival] = useState("");
+  const [minimumRestockArrival, setMinimumRestockArrival] = useState("");
   const restockOperationKey = useRef<string | null>(null);
   const [activityQuery, setActivityQuery] = useState("");
   const [activitySource, setActivitySource] = useState("");
@@ -235,7 +261,7 @@ export default function InventoryManager({ variants, activityVariants, history, 
   const selectableVariantById = useMemo(() => new Map(variants.map((variant) => [variant.variantId, variant])), [variants]);
   const selectedRows = useMemo(() => selected.map((id) => selectableVariantById.get(id)).filter(Boolean) as BrandVariant[], [selected, selectableVariantById]);
   const canAdjustStock = !readOnly && !isMahalyPartner;
-  const canRequestRestock = !readOnly && isMahalyPartner;
+  const canRequestRestock = !readOnly && isMahalyPartner && accessLevel === "owner";
   const canSelect = canAdjustStock || canRequestRestock;
   const resultingQuantity = (current: number) => type === "add" ? current + amount : type === "remove" ? current - amount : amount;
   const availableReasons = INVENTORY_REASONS.filter((item) => {
@@ -307,6 +333,23 @@ export default function InventoryManager({ variants, activityVariants, history, 
       : current.filter((id) => !groupIds.has(id)));
   }
 
+  function removeSelectedVariant(variantId: string) {
+    if (selectedRows.length === 1 && selectedRows[0]?.variantId === variantId) {
+      clearSelection();
+      setSuccess("");
+      return;
+    }
+    setSuccess("");
+    setSelected((current) => current.filter((id) => id !== variantId));
+    setRestockQuantities((current) => {
+      const next = { ...current };
+      delete next[variantId];
+      return next;
+    });
+    setConfirming(false);
+    setError("");
+  }
+
   function clearSelection() {
     setSelected([]);
     setAdjustmentOpen(false);
@@ -314,11 +357,18 @@ export default function InventoryManager({ variants, activityVariants, history, 
     setError("");
     setRestockQuantities({});
     setRestockNote("");
+    setRestockExpectedArrival("");
+    setMinimumRestockArrival("");
   }
 
   function openRestockRequest() {
     setError("");
     setConfirming(false);
+    const now = new Date();
+    const suggested = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    suggested.setMinutes(Math.ceil(suggested.getMinutes() / 15) * 15, 0, 0);
+    setMinimumRestockArrival(localDateTimeValue(now));
+    setRestockExpectedArrival((current) => current || localDateTimeValue(suggested));
     setRestockQuantities((current) => Object.fromEntries(selectedRows.map((row) => [
       row.variantId,
       current[row.variantId] ?? Math.max(1, row.suggestedRestock),
@@ -329,6 +379,11 @@ export default function InventoryManager({ variants, activityVariants, history, 
   function reviewRestockRequest() {
     if (selectedRows.some((row) => !Number.isInteger(restockQuantities[row.variantId]) || restockQuantities[row.variantId] <= 0)) {
       setError("Enter a positive whole quantity for every selected variant.");
+      return;
+    }
+    const expectedArrival = restockExpectedArrival ? new Date(restockExpectedArrival) : null;
+    if (!expectedArrival || Number.isNaN(expectedArrival.getTime()) || expectedArrival.getTime() < Date.now() - 5 * 60 * 1000) {
+      setError("Choose a valid future arrival date and time.");
       return;
     }
     setError("");
@@ -346,6 +401,7 @@ export default function InventoryManager({ variants, activityVariants, history, 
         body: JSON.stringify({
           items: selectedRows.map((row) => ({ variantId: row.variantId, requestedQty: restockQuantities[row.variantId] })),
           note: restockNote.trim() || undefined,
+          expectedArrivalAt: new Date(restockExpectedArrival).toISOString(),
         }),
       });
       const data = await res.json();
@@ -409,14 +465,16 @@ export default function InventoryManager({ variants, activityVariants, history, 
 
     {selectedRows.length > 0 && canRequestRestock && <section className="sticky top-3 z-20 overflow-hidden rounded-2xl border border-[#d9cec6] bg-[#fffdfb]/95 shadow-[0_16px_45px_rgba(72,50,36,.13)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#C85956] px-2 text-[11px] font-extrabold tabular-nums text-white">{selectedRows.length}</span><div><p className="text-[11.5px] font-bold text-[#403730]">{selectedRows.length === 1 ? "Variant selected" : "Variants selected"}</p><p className="text-[9.5px] text-[#8d8076]">Create one replenishment request for this selection.</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={clearSelection} className="h-9 px-2 text-[10.5px] font-bold text-[#8d8076] hover:text-[#403730]">Clear</button><button type="button" onClick={openRestockRequest} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15">{adjustmentOpen ? "Close" : "Request restock"}</button></div></div>
+      <SelectedVariantChips variants={selectedRows} onRemove={removeSelectedVariant} />
       {adjustmentOpen && <div className="border-t border-[#e8dfd8] bg-[#fcfaf8] p-4">
-        {!confirming ? <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{selectedRows.map((row) => <label key={row.variantId} className="rounded-xl border border-[#e7ddd5] bg-white p-3"><span className="flex min-w-0 items-start gap-3"><VariantImage image={row.image} alt={`${row.productName}${row.color ? ` in ${row.color}` : ""}`} /><span className="min-w-0 flex-1"><span className="flex min-w-0 items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate text-[11px] font-bold text-[#403730]">{row.productName}</span><span className="mt-1 block truncate text-[9px] text-[#81746b]">{row.color || "No color"} · {row.size || "One size"}</span><code className="mt-1 block truncate text-[8.5px] text-[#94867c]">{row.sku}</code></span><span className="flex-none text-right text-[9px] font-bold tabular-nums text-[#8d8076]">{row.quantity} available<br />{row.incomingQuantity} incoming</span></span></span></span><span className="mt-3 flex items-center gap-2"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Send</span><input aria-label={`Restock quantity for ${row.sku}`} type="number" inputMode="numeric" min={1} step={1} value={restockQuantities[row.variantId] ?? ""} onChange={(event) => setRestockQuantities((current) => ({ ...current, [row.variantId]: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className={`${fieldClass} mt-0 ml-auto w-24 tabular-nums`} /></span></label>)}</div><div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end"><label className="min-w-0 flex-1"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Note <span className="font-medium normal-case tracking-normal">(optional)</span></span><input value={restockNote} onChange={(event) => setRestockNote(event.target.value)} autoComplete="off" placeholder="Delivery date or packaging notes…" className={fieldClass} /></label><button type="button" onClick={reviewRestockRequest} className="h-10 rounded-xl bg-[#242424] px-4 text-[10.5px] font-bold text-white hover:bg-[#3a332e]">Review request</button></div></> : <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex gap-3"><ClipboardList aria-hidden="true" className="mt-0.5 h-5 w-5 flex-none text-[#C85956]" /><div><p className="text-[12px] font-bold text-[#403730]">Submit {selectedRows.reduce((sum, row) => sum + (restockQuantities[row.variantId] ?? 0), 0)} incoming units across {selectedRows.length} {selectedRows.length === 1 ? "variant" : "variants"}</p><p className="mt-1 text-[10px] text-[#81746b]">Available stock will not change until Zakhnook receives and checks these units.</p></div></div><div className="flex gap-2"><button type="button" onClick={() => setConfirming(false)} disabled={busy} className="h-9 rounded-xl border border-[#ddd2ca] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] hover:bg-[#f8f4f0]">Back</button><button type="button" onClick={submitRestockRequest} disabled={busy} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-50">{busy ? "Submitting…" : "Submit request"}</button></div></div>}
+        {!confirming ? <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{selectedRows.map((row) => <label key={row.variantId} className="rounded-xl border border-[#e7ddd5] bg-white p-3"><span className="flex min-w-0 items-start gap-3"><VariantImage image={row.image} alt={`${row.productName}${row.color ? ` in ${row.color}` : ""}`} /><span className="min-w-0 flex-1"><span className="flex min-w-0 items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate text-[11px] font-bold text-[#403730]">{row.productName}</span><span className="mt-1 block truncate text-[9px] text-[#81746b]">{row.color || "No color"} · {row.size || "One size"}</span><code className="mt-1 block truncate text-[8.5px] text-[#94867c]">{row.sku}</code></span><span className="flex-none text-right text-[9px] font-bold tabular-nums text-[#8d8076]">{row.quantity} available<br />{row.incomingQuantity} incoming</span></span></span></span><span className="mt-3 flex items-center gap-2"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Send</span><input aria-label={`Restock quantity for ${row.sku}`} type="number" inputMode="numeric" min={1} step={1} value={restockQuantities[row.variantId] ?? ""} onChange={(event) => setRestockQuantities((current) => ({ ...current, [row.variantId]: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className={`${fieldClass} mt-0 ml-auto w-24 tabular-nums`} /></span></label>)}</div><div className="mt-3 grid gap-3 sm:grid-cols-[minmax(220px,.8fr)_minmax(0,1fr)_auto] sm:items-end"><label><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Expected arrival</span><input type="datetime-local" value={restockExpectedArrival} min={minimumRestockArrival} onChange={(event) => setRestockExpectedArrival(event.target.value)} className={fieldClass} /></label><label className="min-w-0"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Note <span className="font-medium normal-case tracking-normal">(optional)</span></span><input value={restockNote} onChange={(event) => setRestockNote(event.target.value)} autoComplete="off" placeholder="Packaging or delivery notes…" className={fieldClass} /></label><button type="button" onClick={reviewRestockRequest} className="h-10 rounded-xl bg-[#242424] px-4 text-[10.5px] font-bold text-white hover:bg-[#3a332e]">Review request</button></div></> : <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex gap-3"><ClipboardList aria-hidden="true" className="mt-0.5 h-5 w-5 flex-none text-[#C85956]" /><div><p className="text-[12px] font-bold text-[#403730]">Submit {selectedRows.reduce((sum, row) => sum + (restockQuantities[row.variantId] ?? 0), 0)} incoming units across {selectedRows.length} {selectedRows.length === 1 ? "variant" : "variants"}</p><p className="mt-1 text-[10px] text-[#81746b]">Expected arrival: <strong className="text-[#51473f]">{new Date(restockExpectedArrival).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</strong>. Available stock will not change until Zakhnook receives and checks these units.</p></div></div><div className="flex gap-2"><button type="button" onClick={() => setConfirming(false)} disabled={busy} className="h-9 rounded-xl border border-[#ddd2ca] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] hover:bg-[#f8f4f0]">Back</button><button type="button" onClick={submitRestockRequest} disabled={busy} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-50">{busy ? "Submitting…" : "Submit request"}</button></div></div>}
         {error && <p role="alert" className="mt-3 text-[10.5px] font-bold text-red-700">{error}</p>}
       </div>}
     </section>}
 
     {selectedRows.length > 0 && canAdjustStock && <section className="sticky top-3 z-20 overflow-hidden rounded-2xl border border-[#d9cec6] bg-[#fffdfb]/95 shadow-[0_16px_45px_rgba(72,50,36,.13)] backdrop-blur">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#C85956] px-2 text-[11px] font-extrabold tabular-nums text-white">{selectedRows.length}</span><div><p className="text-[11.5px] font-bold text-[#403730]">{selectedRows.length === 1 ? "Variant selected" : "Variants selected"}</p><p className="text-[9.5px] text-[#8d8076]">Adjust only the variants you checked.</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={clearSelection} className="h-9 px-2 text-[10.5px] font-bold text-[#8d8076] hover:text-[#403730]">Clear</button><button type="button" onClick={() => { setAdjustmentOpen((open) => !open); setConfirming(false); setError(""); }} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15">{adjustmentOpen ? "Close adjustment" : "Adjust stock"}</button></div></div>
+      <SelectedVariantChips variants={selectedRows} onRemove={removeSelectedVariant} />
       {adjustmentOpen && <div className="border-t border-[#e8dfd8] bg-[#fcfaf8] p-4">
         {!confirming ? <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[150px_130px_210px_minmax(220px,1fr)_auto] xl:items-end">
           <label><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Action</span><select value={type} onChange={(event) => { setType(event.target.value as InventoryAdjustmentType); setReason(""); setError(""); }} className={fieldClass}>{!isMahalyPartner && <option value="add">Add stock</option>}<option value="remove">Remove stock</option><option value="set">Set exact stock</option></select></label>

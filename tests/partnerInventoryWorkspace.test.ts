@@ -11,8 +11,24 @@ test("partner restock starts in Inventory and creates a warehouse document witho
   assert.match(inventory, /Request restock/);
   assert.match(inventory, /\/api\/brand-portal\/warehouse\/transfers/);
   assert.match(inventory, /"Idempotency-Key": restockOperationKey\.current/);
+  assert.match(inventory, /type="datetime-local"/);
+  assert.match(inventory, /accessLevel === "owner"/);
+  assert.match(inventory, /expectedArrivalAt: new Date\(restockExpectedArrival\)\.toISOString\(\)/);
   assert.match(inventory, /Available stock will not change until Zakhnook receives/);
   assert.doesNotMatch(inventory, /href=\{shipmentHref/);
+});
+
+test("each selected Variant can be removed directly from the compact selection tray", () => {
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  assert.match(inventory, /function SelectedVariantChips/);
+  assert.match(inventory, /aria-label=\{`Remove \$\{variant\.sku\} from selection`\}/);
+  assert.match(inventory, /delete next\[variantId\]/);
+  assert.match(inventory, /setConfirming\(false\)/);
+  assert.equal(
+    (inventory.match(/<SelectedVariantChips variants=\{selectedRows\} onRemove=\{removeSelectedVariant\} \/>/g) ?? []).length,
+    2,
+    "partner restock and direct-brand adjustment should expose the same per-Variant removal control",
+  );
 });
 
 test("partner inventory distinguishes available and incoming quantities", () => {

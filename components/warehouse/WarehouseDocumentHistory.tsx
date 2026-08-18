@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { BadgeInfo, CheckCircle2, Circle, Clock3 } from "lucide-react";
+import { CheckCircle2, Circle, Clock3 } from "lucide-react";
 import type { WarehouseActorIdentity, WarehouseReceiptVariantOption, WarehouseTransferRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
 import { WAREHOUSE_STATUS_META } from "@/components/admin/warehouse/warehouseUi";
+import WarehouseActorLabel from "@/components/warehouse/WarehouseActorLabel";
 
 type AuditEntry = {
   id: string;
@@ -11,6 +12,7 @@ type AuditEntry = {
   actorName?: string | null;
   actorLabel: string;
   actorIsStaff?: boolean;
+  actorRoleLabel?: string;
   beforeValue?: unknown;
   afterValue?: unknown;
 };
@@ -44,22 +46,18 @@ function actorFromAudit(log: AuditEntry | undefined): WarehouseActorIdentity | n
     displayName: log.actorName?.trim() || log.actorLabel.split("@")[0] || "Team member",
     email: log.actorLabel.includes("@") ? log.actorLabel : null,
     isStaff: Boolean(log.actorIsStaff),
+    roleLabel: log.actorRoleLabel ?? (log.actorIsStaff ? "Zakhnook staff" : "Brand member"),
   };
 }
 
+function actorForViewer(actor: WarehouseActorIdentity | null, canReveal: boolean): WarehouseActorIdentity | null {
+  if (!actor || canReveal) return actor;
+  if (actor.isStaff) return { ...actor, displayName: "Zakhnook Staff Team", email: null, roleLabel: "Zakhnook staff" };
+  return { ...actor, email: null };
+}
+
 function ActorLabel({ actor, canReveal }: { actor: WarehouseActorIdentity | null; canReveal: boolean }) {
-  const publicName = actor?.isStaff ? "Zakhnook Staff Team" : actor ? `@${actor.displayName}` : "Zakhnook Staff Team";
-  return <span className="inline-flex flex-wrap items-center gap-1">
-    <span className="font-semibold text-[#62564d]">{publicName}</span>
-    {canReveal && actor?.email ? <details className="group relative inline-flex">
-      <summary className="inline-flex cursor-pointer list-none items-center rounded-full text-[#9a8c82] outline-none hover:text-[#C85956] focus-visible:ring-2 focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden" aria-label={`View identity for ${publicName}`}>
-        <BadgeInfo className="h-3 w-3" />
-      </summary>
-      <span className="absolute bottom-full left-1/2 z-20 mb-1.5 w-max max-w-64 -translate-x-1/2 rounded-lg bg-[#302924] px-2.5 py-1.5 text-[9px] font-medium text-white shadow-lg">
-        {actor.isStaff ? `${actor.displayName} · ` : ""}{actor.email}
-      </span>
-    </details> : null}
-  </span>;
+  return <WarehouseActorLabel actor={actorForViewer(actor, canReveal)} canReveal={canReveal} />;
 }
 
 export default function WarehouseDocumentHistory({
@@ -83,7 +81,7 @@ export default function WarehouseDocumentHistory({
     id: "requested",
     label: "Requested",
     timestamp: transfer.requestedAt,
-    detail: <>Requested by <ActorLabel actor={requestedActor} canReveal={canRevealActorIdentity} /></>,
+    detail: <>Requested by <ActorLabel actor={requestedActor} canReveal={canRevealActorIdentity} />{transfer.expectedArrivalAt ? <> · expected {formatDateTime(transfer.expectedArrivalAt)}</> : null}</>,
   }];
 
   if (transfer.approvedAt) {
@@ -91,7 +89,7 @@ export default function WarehouseDocumentHistory({
       id: "accepted",
       label: "Request accepted",
       timestamp: transfer.approvedAt,
-      detail: <>Accepted by <ActorLabel actor={transfer.approvedByActor ?? actorFromAudit(approvalLog)} canReveal={canRevealActorIdentity} /> · expected {transfer.expectedArrivalAt ? formatDateTime(transfer.expectedArrivalAt) : "arrival time not recorded"} · no stock movement</>,
+      detail: <>Accepted by <ActorLabel actor={transfer.approvedByActor ?? actorFromAudit(approvalLog)} canReveal={canRevealActorIdentity} /> · no stock movement</>,
     });
   }
 
