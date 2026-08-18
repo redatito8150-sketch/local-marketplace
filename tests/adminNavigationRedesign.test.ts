@@ -58,18 +58,16 @@ test("the sidebar toggle stays visible outside the scroll area and matches the B
   assert.match(shell, /hover:text-\[#C85956\]/);
 });
 
-test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
+test("workspace tabs connect commerce, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 
-  for (const workspace of ["commerce", "inventory", "brands", "storefront"]) {
+  for (const workspace of ["commerce", "brands", "storefront"]) {
     assert.match(nav, new RegExp(`${workspace}:`));
   }
   for (const href of [
     "/admin/orders",
     "/admin/payments",
     "/admin/payments/refund-queue",
-    "/admin/inventory",
-    "/admin/warehouse",
     "/admin/brands",
     "/admin/applications",
     "/admin/products/review",
@@ -82,6 +80,7 @@ test("workspace tabs connect commerce, inventory, brands, and storefront without
   assert.match(nav, /getUserPermissions\(user\.id\)/);
   assert.match(nav, /permissions\.has\(item\.permission\)/);
   assert.match(nav, /aria-current=/);
+  assert.doesNotMatch(nav, /inventory:/);
 });
 
 test("each workspace landing page renders its local navigation", () => {
@@ -89,7 +88,6 @@ test("each workspace landing page renders its local navigation", () => {
     ["app/admin/orders/page.tsx", "commerce", "/admin/orders"],
     ["app/admin/payments/page.tsx", "commerce", "/admin/payments"],
     ["app/admin/payments/refund-queue/page.tsx", "commerce", "/admin/payments/refund-queue"],
-    ["app/admin/warehouse/page.tsx", "inventory", "/admin/warehouse"],
     ["app/admin/brands/page.tsx", "brands", "/admin/brands"],
     ["app/admin/applications/page.tsx", "brands", "/admin/applications"],
     ["app/admin/products/review/page.tsx", "brands", "/admin/products/review"],
@@ -101,12 +99,10 @@ test("each workspace landing page renders its local navigation", () => {
     assert.match(read(page), new RegExp(`AdminWorkspaceNav workspace="${workspace}" activeHref="${activeHref.replaceAll("/", "\\/")}"`));
   }
 
-  // Inventory switches between its catalog and movement-ledger views, so its
-  // activeHref is computed rather than a fixed string — assert the pattern
-  // that computation follows instead of one literal href.
   const inventoryPage = read("app/admin/inventory/page.tsx");
-  assert.match(inventoryPage, /AdminWorkspaceNav workspace="inventory" activeHref=\{activeHref\}/);
-  assert.match(inventoryPage, /const activeHref = view === "activity" \? "\/admin\/inventory\?view=activity" : "\/admin\/inventory";/);
+  const warehousePage = read("app/admin/warehouse/page.tsx");
+  assert.doesNotMatch(inventoryPage, /AdminWorkspaceNav/);
+  assert.doesNotMatch(warehousePage, /AdminWorkspaceNav/);
 });
 
 test("Categories is one primary workspace with product structure and storefront tabs", () => {

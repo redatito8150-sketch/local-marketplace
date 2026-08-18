@@ -263,6 +263,17 @@ Framer Motion · Lucide icons · Supabase (Postgres + Auth, live).
 - Run `npm run build` locally before pushing — ESLint errors (like
   unescaped entities) fail production builds even when `next dev` looks fine.
 
+## Design skill routing
+
+- Admin Dashboard, Brand Portal, inventory, warehouse, tables, filters, and dense operational workflows: use `ui-ux-pro-max` first, then `mahaly-web-design-guidelines` for the final accessibility and interface-quality review.
+- Storefront, brand, editorial, landing, and marketing pages: use `design-taste-frontend`. Do not use it as the primary skill for dashboards or data tables.
+- Motion work: use the narrowly matched Emil Kowalski skill (`animate`, `find-animation-opportunities`, `improve-animations`, or `review-animations`) and keep frequent operational actions fast and restrained.
+- Use `transitions-dev` only for a specific documented micro-transition after its UX purpose is clear. Choose the smallest fitting pattern, preserve reduced-motion support, and do not run project-wide review/refine commands unless requested.
+- Use `impeccable` for explicit critique, shaping, polish, hardening, adaptation, or broad redesign work. For Admin Dashboard and Brand Portal work select its **Operate** mode and keep `ui-ux-pro-max` and Mahaly's existing visual system as the primary constraints. Its Live, Hooks, Doctor, Pin, context, concept-seed, and image-generation scripts are opt-in and must not run without an explicit request and a bounded target.
+- Use `brandkit` only for brand identity, logo-system, brand-guidelines-board, or visual-world image generation, not for general dashboard/product UI.
+- These skills are advisory. User instructions, Mahaly's existing design system, the platform-wide consistency rule, permissions, and documented product decisions override them. Do not reintroduce dark mode or replace established tokens merely because a skill recommends a different default.
+- Audited sources, pinned commits, and the Windows Python fallback for `ui-ux-pro-max` are documented in `docs/agent-skills.md`.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

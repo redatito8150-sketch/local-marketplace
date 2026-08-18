@@ -58,6 +58,59 @@ final result: passed
 
 ---
 
+# Variant movements compact filter bar — design QA
+
+## Evidence and normalization
+
+- Source visual truth: `C:\Users\pc\AppData\Local\Temp\codex-clipboard-3fc42152-937e-4440-97f1-cd252e4ae4e1.png`
+- Supporting light-color direction: `C:\Users\pc\AppData\Local\Temp\codex-clipboard-aa9be7e1-6ae4-40d4-af5d-d899a64ec85a.png`
+- Browser-rendered implementation: `C:\Users\pc\AppData\Local\Temp\mahaly-design-qa\variant-movements-1170x900.png`
+- Focused side-by-side comparison: `C:\Users\pc\AppData\Local\Temp\mahaly-design-qa\variant-movements-filter-comparison.png`
+- Source pixels: 1005 × 95; source density is not encoded, so the native crop was treated as the visual truth.
+- Implementation viewport and pixels: 1170 × 900 CSS px at device scale factor 1.
+- Compared implementation region: 1015 × 62 px, matching the reference content width and default closed-filter state.
+- Route/state: authenticated Admin, `/admin/inventory?view=activity`, collapsed sidebar, All movements, All brands, no date range, empty search.
+
+## Full-view comparison evidence
+
+The implementation begins directly with the compact filter bar; the previous page title and description no longer consume the first viewport. The full 1170 × 900 capture confirms the bar stays on one line at the reference content width, the movement ledger begins immediately below it, and no dark filled controls or active navigation circles remain. The table retains the existing Mahaly density and real inventory data because the source image specifies only the toolbar.
+
+## Focused comparison evidence
+
+The combined comparison shows the same sequence and rhythm as the reference: restrained search field, square calendar control, attached segmented choices, compact brand select, and a single light surface. The implementation intentionally substitutes movement-relevant segments (`All`, `Receipts`, `Orders`, `Corrections`) and adds a small advanced-filter control plus `Apply`, preserving the existing server-backed product, Variant, source, movement, and brand filters.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Admin font stack and compact 10.5–12 px control hierarchy match the reference; no display heading remains above the toolbar.
+- Spacing and layout rhythm: control height is 40 px, the outer frame is 62 px, gaps are 8 px, and the bar remains single-line at the target width while wrapping cleanly on narrow screens.
+- Colors and visual tokens: white, warm off-white, taupe borders, and the pale Mahaly rose selection state replace dark fills. Dark color is limited to readable foreground text.
+- Image quality and asset fidelity: the reference contains no raster assets. Calendar, search, and filter controls use the project's existing Lucide icon set; no placeholder or handcrafted icon was introduced.
+- Copy and content: labels differ only where the inventory-movement workflow requires different filters from Stock requests.
+
+## Interaction verification
+
+- Calendar opens a focused From/To date-range panel and exposes both date inputs.
+- Receipts navigates to `movement=receipt_posted`; All returns to the unfiltered ledger.
+- Advanced filters expose Source and Movement selectors.
+- Search, Brand, Apply, Movements/Documents, and CSV export remain available.
+- Desktop and narrow layouts were visually inspected.
+- Browser console: no errors.
+
+## Comparison history
+
+### Pass 1
+
+- No P0, P1, or P2 mismatch was found after normalization.
+- Intentional differences are limited to movement-specific filter names and the two controls required to preserve the complete live filtering workflow.
+
+## Follow-up polish
+
+- P3: the implementation keeps a visible light `Apply` button because Brand and advanced filters are server-submitted; removing it would make those controls appear interactive without applying their values.
+
+final result: passed
+
+---
+
 # Warehouse acceptance and private actor history — design QA
 
 ## Evidence

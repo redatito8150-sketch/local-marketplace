@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
+  Activity,
   ArrowLeft,
   BarChart3,
   Bell,
   BookOpenText,
   Boxes,
   ChevronDown,
+  ClipboardList,
   Grid2X2,
   History,
   LayoutDashboard,
@@ -37,6 +39,12 @@ interface NavItem {
   badge?: BadgeKey;
   activePaths?: string[];
   hideWhenPermission?: PermissionKey;
+  children?: Array<{
+    label: string;
+    href: string;
+    icon: React.ElementType;
+    badge?: BadgeKey;
+  }>;
 }
 
 const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
@@ -56,8 +64,11 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         href: "/admin/inventory",
         icon: Boxes,
         permission: "manage_inventory",
-        badge: "pendingRequests",
         activePaths: ["/admin/inventory", "/admin/warehouse"],
+        children: [
+          { label: "Stock requests", href: "/admin/warehouse", icon: ClipboardList, badge: "pendingRequests" },
+          { label: "Variant movements", href: "/admin/inventory?view=activity", icon: Activity },
+        ],
       },
     ],
   },
@@ -146,10 +157,10 @@ function NavigationLink({ item, active, count }: { item: NavItem; active: boolea
       href={item.href}
       aria-current={active ? "page" : undefined}
       aria-label={item.label}
-      className={`group relative flex items-center text-[13px] font-semibold transition-[background-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 active:scale-[0.96] ${collapsed ? "h-10 w-10 justify-center rounded-full" : "min-h-10 gap-3 rounded-lg px-3 py-2.5"} ${active ? (collapsed ? "bg-[var(--admin-text)] text-white shadow-[0_6px_16px_rgba(52,39,31,0.2),inset_0_0_0_1px_rgba(200,89,86,0.35)]" : "bg-[var(--admin-selected)] text-[var(--admin-text)]") : "text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+      className={`group relative flex items-center text-[13px] font-semibold transition-[background-color,color,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 active:scale-[0.96] ${collapsed ? "h-10 w-10 justify-center rounded-full" : "min-h-10 gap-3 rounded-lg px-3 py-2.5"} ${active ? (collapsed ? "bg-[var(--admin-selected)] text-[var(--admin-primary)] shadow-[0_6px_16px_rgba(200,89,86,0.11),inset_0_0_0_1px_rgba(200,89,86,0.18)]" : "bg-[var(--admin-selected)] text-[var(--admin-text)]") : "text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
     >
       {active && !collapsed ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--admin-primary)]" aria-hidden="true" /> : null}
-      <Icon aria-hidden="true" className={`h-[17px] w-[17px] flex-none transition-[color,transform] duration-200 ${collapsed ? "group-hover:scale-125 group-focus-visible:scale-125" : ""} ${active ? (collapsed ? "text-white" : "text-[var(--admin-primary)]") : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
+      <Icon aria-hidden="true" className={`h-[17px] w-[17px] flex-none transition-[color,transform] duration-200 ${collapsed ? "group-hover:scale-125 group-focus-visible:scale-125" : ""} ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70 group-hover:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
       {collapsed ? (
         <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-[12px] font-semibold text-[var(--admin-text)] opacity-0 shadow-[0_8px_22px_rgba(67,45,29,0.13)] transition-[opacity,transform] duration-200 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100">
           {item.label}
@@ -160,14 +171,121 @@ function NavigationLink({ item, active, count }: { item: NavItem; active: boolea
   );
 }
 
+function InventoryBranch({ item, counts }: { item: NavItem; counts: Record<BadgeKey, number> }) {
+  const { collapsed } = useDashboardSidebar();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activityActive = pathname === "/admin/inventory" && searchParams.get("view") === "activity";
+  const overviewActive = pathname === "/admin/inventory" && !activityActive;
+  const warehouseActive = matchesPath(pathname, "/admin/warehouse");
+  const [open, setOpen] = useState(activityActive || warehouseActive);
+  const Icon = item.icon;
+
+  const childLinks = (
+    <div
+      role="group"
+      aria-label="Inventory destinations"
+      className={collapsed
+        ? "relative flex flex-col items-center gap-1 pt-1"
+        : "relative ml-[19px] mt-0.5 space-y-0.5 pb-0.5 pl-7"}
+    >
+      <span
+        aria-hidden="true"
+        className={collapsed
+          ? "absolute bottom-4 left-1/2 top-0 w-px -translate-x-1/2 bg-[var(--admin-border)]"
+          : "absolute bottom-[18px] left-0 top-[-4px] w-px bg-[var(--admin-border)]"}
+      />
+      {item.children?.map((child) => {
+        const active = child.href === "/admin/warehouse" ? warehouseActive : activityActive;
+        const ChildIcon = child.icon;
+        const count = child.badge ? counts[child.badge] : 0;
+        return (
+          <Link
+            key={child.href}
+            href={child.href}
+            aria-current={active ? "page" : undefined}
+            aria-label={child.label}
+            className={`group/branch relative z-10 flex font-semibold transition-[background-color,color,transform] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 active:scale-[0.97] ${collapsed ? "h-8 w-8 items-center justify-center rounded-full bg-[var(--admin-sidebar)]" : "min-h-9 items-center gap-2 rounded-lg px-2.5 text-[11.5px]"} ${active ? "bg-[var(--admin-selected)] text-[var(--admin-text)]" : "text-[var(--admin-text-muted)] hover:bg-[var(--admin-surface-muted)] hover:text-[var(--admin-text)]"}`}
+          >
+            {!collapsed ? <span aria-hidden="true" className="absolute -left-7 top-1/2 h-px w-5 bg-[var(--admin-border)]" /> : null}
+            <ChildIcon aria-hidden="true" className={`h-3.5 w-3.5 flex-none ${active ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/65 group-hover/branch:text-[var(--admin-text)]"}`} strokeWidth={1.8} />
+            {!collapsed ? <span className="min-w-0 flex-1 truncate">{child.label}</span> : null}
+            {count > 0 ? <span className={`${collapsed ? "absolute -right-1 -top-1" : ""} flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--admin-primary-soft)] px-1 text-[9px] font-extrabold tabular-nums text-[var(--admin-primary)]`}>{count}</span> : null}
+            {collapsed ? (
+              <span className="pointer-events-none absolute left-[calc(100%+12px)] top-1/2 z-50 -translate-y-1/2 translate-x-1 whitespace-nowrap rounded-lg border border-[var(--admin-border)] bg-[var(--admin-surface)] px-3 py-2 text-[12px] font-semibold text-[var(--admin-text)] opacity-0 shadow-[0_8px_22px_rgba(67,45,29,0.13)] transition-[opacity,transform] duration-150 group-hover/branch:translate-x-0 group-hover/branch:opacity-100 group-focus-visible/branch:translate-x-0 group-focus-visible/branch:opacity-100">
+                {child.label}
+              </span>
+            ) : null}
+          </Link>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className={collapsed ? "rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]" : undefined}>
+      {collapsed ? (
+        <>
+          <NavigationLink item={item} active={overviewActive} count={0} />
+          {childLinks}
+        </>
+      ) : (
+        <>
+          <div className={`group flex min-h-10 items-center rounded-lg transition-colors ${overviewActive ? "bg-[var(--admin-selected)]" : "hover:bg-[var(--admin-surface-muted)]"}`}>
+            <Link
+              href={item.href}
+              onClick={() => setOpen(false)}
+              aria-current={overviewActive ? "page" : undefined}
+              className={`relative flex min-w-0 flex-1 items-center gap-3 rounded-l-lg px-3 py-2.5 text-[13px] font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25 ${overviewActive ? "text-[var(--admin-text)]" : "text-[var(--admin-text-muted)] group-hover:text-[var(--admin-text)]"}`}
+            >
+              {overviewActive ? <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--admin-primary)]" aria-hidden="true" /> : null}
+              <Icon aria-hidden="true" className={`h-[17px] w-[17px] flex-none ${overviewActive ? "text-[var(--admin-primary)]" : "text-[var(--admin-text-muted)]/70"}`} strokeWidth={1.8} />
+              <span className="truncate">{item.label}</span>
+            </Link>
+            <button
+              type="button"
+              onClick={() => setOpen((value) => !value)}
+              aria-expanded={open}
+              aria-controls="admin-inventory-destinations"
+              aria-label={open ? "Collapse Inventory destinations" : "Expand Inventory destinations"}
+              className="mr-1 flex h-8 w-8 flex-none items-center justify-center rounded-md text-[var(--admin-text-muted)] transition-colors hover:bg-[var(--admin-surface)] hover:text-[var(--admin-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25"
+            >
+              <ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} strokeWidth={1.8} />
+            </button>
+          </div>
+          {open ? <div id="admin-inventory-destinations">{childLinks}</div> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function NavigationGroup({ label, items, activeHref, counts }: { label: string; items: NavItem[]; activeHref?: string; counts: Record<BadgeKey, number> }) {
   const { collapsed } = useDashboardSidebar();
 
+  if (collapsed) {
+    const regularItems = items.filter((item) => !item.children);
+    const branchItems = items.filter((item) => item.children);
+
+    return (
+      <section aria-label={label} className="space-y-3">
+        {regularItems.length > 0 ? (
+          <div className="mx-auto w-14 space-y-1 rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]">
+            {regularItems.map((item) => <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
+          </div>
+        ) : null}
+        {branchItems.map((item) => <div key={item.href} className="mx-auto w-14"><InventoryBranch item={item} counts={counts} /></div>)}
+      </section>
+    );
+  }
+
   return (
-    <section aria-label={label} className={collapsed ? "mx-auto w-14 rounded-full border border-[var(--admin-border)] bg-[var(--admin-surface)] p-1.5 shadow-[0_8px_24px_rgba(67,45,29,0.07)]" : undefined}>
-      {!collapsed ? <p className="mb-1.5 flex items-center gap-2 px-3 text-[10.5px] font-semibold tracking-[-0.01em] text-[var(--admin-text-muted)]/70"><span className="h-1 w-1 rounded-full bg-[var(--admin-primary)]/70" aria-hidden="true" />{label}</p> : null}
-      <div className={collapsed ? "space-y-1" : "space-y-0.5"}>
-        {items.map((item) => <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
+    <section aria-label={label}>
+      <p className="mb-1.5 flex items-center gap-2 px-3 text-[10.5px] font-semibold tracking-[-0.01em] text-[var(--admin-text-muted)]/70"><span className="h-1 w-1 rounded-full bg-[var(--admin-primary)]/70" aria-hidden="true" />{label}</p>
+      <div className="space-y-0.5">
+        {items.map((item) => item.children
+          ? <InventoryBranch key={item.href} item={item} counts={counts} />
+          : <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
       </div>
     </section>
   );

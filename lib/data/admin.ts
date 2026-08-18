@@ -1666,6 +1666,7 @@ export async function getFullTaxonomyTreeForAdmin(): Promise<TaxonomyNode[]> {
 
 export interface AdminInventoryMovementRow {
   id: string;
+  brandId: string;
   productId: string;
   productName: string;
   variantImage: string;
@@ -1680,7 +1681,51 @@ export interface AdminInventoryMovementRow {
   reason: string;
   note: string | null;
   source: string;
+  sourceOperationKey: string;
+  fromLocation: string | null;
+  toLocation: string | null;
+  relatedEntityType: string | null;
+  relatedEntityId: string | null;
+  actor: {
+    id: string;
+    displayName: string;
+    email: string | null;
+    roleLabel: string;
+    isStaff: boolean;
+  } | null;
+  reference: {
+    id: string;
+    type: "warehouse_document" | "warehouse_receipt" | "warehouse_correction" | "order";
+    label: string;
+    href: string;
+  } | null;
+  groupKey: string;
+  hasTestOrLegacyNote: boolean;
   createdAt: string;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function orderIdFromMovement(source: string, sourceOperationKey: string): string | null {
+  if (source !== "order" && source !== "order_cancellation") return null;
+  const candidate = sourceOperationKey.split(":")[1];
+  return candidate && UUID_PATTERN.test(candidate) ? candidate : null;
+}
+
+function movementActorRoleLabel(profileRole: string | null | undefined, isStaff: boolean, brandAccessLevel?: string | null): string {
+  if (isStaff) {
+    if (profileRole === "admin") return "Admin";
+    if (profileRole === "manager") return "Manager";
+    return "Staff";
+  }
+  if (brandAccessLevel === "owner" || profileRole === "brand_owner") return "Brand owner";
+  if (brandAccessLevel === "assistant" || profileRole === "brand_assistant") return "Brand assistant";
+  return "Brand member";
+}
+
+function hasTestOrLegacyMovementNote(reason: string, note: string | null, sourceOperationKey: string): boolean {
+  const value = `${reason} ${note ?? ""} ${sourceOperationKey}`;
+  return /(?:\blegacy test\b|\btest(?:ing)?\b|\bcodex-clean\b|\bmigration verify\b)/i.test(value);
 }
 
 export async function getInventoryMovementsForAdmin(options: {
@@ -1701,6 +1746,7 @@ export async function getInventoryMovementsForAdmin(options: {
   const to = from + limit - 1;
 
   let scopedProductIds: string[] | null = null;
+  let exactVariantIds: string[] | null = null;
   if (options.brand || options.q) {
     let brandProductIds: string[] | null = null;
     if (options.brand) {
@@ -1715,16 +1761,21 @@ export async function getInventoryMovementsForAdmin(options: {
       const [names, brands, variants] = await Promise.all([
         supabaseAdmin.from("products").select("id").ilike("name", pattern),
         supabaseAdmin.from("products").select("id").ilike("brand_name", pattern),
-        supabaseAdmin.from("product_variants").select("product_id").ilike("sku", pattern),
+        supabaseAdmin.from("product_variants").select("id, product_id, sku").ilike("sku", pattern),
       ]);
       for (const result of [names, brands, variants]) {
         if (result.error) throw new Error(`getInventoryMovementsForAdmin search scope failed: ${result.error.message}`);
       }
-      queryProductIds = [...new Set([
-        ...(names.data ?? []).map((product) => product.id as string),
-        ...(brands.data ?? []).map((product) => product.id as string),
-        ...(variants.data ?? []).map((variant) => variant.product_id as string),
-      ])];
+      const normalizedQuery = options.q.trim().toLocaleLowerCase("en-US");
+      const exactVariants = (variants.data ?? []).filter((variant) => (variant.sku as string).trim().toLocaleLowerCase("en-US") === normalizedQuery);
+      exactVariantIds = exactVariants.length ? exactVariants.map((variant) => variant.id as string) : null;
+      queryProductIds = exactVariants.length
+        ? [...new Set(exactVariants.map((variant) => variant.product_id as string))]
+        : [...new Set([
+            ...(names.data ?? []).map((product) => product.id as string),
+            ...(brands.data ?? []).map((product) => product.id as string),
+            ...(variants.data ?? []).map((variant) => variant.product_id as string),
+          ])];
     }
 
     const queryProductIdSet = queryProductIds ? new Set(queryProductIds) : null;
@@ -1733,15 +1784,26 @@ export async function getInventoryMovementsForAdmin(options: {
       : brandProductIds ?? queryProductIds ?? [];
 
     if (scopedProductIds.length === 0) return { rows: [], total: 0, page, limit };
+    if (exactVariantIds && brandProductIds) {
+      const allowedProducts = new Set(scopedProductIds);
+      const { data: exactVariants, error: exactVariantError } = await supabaseAdmin
+        .from("product_variants")
+        .select("id, product_id")
+        .in("id", exactVariantIds);
+      if (exactVariantError) throw new Error(`getInventoryMovementsForAdmin exact Variant scope failed: ${exactVariantError.message}`);
+      exactVariantIds = (exactVariants ?? []).filter((variant) => allowedProducts.has(variant.product_id as string)).map((variant) => variant.id as string);
+      if (exactVariantIds.length === 0) return { rows: [], total: 0, page, limit };
+    }
   }
 
   let query = supabaseAdmin
     .from("inventory_movements")
-    .select("id, product_id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at", { count: "exact" })
+    .select("id, brand_id, product_id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, created_by, source, source_operation_key, from_location, to_location, related_entity_type, related_entity_id, created_at", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
   if (options.productId) query = query.eq("product_id", options.productId);
   if (options.variantId) query = query.eq("variant_id", options.variantId);
+  if (exactVariantIds) query = query.in("variant_id", exactVariantIds);
   if (scopedProductIds) query = query.in("product_id", scopedProductIds);
   if (options.source) query = query.eq("source", options.source);
   if (options.movementType) query = query.eq("movement_type", options.movementType);
@@ -1751,8 +1813,19 @@ export async function getInventoryMovementsForAdmin(options: {
   const { data, error, count } = await query;
   if (error) throw new Error(`getInventoryMovementsForAdmin failed: ${error.message}`);
 
-  const productIds = [...new Set((data ?? []).map((row) => row.product_id))];
-  const [productsResult, variantsByProduct, mediaResult] = await Promise.all([
+  const movementRows = data ?? [];
+  const productIds = [...new Set(movementRows.map((row) => row.product_id))];
+  const actorIds = [...new Set(movementRows.map((row) => row.created_by).filter((id): id is string => typeof id === "string"))];
+  const brandIds = [...new Set(movementRows.map((row) => row.brand_id as string))];
+  const warehouseDocumentIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_document" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const warehouseReceiptIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_receipt" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const warehouseCorrectionIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_correction" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const orderIds = [...new Set(movementRows.flatMap((row) => {
+    if (row.related_entity_type === "order" && row.related_entity_id) return [row.related_entity_id as string];
+    const parsed = orderIdFromMovement(row.source as string, row.source_operation_key as string);
+    return parsed ? [parsed] : [];
+  }))];
+  const [productsResult, variantsByProduct, mediaResult, profilesResult, membershipsResult, documentsResult, receiptsResult, correctionsResult, ordersResult] = await Promise.all([
     productIds.length
       ? supabaseAdmin.from("products").select("id, name, image, brand_name").in("id", productIds)
       : Promise.resolve({ data: [], error: null }),
@@ -1764,20 +1837,95 @@ export async function getInventoryMovementsForAdmin(options: {
         .in("product_id", productIds)
         .eq("is_archived", false)
       : Promise.resolve({ data: [], error: null }),
+    actorIds.length
+      ? supabaseAdmin.from("profiles").select("id, full_name, email, is_admin, role").in("id", actorIds)
+      : Promise.resolve({ data: [], error: null }),
+    actorIds.length && brandIds.length
+      ? supabaseAdmin.from("brand_staff").select("brand_id, user_id, access_level").in("brand_id", brandIds).in("user_id", actorIds)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseDocumentIds.length
+      ? supabaseAdmin.from("warehouse_transfers").select("id, document_number").in("id", warehouseDocumentIds)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseReceiptIds.length
+      ? supabaseAdmin.from("warehouse_receipts").select("id, receipt_number, transfer_id").in("id", warehouseReceiptIds)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseCorrectionIds.length
+      ? supabaseAdmin.from("warehouse_corrections").select("id, correction_number, transfer_id").in("id", warehouseCorrectionIds)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabaseAdmin.from("orders").select("id, order_number").in("id", orderIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
   if (productsResult.error) throw new Error(`getInventoryMovementsForAdmin products failed: ${productsResult.error.message}`);
   if (mediaResult.error) throw new Error(`getInventoryMovementsForAdmin media failed: ${mediaResult.error.message}`);
+  if (profilesResult.error) throw new Error(`getInventoryMovementsForAdmin actors failed: ${profilesResult.error.message}`);
+  if (membershipsResult.error) throw new Error(`getInventoryMovementsForAdmin memberships failed: ${membershipsResult.error.message}`);
+  if (documentsResult.error) throw new Error(`getInventoryMovementsForAdmin warehouse documents failed: ${documentsResult.error.message}`);
+  if (receiptsResult.error) throw new Error(`getInventoryMovementsForAdmin receipts failed: ${receiptsResult.error.message}`);
+  if (correctionsResult.error) throw new Error(`getInventoryMovementsForAdmin corrections failed: ${correctionsResult.error.message}`);
+  if (ordersResult.error) throw new Error(`getInventoryMovementsForAdmin orders failed: ${ordersResult.error.message}`);
 
   const products = new Map((productsResult.data ?? []).map((product) => [product.id, product]));
   const variants = new Map([...variantsByProduct.values()].flat().map((variant) => [variant.id, variant]));
   const colorImages = buildColorImageLookup(mediaResult.data ?? []);
+  const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id as string, profile]));
+  const membershipByActorAndBrand = new Map((membershipsResult.data ?? []).map((membership) => [`${membership.user_id}:${membership.brand_id}`, membership.access_level as string]));
+  const references = new Map<string, AdminInventoryMovementRow["reference"]>();
+  for (const document of documentsResult.data ?? []) {
+    references.set(`warehouse_document:${document.id}`, {
+      id: document.id as string,
+      type: "warehouse_document",
+      label: (document.document_number as string | null) ?? `Warehouse document ${String(document.id).slice(0, 8)}`,
+      href: `/admin/warehouse/${document.id}`,
+    });
+  }
+  for (const receipt of receiptsResult.data ?? []) {
+    references.set(`warehouse_receipt:${receipt.id}`, {
+      id: receipt.id as string,
+      type: "warehouse_receipt",
+      label: receipt.receipt_number as string,
+      href: `/admin/warehouse/${receipt.transfer_id}`,
+    });
+  }
+  for (const correction of correctionsResult.data ?? []) {
+    references.set(`warehouse_correction:${correction.id}`, {
+      id: correction.id as string,
+      type: "warehouse_correction",
+      label: correction.correction_number as string,
+      href: `/admin/warehouse/${correction.transfer_id}`,
+    });
+  }
+  for (const order of ordersResult.data ?? []) {
+    references.set(`order:${order.id}`, {
+      id: order.id as string,
+      type: "order",
+      label: order.order_number as string,
+      href: `/admin/orders/${order.id}`,
+    });
+  }
 
   return {
-    rows: (data ?? []).map((row) => {
+    rows: movementRows.map((row) => {
       const product = products.get(row.product_id);
       const variant = variants.get(row.variant_id);
+      const actorProfile = typeof row.created_by === "string" ? profiles.get(row.created_by) : null;
+      const isStaff = Boolean(actorProfile?.is_admin);
+      const actor = actorProfile ? {
+        id: actorProfile.id as string,
+        displayName: (actorProfile.full_name as string | null)?.trim() || (actorProfile.email as string | null)?.split("@")[0] || "Team member",
+        email: (actorProfile.email as string | null)?.trim() || null,
+        roleLabel: movementActorRoleLabel(actorProfile.role as string | null, isStaff, membershipByActorAndBrand.get(`${actorProfile.id}:${row.brand_id}`)),
+        isStaff,
+      } : null;
+      const parsedOrderId = orderIdFromMovement(row.source as string, row.source_operation_key as string);
+      const relatedEntityType = (row.related_entity_type as string | null) ?? (parsedOrderId ? "order" : null);
+      const relatedEntityId = (row.related_entity_id as string | null) ?? parsedOrderId;
+      const reference = relatedEntityType && relatedEntityId
+        ? references.get(`${relatedEntityType}:${relatedEntityId}`) ?? null
+        : null;
       return {
         id: row.id,
+        brandId: row.brand_id as string,
         productId: row.product_id,
         productName: product?.name ?? row.product_id,
         variantImage: resolveVariantImage(row.product_id, variant, colorImages, product?.image),
@@ -1792,6 +1940,15 @@ export async function getInventoryMovementsForAdmin(options: {
         reason: row.reason,
         note: row.note ?? null,
         source: row.source,
+        sourceOperationKey: row.source_operation_key as string,
+        fromLocation: row.from_location as string | null,
+        toLocation: row.to_location as string | null,
+        relatedEntityType,
+        relatedEntityId,
+        actor,
+        reference,
+        groupKey: reference ? `${reference.type}:${reference.id}` : `${row.source}:${row.source_operation_key}`,
+        hasTestOrLegacyNote: hasTestOrLegacyMovementNote(row.reason as string, row.note as string | null, row.source_operation_key as string),
         createdAt: row.created_at,
       };
     }),

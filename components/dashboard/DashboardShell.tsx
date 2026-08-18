@@ -110,7 +110,7 @@ export default function DashboardShell({
         className={`grid w-full grid-cols-1 transition-[grid-template-columns] duration-200 lg:grid-cols-[var(--dashboard-sidebar-width)_minmax(0,1fr)] ${collapsed ? "[--dashboard-sidebar-width:76px]" : "[--dashboard-sidebar-width:260px]"}`}
         data-sidebar-collapsed={collapsed}
       >
-        <aside className={`relative hidden border-r transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-visible ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
+        <aside className={`relative z-30 hidden border-r transition-[width,padding] duration-200 lg:sticky lg:top-[72px] lg:block lg:h-[calc(100vh-72px)] lg:overflow-visible ${isAdmin ? "border-[var(--admin-border)] bg-[var(--admin-sidebar)]" : "border-[#e3dcd3] bg-[#fffdf9]"}`}>
           <button
             // Browser extensions may add `fdprocessedid` before hydration.
             // Keep suppression scoped to the shell's native controls.

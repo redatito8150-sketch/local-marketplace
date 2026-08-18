@@ -5,18 +5,19 @@ import test from "node:test";
 const read = (path: string) =>
   readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("admin Inventory is one workspace with overview, stock requests, and Variant movements", () => {
-  const nav = read("components/admin/AdminWorkspaceNav.tsx");
+test("admin Inventory is one sidebar branch with overview, stock requests, and Variant movements", () => {
+  const sidebar = read("components/admin/AdminSidebar.tsx");
   const inventory = read("app/admin/inventory/page.tsx");
   const warehouse = read("app/admin/warehouse/page.tsx");
 
   for (const label of ["Inventory overview", "Stock requests", "Variant movements"]) {
-    assert.match(nav, new RegExp(label));
+    if (label === "Inventory overview") assert.match(sidebar, /label: "Inventory"/);
+    else assert.match(sidebar, new RegExp(label));
   }
-  assert.ok(nav.indexOf('label: "Inventory overview"') < nav.indexOf('label: "Stock requests"'));
-  assert.ok(nav.indexOf('label: "Stock requests"') < nav.indexOf('label: "Variant movements"'));
-  assert.match(inventory, /<AdminWorkspaceNav workspace="inventory"/);
-  assert.match(warehouse, /<AdminWorkspaceNav workspace="inventory"/);
+  assert.ok(sidebar.indexOf('label: "Inventory"') < sidebar.indexOf('label: "Stock requests"'));
+  assert.ok(sidebar.indexOf('label: "Stock requests"') < sidebar.indexOf('label: "Variant movements"'));
+  assert.doesNotMatch(inventory, /AdminWorkspaceNav/);
+  assert.doesNotMatch(warehouse, /AdminWorkspaceNav/);
   assert.match(inventory, /type InventoryView = "catalog" \| "activity"/);
   assert.match(inventory, /getInventoryProductsForAdmin/);
   assert.match(inventory, /Monitor stock across every brand, product, color and size from one place/);
@@ -84,20 +85,100 @@ test("movement ledger is database-paginated and supports an exact Variant", () =
   assert.match(data, /getInventoryMovementsForAdmin\(options: \{[\s\S]*?productId\?: string;[\s\S]*?variantId\?: string;[\s\S]*?brand\?: string;[\s\S]*?source\?: string;/);
   assert.match(data, /\.range\(from, to\)/);
   assert.match(data, /query\.eq\("variant_id", options\.variantId\)/);
+  assert.match(data, /exactVariantIds = exactVariants\.length/);
+  assert.match(data, /query\.in\("variant_id", exactVariantIds\)/);
+  assert.match(data, /toLocaleLowerCase\("en-US"\) === normalizedQuery/);
   assert.match(page, /productId: selectedProduct\?\.id/);
   assert.match(page, /variantId: selectedVariant\?\.id/);
   assert.match(page, /<Select label="Variant" name="variantId"/);
-  assert.match(page, /sequential, immutable movements/);
+  assert.match(page, /Immutable stock history · newest first/);
   assert.match(page, /formatDateTime\(row\.createdAt\)/);
 });
 
-test("advanced movement filters collapse behind More filters without a wide single-row grid", () => {
+test("movement rows present one compact operational story without stacked card fragments", () => {
   const page = read("app/admin/inventory/page.tsx");
 
-  assert.match(page, /More filters/);
-  assert.match(page, /const advancedActive = Boolean\(source \|\| movementType \|\| from \|\| to\)/);
-  assert.match(page, /open=\{advancedActive \|\| undefined\}/);
-  assert.match(page, /xl:grid-cols-4/);
+  assert.match(page, /Balance &amp; route/);
+  assert.match(page, /function MovementBalance/);
+  assert.match(page, /function MovementEvent/);
+  assert.match(page, /movementAccent\(row\.quantityDelta\)/);
+  assert.match(page, /border-l-emerald-500/);
+  assert.match(page, /aria-label=\{`Stock changed from/);
+  assert.doesNotMatch(page, /function StockMovement/);
+  assert.doesNotMatch(page, /function MovementChange/);
+});
+
+test("movement ledger exposes the complete warehouse vocabulary and operational context", () => {
+  const page = read("app/admin/inventory/page.tsx");
+  const data = read("lib/data/admin.ts");
+  const presentation = read("lib/inventory/movementPresentation.ts");
+
+  for (const value of [
+    "warehouse_receipt",
+    "warehouse_receipt_actual",
+    "warehouse_quarantine_hold",
+    "warehouse_quarantine_release",
+    "warehouse_correction_adjustment",
+    "warehouse_discrepancy_resolution",
+  ]) assert.match(presentation, new RegExp(value));
+
+  assert.match(data, /from_location, to_location, related_entity_type, related_entity_id/);
+  assert.match(data, /created_by, source, source_operation_key/);
+  assert.match(data, /from\("warehouse_receipts"\)/);
+  assert.match(data, /from\("warehouse_corrections"\)/);
+  assert.match(data, /from\("profiles"\)/);
+  assert.match(page, /function MovementRoute/);
+  assert.match(page, /function MovementReference/);
+  assert.match(page, /No sellable change/);
+  assert.match(page, /Test or legacy note/);
+});
+
+test("movement ledger can group by source document and export the filtered audit trail", () => {
+  const page = read("app/admin/inventory/page.tsx");
+  const exportRoute = read("app/api/admin/inventory/movements/export/route.ts");
+
+  assert.match(page, /type ActivityMode = "movements" \| "documents"/);
+  assert.match(page, /function groupMovements/);
+  assert.match(page, /function DocumentMovementGroups/);
+  assert.match(page, /Open source document/);
+  assert.match(page, /Export CSV/);
+  assert.match(exportRoute, /requireAdminUser\(\)/);
+  assert.match(exportRoute, /getInventoryMovementsForAdmin/);
+  assert.match(exportRoute, /Recorded By/);
+  assert.match(exportRoute, /Actor Email/);
+  assert.match(exportRoute, /Data Quality/);
+  assert.match(exportRoute, /text\/csv/);
+});
+
+test("Inventory sidebar branch uses a connected thread treatment in expanded and collapsed navigation", () => {
+  const sidebar = read("components/admin/AdminSidebar.tsx");
+
+  assert.match(sidebar, /function InventoryBranch/);
+  assert.match(sidebar, /aria-label="Inventory destinations"/);
+  assert.match(sidebar, /aria-expanded=\{open\}/);
+  assert.match(sidebar, /Collapse Inventory destinations/);
+  assert.match(sidebar, /Expand Inventory destinations/);
+  assert.match(sidebar, /bg-\[var\(--admin-border\)\]/);
+  assert.match(sidebar, /absolute -left-7 top-1\/2 h-px w-5/);
+  assert.match(sidebar, /searchParams\.get\("view"\) === "activity"/);
+  assert.match(sidebar, /child\.badge \? counts\[child\.badge\]/);
+  assert.match(sidebar, /branchItems\.map/);
+});
+
+test("advanced movement filters live in a compact progressive toolbar", () => {
+  const page = read("app/admin/inventory/page.tsx");
+
+  assert.match(page, /aria-label="Quick movement filters"/);
+  assert.match(page, /aria-label="Choose date range"/);
+  assert.match(page, /aria-label="More movement filters"/);
+  assert.match(page, /const advancedFilterCount = \[params\.productId, params\.variantId, source, movementType\]\.filter\(Boolean\)\.length/);
+  assert.match(page, /xl:max-w-\[330px\]/);
+  assert.match(page, /absolute right-0 top-\[calc\(100%\+8px\)\]/);
+  assert.match(page, /rounded-\[18px\] border border-\[#eadfd7\] bg-white p-2\.5/);
+  assert.match(page, /view === "catalog" \? <DashboardPageHeader/);
+  assert.match(page, /\["receipt_posted", "Receipts"\]/);
+  assert.doesNotMatch(page, /More filters/);
+  assert.doesNotMatch(page, /title=\{view === "activity"/);
   assert.doesNotMatch(page, /_140px_140px_120px_120px_auto/);
 });
 

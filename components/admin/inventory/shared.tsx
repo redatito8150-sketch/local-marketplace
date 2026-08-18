@@ -32,7 +32,7 @@ export function StockBadge({ status }: { status: "in_stock" | "low_stock" | "out
   return <span className={`inline-flex rounded-lg px-2 py-1 text-[10px] font-extrabold ${style}`}>{status === "in_stock" ? "Healthy" : status === "low_stock" ? "Low stock" : "Out of stock"}</span>;
 }
 
-export function VariantIdentity({ image, productName, label, sku }: { image: string | null; productName: string; label: string; sku: string }) {
+export function VariantIdentity({ image, productName, label, sku, meta }: { image: string | null; productName: string; label: string; sku: string; meta?: string }) {
   return (
     <div className="flex min-w-0 items-center gap-3">
       <span className="relative h-11 w-9 flex-none overflow-hidden rounded-lg bg-[#f1eae4]">
@@ -41,6 +41,7 @@ export function VariantIdentity({ image, productName, label, sku }: { image: str
       <span className="min-w-0">
         <span className="block truncate text-[12px] font-bold text-[#403730]">{label}</span>
         <code className="mt-1 block truncate text-[10px] text-[#756960]">{sku}</code>
+        {meta ? <span className="mt-0.5 block truncate text-[9.5px] font-semibold text-[#C85956]">{meta}</span> : null}
       </span>
     </div>
   );

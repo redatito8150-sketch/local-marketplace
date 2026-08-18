@@ -39,5 +39,5 @@ test("inventory blocker links resolve to a real, product-filtered ledger", () =>
   assert.match(linkResolver, /\/admin\/inventory\?productId=/);
   assert.match(archivedActions, /getAdminDeletionBlockerHref/);
   assert.match(inventoryPage, /getInventoryMovementsForAdmin/);
-  assert.match(inventoryPage, /sequential, immutable movements/);
+  assert.match(inventoryPage, /Immutable stock history · newest first/);
 });

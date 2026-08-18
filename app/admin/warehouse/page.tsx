@@ -10,7 +10,6 @@ import {
   type WarehouseTransferStatus,
 } from "@/lib/data/warehouse";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardUI";
-import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 import WarehouseQueueFilters from "@/components/admin/warehouse/WarehouseQueueFilters";
 import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
 import {
@@ -111,8 +110,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const visibleTransfers = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   return (
     <div>
-      <AdminWorkspaceNav workspace="inventory" activeHref="/admin/warehouse" />
-      <header className="mt-6">
+      <header>
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
           <h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Stock requests</h1>
           <span className="text-[11px] font-semibold text-[#81746b]">{formatCount(allTransfers.length)} documents</span>
