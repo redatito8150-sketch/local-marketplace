@@ -106,7 +106,7 @@ test("Stock requests uses consistent English copy and pinned English dates", () 
   const detail = read("app/admin/warehouse/[id]/page.tsx");
   const history = read("components/warehouse/WarehouseDocumentHistory.tsx");
 
-  assert.match(warehouse, /title="Stock requests"/);
+  assert.match(warehouse, />Stock requests<\/h1>/);
   assert.doesNotMatch(warehouse, /اذن صرف مخزن/);
   assert.match(warehouse, /formatDateTime\(transfer\.requestedAt\)/);
   assert.match(detail, /formatDateTime\(transfer\.requestedAt\)/);

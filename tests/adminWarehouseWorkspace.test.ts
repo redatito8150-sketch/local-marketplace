@@ -17,23 +17,34 @@ test("warehouse data exposes formal documents, every lifecycle state, exact Vari
   assert.match(data, /Promise\.all\(\[\s*emailFor\(t\.requested_by/);
 });
 
-test("Stock requests is a searchable, paginated operational queue with stable global summary actions", () => {
+test("Stock requests is a compact searchable queue with inline status, brand and date filters", () => {
   const page = read("app/admin/warehouse/page.tsx");
-  assert.match(page, /Document, brand, product or SKU/);
+  const filters = read("components/admin/warehouse/WarehouseQueueFilters.tsx");
+  const dateRange = read("components/brand-portal/DateRangePicker.tsx");
+  assert.match(filters, /Search document, brand, product or SKU/);
+  assert.match(filters, /Requested date range/);
+  assert.match(filters, /compact/);
+  assert.match(filters, /All brands/);
+  assert.match(filters, /value: "open", label: "Requested"/);
+  assert.match(filters, /value: "action_required", label: "Needs review"/);
+  assert.match(filters, /value: "received", label: "Received"/);
+  assert.match(dateRange, /compact\?: boolean/);
+  assert.match(dateRange, /compact && \(from \|\| to\).*Clear/);
   assert.match(page, /Needs review/);
-  assert.match(page, /All open stages/);
-  assert.match(page, /Open discrepancies/);
-  assert.match(page, /Resolved discrepancies/);
-  assert.match(page, /Requested from/);
-  assert.match(page, /Requested to/);
+  assert.match(page, /Document \/ brand/);
+  assert.match(page, /Created/);
+  assert.match(page, /Updated/);
+  assert.match(page, /railClass/);
+  assert.match(page, /statusLabel/);
+  assert.match(page, /const issuePriority = Number\(b\.items\.some\(hasUnresolvedQuarantine\)\) - Number\(a\.items\.some\(hasUnresolvedQuarantine\)\)/);
+  assert.doesNotMatch(page, /SummaryLink/);
+  assert.doesNotMatch(page, /WarehouseFilters/);
   assert.match(page, /const PAGE_SIZE = 12/);
   assert.match(page, /Warehouse document pages/);
   assert.match(page, /transfer\.documentNumber/);
   assert.match(page, /BrandMark/);
-  assert.match(page, /allTransfers\.filter\(\(transfer\) => ACTION_REQUIRED_WAREHOUSE_STATUSES/);
-  assert.equal((page.match(/suppressHydrationWarning/g) ?? []).length, 9);
-  assert.match(page, /<input suppressHydrationWarning name="q"/);
-  assert.match(page, /<select suppressHydrationWarning name="status"/);
+  assert.match(page, /ACTION_REQUIRED_WAREHOUSE_STATUSES\.has\(transfer\.status\) && !hasOpenDiscrepancy/);
+  assert.doesNotMatch(page, /suppressHydrationWarning/);
 });
 
 test("warehouse details show one combined document history, printing, partial receipt, and discrepancy resolution", () => {

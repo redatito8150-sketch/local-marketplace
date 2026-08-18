@@ -1,43 +1,56 @@
-**Comparison target**
+# Stock requests redesign — design QA
 
-- Source visual truth: `C:\Users\pc\AppData\Local\Temp\codex-clipboard-b87a4c3f-54f2-42dd-8bd6-c3e7ceb77bc8.png`.
-- Implementation screenshot: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\warehouse-document-lines-totals-in-header.png`.
-- Route: `http://localhost:3000/admin/warehouse/e9f8da15-efc1-48b8-9106-850494e2f2bb`.
-- State: authenticated admin, open `STN-000008`, 6 Variants, 31 requested units, 0 accepted units.
-- Source pixels: 1557 x 160. Implementation pixels: browser full-page capture at device scale 1.
+- Source visual truth: `C:\Users\pc\.codex\generated_images\01a0032c-1c17-7022-b30e-2582ba8cb71c\exec-c5f61ebe-b48c-47c7-9233-343be7702364.png`
+- Rendered implementation: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\stock-requests-redesign-implementation.png`
+- Combined comparison: `C:\Users\pc\.codex\visualizations\2026\08\15\01a0032c-1c17-7022-b30e-2582ba8cb71c\stock-requests-redesign-comparison.png`
+- Browser/CSS viewport: 1440 × 1024, desktop, device scale factor 1
+- Source pixels: 1486 × 1058
+- Implementation capture: 1425 × 1025 (browser screenshot excludes the vertical scrollbar width)
+- Comparison normalization: both captures scaled to 1440 px wide; source became 1440 × 1025 and implementation became 1440 × 1036.
+- State: authenticated Admin, `/admin/warehouse`, all statuses, all brands, no date range, empty search.
 
-**Findings**
+## Full-view comparison evidence
 
-- No remaining P0, P1, or P2 issue was visible in the updated Document lines header.
-- The four-card facts strip was removed from Document history, leaving only the chronological activity.
-- `6 variants · 31 units` and `0 accepted so far` now appear at the upper-right of Document lines.
-- Ledger is absent in the open request state and remains present in received, partially received, and rejected final states.
+The combined comparison shows the same compact hierarchy as the selected mockup: workspace navigation, inline title counters, a toolbar attached to the queue, four essential filters, one merged Status column, permanent Created/Updated timestamps, colored state rails, dense rows, and no per-row Resolve action.
 
-**Required fidelity surfaces**
+The implementation intentionally retains the product's existing Admin workspace tab treatment and the live database's true document statuses. These are product-system constraints rather than design drift.
 
-- Fonts and typography: existing admin type family and weights retained; the summary uses compact 11px/9.5px hierarchy.
-- Spacing and layout rhythm: summary aligns to the right edge of the Document lines header and wraps below the title on narrow widths.
-- Colors and visual tokens: existing warm neutral and coral admin tokens are unchanged.
-- Image quality and assets: real Variant images remain unchanged; no new raster or generated assets were required.
-- Copy and content: the exact Variant/unit and accepted totals are preserved, while the unwanted fact labels are removed.
+## Focused region comparison evidence
 
-**Interaction evidence**
+A separate crop was not required because the toolbar and all six queue rows remain legible at the normalized 1440 px comparison size. The browser DOM was also inspected to confirm exact labels, Created/Updated dates, row links, pressed filter state, and accessible control names.
 
-- Open document DOM: one Document lines workspace, 6/31 totals in its header, no Ledger links, direct quantity inputs, and `Review receipt · 0 variants` disabled until a line is edited.
-- Received document DOM: totals remain in Document lines, the history fact strip stays absent, and Ledger links are visible.
-- TypeScript, targeted ESLint, 22 warehouse/inventory tests, and `git diff --check` passed.
-- The full suite reached 966 passing tests before one external Supabase Auth request returned a transient 502; the affected 8-test file passed completely on immediate retry.
+## Required fidelity surfaces
 
-**Comparison limitation**
+- Fonts and typography: existing Admin font stack and weights retained; title, counters, column labels, status labels, and dates match the selected compact hierarchy.
+- Spacing and layout rhythm: queue begins immediately after the compact title; toolbar is attached to the table; row density and column alignment match the target without large summary cards.
+- Colors and visual tokens: existing warm Admin surfaces and `#C85956` accent retained. Status rails and text use semantic red, amber, green, blue, violet, and neutral tones.
+- Image quality and asset fidelity: real brand logos continue through `BrandMark`; Lucide icons are used for search, calendar, statuses, and row affordances. No placeholder or handcrafted icon assets were introduced.
+- Copy and content: search, status filters, brand filter, document/brand identity, requested variants/units, merged status/issues, and Created/Updated timestamps match the approved requirements.
 
-- Source and implementation were each opened and inspected, but the in-app browser previously rejected the local combined comparison canvas under its security policy. No alternate-browser or security-policy workaround was used.
+## Interaction verification
 
-**Implementation checklist**
+- Search by `STN-000008` returns exactly one document.
+- Needs review returns the two unresolved documents.
+- Brand selection narrows the queue correctly.
+- The compact calendar opens the shared Brand Portal date-range dialog.
+- Row links remain the single document-opening action.
+- Browser console: no warnings or errors.
 
-- [x] Remove the document fact strip from Document history.
-- [x] Move Variant/unit and accepted totals into Document lines.
-- [x] Hide Ledger before a final receipt decision.
-- [x] Keep Ledger available for received, partially received, and rejected documents.
-- [x] Verify both open and completed document states.
+## Comparison history
 
-final result: blocked
+### Pass 1
+
+- P2: unresolved documents were mixed into strict newest-first order, so one problem document appeared below completed documents.
+- Fix: default queue sorting now prioritizes unresolved documents, then preserves newest-first ordering within each group.
+
+### Pass 2
+
+- Post-fix evidence: the combined comparison shows both unresolved rows first, followed by received rows, matching the target's operational hierarchy.
+- No remaining P0, P1, or P2 findings.
+
+## Follow-up polish
+
+- P3: the implementation keeps the existing Admin tab selection block instead of the mockup's thin underline so Inventory pages remain visually consistent.
+- P3: real database timestamps and states differ from illustrative mockup values by design.
+
+final result: passed
