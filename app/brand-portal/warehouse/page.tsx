@@ -43,7 +43,7 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
       <DashboardPageHeader
         eyebrow="Zakhnook fulfilled"
         title="Shipments & Transfers"
-        description="Follow incoming stock, receiving progress, discrepancies, and returns. Create new restock requests directly from Inventory."
+        description="Track every restock shipment, return and recorded difference in one place. Start new restock requests from Inventory."
       />
       <div className="mt-6">
         <WarehouseExperience

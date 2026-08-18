@@ -42,7 +42,7 @@ test("variant stock is grouped by product, then color, with group selection", ()
   assert.doesNotMatch(inventory, /if \(!open\) onToggleVariants/);
 });
 
-test("large inventories render in bounded pages — Inventory pagination now happens in Postgres (product-group cursor), never by loading every variant and slicing in React; Warehouse's own returns tab still bounds itself client-side over its own already-small active-variant list", () => {
+test("large inventories render in bounded pages — Inventory pagination happens in Postgres and the return drawer paginates product groups", () => {
   const page = read("app/brand-portal/stock/page.tsx");
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
   const dataLayer = read("lib/data/brandPortal.ts");
@@ -57,18 +57,22 @@ test("large inventories render in bounded pages — Inventory pagination now hap
   assert.match(dataLayer, /export async function getInventoryPageForBrand/);
   assert.match(dataLayer, /brand_portal_inventory_page/);
 
-  // Warehouse's Returns tab is a separate, smaller concern (not the grouped
-  // Inventory page) — its own bounded client list is unchanged.
-  assert.match(warehouse, /const PAGE_SIZE = 12/);
+  // The return drawer keeps its already-small active catalog bounded and does
+  // not split the primary Product -> Color -> Size hierarchy into tabs.
+  assert.match(warehouse, /const RETURN_PRODUCT_PAGE_SIZE = 8/);
   assert.match(warehouse, /useDeferredValue/);
-  assert.match(warehouse, /visibleVariants = filteredVariants\.slice/);
+  assert.match(warehouse, /visibleGroups = groups\.slice/);
+  assert.match(warehouse, /function buildReturnGroups/);
 });
 
-test("Warehouse is tracking and returns only; the editable held-stock prerequisite is gone", () => {
+test("Warehouse is one document workspace and stock return is a focused drawer action", () => {
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
-  assert.match(warehouse, /Create replenishment requests from Inventory/);
-  assert.match(warehouse, /Restock requests/);
-  assert.match(warehouse, /Request stock back/);
+  assert.match(warehouse, /Restock shipments and stock returns in one record/);
+  assert.match(warehouse, /Request stock return/);
+  assert.match(warehouse, /role="dialog"/);
+  assert.match(warehouse, /variant\.optionLabel\.split\(" \/ "\)/);
+  assert.match(warehouse, /product\.colors\.entries\(\)/);
+  assert.doesNotMatch(warehouse, /WorkspaceView|Warehouse views|view === "requests"|view === "history"/);
   assert.doesNotMatch(warehouse, /Held by your brand/);
   assert.doesNotMatch(warehouse, /Confirm held quantities/);
 });
@@ -76,6 +80,6 @@ test("Warehouse is tracking and returns only; the editable held-stock prerequisi
 test("Warehouse understands every document lifecycle status", () => {
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
   for (const status of ["draft", "pending", "submitted", "approved", "in_transit", "receiving", "partially_received", "received", "rejected", "cancelled"]) {
-    assert.match(warehouse, new RegExp(`${status}:`));
+    assert.match(warehouse, new RegExp(`"${status}"`));
   }
 });
