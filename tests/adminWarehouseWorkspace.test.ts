@@ -58,6 +58,7 @@ test("Stock requests is a compact searchable queue with inline status, brand and
 
 test("warehouse details show one combined document history, printing, partial receipt, and discrepancy resolution", () => {
   const page = read("app/admin/warehouse/[id]/page.tsx");
+  const documentHeader = read("components/warehouse/WarehouseDocumentHeader.tsx");
   const history = read("components/warehouse/WarehouseDocumentHistory.tsx");
   const receive = read("components/admin/warehouse/TransferReceiveForm.tsx");
   const resolution = read("components/admin/warehouse/QuarantineResolutionForm.tsx");
@@ -76,12 +77,14 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(history, /transfer\.status === "received" \? "Accepted"/);
   assert.match(history, /activity\.sort/);
   assert.doesNotMatch(page, /AdminWorkspaceNav/);
-  assert.match(page, /All requests[\s\S]*?<header className="mb-4 rounded-\[22px\] border border-\[#e6ded7\] bg-white/);
-  assert.match(page, /<div className="flex flex-col gap-4 lg:flex-row lg:items-center">[\s\S]*?<BrandMark/);
-  assert.doesNotMatch(page, /All requests<\/Link>\s*<BrandMark/);
+  assert.match(page, /<WarehouseDocumentHeader[^>]*backLabel="All requests"/);
+  assert.match(documentHeader, /<BrandMark/);
+  assert.match(documentHeader, /border border-\[#e6ded7\] bg-white/);
+  assert.match(documentHeader, />Corrected<\/span>/);
   assert.doesNotMatch(page, />Open brand</);
   assert.match(page, /getAuditLogsForEntity\("warehouse_transfer"/);
   assert.match(page, /PrintWarehouseDocumentButton/);
+  assert.match(page, /WarehouseReceiptHistory/);
   assert.doesNotMatch(page, /WarehouseDocumentActions/);
   assert.doesNotMatch(page, /DocumentItems/);
   assert.match(receive, /QuarantineResolutionForm/);

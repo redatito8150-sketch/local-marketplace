@@ -496,15 +496,22 @@ export default function WarehouseCorrectionWorkspace({
             : receiptLine?.unidentifiedSku
               ? `Unidentified · ${receiptLine.unidentifiedSku}`
               : null;
+          const damagedQuantity = receiptLine?.actualDamagedQty ?? item.damagedQty ?? 0;
+          const missingQuantity = receiptLine?.expectedMissingQty ?? item.missingQty ?? 0;
+          const readOnlyIssueSummary = [
+            recordedVariantDiffers || receiptLine?.unidentifiedSku ? "Different Variant recorded" : null,
+            damagedQuantity > 0 ? `${formatCount(damagedQuantity)} damaged` : null,
+            missingQuantity > 0 ? `${formatCount(missingQuantity)} missing` : null,
+          ].filter((value): value is string => Boolean(value));
           return (
             <article key={item.id} className={`px-5 py-4 ${editingItemId === item.id ? "bg-[#f2ece6]" : ""}`}>
               <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
-                <div className="min-w-0 flex-1"><VariantIdentity image={item.productImage} productName={item.productName} label={`${item.productName}${item.optionLabel ? ` — ${item.optionLabel}` : ""}`} sku={item.sku} />{recordedVariantDiffers || receiptLine?.unidentifiedSku ? <p className="mt-1.5 w-fit rounded-lg bg-violet-50 px-2 py-1 text-[8.5px] font-bold text-violet-800">Recorded receipt: {recordedVariantLabel}</p> : null}</div>
+                <div className="min-w-0 flex-1"><VariantIdentity image={item.productImage} productName={item.productName} label={`${item.productName}${item.optionLabel ? ` — ${item.optionLabel}` : ""}`} sku={item.sku} />{recordedVariantDiffers || receiptLine?.unidentifiedSku ? <p className="mt-1.5 w-fit rounded-lg bg-violet-50 px-2 py-1 text-[8.5px] font-bold text-violet-800">Recorded receipt: {recordedVariantLabel}</p> : null}{readOnly && readOnlyIssueSummary.length ? <p className="mt-1.5 w-fit rounded-lg bg-amber-50 px-2 py-1 text-[8.5px] font-bold text-amber-900">Receipt issue · {readOnlyIssueSummary.join(" · ")}</p> : null}</div>
                 <div className="flex flex-wrap items-end gap-2 xl:justify-end">
                   <StaticMetric label="Requested" value={item.requestedQty} />
                   <StaticMetric label="Received" value={receiptLine?.actualGoodQty ?? item.receivedOkQty ?? 0} />
-                  <StaticMetric label="Damaged" value={receiptLine?.actualDamagedQty ?? item.damagedQty ?? 0} warning={(receiptLine?.actualDamagedQty ?? item.damagedQty ?? 0) > 0} />
-                  <StaticMetric label="Missing" value={receiptLine?.expectedMissingQty ?? item.missingQty ?? 0} warning={(receiptLine?.expectedMissingQty ?? item.missingQty ?? 0) > 0} />
+                  <StaticMetric label="Damaged" value={damagedQuantity} warning={damagedQuantity > 0} />
+                  <StaticMetric label="Missing" value={missingQuantity} warning={missingQuantity > 0} />
                   {!readOnly ? <button type="button" onClick={() => editingItemId === item.id ? setEditingItemId(null) : startIssue(item)} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#f8f4f0] px-3 text-[9.5px] font-bold text-[#62564d] transition hover:bg-[#f4dfdc] hover:text-[#9f3f3d]"><CircleAlert className="h-3.5 w-3.5" />Report issue<ChevronDown className={`h-3 w-3 transition-transform ${editingItemId === item.id ? "rotate-180" : ""}`} /></button> : null}
                   <Link href={readOnly ? `/brand-portal/stock?view=activity&brand=${encodeURIComponent(brandSlug)}&q=${encodeURIComponent(item.sku)}` : `/admin/inventory?view=activity&brand=${encodeURIComponent(brandSlug)}&variantId=${encodeURIComponent(currentVariantId)}`} className="inline-flex h-10 items-center gap-1 rounded-xl bg-[#e2dcd4] px-3 text-[9.5px] font-bold text-[#5b5049] hover:bg-[#efe9e4] hover:text-[#302924]"><Activity className="h-3 w-3" />Ledger</Link>
                 </div>

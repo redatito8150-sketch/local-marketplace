@@ -7,6 +7,8 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 test("Brand Portal exposes the same warehouse correction record as a read-only document", () => {
   const listPage = read("app/brand-portal/warehouse/page.tsx");
   const detailPage = read("app/brand-portal/warehouse/[id]/page.tsx");
+  const adminDetailPage = read("app/admin/warehouse/[id]/page.tsx");
+  const documentHeader = read("components/warehouse/WarehouseDocumentHeader.tsx");
   const experience = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
   const workspace = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
 
@@ -15,7 +17,13 @@ test("Brand Portal exposes the same warehouse correction record as a read-only d
   assert.match(experience, /\/brand-portal\/warehouse\/\$\{transfer\.id\}/);
   assert.match(detailPage, /transfer\.brandId !== owner\.brandId/);
   assert.match(detailPage, /<WarehouseCorrectionWorkspace[\s\S]*?readOnly/);
+  assert.match(detailPage, /<WarehouseDocumentHeader/);
+  assert.match(adminDetailPage, /<WarehouseDocumentHeader/);
+  assert.match(detailPage, /PrintWarehouseDocumentButton/);
+  assert.match(detailPage, /WarehouseReceiptHistory/);
+  assert.match(documentHeader, /reconciliationStatus === "corrected"/);
   assert.match(detailPage, /<WarehouseDocumentHistory/);
+  assert.match(workspace, /Receipt issue ·/);
   assert.match(workspace, /!readOnly && correction\.status === "pending_approval"/);
   assert.match(workspace, /!readOnly && canReverse/);
 });

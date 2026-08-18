@@ -108,6 +108,7 @@ test("admin UX records actual Variants and never edits a closed receipt in place
   const receive = read("components/admin/warehouse/TransferReceiveForm.tsx");
   const correction = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
   const detail = read("app/admin/warehouse/[id]/page.tsx");
+  const receiptHistory = read("components/warehouse/WarehouseReceiptHistory.tsx");
   const receiveRoute = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
   const approveRoute = read("app/api/admin/warehouse/corrections/[id]/approve/route.ts");
 
@@ -119,7 +120,8 @@ test("admin UX records actual Variants and never edits a closed receipt in place
   assert.match(receive, /Idempotency-Key/);
   assert.match(correction, /Original document: unchanged/);
   assert.match(correction, /Full Admin corrections apply immediately/);
-  assert.match(detail, /Physical receipts/);
+  assert.match(detail, /WarehouseReceiptHistory/);
+  assert.match(receiptHistory, /Physical receipts/);
   assert.match(detail, /WarehouseCorrectionWorkspace/);
   assert.match(receiveRoute, /receive_warehouse_document_v2/);
   assert.match(approveRoute, /requireAdminUser/);
