@@ -55,3 +55,44 @@ A separate crop was not required because the toolbar and all six queue rows rema
 - P3: real database timestamps and states differ from illustrative mockup values by design.
 
 final result: passed
+
+---
+
+# Warehouse correction history — design QA
+
+## Evidence
+
+- Source reference: `C:\Users\pc\AppData\Local\Temp\codex-clipboard-be32f4a7-62f1-4b54-b6f9-be5e042e77f3.png`
+- Desktop implementation: `design-qa-artifacts/warehouse-corrections-expanded.png`
+- Collapsed implementation: `design-qa-artifacts/warehouse-corrections-collapsed.png`
+- Mobile implementation: `design-qa-artifacts/warehouse-corrections-mobile.png`
+- Side-by-side comparison: `design-qa-artifacts/warehouse-corrections-comparison.png`
+
+## Environment and state
+
+- Route: `/admin/warehouse/88f37b84-fd10-45be-83c4-906c598bfd59`
+- Record: `STN-000010`, received and corrected
+- Desktop viewport: the Codex in-app browser default (1279 px wide screenshot)
+- Responsive check: 390 × 844 px
+- Compared states: old expanded correction-document cards; new collapsed Variant summaries; new expanded inline Variant timeline
+
+## Checks performed
+
+- Confirmed every persisted correction is grouped beneath its affected Variant.
+- Expanded `Corrected · 1 change` and verified the CRN number, status, timestamp, stock impact, explanation, and verification note.
+- Confirmed the large standalone `Correction documents` section no longer renders.
+- Confirmed Document history still contains the document-level audit and actor identity.
+- Confirmed the Brand Portal renders the same correction history read-only, without Admin correction controls.
+- Confirmed the layout remains readable at 390 px and the primary document-line controls wrap without horizontal overflow.
+- Confirmed no browser console errors during Admin and Brand Portal checks.
+
+## Findings and resolution history
+
+1. The old layout repeated the CRN card, correction type, quantity, Variant identity, and note in large nested panels. It also separated the correction from the Variant it affected.
+2. The replacement uses one compact disclosure per affected Variant. The closed state adds only one slim row; the open state shows a chronological mini-timeline with no repeated product card.
+3. Document-wide actions and actor identity remain in Document history, preventing the inline Variant view from duplicating audit information.
+4. Pending approval and reversal controls remain available only once per correction in the Admin view; the shared Brand Portal view stays read-only.
+
+## Final result
+
+**Passed.** The new hierarchy is materially shorter, preserves operational and audit information, matches the existing warehouse visual language, and works in both Admin and Brand Portal across desktop and mobile.

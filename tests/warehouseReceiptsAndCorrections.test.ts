@@ -73,7 +73,7 @@ test("correction review supports documented rejection and safe append-only rever
   assert.match(reverseRoute, /request_warehouse_correction_reversal/);
   assert.match(reverseRoute, /Idempotency-Key/);
   assert.match(correction, /Confirm rejection/);
-  assert.match(correction, /does not erase this document/);
+  assert.match(correction, /keeps the original entry and creates a separately approved counter-entry/);
 });
 
 test("discrepancy settlement is quantity-bounded and keeps missing separate from damaged", () => {

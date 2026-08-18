@@ -24,8 +24,8 @@ test("Brand Portal exposes the same warehouse correction record as a read-only d
   assert.match(documentHeader, /reconciliationStatus === "corrected"/);
   assert.match(detailPage, /<WarehouseDocumentHistory/);
   assert.match(workspace, /Receipt issue ·/);
-  assert.match(workspace, /!readOnly && correction\.status === "pending_approval"/);
-  assert.match(workspace, /!readOnly && canReverse/);
+  assert.match(workspace, /!readOnly && ownsDocumentControls && correction\.status === "pending_approval"/);
+  assert.match(workspace, /!readOnly && ownsDocumentControls && canReverse/);
 });
 
 test("only the full Admin rank receives immediate atomic correction posting", () => {
@@ -73,8 +73,11 @@ test("correction details are shared while actor identity remains in Document his
   const data = read("lib/data/warehouse.ts");
 
   assert.match(workspace, /describeWarehouseCorrectionLine\(line, variantLabel\)/);
-  assert.match(workspace, /function CorrectionLineCard/);
-  assert.match(workspace, /image=\{variant\?\.productImage \?\? null\}/);
+  assert.match(workspace, /function correctionBelongsToItem/);
+  assert.match(workspace, /rowCorrectionGroups/);
+  assert.match(workspace, /Corrected · \{formatCount\(rowCorrectionCount\)\}/);
+  assert.match(workspace, /formatDateTime\(correction\.postedAt/);
+  assert.doesNotMatch(workspace, /Correction documents ·/);
   assert.match(workspace, /No stock movement/);
   assert.match(workspace, /<strong className="font-extrabold text-\[#62564d\]">Verified:<\/strong>/);
   assert.doesNotMatch(workspace, /requestedByLabel|approvedByLabel|rejectedByLabel/);
