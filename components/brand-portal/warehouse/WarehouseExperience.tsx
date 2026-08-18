@@ -1,123 +1,215 @@
 "use client";
 
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, PackageCheck, Search, Truck, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardUI";
+import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
+import { OPEN_WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META, warehouseDocumentLabel } from "@/components/admin/warehouse/warehouseUi";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
 
-type WorkspaceView = "requests" | "returns" | "history";
-type StatusMeta = { label: string; className: string; icon: React.ElementType };
+type DocumentFilter = "all" | "open" | "action_required" | "received";
+type DirectionFilter = "all" | WarehouseTransferRow["direction"];
+type ReturnColorGroup = { label: string; variants: Array<{ variant: WarehouseVariantRow; size: string }> };
+type ReturnProductGroup = { productId: string; productName: string; colors: ReturnColorGroup[] };
 
-const OPEN_STATUSES = new Set<WarehouseTransferRow["status"]>(["draft", "pending", "submitted", "approved", "in_transit", "receiving", "partially_received"]);
-const PAGE_SIZE = 12;
-const STATUS_BADGE: Record<WarehouseTransferRow["status"], StatusMeta> = {
-  draft: { label: "Draft", className: "bg-stone-100 text-stone-700", icon: Clock3 },
-  pending: { label: "Pending review", className: "bg-amber-50 text-amber-800", icon: Clock3 },
-  submitted: { label: "Submitted", className: "bg-amber-50 text-amber-800", icon: Clock3 },
-  approved: { label: "Approved", className: "bg-sky-50 text-sky-800", icon: CheckCircle2 },
-  in_transit: { label: "In transit", className: "bg-sky-50 text-sky-800", icon: Truck },
-  receiving: { label: "Receiving", className: "bg-violet-50 text-violet-800", icon: PackageCheck },
-  partially_received: { label: "Partially received", className: "bg-violet-50 text-violet-800", icon: PackageCheck },
-  received: { label: "Received", className: "bg-emerald-50 text-emerald-800", icon: CheckCircle2 },
-  rejected: { label: "Rejected", className: "bg-red-50 text-red-700", icon: XCircle },
-  cancelled: { label: "Cancelled", className: "bg-stone-100 text-stone-600", icon: XCircle },
-};
+const DOCUMENT_PAGE_SIZE = 12;
+const RETURN_PRODUCT_PAGE_SIZE = 8;
 
 function withBrand(path: string, brandParam?: string): string {
   return brandParam ? `${path}?brand=${encodeURIComponent(brandParam)}` : path;
 }
 
-function Pager({ page, count, onPage }: { page: number; count: number; onPage: (page: number) => void }) {
-  const pages = Math.max(1, Math.ceil(count / PAGE_SIZE));
+function hasOpenDocumentIssue(transfer: WarehouseTransferRow): boolean {
+  return transfer.reconciliationStatus === "open_discrepancy" || transfer.reconciliationStatus === "partially_settled";
+}
+
+function documentNumber(transfer: WarehouseTransferRow): string {
+  return transfer.documentNumber ?? `#${transfer.id.slice(0, 8).toUpperCase()}`;
+}
+
+function Pager({ page, count, pageSize, onPage }: { page: number; count: number; pageSize: number; onPage: (page: number) => void }) {
+  const pages = Math.max(1, Math.ceil(count / pageSize));
   if (pages <= 1) return null;
-  return <nav aria-label="List pages" className="flex items-center justify-between border-t border-[#eee7e1] px-4 py-3 sm:px-5">
+  return <nav aria-label="List pages" className="flex items-center justify-between border-t border-[#e3dbd4] px-4 py-3 sm:px-5">
     <p className="text-[10px] text-[#91837a]">Page <strong className="tabular-nums text-[#51473f]">{page}</strong> of {pages}</p>
-    <div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className="h-8 rounded-lg border border-[#e4d9d1] px-3 text-[10px] font-bold text-[#5d5148] hover:border-[#C85956]/30 disabled:cursor-not-allowed disabled:opacity-35">Previous</button><button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)} className="h-8 rounded-lg bg-[#242424] px-3 text-[10px] font-bold text-white hover:bg-[#3a332e] disabled:cursor-not-allowed disabled:opacity-35">Next</button></div>
+    <div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)} className="h-8 rounded-lg bg-[#f4efea] px-3 text-[10px] font-bold text-[#5d5148] transition hover:bg-[#ebe3dc] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35">Previous</button><button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)} className="h-8 rounded-lg bg-[#242424] px-3 text-[10px] font-bold text-white transition hover:bg-[#3a332e] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-35">Next</button></div>
   </nav>;
 }
 
-function TransferList({ transfers, emptyTitle, emptyDescription }: { transfers: WarehouseTransferRow[]; emptyTitle: string; emptyDescription: string }) {
+function DocumentList({ transfers, brandParam }: { transfers: WarehouseTransferRow[]; brandParam?: string }) {
   const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(transfers.length / PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(transfers.length / DOCUMENT_PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const visible = transfers.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  if (!transfers.length) return <DashboardEmptyState title={emptyTitle} description={emptyDescription} />;
+  const visible = transfers.slice((safePage - 1) * DOCUMENT_PAGE_SIZE, safePage * DOCUMENT_PAGE_SIZE);
 
-  return <><div className="divide-y divide-[#eee7e1]">{visible.map((transfer) => {
-    const meta = STATUS_BADGE[transfer.status];
-    const Icon = meta.icon;
+  if (!transfers.length) return <DashboardEmptyState title="No matching documents" description="Try another status, direction or search term." />;
+
+  return <>
+    <div className="hidden grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] items-center gap-4 border-b border-[#e4ddd7] bg-[#fcfaf8] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.09em] text-[#756960] lg:grid">
+      <span>Document</span><span>Requested<small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">variants / units</small></span><span>Status</span><span>Dates</span><span />
+    </div>
+    <div className="divide-y divide-[#e8e1db]">{visible.map((transfer) => {
+    const meta = WAREHOUSE_STATUS_META[transfer.status];
+    const needsReview = hasOpenDocumentIssue(transfer);
+    const tone = needsReview ? "red" : meta.tone;
+    const StatusIcon = needsReview ? AlertTriangle : transfer.direction === "to_brand" && OPEN_WAREHOUSE_STATUSES.has(transfer.status) ? RotateCcw : meta.icon;
+    const statusLabel = needsReview ? "Needs review" : transfer.direction === "to_brand" && OPEN_WAREHOUSE_STATUSES.has(transfer.status) ? "Return requested" : transfer.direction === "to_brand" && transfer.status === "received" ? "Returned" : meta.shortLabel;
+    const railClass = tone === "amber" ? "bg-amber-400" : tone === "emerald" ? "bg-emerald-500" : tone === "red" ? "bg-red-500" : tone === "blue" ? "bg-sky-500" : tone === "violet" ? "bg-violet-500" : "bg-stone-400";
+    const statusClass = tone === "amber" ? "text-amber-800" : tone === "emerald" ? "text-emerald-800" : tone === "red" ? "text-red-700" : tone === "blue" ? "text-sky-800" : tone === "violet" ? "text-violet-800" : "text-stone-600";
     const requested = transfer.items.reduce((sum, item) => sum + item.requestedQty, 0);
-    const received = transfer.items.reduce((sum, item) => sum + (item.receivedOkQty ?? 0), 0);
-    const discrepancy = transfer.items.reduce((sum, item) => sum + (item.damagedQty ?? 0) + (item.missingQty ?? 0), 0);
-    return <article key={transfer.id} className="px-4 py-4 sm:px-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="text-[11.5px] font-extrabold text-[#302924]">#{transfer.id.slice(0, 8).toUpperCase()}</span><span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[9.5px] font-bold ${meta.className}`}><Icon aria-hidden="true" className="h-3 w-3" />{meta.label}</span>{discrepancy > 0 && <span className="inline-flex items-center gap-1 text-[9.5px] font-bold text-amber-800"><AlertTriangle aria-hidden="true" className="h-3 w-3" />{discrepancy} need review</span>}</div><p className="mt-1.5 text-[10px] text-[#91837a]">{transfer.direction === "to_local" ? "Restock to Zakhnook" : "Return to your brand"} · {formatDateTime(transfer.requestedAt)}</p></div>
-        <div className="grid grid-cols-3 divide-x divide-[#eee7e1] rounded-xl bg-[#faf7f4] px-2 py-2.5 text-center lg:min-w-[300px]"><div><p className="text-[14px] font-extrabold tabular-nums text-[#242424]">{transfer.items.length}</p><p className="text-[8.5px] text-[#94867c]">Variants</p></div><div><p className="text-[14px] font-extrabold tabular-nums text-[#242424]">{requested}</p><p className="text-[8.5px] text-[#94867c]">Requested</p></div><div><p className="text-[14px] font-extrabold tabular-nums text-[#242424]">{received}</p><p className="text-[8.5px] text-[#94867c]">Received</p></div></div>
-      </div>
-      <details className="group mt-3"><summary className="w-fit cursor-pointer list-none text-[10px] font-bold text-[#C85956] hover:underline [&::-webkit-details-marker]:hidden">View {transfer.items.length} {transfer.items.length === 1 ? "variant" : "variants"}</summary><ul className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{transfer.items.map((item) => <li key={item.id} className="rounded-xl bg-[#faf7f4] px-3 py-2.5"><p className="truncate text-[10.5px] font-bold text-[#51473f]">{item.productName}{item.optionLabel ? ` · ${item.optionLabel}` : ""}</p><p className="mt-1 text-[9px] tabular-nums text-[#91837a]">Requested {item.requestedQty}{item.receivedOkQty != null ? ` · Received ${item.receivedOkQty}` : ""}</p></li>)}</ul></details>
-      {transfer.receivingNote && <p className="mt-3 rounded-xl bg-[#faf7f4] px-3 py-2 text-[9.5px] text-[#756960]">Zakhnook note: {transfer.receivingNote}</p>}
-    </article>;
-  })}</div><Pager page={safePage} count={transfers.length} onPage={setPage} /></>;
+    return <Link key={transfer.id} href={withBrand(`/brand-portal/warehouse/${transfer.id}`, brandParam)} aria-label={`Open ${documentNumber(transfer)}`} className="group relative grid gap-3 px-4 py-4 transition-colors hover:bg-[#fdfbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 sm:px-5 lg:grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] lg:items-center lg:gap-4">
+      <span aria-hidden="true" className={`absolute bottom-0 left-0 top-0 w-[3px] ${railClass}`} />
+      <div className="flex min-w-0 items-center gap-3"><BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} /><div className="min-w-0"><p className="truncate text-[12px] font-extrabold text-[#302924]">{documentNumber(transfer)}</p><p className="mt-1 truncate text-[10px] font-medium text-[#81746b]">{warehouseDocumentLabel(transfer.direction)}</p></div></div>
+      <div><p className="text-[12px] font-extrabold tabular-nums text-[#302924]">{formatCount(transfer.items.length)} / {formatCount(requested)}</p><p className="mt-1 text-[9px] text-[#8d8076]">variants / units</p></div>
+      <div className="flex flex-col items-start gap-0.5"><span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>{transfer.status === "received" && transfer.reconciliationStatus === "corrected" ? <span className="pl-5 text-[8.5px] font-bold tracking-[0.02em] text-[#7b6f66]">Corrected</span> : null}</div>
+      <div><p className="text-[10.5px] font-semibold text-[#4f453e]"><span className="font-extrabold">Created</span> {formatDateTime(transfer.requestedAt)}</p><p className="mt-1 text-[9.5px] text-[#8d8076]">Updated {formatDateTime(transfer.updatedAt)}</p></div>
+      <ChevronRight className="h-4 w-4 text-[#a2948a] transition-transform group-hover:translate-x-0.5 group-hover:text-[#C85956]" />
+    </Link>;
+  })}</div>
+    <div className="border-t border-[#e8e1db] px-4 py-3 text-[9.5px] text-[#8d8076] sm:px-5">Showing {formatCount(visible.length)} of {formatCount(transfers.length)} matching documents</div>
+    <Pager page={safePage} count={transfers.length} pageSize={DOCUMENT_PAGE_SIZE} onPage={setPage} />
+  </>;
 }
 
-export default function WarehouseExperience({ variants, transfers, brandParam }: { variants: WarehouseVariantRow[]; transfers: WarehouseTransferRow[]; brandParam?: string }) {
+function buildReturnGroups(variants: WarehouseVariantRow[], query: string): ReturnProductGroup[] {
+  const products = new Map<string, { productName: string; colors: Map<string, Array<{ variant: WarehouseVariantRow; size: string }>> }>();
+  for (const variant of variants) {
+    if (Math.max(0, variant.quantity - variant.pendingReturnQty) <= 0) continue;
+    if (query && !`${variant.productName} ${variant.optionLabel} ${variant.sku}`.toLocaleLowerCase().includes(query)) continue;
+    const [color = "Default", ...sizeParts] = variant.optionLabel.split(" / ");
+    const product = products.get(variant.productId) ?? { productName: variant.productName, colors: new Map() };
+    const colorVariants = product.colors.get(color || "Default") ?? [];
+    colorVariants.push({ variant, size: sizeParts.join(" / ") || "One size" });
+    product.colors.set(color || "Default", colorVariants);
+    products.set(variant.productId, product);
+  }
+  return [...products.entries()].map(([productId, product]) => ({ productId, productName: product.productName, colors: [...product.colors.entries()].map(([label, colorVariants]) => ({ label, variants: colorVariants })) }));
+}
+
+function ReturnRequestDrawer({ open, onClose, onSubmitted, variants, brandParam }: { open: boolean; onClose: () => void; onSubmitted: () => void; variants: WarehouseVariantRow[]; brandParam?: string }) {
   const router = useRouter();
-  const [view, setView] = useState<WorkspaceView>("requests");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
-  const [returnPage, setReturnPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const returnOperationKey = useRef(crypto.randomUUID());
+  const groups = useMemo(() => buildReturnGroups(variants, deferredQuery), [deferredQuery, variants]);
+  const safePage = Math.min(page, Math.max(1, Math.ceil(groups.length / RETURN_PRODUCT_PAGE_SIZE)));
+  const visibleGroups = groups.slice((safePage - 1) * RETURN_PRODUCT_PAGE_SIZE, safePage * RETURN_PRODUCT_PAGE_SIZE);
+  const selectedUnits = [...selected].reduce((sum, id) => sum + (quantities[id] ?? 0), 0);
 
-  const inbound = useMemo(() => transfers.filter((item) => item.direction === "to_local"), [transfers]);
-  const filteredVariants = useMemo(() => variants.filter((variant) => !deferredQuery || `${variant.productName} ${variant.optionLabel} ${variant.sku}`.toLocaleLowerCase().includes(deferredQuery)), [deferredQuery, variants]);
-  const safeReturnPage = Math.min(returnPage, Math.max(1, Math.ceil(filteredVariants.length / PAGE_SIZE)));
-  const visibleVariants = filteredVariants.slice((safeReturnPage - 1) * PAGE_SIZE, safeReturnPage * PAGE_SIZE);
-  const availableUnits = variants.reduce((sum, item) => sum + item.quantity, 0);
-  const incomingUnits = variants.reduce((sum, item) => sum + item.pendingRequestedQty, 0);
-  const openRequests = inbound.filter((item) => OPEN_STATUSES.has(item.status)).length;
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) { setError(""); onClose(); } };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [busy, onClose, open]);
 
   function toggleVariant(id: string, checked: boolean) {
     setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; });
   }
 
+  function closeDrawer() {
+    if (busy) return;
+    setError("");
+    onClose();
+  }
+
   async function submitReturn() {
     const items = [...selected].map((variantId) => ({ variantId, requestedQty: quantities[variantId] ?? 0 })).filter((item) => item.requestedQty > 0);
-    if (!items.length) return setError("Enter a positive quantity for at least one selected variant.");
-    setBusy(true); setError(""); setMessage("");
+    if (!items.length) return setError("Enter a positive quantity for at least one selected Variant.");
+    setBusy(true); setError("");
     try {
       const response = await fetch(withBrand("/api/brand-portal/warehouse/returns", brandParam), { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": returnOperationKey.current }, body: JSON.stringify({ items, note: note.trim() || undefined }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "We couldn't submit this return request.");
-      setSelected(new Set()); setQuantities({}); setNote(""); setMessage("Return request submitted for warehouse review."); returnOperationKey.current = crypto.randomUUID(); router.refresh();
+      setSelected(new Set()); setQuantities({}); setNote(""); setQuery(""); returnOperationKey.current = crypto.randomUUID(); onSubmitted(); onClose(); router.refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "We couldn't submit this return request."); }
     finally { setBusy(false); }
   }
 
-  return <div className="space-y-4">
-    <section aria-label="Warehouse summary" className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white"><div className="grid grid-cols-2 xl:grid-cols-4">{[
-      ["Available at Zakhnook", availableUnits, "Sellable now"], ["Incoming", incomingUnits, "Awaiting receipt"], ["Open requests", openRequests, "Across all stages"], ["Documents", transfers.length, "Complete history"],
-    ].map(([label, value, detail], index) => <div key={String(label)} className={`min-h-[92px] px-4 py-4 xl:px-5 ${index % 2 === 0 ? "border-r" : ""} ${index < 2 ? "border-b xl:border-b-0" : ""} ${index < 3 ? "xl:border-r" : ""} border-[#eee7e1]`}><p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#8d8076]">{label}</p><p className={`mt-1 text-[23px] font-extrabold tabular-nums tracking-[-0.04em] ${index === 1 && Number(value) > 0 ? "text-[#C85956]" : "text-[#242424]"}`}>{value}</p><p className="mt-1 text-[9.5px] text-[#94867c]">{detail}</p></div>)}</div></section>
+  if (!open) return null;
+  return <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby="return-request-title">
+    <button type="button" aria-label="Close return request" onClick={closeDrawer} className="absolute inset-0 bg-[#2b2521]/25 backdrop-blur-[2px]" />
+    <aside className="relative flex h-full w-full max-w-2xl flex-col bg-[#f6f2ed] shadow-[-20px_0_60px_rgba(61,43,31,.16)]">
+      <header className="flex items-start gap-4 border-b border-[#ded5cd] px-5 py-5 sm:px-6"><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-[#eadfda] text-[#C85956]"><ArrowDownToLine className="h-[18px] w-[18px]" /></span><div className="min-w-0 flex-1"><h2 id="return-request-title" className="text-[17px] font-extrabold tracking-[-0.025em] text-[#302924]">Request stock return</h2><p className="mt-1 max-w-lg text-[10.5px] leading-5 text-[#786b62]">Choose sellable units held at Zakhnook. Submitting creates one return document for warehouse review.</p></div><button type="button" onClick={closeDrawer} disabled={busy} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-xl text-[#756960] transition hover:bg-[#e9e1da] active:scale-[0.96] disabled:opacity-40"><X className="h-4 w-4" /></button></header>
+      <div className="border-b border-[#ded5cd] px-5 py-3 sm:px-6"><label className="relative block"><span className="sr-only">Search return inventory</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d9086]" /><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} autoComplete="off" placeholder="Search product, color, size or SKU…" className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-[11px] text-[#403730] outline-none ring-1 ring-[#e6ddd6] transition focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label></div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+        {error ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[10.5px] font-semibold text-red-800">{error}</p> : null}
+        {visibleGroups.length ? <div className="space-y-2">{visibleGroups.map((product) => <details key={product.productId} className="group overflow-hidden rounded-2xl bg-white" open={deferredQuery ? true : undefined}><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden"><span className="min-w-0 flex-1"><span className="block truncate text-[11.5px] font-extrabold text-[#403730]">{product.productName}</span><span className="mt-0.5 block text-[9px] text-[#91837a]">{product.colors.reduce((sum, color) => sum + color.variants.length, 0)} Variants · {product.colors.length} colors</span></span><ChevronDown className="h-3.5 w-3.5 text-[#9b8e84] transition-transform group-open:rotate-180" /></summary><div className="border-t border-[#eee7e1] px-3 py-3">{product.colors.map((color) => <section key={color.label} className="mb-3 last:mb-0"><p className="mb-1.5 px-1 text-[9px] font-bold text-[#756960]">{color.label}</p><div className="space-y-1">{color.variants.map(({ variant, size }) => { const checked = selected.has(variant.variantId); const max = Math.max(0, variant.quantity - variant.pendingReturnQty); return <label key={variant.variantId} className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-3 py-2.5 transition ${checked ? "bg-[#f7ebe8]" : "bg-[#faf7f4] hover:bg-[#f4efea]"}`}><input type="checkbox" checked={checked} onChange={(event) => toggleVariant(variant.variantId, event.target.checked)} className="h-4 w-4 accent-[#C85956]" /><span className="min-w-0"><span className="block truncate text-[10.5px] font-bold text-[#51473f]">{size}</span><code className="mt-0.5 block truncate text-[8.5px] text-[#91837a]">{variant.sku}</code></span><span className="text-right"><span className="block text-[12px] font-extrabold tabular-nums text-[#403730]">{max}</span><span className="block text-[8px] text-[#9a8d83]">available</span></span><input aria-label={`Return quantity for ${variant.sku}`} type="number" inputMode="numeric" min={1} max={max} step={1} disabled={!checked} value={quantities[variant.variantId] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(max, Math.trunc(Number(event.target.value) || 0))) }))} className="h-9 w-20 rounded-lg bg-white px-2 text-center text-[10.5px] font-bold tabular-nums outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30 disabled:bg-[#eee9e4]" placeholder="Qty" /></label>; })}</div></section>)}</div></details>)}</div> : <DashboardEmptyState title="No returnable stock found" description={deferredQuery ? "Try another product, color, size or SKU." : "Only sellable units currently held at Zakhnook can be returned."} />}
+        <Pager page={safePage} count={groups.length} pageSize={RETURN_PRODUCT_PAGE_SIZE} onPage={setPage} />
+      </div>
+      <footer className="border-t border-[#ded5cd] bg-[#eee7e0] px-5 py-4 sm:px-6"><label className="block"><span className="text-[9px] font-bold text-[#756960]">Return note <span className="font-normal text-[#9a8d83]">(optional)</span></span><input value={note} onChange={(event) => setNote(event.target.value)} autoComplete="off" placeholder="Reason or pickup preference…" className="mt-1.5 h-10 w-full rounded-xl bg-white px-3 text-[10.5px] outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label><div className="mt-3 flex items-center justify-between gap-3"><p className="text-[9.5px] text-[#756960]"><strong className="tabular-nums text-[#403730]">{selected.size}</strong> Variants · <strong className="tabular-nums text-[#403730]">{selectedUnits}</strong> units</p><button type="button" onClick={submitReturn} disabled={busy || selectedUnits <= 0} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40">{busy ? <><Loader2 aria-hidden="true" className="mr-2 h-3.5 w-3.5 animate-spin" />Submitting…</> : "Submit return request"}</button></div></footer>
+    </aside>
+  </div>;
+}
 
-    <nav aria-label="Warehouse views" className="flex w-fit items-center gap-1 rounded-xl bg-[#eee7e1] p-1">{(["requests", "returns", "history"] as WorkspaceView[]).map((item) => <button key={item} type="button" aria-pressed={view === item} onClick={() => { setView(item); setError(""); setMessage(""); }} className={`rounded-lg px-4 py-2 text-[11px] font-bold capitalize transition-colors ${view === item ? "bg-white text-[#242424] shadow-[0_1px_4px_rgba(72,50,36,.09)]" : "text-[#776a61] hover:text-[#242424]"}`}>{item}</button>)}</nav>
-    {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[11px] font-semibold text-red-800">{error}</p>}
-    {message && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] font-semibold text-emerald-800">{message}</p>}
+export default function WarehouseExperience({ variants, transfers, brandParam, readOnly = false }: { variants: WarehouseVariantRow[]; transfers: WarehouseTransferRow[]; brandParam?: string; readOnly?: boolean }) {
+  const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("all");
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
+  const [documentQuery, setDocumentQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const closeReturn = useCallback(() => setReturnOpen(false), []);
+  const deferredDocumentQuery = useDeferredValue(documentQuery.trim().toLocaleLowerCase());
+  const issueCount = transfers.filter(hasOpenDocumentIssue).length;
+  const filteredTransfers = useMemo(() => transfers
+    .filter((transfer) => documentFilter === "all" || (documentFilter === "open" && OPEN_WAREHOUSE_STATUSES.has(transfer.status)) || (documentFilter === "received" && transfer.status === "received") || (documentFilter === "action_required" && hasOpenDocumentIssue(transfer)))
+    .filter((transfer) => directionFilter === "all" || transfer.direction === directionFilter)
+    .filter((transfer) => {
+      const requestedAt = new Date(transfer.requestedAt).getTime();
+      if (fromDate && requestedAt < new Date(`${fromDate}T00:00:00`).getTime()) return false;
+      if (toDate && requestedAt > new Date(`${toDate}T23:59:59.999`).getTime()) return false;
+      return true;
+    })
+    .filter((transfer) => !deferredDocumentQuery || `${documentNumber(transfer)} ${transfer.items.map((item) => `${item.productName} ${item.optionLabel} ${item.sku}`).join(" ")}`.toLocaleLowerCase().includes(deferredDocumentQuery))
+    .sort((first, second) => Number(hasOpenDocumentIssue(second)) - Number(hasOpenDocumentIssue(first)) || Date.parse(second.requestedAt) - Date.parse(first.requestedAt)), [deferredDocumentQuery, directionFilter, documentFilter, fromDate, toDate, transfers]);
+  const filtersActive = Boolean(documentQuery || directionFilter !== "all" || documentFilter !== "all" || fromDate || toDate);
+  const statusFilters: Array<{ value: DocumentFilter; label: string }> = [
+    { value: "all", label: "All" },
+    { value: "open", label: "Requested" },
+    { value: "action_required", label: "Needs review" },
+    { value: "received", label: "Received" },
+  ];
 
-    {view === "requests" && <section className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white"><header className="border-b border-[#eee7e1] px-4 py-4 sm:px-5"><p className="text-[11.5px] font-extrabold text-[#302924]">Restock requests</p><p className="mt-1 text-[10px] text-[#8d8076]">Create replenishment requests from Inventory; follow every warehouse stage here.</p></header><TransferList transfers={inbound} emptyTitle="No restock requests yet" emptyDescription="Select variants from Inventory when you are ready to send stock to Zakhnook." /></section>}
+  return <div>
+    <header>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Shipments & Transfers</h1><span className="text-[11px] font-semibold text-[#81746b]">{formatCount(transfers.length)} documents</span></div>
+          <p className="mt-2 max-w-2xl text-[11.5px] leading-5 text-[#756960]">Track restock requests, returns and recorded warehouse corrections for your brand.</p>
+        </div>
+        {!readOnly ? <button type="button" onClick={() => setReturnOpen(true)} className="inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20"><ArrowDownToLine className="h-3.5 w-3.5" />Request stock return</button> : <span className="inline-flex h-9 items-center rounded-xl bg-[#f2ede8] px-3 text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span>}
+      </div>
+    </header>
 
-    {view === "returns" && <section className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white"><header className="flex flex-col gap-3 border-b border-[#eee7e1] px-4 py-4 sm:flex-row sm:items-end sm:justify-between sm:px-5"><div><p className="text-[11.5px] font-extrabold text-[#302924]">Request stock back</p><p className="mt-1 text-[10px] text-[#8d8076]">Choose units currently available at Zakhnook.</p></div><label className="relative block sm:w-72"><span className="sr-only">Search variants</span><Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#a2948a]" /><input value={query} onChange={(event) => { setQuery(event.target.value); setReturnPage(1); }} autoComplete="off" placeholder="Product, variant or SKU…" className="h-10 w-full rounded-xl border border-[#e4d9d1] bg-[#fcfaf8] pl-9 pr-3 text-[11px] outline-none focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8" /></label></header>
-      {visibleVariants.length ? <div className="divide-y divide-[#eee7e1]">{visibleVariants.map((variant) => { const checked = selected.has(variant.variantId); const max = Math.max(0, variant.quantity - variant.pendingReturnQty); return <article key={variant.variantId} className={`flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:px-5 ${checked ? "bg-[#fff8f6]" : ""}`}><div className="flex min-w-0 flex-1 items-center gap-3"><input aria-label={`Select ${variant.sku} for return`} type="checkbox" checked={checked} disabled={max === 0} onChange={(event) => toggleVariant(variant.variantId, event.target.checked)} className="h-4 w-4 accent-[#C85956]" /><div className="min-w-0"><p className="truncate text-[11.5px] font-bold text-[#403730]">{variant.productName}</p><p className="mt-1 truncate text-[9.5px] text-[#91837a]">{variant.optionLabel || "Default variant"} · {variant.sku}</p></div></div><div className="flex items-center justify-between gap-4 sm:justify-end"><div className="text-right"><p className="text-[14px] font-extrabold tabular-nums text-[#242424]">{max}</p><p className="text-[8.5px] text-[#94867c]">Available to return</p></div><label><span className="sr-only">Return quantity for {variant.sku}</span><input type="number" inputMode="numeric" min={1} max={max} step={1} disabled={!checked} value={quantities[variant.variantId] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(max, Math.trunc(Number(event.target.value) || 0))) }))} className="h-9 w-24 rounded-xl border border-[#e4d9d1] px-3 text-[11px] font-bold tabular-nums outline-none focus-visible:border-[#C85956]/50 disabled:bg-[#f7f3ef]" placeholder="Qty" /></label></div></article>; })}</div> : <DashboardEmptyState title="No matching variants" description="Try another product name, option or SKU." />}
-      <Pager page={safeReturnPage} count={filteredVariants.length} onPage={setReturnPage} />
-      {selected.size > 0 && <div className="border-t border-[#e8dfd8] bg-[#fcfaf8] p-4 sm:p-5"><div className="flex flex-col gap-3 sm:flex-row sm:items-end"><label className="min-w-0 flex-1"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Return note <span className="font-medium normal-case tracking-normal">(optional)</span></span><input value={note} onChange={(event) => setNote(event.target.value)} autoComplete="off" placeholder="Reason or pickup preference…" className="mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] bg-white px-3 text-[11px] outline-none focus-visible:border-[#C85956]/50" /></label><button type="button" onClick={submitReturn} disabled={busy} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-50">{busy ? <><Loader2 aria-hidden="true" className="mr-2 h-3.5 w-3.5 animate-spin" />Submitting…</> : `Request return · ${selected.size}`}</button></div></div>}
-    </section>}
-
-    {view === "history" && <section className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white"><header className="border-b border-[#eee7e1] px-4 py-4 sm:px-5"><p className="text-[11.5px] font-extrabold text-[#302924]">Transfer history</p><p className="mt-1 text-[10px] text-[#8d8076]">Every inbound replenishment and outbound return in one audit trail.</p></header><TransferList transfers={transfers} emptyTitle="No warehouse documents yet" emptyDescription="Restock requests and returns will appear here." /></section>}
+    <section className="mt-5 overflow-visible rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
+      <div className="border-b border-[#e4ddd7] px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+          <div className="flex min-w-0 items-center gap-2">
+            <label className="relative min-w-0 flex-1 sm:flex-none"><span className="sr-only">Search documents</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d8f84]" /><input value={documentQuery} onChange={(event) => setDocumentQuery(event.target.value)} autoComplete="off" placeholder="Search document, product or SKU" className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] focus:border-[#C85956]/45 focus:bg-white focus:ring-4 focus:ring-[#C85956]/8 sm:w-[330px]" /></label>
+            <DateRangePicker key={`${fromDate}-${toDate}`} defaultFrom={fromDate} defaultTo={toDate} fromName={null} toName={null} label="Requested date range" compact onRangeChange={({ from, to }) => { setFromDate(from); setToDate(to); }} />
+          </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 xl:pb-0">
+            <div aria-label="Document status" className="flex h-10 flex-none items-center overflow-hidden rounded-xl border border-[#e7ddd5] bg-white">{statusFilters.map((filter) => { const active = documentFilter === filter.value; return <button key={filter.value} type="button" aria-pressed={active} onClick={() => setDocumentFilter(filter.value)} className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}><span>{filter.label}</span>{filter.value === "action_required" && issueCount > 0 ? <span className={`ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-extrabold tabular-nums ${active ? "bg-[#C85956] text-white" : "bg-[#f4dfdc] text-[#b64d4a]"}`}>{issueCount}</span> : null}</button>; })}</div>
+            <select aria-label="Document direction" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} className="h-10 min-w-[168px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#C85956]/45 focus:ring-4 focus:ring-[#C85956]/8"><option value="all">All directions</option><option value="to_local">Sent to Zakhnook</option><option value="to_brand">Returned to brand</option></select>
+          </div>
+        </div>
+      </div>
+      {message ? <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-semibold text-emerald-800 sm:px-5">{message}</div> : null}
+      {filtersActive ? <div className="flex items-center justify-between border-b border-[#e8e1db] bg-[#fcfaf8] px-4 py-2.5 sm:px-5"><p className="text-[9.5px] text-[#81746b]"><strong className="tabular-nums text-[#403730]">{formatCount(filteredTransfers.length)}</strong> matching documents</p><button type="button" onClick={() => { setDocumentQuery(""); setDirectionFilter("all"); setDocumentFilter("all"); setFromDate(""); setToDate(""); }} className="text-[9px] font-bold text-[#C85956] hover:underline">Reset filters</button></div> : null}
+      <DocumentList transfers={filteredTransfers} brandParam={brandParam} />
+    </section>
+    <ReturnRequestDrawer open={returnOpen} onClose={closeReturn} onSubmitted={() => setMessage("Return request submitted for warehouse review.")} variants={variants} brandParam={brandParam} />
   </div>;
 }

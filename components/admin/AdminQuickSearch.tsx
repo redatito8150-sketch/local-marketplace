@@ -53,6 +53,11 @@ export default function AdminQuickSearch() {
       <div className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 transition focus-within:border-slate-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-100">
         <Search className="h-4 w-4 text-slate-400" strokeWidth={1.8} />
         <input
+          // Browser autofill and form-helper extensions can add attributes
+          // such as `fdprocessedid` before React hydrates the admin header.
+          // Scope the suppression to this input so real hydration mismatches
+          // elsewhere in the dashboard remain visible.
+          suppressHydrationWarning
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

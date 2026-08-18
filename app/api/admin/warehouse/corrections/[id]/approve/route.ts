@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdminUser } from "@/lib/supabase/adminAuth";
+import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
@@ -16,14 +16,21 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     .eq("id", id)
     .maybeSingle();
   if (!correction) return NextResponse.json({ error: "Correction not found" }, { status: 404 });
-  if (correction.requested_by === approver.id) {
+  const isOwnCorrection = correction.requested_by === approver.id;
+  const fullAdmin = isOwnCorrection ? await requireStaffRole("admin") : null;
+  if (isOwnCorrection && fullAdmin?.user.id !== approver.id) {
     return NextResponse.json({ error: "The person who requested a correction cannot approve it" }, { status: 409 });
   }
 
-  const { data: result, error } = await supabaseAdmin.rpc("approve_warehouse_correction", {
-    p_correction_id: id,
-    p_approver_id: approver.id,
-  } as never);
+  const { data: result, error } = isOwnCorrection
+    ? await supabaseAdmin.rpc("post_existing_warehouse_admin_correction", {
+      p_correction_id: id,
+      p_actor_id: approver.id,
+    } as never)
+    : await supabaseAdmin.rpc("approve_warehouse_correction_v2", {
+      p_correction_id: id,
+      p_approver_id: approver.id,
+    } as never);
   if (error) return safeErrorResponse("admin.warehouse.corrections.approve", error, "Failed to approve and post the correction", 400);
 
   await logAudit({

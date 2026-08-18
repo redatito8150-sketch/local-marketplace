@@ -22,6 +22,42 @@ test("admin navigation keeps the daily workflow short and groups operational rou
   assert.doesNotMatch(sidebar, /label: "Warehouse"/);
 });
 
+test("admin quick search tolerates browser-injected form attributes without hiding page-level hydration errors", () => {
+  const search = read("components/admin/AdminQuickSearch.tsx");
+
+  assert.match(search, /fdprocessedid/);
+  assert.match(search, /<input[\s\S]*?suppressHydrationWarning[\s\S]*?type="text"/);
+});
+
+test("notification bells tolerate browser-injected attributes without suppressing the full header", () => {
+  for (const path of [
+    "components/admin/AdminNotificationBell.tsx",
+    "components/account/AccountNotificationBell.tsx",
+  ]) {
+    const bell = read(path);
+    assert.match(bell, /fdprocessedid|Form-filling browser extensions/);
+    assert.match(bell, /<button[\s\S]*?suppressHydrationWarning[\s\S]*?aria-label="Notifications"/);
+    assert.doesNotMatch(bell, /<div[^>]*suppressHydrationWarning/);
+  }
+});
+
+test("the shared dashboard shell scopes browser-extension hydration tolerance to its controls", () => {
+  const shell = read("components/dashboard/DashboardShell.tsx");
+  assert.match(shell, /fdprocessedid/);
+  assert.equal((shell.match(/suppressHydrationWarning/g) ?? []).length, 4);
+  assert.doesNotMatch(shell, /<div[^>]*suppressHydrationWarning/);
+});
+
+test("the sidebar toggle stays visible outside the scroll area and matches the Brand Portal interaction", () => {
+  const shell = read("components/dashboard/DashboardShell.tsx");
+  assert.match(shell, /lg:overflow-visible/);
+  assert.match(shell, /isAdmin && !collapsed \? "overflow-y-auto overflow-x-hidden" : "overflow-visible"/);
+  assert.match(shell, /right-0 top-2 z-20/);
+  assert.match(shell, /hover:-translate-y-px/);
+  assert.match(shell, /active:scale-\[0\.96\]/);
+  assert.match(shell, /hover:text-\[#C85956\]/);
+});
+
 test("workspace tabs connect commerce, inventory, brands, and storefront without bypassing permissions", () => {
   const nav = read("components/admin/AdminWorkspaceNav.tsx");
 

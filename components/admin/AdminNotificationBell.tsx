@@ -29,6 +29,10 @@ export default function AdminNotificationBell({
   return (
     <div ref={containerRef} className="relative">
       <button
+        // Browser extensions can inject attributes such as `fdprocessedid`
+        // before React hydrates the admin header. Keep the suppression scoped
+        // to this interactive element so real page-level mismatches stay visible.
+        suppressHydrationWarning
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-label="Notifications"

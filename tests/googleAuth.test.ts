@@ -49,17 +49,26 @@ test("getSafeRedirectPath honors a caller-supplied fallback", () => {
 });
 
 test("decidePostAuthDestination sends an onboarding-incomplete user to onboarding regardless of next", () => {
-  assert.equal(decidePostAuthDestination(null, "/account/wishlist"), "/onboarding/add-address");
-  assert.equal(decidePostAuthDestination(undefined, "https://evil.com"), "/onboarding/add-address");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: null, isAdmin: false, role: "customer" }, "/account/wishlist"), "/onboarding/add-address");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: undefined, isAdmin: false, role: "customer" }, "https://evil.com"), "/onboarding/add-address");
 });
 
 test("decidePostAuthDestination sends an onboarding-complete user to a valid next path", () => {
-  assert.equal(decidePostAuthDestination("2026-01-01T00:00:00.000Z", "/account/wishlist"), "/account/wishlist");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "customer" }, "/account/wishlist"), "/account/wishlist");
 });
 
-test("decidePostAuthDestination falls back to the account overview when next is absent or unsafe", () => {
-  assert.equal(decidePostAuthDestination("2026-01-01T00:00:00.000Z", null), "/account/overview");
-  assert.equal(decidePostAuthDestination("2026-01-01T00:00:00.000Z", "https://evil.com"), "/account/overview");
+test("decidePostAuthDestination falls back to the role workspace when next is absent or unsafe", () => {
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "customer" }, null), "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "brand_owner" }, "https://evil.com"), "/brand-portal");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: true, role: "admin" }, null), "/admin");
+});
+
+test("decidePostAuthDestination prevents cross-workspace redirect loops", () => {
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "brand_owner" }, "/admin"), "/brand-portal");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "brand_assistant" }, "/admin/warehouse"), "/brand-portal");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "customer" }, "/brand-portal"), "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: true, role: "admin" }, "/admin/warehouse"), "/admin/warehouse");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "brand_owner" }, "/brand-portal/warehouse"), "/brand-portal/warehouse");
 });
 
 test("parseGoogleAuthFlag only accepts the exact string 'true'", () => {

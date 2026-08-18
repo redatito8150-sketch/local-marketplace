@@ -12,6 +12,7 @@ type DateRangePickerProps = {
   maxDate?: string;
   className?: string;
   popoverAlign?: "left" | "right";
+  compact?: boolean;
   onRangeChange?: (range: { from: string; to: string }) => void;
 };
 
@@ -109,6 +110,7 @@ export default function DateRangePicker({
   maxDate = dateKey(new Date()),
   className = "",
   popoverAlign = "left",
+  compact = false,
   onRangeChange,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
@@ -168,18 +170,21 @@ export default function DateRangePicker({
     <div ref={containerRef} className={`relative min-w-0 ${className}`}>
       {fromName && <input type="hidden" name={fromName} value={from} readOnly />}
       {toName && <input type="hidden" name={toName} value={to} readOnly />}
-      <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">{label}</span>
+      <span className={compact ? "sr-only" : "text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]"}>{label}</span>
       <button
         type="button"
+        aria-label={compact ? `${label}: ${formatRange(from, to)}` : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className={`mt-2 flex h-10 w-full items-center gap-2.5 rounded-xl border bg-white px-3 text-left text-[12px] outline-none transition focus-visible:ring-4 focus-visible:ring-[#C85956]/10 ${(from || to) ? "pr-10" : ""} ${open ? "border-[#C85956]/55" : "border-[#e7ddd5] hover:border-[#d9cbc1]"}`}
+        className={compact
+          ? `relative flex h-10 w-10 items-center justify-center rounded-xl border bg-white outline-none transition focus-visible:ring-4 focus-visible:ring-[#C85956]/10 ${open || from || to ? "border-[#C85956]/45 text-[#C85956]" : "border-[#e7ddd5] text-[#756960] hover:border-[#d9cbc1] hover:text-[#C85956]"}`
+          : `mt-2 flex h-10 w-full items-center gap-2.5 rounded-xl border bg-white px-3 text-left text-[12px] outline-none transition focus-visible:ring-4 focus-visible:ring-[#C85956]/10 ${(from || to) ? "pr-10" : ""} ${open ? "border-[#C85956]/55" : "border-[#e7ddd5] hover:border-[#d9cbc1]"}`}
       >
-        <CalendarDays className="h-4 w-4 flex-none text-[#C85956]" />
-        <span className={`min-w-0 flex-1 truncate ${from ? "font-semibold text-[#51473f]" : "text-[#9b8d82]"}`}>{formatRange(from, to)}</span>
+        <CalendarDays className={`h-4 w-4 flex-none ${compact ? "" : "text-[#C85956]"}`} />
+        {compact ? (from || to) ? <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#C85956]" /> : null : <span className={`min-w-0 flex-1 truncate ${from ? "font-semibold text-[#51473f]" : "text-[#9b8d82]"}`}>{formatRange(from, to)}</span>}
       </button>
-      {(from || to) && <button type="button" aria-label="Clear date range" onClick={clearRange} className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full text-[#a09287] transition hover:bg-[#f6efea] hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/30"><X className="h-3.5 w-3.5" /></button>}
+      {!compact && (from || to) && <button type="button" aria-label="Clear date range" onClick={clearRange} className="absolute bottom-2 right-2 flex h-6 w-6 items-center justify-center rounded-full text-[#a09287] transition hover:bg-[#f6efea] hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/30"><X className="h-3.5 w-3.5" /></button>}
 
       {open && (
         <div role="dialog" aria-label="Choose date range" className={`absolute top-[calc(100%+10px)] z-50 w-[min(640px,calc(100vw-48px))] rounded-[20px] border border-[#e7ddd5] bg-white p-4 shadow-[0_22px_60px_rgba(62,43,31,.16)] sm:p-5 ${popoverAlign === "right" ? "right-0" : "left-0"}`}>
@@ -205,7 +210,10 @@ export default function DateRangePicker({
             <div className="flex flex-wrap gap-1.5">
               {[7, 30, 90].map((days) => <button key={days} type="button" onClick={() => selectPreset(days)} className="h-8 rounded-lg bg-[#f8f3ef] px-3 text-[10px] font-bold text-[#6f6259] transition hover:bg-[#fff0ee] hover:text-[#C85956]">Last {days} days</button>)}
             </div>
-            <button type="button" disabled={!from || !to} onClick={() => setOpen(false)} className="h-8 rounded-lg bg-[#C85956] px-4 text-[10px] font-bold text-white transition hover:bg-[#b84e4b] disabled:cursor-not-allowed disabled:opacity-40">Done</button>
+            <div className="flex items-center gap-2">
+              {compact && (from || to) ? <button type="button" onClick={() => { clearRange(); setOpen(false); }} className="h-8 rounded-lg px-3 text-[10px] font-bold text-[#756960] transition hover:bg-[#f8f3ef] hover:text-[#C85956]">Clear</button> : null}
+              <button type="button" disabled={!from || !to} onClick={() => setOpen(false)} className="h-8 rounded-lg bg-[#C85956] px-4 text-[10px] font-bold text-white transition hover:bg-[#b84e4b] disabled:cursor-not-allowed disabled:opacity-40">Done</button>
+            </div>
           </div>
         </div>
       )}

@@ -70,10 +70,14 @@ export async function GET(request: NextRequest) {
   // user through onboarding rather than erroring.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("onboarding_completed_at")
+    .select("onboarding_completed_at, is_admin, role")
     .eq("id", data.user.id)
     .maybeSingle();
 
-  const destination = decidePostAuthDestination(profile?.onboarding_completed_at ?? null, nextParam);
+  const destination = decidePostAuthDestination({
+    onboardingCompletedAt: profile?.onboarding_completed_at ?? null,
+    isAdmin: profile?.is_admin ?? false,
+    role: profile?.role ?? "customer",
+  }, nextParam);
   return NextResponse.redirect(`${origin}${destination}`);
 }

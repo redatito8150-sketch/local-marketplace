@@ -6,6 +6,7 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 const migration = read("supabase/migrations/20260817192829_warehouse_receipts_and_corrections.sql");
 const privilegeHardening = read("supabase/migrations/20260817202810_harden_warehouse_document_table_privileges.sql");
 const receiptExpressionHotfix = read("supabase/migrations/20260817204327_fix_warehouse_receipt_conditional_expressions.sql");
+const closedIssueWorkflow = read("supabase/migrations/20260818003238_closed_document_issue_workflow.sql");
 
 test("physical receipts are separate immutable facts with explicit expected and actual Variants", () => {
   assert.match(migration, /create table if not exists public\.warehouse_receipts/);
@@ -107,18 +108,57 @@ test("admin UX records actual Variants and never edits a closed receipt in place
   const receive = read("components/admin/warehouse/TransferReceiveForm.tsx");
   const correction = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
   const detail = read("app/admin/warehouse/[id]/page.tsx");
+  const receiptHistory = read("components/warehouse/WarehouseReceiptHistory.tsx");
   const receiveRoute = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
   const approveRoute = read("app/api/admin/warehouse/corrections/[id]/approve/route.ts");
 
-  assert.match(receive, /Expected vs actual/);
+  assert.match(receive, /Document lines/);
+  assert.doesNotMatch(receive, /Expected vs actual/);
+  assert.match(receive, /Review receipt ·/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Unidentified SKU — hold for mapping/);
   assert.match(receive, /Idempotency-Key/);
   assert.match(correction, /Original document: unchanged/);
-  assert.match(correction, /A different administrator must approve it/);
-  assert.match(detail, /Physical receipts/);
+  assert.match(correction, /Full Admin corrections apply immediately/);
+  assert.match(detail, /WarehouseReceiptHistory/);
+  assert.match(receiptHistory, /Physical receipts/);
   assert.match(detail, /WarehouseCorrectionWorkspace/);
   assert.match(receiveRoute, /receive_warehouse_document_v2/);
   assert.match(approveRoute, /requireAdminUser/);
   assert.match(approveRoute, /approve_warehouse_correction/);
+});
+
+test("closed documents report multiple inline Variant issues through one independently approved correction", () => {
+  const correction = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
+  const warehouseData = read("lib/data/warehouse.ts");
+  const requestRoute = read("app/api/admin/warehouse/corrections/route.ts");
+  const approveRoute = read("app/api/admin/warehouse/corrections/[id]/approve/route.ts");
+
+  assert.match(correction, /Report issue/);
+  assert.match(correction, /Review corrections ·/);
+  assert.match(correction, /drafts\.map\(\(draft\) => draft\.line\)/);
+  assert.match(correction, /Wrong Variant/);
+  assert.match(correction, /Wrong quantity/);
+  assert.match(correction, /Condition changed/);
+  assert.match(correction, /Document information/);
+  assert.match(correction, /Original document: unchanged/);
+  assert.match(requestRoute, /request_warehouse_correction_v2/);
+  assert.match(approveRoute, /approve_warehouse_correction_v2/);
+  assert.match(warehouseData, /new Set\(\["42703", "PGRST204"\]\)/);
+  assert.match(warehouseData, /source_correction_line_id/);
+});
+
+test("closed-document corrections add bounded sellable holds and append-only document amendments", () => {
+  assert.match(closedIssueWorkflow, /add column if not exists source_correction_line_id uuid/);
+  assert.match(closedIssueWorkflow, /'move_to_hold'/);
+  assert.match(closedIssueWorkflow, /'document_amendment'/);
+  assert.match(closedIssueWorkflow, /CORRECTION_EXCEEDS_OPEN_SOURCE_QUANTITY/);
+  assert.match(closedIssueWorkflow, /CORRECTION_EXCEEDS_OPEN_HOLD_QUANTITY/);
+  assert.match(closedIssueWorkflow, /'zakhnook_available', 'zakhnook_quarantine'/);
+  assert.match(closedIssueWorkflow, /CORRECTION_REQUIRES_INDEPENDENT_APPROVER/);
+  assert.match(closedIssueWorkflow, /set search_path = ''/g);
+  assert.match(closedIssueWorkflow, /revoke all on function public\.request_warehouse_correction_v2[\s\S]*?from public, anon, authenticated/);
+  assert.match(closedIssueWorkflow, /grant execute on function public\.request_warehouse_correction_v2[\s\S]*?to service_role/);
+  assert.match(closedIssueWorkflow, /revoke all on function private\.prepare_closed_document_issue_actions[\s\S]*?service_role/);
+  assert.doesNotMatch(closedIssueWorkflow, /update public\.warehouse_receipt_lines\s+set\s+(?:actual_|expected_)/i);
 });

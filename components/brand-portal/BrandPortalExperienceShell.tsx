@@ -50,7 +50,7 @@ export default function BrandPortalExperienceShell({
       variant="brand"
       title={brandName}
       subtitle={isAdminWithoutBrand ? "Admin brand workspace" : "Brand owner workspace"}
-      sidebar={<BrandPortalNav showPageContent={accessLevel === "owner"} showWarehouse={isPartner} />}
+      sidebar={<BrandPortalNav showPageContent={accessLevel === "owner"} showWarehouse={isPartner || isAdminWithoutBrand} />}
       headerTools={
         <>
           {brandSlug ? <BrandSwitcher brands={availableBrands} activeSlug={brandSlug} /> : null}

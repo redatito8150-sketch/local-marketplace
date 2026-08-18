@@ -83,11 +83,12 @@ export interface WarehouseReceiptRow {
 
 export interface WarehouseCorrectionLineRow {
   id: string;
-  action: "reclassify" | "adjust_in" | "adjust_out" | "restore_to_sellable" | "return_to_brand" | "write_off" | "accept_discrepancy";
+  action: "reclassify" | "adjust_in" | "adjust_out" | "move_to_hold" | "restore_to_sellable" | "return_to_brand" | "write_off" | "accept_discrepancy";
   fromVariantId: string | null;
   toVariantId: string | null;
   sourceReceiptLineId: string | null;
-  sourceBucket: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | null;
+  sourceCorrectionLineId: string | null;
+  sourceBucket: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | "sellable" | "document" | null;
   quantity: number;
   note: string | null;
 }
@@ -95,7 +96,7 @@ export interface WarehouseCorrectionLineRow {
 export interface WarehouseCorrectionRow {
   id: string;
   correctionNumber: string;
-  correctionType: "reclassification" | "quantity_adjustment" | "missing_recovery" | "condition_resolution" | "reversal";
+  correctionType: "reclassification" | "quantity_adjustment" | "missing_recovery" | "condition_resolution" | "document_amendment" | "reversal";
   status: "pending_approval" | "posted" | "rejected" | "reversed";
   reasonCode: string;
   note: string;
@@ -104,12 +105,17 @@ export interface WarehouseCorrectionRow {
   postedAt: string | null;
   rejectionNote: string | null;
   reversesCorrectionId: string | null;
+  approvalMode: "independent" | "admin_auto";
+  requestedByLabel: string | null;
+  approvedByLabel: string | null;
+  rejectedByLabel: string | null;
   lines: WarehouseCorrectionLineRow[];
 }
 
 export interface WarehouseReceiptVariantOption {
   variantId: string;
   productName: string;
+  productImage: string | null;
   sku: string;
   optionLabel: string;
 }
@@ -292,17 +298,38 @@ async function emailFor(userId: string | null): Promise<string | null> {
   return data.user?.email ?? null;
 }
 
+function resolveWarehouseReconciliationStatus(
+  transfer: {
+    status: unknown;
+    reconciliation_status?: unknown;
+    warehouse_receipts?: Array<{ id: string }> | null;
+  },
+  items: WarehouseTransferItemRow[],
+): WarehouseTransferRow["reconciliationStatus"] {
+  const stored = transfer.reconciliation_status as WarehouseTransferRow["reconciliationStatus"] | undefined;
+  const hasCanonicalReceipt = (transfer.warehouse_receipts ?? []).length > 0;
+  if (hasCanonicalReceipt || stored === "settled" || stored === "corrected") return stored ?? "unreviewed";
+
+  const hasUnresolvedLegacyDiscrepancy = items.some((item) =>
+    ((item.damagedQty ?? 0) + (item.missingQty ?? 0)) > 0 && !item.quarantineResolvedAt
+  );
+  if (hasUnresolvedLegacyDiscrepancy) return "open_discrepancy";
+  return transfer.status === "received" ? "clean" : stored ?? "unreviewed";
+}
+
 export async function getBrandWarehouseTransfers(brandId: string): Promise<WarehouseTransferRow[]> {
   const { data: transferRows, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .eq("brand_id", brandId)
     .order("requested_at", { ascending: false });
   if (error) throw new Error(`getBrandWarehouseTransfers(${brandId}) failed: ${error.message}`);
 
   const transfers = transferRows ?? [];
   const itemsByTransfer = await attachItems(transfers);
-  return transfers.map((t) => ({
+  return transfers.map((t) => {
+    const items = itemsByTransfer.get(t.id as string) ?? [];
+    return {
     id: t.id as string,
     brandId: t.brand_id as string,
     brandName: (t.brands as unknown as { name: string; slug: string; logo_image: string | null } | null)?.name ?? "",
@@ -313,7 +340,7 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     documentNumber: t.document_number as string | null,
     documentType: t.document_type as WarehouseTransferRow["documentType"],
     hasDiscrepancy: Boolean(t.has_discrepancy),
-    reconciliationStatus: t.has_discrepancy ? "open_discrepancy" : t.status === "received" ? "clean" : "unreviewed",
+    reconciliationStatus: resolveWarehouseReconciliationStatus(t, items),
     requestedAt: t.requested_at as string,
     requestedByEmail: null,
     brandNote: t.brand_note as string | null,
@@ -323,17 +350,18 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     updatedAt: t.updated_at as string,
-    items: itemsByTransfer.get(t.id as string) ?? [],
+    items,
     receipts: [],
     corrections: [],
-  }));
+    };
+  });
 }
 
 async function getWarehouseDocumentHistory(transferId: string): Promise<{
   receipts: WarehouseReceiptRow[];
   corrections: WarehouseCorrectionRow[];
 }> {
-  const [{ data: receiptRows, error: receiptError }, { data: correctionRows, error: correctionError }] = await Promise.all([
+  const [receiptResult, initialCorrectionResult] = await Promise.all([
     supabaseAdmin
       .from("warehouse_receipts")
       .select("id, receipt_number, status, settlement_status, note, posted_at, warehouse_receipt_lines(id, expected_transfer_item_id, expected_variant_id, actual_variant_id, expected_qty, actual_good_qty, actual_damaged_qty, unidentified_qty, expected_missing_qty, actual_excess_qty, outcome, settlement_status, unidentified_sku, item_note)")
@@ -341,10 +369,33 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
       .order("posted_at", { ascending: false }),
     supabaseAdmin
       .from("warehouse_corrections")
-      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_by, approved_by, rejected_by, approval_mode, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_correction_line_id, source_bucket, quantity, note)")
       .eq("transfer_id", transferId)
       .order("requested_at", { ascending: false }),
   ]);
+
+  const { data: receiptRows, error: receiptError } = receiptResult;
+  let correctionRows = initialCorrectionResult.data as unknown as Array<Record<string, unknown>> | null;
+  let correctionError = initialCorrectionResult.error;
+
+  // The closed-document workflow adds a self-reference used to resolve stock
+  // that was moved to hold by an earlier correction. During local review, keep
+  // the existing receipt history visible before that migration is applied.
+  const correctionErrorText = correctionError
+    ? [correctionError.message, correctionError.details, correctionError.hint].filter(Boolean).join(" ")
+    : "";
+  const missingCorrectionEnhancementColumn = correctionError
+    && new Set(["42703", "PGRST204"]).has(correctionError.code)
+    && (correctionErrorText.includes("source_correction_line_id") || correctionErrorText.includes("approval_mode"));
+  if (missingCorrectionEnhancementColumn) {
+    const fallback = await supabaseAdmin
+      .from("warehouse_corrections")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_by, approved_by, rejected_by, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
+      .eq("transfer_id", transferId)
+      .order("requested_at", { ascending: false });
+    correctionRows = fallback.data as unknown as Array<Record<string, unknown>> | null;
+    correctionError = fallback.error;
+  }
 
   // The migration may not have been applied to a developer database yet.
   // Keep the existing warehouse detail page usable while the branch is being
@@ -381,6 +432,19 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     })),
   }));
 
+  const actorIds = [...new Set((correctionRows ?? []).flatMap((row) => [row.requested_by, row.approved_by, row.rejected_by]).filter((id): id is string => typeof id === "string"))];
+  const actorById = new Map<string, string>();
+  if (actorIds.length) {
+    const { data: actors, error: actorError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", actorIds);
+    if (actorError) throw new Error(`getWarehouseDocumentHistory(${transferId}) actors failed: ${actorError.message}`);
+    for (const actor of actors ?? []) {
+      actorById.set(actor.id as string, (actor.full_name as string | null)?.trim() || (actor.email as string | null)?.trim() || "Administrator");
+    }
+  }
+
   const corrections: WarehouseCorrectionRow[] = (correctionRows ?? []).map((row) => ({
     id: row.id as string,
     correctionNumber: row.correction_number as string,
@@ -393,12 +457,17 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     postedAt: row.posted_at as string | null,
     rejectionNote: row.rejection_note as string | null,
     reversesCorrectionId: row.reverses_correction_id as string | null,
-    lines: ((row.warehouse_correction_lines ?? []) as unknown as Array<Record<string, unknown>>).map((line) => ({
+    approvalMode: row.approval_mode === "admin_auto" ? "admin_auto" : "independent",
+    requestedByLabel: typeof row.requested_by === "string" ? actorById.get(row.requested_by) ?? "Administrator" : null,
+    approvedByLabel: typeof row.approved_by === "string" ? actorById.get(row.approved_by) ?? "Administrator" : null,
+    rejectedByLabel: typeof row.rejected_by === "string" ? actorById.get(row.rejected_by) ?? "Administrator" : null,
+    lines: ((row.warehouse_correction_lines ?? []) as Array<Record<string, unknown>>).map((line) => ({
       id: line.id as string,
       action: line.action as WarehouseCorrectionLineRow["action"],
       fromVariantId: line.from_variant_id as string | null,
       toVariantId: line.to_variant_id as string | null,
       sourceReceiptLineId: line.source_receipt_line_id as string | null,
+      sourceCorrectionLineId: line.source_correction_line_id as string | null,
       sourceBucket: line.source_bucket as WarehouseCorrectionLineRow["sourceBucket"],
       quantity: line.quantity as number,
       note: line.note as string | null,
@@ -411,7 +480,7 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
 export async function getWarehouseReceiptVariantOptions(brandId: string): Promise<WarehouseReceiptVariantOption[]> {
   const { data: variantRows, error } = await supabaseAdmin
     .from("product_variants")
-    .select("id, sku, product_id, products!inner(name, brand_id)")
+    .select("id, sku, product_id, products!inner(name, image, brand_id)")
     .eq("products.brand_id", brandId)
     .eq("is_archived", false)
     .eq("selling_status", "active")
@@ -419,35 +488,57 @@ export async function getWarehouseReceiptVariantOptions(brandId: string): Promis
   if (error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) failed: ${error.message}`);
 
   const ids = (variantRows ?? []).map((row) => row.id as string);
-  const { data: valueRows, error: valueError } = ids.length
-    ? await supabaseAdmin
-      .from("product_variant_values")
-      .select("variant_id, option_values(label)")
-      .in("variant_id", ids)
-    : { data: [], error: null };
-  if (valueError) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) values failed: ${valueError.message}`);
+  const productIds = [...new Set((variantRows ?? []).map((row) => row.product_id as string))];
+  const [valuesResult, mediaResult] = await Promise.all([
+    ids.length
+      ? supabaseAdmin
+        .from("product_variant_values")
+        .select("variant_id, option_value_id, option_values(id, label, option_types(name))")
+        .in("variant_id", ids)
+      : Promise.resolve({ data: [], error: null }),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (valuesResult.error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) values failed: ${valuesResult.error.message}`);
+  if (mediaResult.error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) media failed: ${mediaResult.error.message}`);
 
-  const valuesByVariant = new Map<string, { label: string }[]>();
-  for (const row of valueRows ?? []) {
-    const option = row.option_values as unknown as { label: string } | null;
+  const optionsByVariant = new Map<string, { optionTypeId: string; optionTypeName: string; optionValueId: string; label: string }[]>();
+  for (const row of valuesResult.data ?? []) {
+    const option = row.option_values as unknown as { id: string; label: string; option_types: { name: string } | null } | null;
     if (!option) continue;
-    const current = valuesByVariant.get(row.variant_id as string) ?? [];
-    current.push(option);
-    valuesByVariant.set(row.variant_id as string, current);
+    const current = optionsByVariant.get(row.variant_id as string) ?? [];
+    current.push({
+      optionTypeId: option.option_types?.name ?? "",
+      optionTypeName: option.option_types?.name ?? "",
+      optionValueId: (row.option_value_id as string) || option.id,
+      label: option.label,
+    });
+    optionsByVariant.set(row.variant_id as string, current);
   }
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
 
-  return (variantRows ?? []).map((row) => ({
-    variantId: row.id as string,
-    productName: (row.products as unknown as { name: string }).name,
-    sku: row.sku as string,
-    optionLabel: joinOptionLabel(valuesByVariant.get(row.id as string)),
-  }));
+  return (variantRows ?? []).map((row) => {
+    const product = row.products as unknown as { name: string; image: string | null };
+    const optionValues = optionsByVariant.get(row.id as string) ?? [];
+    return {
+      variantId: row.id as string,
+      productName: product.name,
+      productImage: resolveVariantImage(row.product_id as string, { optionValues }, colorImages, product.image) || null,
+      sku: row.sku as string,
+      optionLabel: joinOptionLabel(optionValues),
+    };
+  });
 }
 
 export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus): Promise<WarehouseTransferRow[]> {
   let query = supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .order("requested_at", { ascending: false });
   if (status) query = query.eq("status", status);
   const { data: transferRows, error } = await query;
@@ -456,7 +547,10 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
   const transfers = transferRows ?? [];
   const itemsByTransfer = await attachItems(transfers);
 
-  return transfers.map((t) => ({
+  return transfers.map((t) => {
+    const items = itemsByTransfer.get(t.id as string) ?? [];
+
+    return {
     id: t.id as string,
     brandId: t.brand_id as string,
     brandName: (t.brands as unknown as { name: string; slug: string; logo_image: string | null } | null)?.name ?? "",
@@ -467,7 +561,7 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     documentNumber: t.document_number as string | null,
     documentType: t.document_type as WarehouseTransferRow["documentType"],
     hasDiscrepancy: Boolean(t.has_discrepancy),
-    reconciliationStatus: t.has_discrepancy ? "open_discrepancy" : t.status === "received" ? "clean" : "unreviewed",
+    reconciliationStatus: resolveWarehouseReconciliationStatus(t, items),
     requestedAt: t.requested_at as string,
     requestedByEmail: null,
     brandNote: t.brand_note as string | null,
@@ -477,16 +571,17 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     updatedAt: t.updated_at as string,
-    items: itemsByTransfer.get(t.id as string) ?? [],
+    items,
     receipts: [],
     corrections: [],
-  }));
+    };
+  });
 }
 
 export async function getWarehouseTransferById(id: string): Promise<WarehouseTransferRow | null> {
   const { data: t, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`getWarehouseTransferById(${id}) failed: ${error.message}`);
@@ -516,11 +611,7 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
       ? "corrected"
       : history.receipts.some((receipt) => receipt.settlementStatus === "open_discrepancy" || receipt.settlementStatus === "partially_settled")
         ? "open_discrepancy"
-        : t.has_discrepancy
-          ? "open_discrepancy"
-          : t.status === "received"
-            ? "clean"
-            : "unreviewed",
+        : t.reconciliation_status as WarehouseTransferRow["reconciliationStatus"],
     requestedAt: t.requested_at as string,
     requestedByEmail,
     brandNote: t.brand_note as string | null,
