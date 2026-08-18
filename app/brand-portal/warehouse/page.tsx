@@ -4,12 +4,19 @@ import { getBrandWarehouseVariants, getBrandWarehouseTransfers } from "@/lib/dat
 import { DashboardPageHeader, DashboardEmptyState } from "@/components/dashboard/DashboardUI";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import WarehouseExperience from "@/components/brand-portal/warehouse/WarehouseExperience";
+import BrandPicker from "@/components/brand-portal/BrandPicker";
+import { getAllBrandsForAdmin } from "@/lib/data/admin";
 
 export default async function BrandPortalWarehousePage(props: { searchParams: Promise<{ brand?: string }> }) {
   const params = await props.searchParams;
   const owner = await requireBrandOwner(params.brand);
   if (!owner) redirect("/account");
-  if (!owner.brandId) redirect("/brand-portal");
+  if (!owner.brandId) {
+    const brands = await getAllBrandsForAdmin();
+    return <BrandPicker destination="/brand-portal/warehouse" brands={brands
+      .filter((brand) => brand.isMahalyPartner)
+      .map((brand) => ({ slug: brand.slug, name: brand.name }))} />;
+  }
 
   if (!owner.isMahalyPartner) {
     return (
@@ -43,6 +50,7 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
           variants={variants}
           transfers={transfers}
           brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined}
+          readOnly={owner.isImpersonating}
         />
       </div>
     </div>

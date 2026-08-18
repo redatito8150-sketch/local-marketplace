@@ -118,7 +118,7 @@ test("admin UX records actual Variants and never edits a closed receipt in place
   assert.match(receive, /Unidentified SKU — hold for mapping/);
   assert.match(receive, /Idempotency-Key/);
   assert.match(correction, /Original document: unchanged/);
-  assert.match(correction, /A different administrator must approve it/);
+  assert.match(correction, /Full Admin corrections apply immediately/);
   assert.match(detail, /Physical receipts/);
   assert.match(detail, /WarehouseCorrectionWorkspace/);
   assert.match(receiveRoute, /receive_warehouse_document_v2/);

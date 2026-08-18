@@ -105,6 +105,10 @@ export interface WarehouseCorrectionRow {
   postedAt: string | null;
   rejectionNote: string | null;
   reversesCorrectionId: string | null;
+  approvalMode: "independent" | "admin_auto";
+  requestedByLabel: string | null;
+  approvedByLabel: string | null;
+  rejectedByLabel: string | null;
   lines: WarehouseCorrectionLineRow[];
 }
 
@@ -342,7 +346,7 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
       .order("posted_at", { ascending: false }),
     supabaseAdmin
       .from("warehouse_corrections")
-      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_correction_line_id, source_bucket, quantity, note)")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_by, approved_by, rejected_by, approval_mode, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_correction_line_id, source_bucket, quantity, note)")
       .eq("transfer_id", transferId)
       .order("requested_at", { ascending: false }),
   ]);
@@ -357,13 +361,13 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
   const correctionErrorText = correctionError
     ? [correctionError.message, correctionError.details, correctionError.hint].filter(Boolean).join(" ")
     : "";
-  const missingCorrectionSourceColumn = correctionError
+  const missingCorrectionEnhancementColumn = correctionError
     && new Set(["42703", "PGRST204"]).has(correctionError.code)
-    && correctionErrorText.includes("source_correction_line_id");
-  if (missingCorrectionSourceColumn) {
+    && (correctionErrorText.includes("source_correction_line_id") || correctionErrorText.includes("approval_mode"));
+  if (missingCorrectionEnhancementColumn) {
     const fallback = await supabaseAdmin
       .from("warehouse_corrections")
-      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_by, approved_by, rejected_by, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
       .eq("transfer_id", transferId)
       .order("requested_at", { ascending: false });
     correctionRows = fallback.data as unknown as Array<Record<string, unknown>> | null;
@@ -405,6 +409,19 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     })),
   }));
 
+  const actorIds = [...new Set((correctionRows ?? []).flatMap((row) => [row.requested_by, row.approved_by, row.rejected_by]).filter((id): id is string => typeof id === "string"))];
+  const actorById = new Map<string, string>();
+  if (actorIds.length) {
+    const { data: actors, error: actorError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, email")
+      .in("id", actorIds);
+    if (actorError) throw new Error(`getWarehouseDocumentHistory(${transferId}) actors failed: ${actorError.message}`);
+    for (const actor of actors ?? []) {
+      actorById.set(actor.id as string, (actor.full_name as string | null)?.trim() || (actor.email as string | null)?.trim() || "Administrator");
+    }
+  }
+
   const corrections: WarehouseCorrectionRow[] = (correctionRows ?? []).map((row) => ({
     id: row.id as string,
     correctionNumber: row.correction_number as string,
@@ -417,6 +434,10 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     postedAt: row.posted_at as string | null,
     rejectionNote: row.rejection_note as string | null,
     reversesCorrectionId: row.reverses_correction_id as string | null,
+    approvalMode: row.approval_mode === "admin_auto" ? "admin_auto" : "independent",
+    requestedByLabel: typeof row.requested_by === "string" ? actorById.get(row.requested_by) ?? "Administrator" : null,
+    approvedByLabel: typeof row.approved_by === "string" ? actorById.get(row.approved_by) ?? "Administrator" : null,
+    rejectedByLabel: typeof row.rejected_by === "string" ? actorById.get(row.rejected_by) ?? "Administrator" : null,
     lines: ((row.warehouse_correction_lines ?? []) as Array<Record<string, unknown>>).map((line) => ({
       id: line.id as string,
       action: line.action as WarehouseCorrectionLineRow["action"],

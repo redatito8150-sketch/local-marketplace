@@ -5,6 +5,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
 import { checkAndNotifyRestock } from "@/lib/backInStock";
 import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
+import { requireStaffRole } from "@/lib/supabase/adminAuth";
 
 // The ONE legitimate way for warehouse/admin staff to correct Zakhnook-held
 // sellable stock (product_variants.quantity for a zakhnook_fulfilled
@@ -16,6 +17,8 @@ import { parseOrderIdempotencyKey } from "@/lib/orders/idempotency";
 export async function POST(request: NextRequest) {
   const receiver = await requireWarehouseReceiver();
   if (!receiver) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  const fullAdmin = await requireStaffRole("admin");
+  const autoPost = fullAdmin?.user.id === receiver.id;
 
   const body = (await request.json().catch(() => null)) as {
     transferId?: string;
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "At least one valid positive-quantity correction line is required" }, { status: 400 });
     }
 
-    const { data: result, error } = await supabaseAdmin.rpc("request_warehouse_correction_v2", {
+    const correctionArgs = {
       p_transfer_id: body.transferId,
       p_actor_id: receiver.id,
       p_correction_type: body.correctionType,
@@ -74,7 +77,10 @@ export async function POST(request: NextRequest) {
         note: line.note?.trim() || null,
       })),
       p_operation_key: operationKey,
-    } as never);
+    } as never;
+    const { data: result, error } = autoPost
+      ? await supabaseAdmin.rpc("request_and_post_warehouse_admin_correction", correctionArgs)
+      : await supabaseAdmin.rpc("request_warehouse_correction_v2", correctionArgs);
     if (error) return safeErrorResponse("admin.warehouse.corrections.request", error, "Failed to create the correction document", 400);
 
     const correction = result as { correctionId?: string; correctionNumber?: string; status?: string };
@@ -85,11 +91,18 @@ export async function POST(request: NextRequest) {
       entityId: body.transferId,
       action: "update",
       after: {
-        "Correction requested": correction.correctionNumber ?? correction.correctionId,
+        [autoPost ? "Correction requested and posted" : "Correction requested"]: correction.correctionNumber ?? correction.correctionId,
         Type: body.correctionType,
         Reason: body.reasonCode,
+        "Approval mode": autoPost ? "Full Admin — immediate" : "Independent approval required",
       },
     });
+    if (autoPost) {
+      const variantIds = body.lines
+        .filter((line) => line.toVariantId && ["reclassify", "adjust_in", "restore_to_sellable"].includes(line.action ?? ""))
+        .map((line) => line.toVariantId as string);
+      if (variantIds.length) await checkAndNotifyRestock([...new Set(variantIds)]);
+    }
     return NextResponse.json(result);
   }
 

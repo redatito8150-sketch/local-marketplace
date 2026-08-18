@@ -4,8 +4,6 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
-  Circle,
-  Clock3,
   ExternalLink,
   PackageSearch,
 } from "lucide-react";
@@ -21,6 +19,7 @@ import { formatDateTime } from "@/lib/format";
 import TransferReceiveForm from "@/components/admin/warehouse/TransferReceiveForm";
 import PrintWarehouseDocumentButton from "@/components/admin/warehouse/PrintWarehouseDocumentButton";
 import WarehouseCorrectionWorkspace from "@/components/admin/warehouse/WarehouseCorrectionWorkspace";
+import WarehouseDocumentHistory from "@/components/warehouse/WarehouseDocumentHistory";
 import { BrandMark, TonePill, formatCount, titleCase } from "@/components/admin/inventory/shared";
 import {
   WAREHOUSE_STATUS_META,
@@ -57,7 +56,7 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
             <h1 className="mt-0.5 truncate text-[18px] font-extrabold text-[#302924]">{documentNumber}</h1>
             <p className="mt-1 text-[10.5px] text-[#756960]">{transfer.brandName} · Requested {formatDateTime(transfer.requestedAt)}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 lg:ml-auto"><TonePill label={statusMeta.label} tone={statusMeta.tone} icon={statusMeta.icon} /><PrintWarehouseDocumentButton /><Link href={`/admin/brands/${encodeURIComponent(transfer.brandSlug)}/edit`} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#e2dcd4] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#d8d0c8] hover:text-[#302924] print:hidden">Open brand<ExternalLink className="h-3 w-3" /></Link></div>
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto"><TonePill label={statusMeta.label} tone={statusMeta.tone} icon={statusMeta.icon} /><PrintWarehouseDocumentButton /><Link href={`/brand-portal/warehouse/${transfer.id}?brand=${encodeURIComponent(transfer.brandSlug)}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#e2dcd4] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#d8d0c8] hover:text-[#302924] print:hidden">View brand portal<ExternalLink className="h-3 w-3" /></Link><Link href={`/admin/brands/${encodeURIComponent(transfer.brandSlug)}/edit`} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#e2dcd4] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#d8d0c8] hover:text-[#302924] print:hidden">Open brand<ExternalLink className="h-3 w-3" /></Link></div>
         </div>
       </header>
 
@@ -88,7 +87,7 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
         {transfer.status === "receiving" ? <section className="rounded-[20px] bg-violet-50 px-5 py-4 text-violet-900"><p className="text-[12px] font-extrabold">Receiving is already in progress</p><p className="mt-1 text-[10.5px]">Wait for the active warehouse operation to finish before reconciling another group of variants.</p></section> : null}
 
         {transfer.receipts.length && transfer.status !== "received" ? <ReceiptHistory receipts={transfer.receipts} variants={variantOptions} items={transfer.items} /> : null}
-        <DocumentHistory transfer={transfer} logs={auditLogs} corrections={transfer.corrections} />
+        <WarehouseDocumentHistory transfer={transfer} variants={variantOptions} logs={auditLogs} />
       </div>
     </div>
   );
@@ -121,97 +120,4 @@ function ReceiptHistory({ receipts, variants, items }: { receipts: WarehouseRece
 
 function ReceiptQty({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
   return <span className={`rounded-lg px-2 py-1 text-[9px] font-bold ${warning && value > 0 ? "bg-amber-50 text-amber-900" : "bg-[#e8e1db] text-[#62564d]"}`}>{label} {formatCount(value)}</span>;
-}
-
-type DocumentActivityEntry = {
-  id: string;
-  label: string;
-  timestamp: string;
-  detail: string;
-};
-
-function DocumentHistory({ transfer, logs, corrections }: { transfer: WarehouseTransferRow; logs: Awaited<ReturnType<typeof getAuditLogsForEntity>>; corrections: WarehouseTransferRow["corrections"] }) {
-  const createLog = logs.find((log) => log.action.toLowerCase().includes("create"));
-  const finalAction = transfer.status === "received" || transfer.status === "partially_received" ? "receiv" : transfer.status === "rejected" ? "reject" : transfer.status === "cancelled" ? "cancel" : null;
-  const finalLog = finalAction ? logs.find((log) => log.action.toLowerCase().includes(finalAction)) : undefined;
-  const workflowOnlyLogs = logs.filter((log) => ["approv", "review", "transit", "submit"].some((action) => log.action.toLowerCase().includes(action)));
-  const claimedLogIds = new Set([createLog?.id, finalLog?.id, ...workflowOnlyLogs.map((log) => log.id)].filter((id): id is string => Boolean(id)));
-  const activity: DocumentActivityEntry[] = [
-    {
-      id: "requested",
-      label: "Requested",
-      timestamp: transfer.requestedAt,
-      detail: `Requested by ${transfer.requestedByEmail ?? "Brand team"}${createLog ? ` · Recorded by ${createLog.actorName ?? createLog.actorLabel}` : ""}`,
-    },
-  ];
-
-  for (const log of logs) {
-    if (claimedLogIds.has(log.id)) continue;
-    activity.push({
-      id: `audit-${log.id}`,
-      label: titleCase(log.action),
-      timestamp: log.createdAt,
-      detail: `Recorded by ${log.actorName ?? log.actorLabel}`,
-    });
-  }
-
-  if (transfer.decidedAt) {
-    const outcomeLabel = transfer.status === "received" ? "Accepted" : transfer.status === "partially_received" ? "Accepted with differences" : WAREHOUSE_STATUS_META[transfer.status].label;
-    activity.push({
-      id: "decision",
-      label: outcomeLabel,
-      timestamp: transfer.decidedAt,
-      detail: `${outcomeLabel} by ${transfer.decidedByEmail ?? finalLog?.actorName ?? finalLog?.actorLabel ?? "Warehouse team"}`,
-    });
-  }
-
-  for (const correction of corrections) {
-    const statusLabel = correction.status === "pending_approval"
-      ? "Correction requested"
-      : correction.status === "posted"
-        ? "Correction posted"
-        : correction.status === "rejected"
-          ? "Correction rejected"
-          : "Correction reversed";
-    activity.push({
-      id: `correction-${correction.id}-${correction.status}`,
-      label: statusLabel,
-      timestamp: correction.postedAt ?? correction.approvedAt ?? correction.requestedAt,
-      detail: `${correction.correctionNumber} · ${correction.note}`,
-    });
-  }
-
-  activity.sort((first, second) => Date.parse(first.timestamp) - Date.parse(second.timestamp));
-
-  return (
-    <section aria-label="Document history" className="overflow-hidden rounded-[22px] bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
-      <header className="flex items-center justify-between gap-4 border-b border-[#ddd4cc] px-5 py-4">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document history</p>
-          <h2 className="mt-1 text-[14px] font-extrabold text-[#302924]">Request, outcome and audit trail</h2>
-        </div>
-        <Clock3 className="h-4 w-4 text-[#9b8e84]" />
-      </header>
-      <ol className="px-5 py-5">
-        {activity.map((entry, index) => {
-          const latest = index === activity.length - 1;
-          return (
-            <li key={entry.id} className="grid grid-cols-[20px_1fr] gap-3">
-              <div className="flex flex-col items-center">
-                <span className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full ${latest ? "bg-[#C85956] text-white" : "bg-[#e2dcd4] text-[#8a7d73]"}`}>
-                  {latest ? <CheckCircle2 className="h-3 w-3" /> : <Circle className="h-2.5 w-2.5 fill-current" />}
-                </span>
-                {index < activity.length - 1 ? <span className="min-h-8 w-px flex-1 bg-[#d8cec6]" /> : null}
-              </div>
-              <div className="pb-4 last:pb-0">
-                <p className="text-[11.5px] font-extrabold text-[#403730]">{entry.label}</p>
-                <p className="mt-0.5 text-[9.5px] text-[#94867c]">{formatDateTime(entry.timestamp)}</p>
-                <p className="mt-1 text-[10.5px] leading-4 text-[#756960]">{entry.detail}</p>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </section>
-  );
 }

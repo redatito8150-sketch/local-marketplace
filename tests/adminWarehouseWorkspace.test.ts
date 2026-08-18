@@ -35,6 +35,7 @@ test("Stock requests is a searchable, paginated operational queue with stable gl
 
 test("warehouse details show one combined document history, printing, partial receipt, and discrepancy resolution", () => {
   const page = read("app/admin/warehouse/[id]/page.tsx");
+  const history = read("components/warehouse/WarehouseDocumentHistory.tsx");
   const receive = read("components/admin/warehouse/TransferReceiveForm.tsx");
   const resolution = read("components/admin/warehouse/QuarantineResolutionForm.tsx");
 
@@ -42,14 +43,14 @@ test("warehouse details show one combined document history, printing, partial re
   assert.doesNotMatch(page, /function LifecycleTimeline/);
   assert.doesNotMatch(page, /function MetadataCard/);
   assert.doesNotMatch(page, /function AuditTrail/);
-  assert.match(page, /Request, outcome and audit trail/);
+  assert.match(history, /Request, outcome and audit trail/);
   assert.doesNotMatch(page, /DocumentFact/);
   assert.doesNotMatch(page, /Document totals/);
-  assert.doesNotMatch(page, /label: "Review"/);
-  assert.doesNotMatch(page, /label: "Approved"/);
-  assert.doesNotMatch(page, /label: "In transit"/);
-  assert.match(page, /transfer\.status === "received" \? "Accepted"/);
-  assert.match(page, /activity\.sort/);
+  assert.doesNotMatch(history, /label: "Review"/);
+  assert.doesNotMatch(history, /label: "Approved"/);
+  assert.doesNotMatch(history, /label: "In transit"/);
+  assert.match(history, /transfer\.status === "received" \? "Accepted"/);
+  assert.match(history, /activity\.sort/);
   assert.doesNotMatch(page, /AdminWorkspaceNav/);
   assert.match(page, /text-\[9\.5px\][^>]*>[\s\S]*?<ArrowLeft[^>]*>[\s\S]*?All requests[\s\S]*?<div className="flex flex-col gap-4 lg:flex-row lg:items-center">[\s\S]*?<BrandMark/);
   assert.doesNotMatch(page, /All requests<\/Link>\s*<BrandMark/);

@@ -2,8 +2,10 @@ import Link from "next/link";
 
 export default function BrandPicker({
   brands,
+  destination = "/brand-portal",
 }: {
   brands: { slug: string; name: string }[];
+  destination?: string;
 }) {
   return (
     <div>
@@ -17,7 +19,7 @@ export default function BrandPicker({
         {brands.map((brand) => (
           <Link
             key={brand.slug}
-            href={`/brand-portal?brand=${brand.slug}`}
+            href={`${destination}?brand=${encodeURIComponent(brand.slug)}`}
             className="rounded-xl3 border border-stone-150 bg-white p-4 text-[13.5px] font-medium text-ink transition-colors hover:border-ink/20"
           >
             {brand.name}
