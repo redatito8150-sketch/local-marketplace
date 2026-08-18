@@ -154,7 +154,12 @@ function TransferRow({ transfer }: { transfer: WarehouseTransferRow }) {
       <span aria-hidden="true" className={`absolute bottom-0 left-0 top-0 w-[3px] ${railClass}`} />
       <div className="flex min-w-0 items-center gap-3"><BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} /><div className="min-w-0"><p className="truncate text-[12px] font-extrabold text-[#302924]">{documentNumber}</p><p className="mt-1 truncate text-[10px] font-medium text-[#81746b]">{transfer.brandName}</p></div></div>
       <div><p className="text-[12px] font-extrabold tabular-nums text-[#302924]">{formatCount(transfer.items.length)} / {formatCount(totalRequested)}</p><p className="mt-1 text-[9px] text-[#8d8076]">variants / units</p></div>
-      <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>
+      <div className="flex flex-col items-start gap-0.5">
+        <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>
+        {transfer.status === "received" && transfer.reconciliationStatus === "corrected" ? (
+          <span className="pl-5 text-[8.5px] font-bold tracking-[0.02em] text-[#7b6f66]">Corrected</span>
+        ) : null}
+      </div>
       <div><p className="text-[10.5px] font-semibold text-[#4f453e]"><span className="font-extrabold">Created</span> {formatDateTime(transfer.requestedAt)}</p><p className="mt-1 text-[9.5px] text-[#8d8076]">Updated {formatDateTime(transfer.updatedAt)}</p></div>
       <ChevronRight className="h-4 w-4 text-[#a2948a] transition-transform group-hover:translate-x-0.5 group-hover:text-[#C85956]" />
     </Link>

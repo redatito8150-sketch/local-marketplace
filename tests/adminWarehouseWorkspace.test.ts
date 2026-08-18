@@ -50,6 +50,8 @@ test("Stock requests is a compact searchable queue with inline status, brand and
   assert.match(page, /BrandMark/);
   assert.match(page, /ACTION_REQUIRED_WAREHOUSE_STATUSES\.has\(transfer\.status\) && !hasOpenDiscrepancy/);
   assert.match(page, /transfer\.reconciliationStatus === "open_discrepancy"/);
+  assert.match(page, /transfer\.status === "received" && transfer\.reconciliationStatus === "corrected"/);
+  assert.match(page, />Corrected<\/span>/);
   assert.match(data, /warehouse_receipts\(id\)/);
   assert.doesNotMatch(page, /suppressHydrationWarning/);
 });
