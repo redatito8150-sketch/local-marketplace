@@ -94,6 +94,8 @@ type CorrectionLineMeta = {
 function correctionLineMeta(line: WarehouseCorrectionLineRow): CorrectionLineMeta {
   const quantity = formatCount(line.quantity);
   if (line.action === "reclassify") return { label: "Variant corrected", impact: `${quantity} units moved to the correct Variant`, icon: RotateCcw, iconClassName: "bg-violet-50 text-violet-700", panelClassName: "bg-violet-50/60 text-violet-800" };
+  if (line.action === "adjust_in" && line.sourceBucket === "missing") return { label: "Missing stock recovered", impact: `Sellable +${quantity} · Missing closed`, icon: PackagePlus, iconClassName: "bg-emerald-50 text-emerald-700", panelClassName: "bg-emerald-50/70 text-emerald-800" };
+  if (line.action === "adjust_out" && line.sourceBucket === "excess") return { label: "Excess stock corrected", impact: `Sellable −${quantity} · Excess closed`, icon: PackageMinus, iconClassName: "bg-rose-50 text-rose-700", panelClassName: "bg-rose-50/70 text-rose-800" };
   if (line.action === "adjust_in") return { label: "Stock added", impact: `Sellable stock +${quantity}`, icon: PackagePlus, iconClassName: "bg-emerald-50 text-emerald-700", panelClassName: "bg-emerald-50/70 text-emerald-800" };
   if (line.action === "adjust_out") return { label: "Stock removed", impact: `Sellable stock −${quantity}`, icon: PackageMinus, iconClassName: "bg-rose-50 text-rose-700", panelClassName: "bg-rose-50/70 text-rose-800" };
   if (line.action === "move_to_hold") return { label: "Moved to damaged hold", impact: `Sellable −${quantity} · Hold +${quantity}`, icon: CircleAlert, iconClassName: "bg-amber-50 text-amber-700", panelClassName: "bg-amber-50/75 text-amber-900" };
@@ -230,15 +232,23 @@ export default function WarehouseCorrectionWorkspace({
     : items.reduce((sum, item) => sum + (item.receivedOkQty ?? 0), 0);
 
   function usedReceiptSource(lineId: string, bucket: WarehouseCorrectionLineRow["sourceBucket"]): number {
-    return activeCorrections.reduce((sum, correction) => sum + correction.lines
+    const persisted = activeCorrections.reduce((sum, correction) => sum + correction.lines
       .filter((line) => line.sourceReceiptLineId === lineId && line.sourceBucket === bucket)
       .reduce((lineSum, line) => lineSum + line.quantity, 0), 0);
+    const staged = drafts
+      .filter((draft) => draft.line.sourceReceiptLineId === lineId && draft.line.sourceBucket === bucket)
+      .reduce((sum, draft) => sum + draft.line.quantity, 0);
+    return persisted + staged;
   }
 
   function usedHoldSource(lineId: string): number {
-    return activeCorrections.reduce((sum, correction) => sum + correction.lines
+    const persisted = activeCorrections.reduce((sum, correction) => sum + correction.lines
       .filter((line) => line.sourceCorrectionLineId === lineId)
       .reduce((lineSum, line) => lineSum + line.quantity, 0), 0);
+    const staged = drafts
+      .filter((draft) => draft.line.sourceCorrectionLineId === lineId)
+      .reduce((sum, draft) => sum + draft.line.quantity, 0);
+    return persisted + staged;
   }
 
   function conditionSources(item: WarehouseTransferItemRow, receiptLine: WarehouseReceiptLineRow | undefined): ResolutionSource[] {
@@ -342,13 +352,41 @@ export default function WarehouseCorrectionWorkspace({
         line: { action: "reclassify", fromVariantId: currentVariantId, toVariantId: targetVariantId, quantity, sourceReceiptLineId: receiptLine?.id ?? null, sourceCorrectionLineId: null, sourceBucket: canLinkSubstitution ? "substitution" : receiptLine ? "sellable" : null, note },
       };
     } else if (kind === "quantity") {
+      const openMissing = receiptLine
+        ? Math.max(0, receiptLine.expectedMissingQty - usedReceiptSource(receiptLine.id, "missing"))
+        : 0;
+      const openExcess = receiptLine
+        ? Math.max(0, receiptLine.actualExcessQty - usedReceiptSource(receiptLine.id, "excess"))
+        : 0;
+      const linksMissing = quantityDirection === "add" && openMissing > 0;
+      const linksExcess = quantityDirection === "remove" && openExcess > 0;
+      const linkedAvailable = linksMissing ? openMissing : linksExcess ? openExcess : null;
+      if (linkedAvailable !== null && quantity > linkedAvailable) {
+        setError(`Only ${formatCount(linkedAvailable)} open ${linksMissing ? "missing" : "excess"} units can be corrected for this receipt line.`);
+        return;
+      }
+      const affectedVariantId = linksMissing
+        ? receiptLine!.expectedVariantId
+        : linksExcess
+          ? receiptLine!.actualVariantId ?? receiptLine!.expectedVariantId
+          : currentVariantId;
+      const closesReceiptDifference = linksMissing || linksExcess;
       draft = {
         id: crypto.randomUUID(), itemId: item.id, kind,
-        label: quantityDirection === "add" ? "Add sellable stock" : "Remove overcounted stock",
-        preview: `${variantLabel.get(currentVariantId) ?? item.sku}: ${quantityDirection === "add" ? "+" : "−"}${formatCount(quantity)} sellable`,
+        label: linksMissing ? "Recover missing stock" : linksExcess ? "Correct recorded excess" : quantityDirection === "add" ? "Add sellable stock" : "Remove overcounted stock",
+        preview: `${variantLabel.get(affectedVariantId) ?? item.sku}: ${quantityDirection === "add" ? "+" : "−"}${formatCount(quantity)} sellable${closesReceiptDifference ? ` · ${linksMissing ? "Missing" : "Excess"} closed` : ""}`,
         correctionType: quantityDirection === "add" ? "missing_recovery" : "quantity_adjustment",
         reasonCode: quantityDirection === "add" ? "missing_found" : "count_error", note,
-        line: { action: quantityDirection === "add" ? "adjust_in" : "adjust_out", fromVariantId: quantityDirection === "remove" ? currentVariantId : null, toVariantId: quantityDirection === "add" ? currentVariantId : null, quantity, sourceReceiptLineId: null, sourceCorrectionLineId: null, sourceBucket: null, note },
+        line: {
+          action: quantityDirection === "add" ? "adjust_in" : "adjust_out",
+          fromVariantId: quantityDirection === "remove" ? affectedVariantId : null,
+          toVariantId: quantityDirection === "add" ? affectedVariantId : null,
+          quantity,
+          sourceReceiptLineId: closesReceiptDifference ? receiptLine!.id : null,
+          sourceCorrectionLineId: null,
+          sourceBucket: linksMissing ? "missing" : linksExcess ? "excess" : null,
+          note,
+        },
       };
     } else if (kind === "condition") {
       if (conditionAction === "move_to_hold") {
@@ -522,16 +560,38 @@ export default function WarehouseCorrectionWorkspace({
               {!readOnly && editingItemId === item.id ? (
                 <div className="mt-4 rounded-2xl bg-[#f8f4f0] p-4">
                   <p className="text-[10px] font-extrabold text-[#403730]">What is wrong?</p>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">{(Object.entries(ISSUE_META) as Array<[IssueKind, { label: string; description: string }]>).map(([value, meta]) => <button key={value} type="button" onClick={() => { setKind(value); setError(""); }} className={`rounded-xl px-3 py-2.5 text-left transition ${kind === value ? "bg-[#f4dfdc] text-[#9f3f3d] ring-1 ring-inset ring-[#e8c5c2]" : "bg-white text-[#62564d] hover:bg-[#eee7e1]"}`}><span className="block text-[10px] font-extrabold">{meta.label}</span><span className={`mt-1 block text-[8.5px] leading-4 ${kind === value ? "text-[#b76a67]" : "text-[#8d8076]"}`}>{meta.description}</span></button>)}</div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">{(Object.entries(ISSUE_META) as Array<[IssueKind, { label: string; description: string }]>).map(([value, meta]) => <button key={value} type="button" onClick={() => {
+                    setKind(value);
+                    if (value === "quantity") {
+                      const openMissing = discrepancies.find((candidate) => candidate.bucket === "missing");
+                      const openExcess = discrepancies.find((candidate) => candidate.bucket === "excess");
+                      if (openMissing) {
+                        setQuantityDirection("add");
+                        setQuantity(openMissing.quantity);
+                      } else if (openExcess) {
+                        setQuantityDirection("remove");
+                        setQuantity(openExcess.quantity);
+                      } else {
+                        setQuantity(1);
+                      }
+                    }
+                    setError("");
+                  }} className={`rounded-xl px-3 py-2.5 text-left transition ${kind === value ? "bg-[#f4dfdc] text-[#9f3f3d] ring-1 ring-inset ring-[#e8c5c2]" : "bg-white text-[#62564d] hover:bg-[#eee7e1]"}`}><span className="block text-[10px] font-extrabold">{meta.label}</span><span className={`mt-1 block text-[8.5px] leading-4 ${kind === value ? "text-[#b76a67]" : "text-[#8d8076]"}`}>{meta.description}</span></button>)}</div>
 
                   <div className="mt-3 grid gap-3 lg:grid-cols-2">
                     {kind === "wrong_variant" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Correct Variant</span><select value={targetVariantId} onChange={(event) => setTargetVariantId(event.target.value)} className={`${CONTROL} mt-1 w-full bg-white`}>{variants.map((variant) => <option key={variant.variantId} value={variant.variantId}>{variant.productName}{variant.optionLabel ? ` — ${variant.optionLabel}` : ""} · {variant.sku}</option>)}</select></label> : null}
-                    {kind === "quantity" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Corrective direction</span><select value={quantityDirection} onChange={(event) => setQuantityDirection(event.target.value as QuantityDirection)} className={`${CONTROL} mt-1 w-full bg-white`}><option value="add">Add units to sellable stock</option><option value="remove">Remove overcounted sellable units</option></select></label> : null}
+                    {kind === "quantity" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Corrective direction</span><select value={quantityDirection} onChange={(event) => {
+                      const direction = event.target.value as QuantityDirection;
+                      const linkedSource = discrepancies.find((candidate) => candidate.bucket === (direction === "add" ? "missing" : "excess"));
+                      setQuantityDirection(direction);
+                      setQuantity(linkedSource?.quantity ?? 1);
+                    }} className={`${CONTROL} mt-1 w-full bg-white`}><option value="add">{discrepancies.some((candidate) => candidate.bucket === "missing") ? "Recover missing units and close the difference" : "Add units to sellable stock"}</option><option value="remove">{discrepancies.some((candidate) => candidate.bucket === "excess") ? "Remove excess units and close the difference" : "Remove overcounted sellable units"}</option></select></label> : null}
                     {kind === "condition" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Condition action</span><select value={conditionAction} onChange={(event) => { const value = event.target.value as ConditionAction; setConditionAction(value); if (value !== "move_to_hold" && !conditionSource) setConditionSource(sources[0]?.value ?? ""); }} className={`${CONTROL} mt-1 w-full bg-white`}><option value="move_to_hold" disabled={sellableRemaining <= 0}>Move recorded sellable stock to damaged hold</option><option value="restore_to_sellable" disabled={!sources.length}>Restore held stock to sellable</option><option value="return_to_brand" disabled={!sources.length}>Return held stock to brand</option><option value="write_off" disabled={!sources.length}>Write off held stock</option></select></label> : null}
                     {kind === "condition" && conditionAction !== "move_to_hold" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Held-stock source</span><select value={conditionSource} onChange={(event) => { setConditionSource(event.target.value); const source = sources.find((candidate) => candidate.value === event.target.value); if (source) setQuantity(source.quantity); }} className={`${CONTROL} mt-1 w-full bg-white`}><option value="">Choose held stock…</option>{sources.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}</select></label> : null}
                     {kind === "close_discrepancy" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Open difference</span><select value={discrepancySource} onChange={(event) => { setDiscrepancySource(event.target.value); const source = discrepancies.find((candidate) => candidate.bucket === event.target.value); if (source) setQuantity(source.quantity); }} className={`${CONTROL} mt-1 w-full bg-white`}><option value="">Choose a difference…</option>{discrepancies.map((source) => <option key={source.bucket} value={source.bucket}>{source.label}</option>)}</select></label> : null}
                     {kind !== "document_note" ? <label><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">Quantity</span><input type="number" min={1} step={1} value={quantity} onChange={(event) => setQuantity(Math.max(1, Math.trunc(Number(event.target.value) || 1)))} className={`${CONTROL} mt-1 w-full bg-white font-bold tabular-nums`} /></label> : null}
                   </div>
+                  {kind === "quantity" && discrepancies.some((candidate) => candidate.bucket === (quantityDirection === "add" ? "missing" : "excess")) ? <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2.5 text-[9px] font-semibold leading-4 text-emerald-800">This correction will update sellable stock and close the linked receipt difference in the same atomic document.</p> : null}
                   <label className="mt-3 block"><span className="text-[9px] font-bold uppercase tracking-[0.07em] text-[#756960]">What was verified?</span><input value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder={kind === "document_note" ? "What information is wrong, and what should the approved record say?" : "What was recorded, what is physically correct, and how was it checked?"} className={`${CONTROL} mt-1 w-full bg-white`} /></label>
                   <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={() => saveIssue(item)} disabled={explanation.trim().length < 5} className="inline-flex h-10 items-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-40"><Plus className="mr-1.5 h-3.5 w-3.5" />Add to review</button><button type="button" onClick={() => setEditingItemId(null)} className="h-10 px-3 text-[10px] font-bold text-[#756960]">Cancel</button></div>
                 </div>

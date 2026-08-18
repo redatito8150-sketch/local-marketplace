@@ -81,7 +81,14 @@ export async function POST(request: NextRequest) {
     const { data: result, error } = autoPost
       ? await supabaseAdmin.rpc("request_and_post_warehouse_admin_correction", correctionArgs)
       : await supabaseAdmin.rpc("request_warehouse_correction_v2", correctionArgs);
-    if (error) return safeErrorResponse("admin.warehouse.corrections.request", error, "Failed to create the correction document", 400);
+    if (error) {
+      const correctionError = error.message.includes("CORRECTION_EXCEEDS_OPEN_SOURCE_QUANTITY")
+        ? "One of these receipt issues has already been resolved or exceeds its remaining open quantity. Remove the repeated line and review the available units."
+        : error.message.includes("CORRECTION_EXCEEDS_OPEN_HOLD_QUANTITY")
+          ? "One of these held-stock sources has already been resolved or exceeds its remaining quantity. Remove the repeated line and review the available units."
+          : "Failed to create the correction document";
+      return safeErrorResponse("admin.warehouse.corrections.request", error, correctionError, 400);
+    }
 
     const correction = result as { correctionId?: string; correctionNumber?: string; status?: string };
     await logAudit({

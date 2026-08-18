@@ -148,6 +148,28 @@ test("closed documents report multiple inline Variant issues through one indepen
   assert.match(warehouseData, /source_correction_line_id/);
 });
 
+test("recovering a posted missing unit links the stock movement to its receipt difference", () => {
+  const correction = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
+  const presentation = read("components/warehouse/warehouseCorrectionPresentation.ts");
+  const requestRoute = read("app/api/admin/warehouse/corrections/route.ts");
+
+  assert.match(correction, /expectedMissingQty - usedReceiptSource\(receiptLine\.id, "missing"\)/);
+  assert.match(correction, /sourceReceiptLineId: closesReceiptDifference \? receiptLine!\.id : null/);
+  assert.match(correction, /sourceBucket: linksMissing \? "missing" : linksExcess \? "excess" : null/);
+  assert.match(correction, /receiptLine!\.expectedVariantId/);
+  assert.match(correction, /update sellable stock and close the linked receipt difference in the same atomic document/);
+  assert.match(presentation, /closed the linked missing difference/);
+  assert.match(requestRoute, /CORRECTION_EXCEEDS_OPEN_SOURCE_QUANTITY/);
+});
+
+test("draft receipt and hold sources count toward availability before submission", () => {
+  const correction = read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx");
+
+  assert.match(correction, /const staged = drafts[\s\S]*?sourceReceiptLineId === lineId[\s\S]*?sourceBucket === bucket/);
+  assert.match(correction, /const staged = drafts[\s\S]*?sourceCorrectionLineId === lineId/);
+  assert.match(correction, /return persisted \+ staged/g);
+});
+
 test("closed-document corrections add bounded sellable holds and append-only document amendments", () => {
   assert.match(closedIssueWorkflow, /add column if not exists source_correction_line_id uuid/);
   assert.match(closedIssueWorkflow, /'move_to_hold'/);
