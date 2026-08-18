@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 import {
   Activity,
   AlertCircle,
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   CircleAlert,
   FilePenLine,
   Loader2,
   PackageCheck,
+  PackageMinus,
+  PackagePlus,
   Plus,
   RotateCcw,
   ShieldCheck,
@@ -80,6 +83,97 @@ function correctionTone(status: WarehouseCorrectionRow["status"]): string {
   return "bg-[#e2dcd4] text-[#62564d]";
 }
 
+type CorrectionLineMeta = {
+  label: string;
+  impact: string;
+  icon: typeof PackageCheck;
+  iconClassName: string;
+  panelClassName: string;
+};
+
+function correctionLineMeta(line: WarehouseCorrectionLineRow): CorrectionLineMeta {
+  const quantity = formatCount(line.quantity);
+  if (line.action === "reclassify") return { label: "Variant corrected", impact: `${quantity} units moved to the correct Variant`, icon: RotateCcw, iconClassName: "bg-violet-50 text-violet-700", panelClassName: "bg-violet-50/60 text-violet-800" };
+  if (line.action === "adjust_in") return { label: "Stock added", impact: `Sellable stock +${quantity}`, icon: PackagePlus, iconClassName: "bg-emerald-50 text-emerald-700", panelClassName: "bg-emerald-50/70 text-emerald-800" };
+  if (line.action === "adjust_out") return { label: "Stock removed", impact: `Sellable stock −${quantity}`, icon: PackageMinus, iconClassName: "bg-rose-50 text-rose-700", panelClassName: "bg-rose-50/70 text-rose-800" };
+  if (line.action === "move_to_hold") return { label: "Moved to damaged hold", impact: `Sellable −${quantity} · Hold +${quantity}`, icon: CircleAlert, iconClassName: "bg-amber-50 text-amber-700", panelClassName: "bg-amber-50/75 text-amber-900" };
+  if (line.action === "restore_to_sellable") return { label: "Restored to sellable", impact: `Sellable stock +${quantity}`, icon: PackageCheck, iconClassName: "bg-emerald-50 text-emerald-700", panelClassName: "bg-emerald-50/70 text-emerald-800" };
+  if (line.action === "return_to_brand") return { label: "Returned to brand", impact: `Damaged hold −${quantity}`, icon: RotateCcw, iconClassName: "bg-sky-50 text-sky-700", panelClassName: "bg-sky-50/70 text-sky-800" };
+  if (line.action === "write_off") return { label: "Written off", impact: `${quantity} units removed from damaged hold`, icon: XCircle, iconClassName: "bg-rose-50 text-rose-700", panelClassName: "bg-rose-50/70 text-rose-800" };
+  const difference = line.sourceBucket ? titleCase(line.sourceBucket) : "Document difference";
+  return { label: `${difference} accepted`, impact: "No stock movement", icon: CheckCircle2, iconClassName: "bg-amber-50 text-amber-700", panelClassName: "bg-amber-50/75 text-amber-900" };
+}
+
+function correctionVariantId(line: WarehouseCorrectionLineRow, receiptLine: WarehouseReceiptLineRow | undefined): string | null {
+  if (line.toVariantId || line.fromVariantId) return line.toVariantId ?? line.fromVariantId;
+  if (!receiptLine) return null;
+  if (["damaged", "excess", "substitution"].includes(line.sourceBucket ?? "")) return receiptLine.actualVariantId ?? receiptLine.expectedVariantId;
+  return receiptLine.expectedVariantId;
+}
+
+function CorrectionLineCard({
+  line,
+  variantById,
+  receiptLineById,
+  variantLabel,
+}: {
+  line: WarehouseCorrectionLineRow;
+  variantById: Map<string, WarehouseReceiptVariantOption>;
+  receiptLineById: Map<string, WarehouseReceiptLineRow>;
+  variantLabel: Map<string, string>;
+}) {
+  const meta = correctionLineMeta(line);
+  const Icon = meta.icon;
+  const receiptLine = line.sourceReceiptLineId ? receiptLineById.get(line.sourceReceiptLineId) : undefined;
+  const primaryVariantId = correctionVariantId(line, receiptLine);
+  const primaryVariant = primaryVariantId ? variantById.get(primaryVariantId) : undefined;
+  const fromVariant = line.fromVariantId ? variantById.get(line.fromVariantId) : undefined;
+  const toVariant = line.toVariantId ? variantById.get(line.toVariantId) : undefined;
+  const description = describeWarehouseCorrectionLine(line, variantLabel);
+
+  const identity = (variant: WarehouseReceiptVariantOption | undefined, fallback: string, stage?: string) => (
+    <div className="min-w-0">
+      {stage ? <p className="mb-1.5 text-[8px] font-extrabold uppercase tracking-[0.08em] text-[#94867c]">{stage}</p> : null}
+      <VariantIdentity
+        image={variant?.productImage ?? null}
+        productName={variant?.productName ?? "Variant"}
+        label={variant ? `${variant.productName}${variant.optionLabel ? ` — ${variant.optionLabel}` : ""}` : fallback}
+        sku={variant?.sku ?? "Document-level record"}
+      />
+    </div>
+  );
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-[#eee5de] bg-white">
+      <div className="grid gap-3 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-xl ${meta.iconClassName}`}><Icon className="h-4 w-4" /></span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[10.5px] font-extrabold text-[#403730]">{meta.label}</p>
+              <span className={`rounded-lg px-2 py-1 text-[8.5px] font-extrabold ${meta.panelClassName}`}>{meta.impact}</span>
+            </div>
+            <p className="mt-1 text-[9px] leading-4 text-[#8d8076]">{description}</p>
+          </div>
+        </div>
+        <span className="w-fit rounded-xl bg-[#f7f3ef] px-3 py-2 text-center"><strong className="block text-[12px] tabular-nums text-[#403730]">{formatCount(line.quantity)}</strong><span className="text-[8px] font-bold uppercase tracking-[0.06em] text-[#94867c]">Units</span></span>
+      </div>
+
+      <div className={`mx-3 mb-3 rounded-xl px-3 py-2.5 ${meta.panelClassName}`}>
+        {line.action === "reclassify" ? (
+          <div className="grid items-center gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+            {identity(fromVariant, line.fromVariantId ? variantLabel.get(line.fromVariantId) ?? "Recorded Variant" : "Recorded Variant", "Recorded as")}
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/80"><ArrowRight className="h-3.5 w-3.5" /></span>
+            {identity(toVariant, line.toVariantId ? variantLabel.get(line.toVariantId) ?? "Correct Variant" : "Correct Variant", "Corrected to")}
+          </div>
+        ) : identity(primaryVariant, primaryVariantId ? variantLabel.get(primaryVariantId) ?? "Affected Variant" : titleCase(line.sourceBucket ?? "Document record"))}
+      </div>
+
+      {line.note ? <div className="flex items-start gap-2 border-t border-[#f0e9e3] px-3 py-2.5 text-[9px] leading-4 text-[#756960]"><CheckCircle2 className="mt-0.5 h-3 w-3 flex-none text-emerald-600" /><span><strong className="font-extrabold text-[#62564d]">Verified:</strong> {line.note}</span></div> : null}
+    </div>
+  );
+}
+
 export default function WarehouseCorrectionWorkspace({
   transferId,
   items,
@@ -121,7 +215,14 @@ export default function WarehouseCorrectionWorkspace({
 
   const receiptLines = useMemo(() => receipts.flatMap((receipt) => receipt.lines), [receipts]);
   const receiptLineByItem = useMemo(() => new Map(receiptLines.map((line) => [line.expectedTransferItemId, line])), [receiptLines]);
-  const variantLabel = useMemo(() => new Map(variants.map((variant) => [variant.variantId, `${variant.productName}${variant.optionLabel ? ` — ${variant.optionLabel}` : ""} · ${variant.sku}`])), [variants]);
+  const receiptLineById = useMemo(() => new Map(receiptLines.map((line) => [line.id, line])), [receiptLines]);
+  const variantById = useMemo(() => {
+    const map = new Map<string, WarehouseReceiptVariantOption>();
+    for (const item of items) map.set(item.variantId, { variantId: item.variantId, productName: item.productName, productImage: item.productImage, sku: item.sku, optionLabel: item.optionLabel });
+    for (const variant of variants) map.set(variant.variantId, variant);
+    return map;
+  }, [items, variants]);
+  const variantLabel = useMemo(() => new Map([...variantById.values()].map((variant) => [variant.variantId, `${variant.productName}${variant.optionLabel ? ` — ${variant.optionLabel}` : ""} · ${variant.sku}`])), [variantById]);
   const activeCorrections = useMemo(() => corrections.filter((correction) => correction.status === "posted" || correction.status === "pending_approval"), [corrections]);
   const totalRequested = items.reduce((sum, item) => sum + item.requestedQty, 0);
   const totalAccepted = receiptLines.length
@@ -438,10 +539,51 @@ export default function WarehouseCorrectionWorkspace({
         {reviewing ? <div className="mt-4 rounded-2xl bg-[#f8f4f0] p-4"><div className="flex items-start gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-800"><PackageCheck className="h-4 w-4" /></span><div><h3 className="text-[13px] font-extrabold text-[#302924]">Correction review</h3><p className="mt-1 text-[10px] leading-5 text-[#756960]">These changes create one linked correction document without changing the original receipt. Full Admin corrections post immediately; delegated warehouse staff send it for independent approval.</p></div></div><div className="mt-3 space-y-2">{drafts.map((draft) => <div key={draft.id} className="flex flex-col gap-2 rounded-xl bg-white px-3 py-2.5 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="text-[10.5px] font-extrabold text-[#403730]">{draft.label}</p><p className="mt-1 text-[9.5px] text-[#756960]">{draft.preview}</p><p className="mt-1 text-[9px] text-[#94867c]">{draft.note}</p></div><button type="button" onClick={() => setDrafts((current) => current.filter((candidate) => candidate.id !== draft.id))} className="inline-flex h-8 items-center gap-1 px-2 text-[9px] font-bold text-red-700"><Trash2 className="h-3.5 w-3.5" />Remove</button></div>)}</div><div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={requestCorrection} disabled={busy || !drafts.length} className="inline-flex h-11 items-center rounded-xl bg-[#C85956] px-5 text-[11px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">{busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}{busy ? "Creating…" : "Submit correction"}</button><button type="button" onClick={() => setReviewing(false)} disabled={busy} className="h-11 px-3 text-[10px] font-bold text-[#62564d]">Back to document</button></div></div> : null}
       </div> : null}
 
-      {corrections.length ? <details className="group border-t border-[#ddd4cc] px-5 py-4"><summary className="flex cursor-pointer list-none items-center gap-2 text-[11px] font-extrabold text-[#403730] outline-none [&::-webkit-details-marker]:hidden"><FilePenLine className="h-3.5 w-3.5 text-[#C85956]" />Correction documents · {formatCount(corrections.length)}<ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-180" /></summary><div className="mt-3 space-y-2">{corrections.map((correction) => {
-        const canReverse = correction.status === "posted" && !correction.reversesCorrectionId && correction.lines.length > 0 && correction.lines.every((line) => ["reclassify", "adjust_in", "adjust_out"].includes(line.action) && !line.sourceReceiptLineId && !line.sourceCorrectionLineId);
-        return <article key={correction.id} className="rounded-xl bg-[#f8f4f0] p-3"><div className="flex flex-wrap items-center gap-2"><p className="text-[10.5px] font-extrabold text-[#302924]">{correction.correctionNumber}</p><span className={`rounded-lg px-2 py-1 text-[8.5px] font-bold ${correctionTone(correction.status)}`}>{titleCase(correction.status)}</span><span className="text-[9px] text-[#8d8076]">{titleCase(correction.correctionType)}</span>{!readOnly && correction.status === "pending_approval" ? <div className="flex gap-2 sm:ml-auto"><button type="button" onClick={() => { setRejecting(rejecting === correction.id ? null : correction.id); setReversing(null); }} className="inline-flex h-8 items-center rounded-lg bg-white px-2.5 text-[9px] font-bold text-[#675b52]"><XCircle className="mr-1 h-3 w-3" />Reject</button><button type="button" onClick={() => approve(correction.id)} disabled={Boolean(approving) || busy} className="inline-flex h-8 items-center rounded-lg bg-[#C85956] px-2.5 text-[9px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">{approving === correction.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1 h-3 w-3" />}Approve & post</button></div> : !readOnly && canReverse ? <button type="button" onClick={() => { setReversing(reversing === correction.id ? null : correction.id); setRejecting(null); }} className="inline-flex h-8 items-center rounded-lg bg-white px-2.5 text-[9px] font-bold text-[#675b52] sm:ml-auto"><RotateCcw className="mr-1 h-3 w-3" />Request reversal</button> : null}</div><p className="mt-2 text-[9.5px] leading-4 text-[#62564d]">{correction.note}</p><div className="mt-2 space-y-1.5">{correction.lines.map((line) => <p key={line.id} className="rounded-lg bg-[#eee7e1] px-2.5 py-2 text-[8.5px] font-semibold leading-4 text-[#62564d]">{describeWarehouseCorrectionLine(line, variantLabel)}{line.note ? <span className="mt-0.5 block font-normal text-[#8d8076]">{line.note}</span> : null}</p>)}</div>{correction.rejectionNote ? <p className="mt-2 rounded-lg bg-red-50 px-2.5 py-2 text-[9px] font-semibold text-red-800">Rejected: {correction.rejectionNote}</p> : null}{!readOnly && rejecting === correction.id ? <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={rejectionNote} onChange={(event) => setRejectionNote(event.target.value)} placeholder="Required rejection reason" className={`${CONTROL} flex-1 bg-white`} /><button type="button" onClick={() => reject(correction.id)} disabled={rejectionNote.trim().length < 5 || busy} className="h-10 rounded-xl bg-[#C85956] px-3 text-[9.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">Confirm rejection</button></div> : null}{!readOnly && reversing === correction.id ? <div className="mt-3"><p className="mb-2 text-[9px] text-[#8d8076]">A reversal does not erase this document; it creates a separately approved counter-entry.</p><div className="flex flex-col gap-2 sm:flex-row"><input value={reversalNote} onChange={(event) => setReversalNote(event.target.value)} placeholder="Why must this posted correction be reversed?" className={`${CONTROL} flex-1 bg-white`} /><button type="button" onClick={() => requestReversal(correction.id)} disabled={reversalNote.trim().length < 5 || busy} className="h-10 rounded-xl bg-[#C85956] px-3 text-[9.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">Create reversal</button></div></div> : null}</article>;
-      })}</div></details> : null}
+      {corrections.length ? (
+        <details className="group border-t border-[#ddd4cc] px-5 py-4">
+          <summary className="flex cursor-pointer list-none items-center gap-2 text-[11px] font-extrabold text-[#403730] outline-none [&::-webkit-details-marker]:hidden">
+            <FilePenLine className="h-3.5 w-3.5 text-[#C85956]" />
+            Correction documents · {formatCount(corrections.length)}
+            <ChevronDown className="ml-auto h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="mt-3 space-y-3">
+            {corrections.map((correction) => {
+              const canReverse = correction.status === "posted" && !correction.reversesCorrectionId && correction.lines.length > 0 && correction.lines.every((line) => ["reclassify", "adjust_in", "adjust_out"].includes(line.action) && !line.sourceReceiptLineId && !line.sourceCorrectionLineId);
+              const showDocumentNote = correction.correctionType === "document_amendment" || correction.lines.length === 0;
+              return (
+                <article key={correction.id} className="overflow-hidden rounded-2xl border border-[#e9dfd7] bg-[#fbf8f5]">
+                  <div className="flex flex-wrap items-center gap-3 border-b border-[#eee5de] bg-white px-4 py-3">
+                    <span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-[#f4dfdc] text-[#a84542]"><FilePenLine className="h-4 w-4" /></span>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[11px] font-extrabold text-[#302924]">{correction.correctionNumber}</p>
+                        <span className={`rounded-lg px-2 py-1 text-[8.5px] font-bold ${correctionTone(correction.status)}`}>{titleCase(correction.status)}</span>
+                      </div>
+                      <p className="mt-1 text-[8.5px] text-[#8d8076]">{titleCase(correction.correctionType)} · {formatCount(correction.lines.length)} recorded change{correction.lines.length === 1 ? "" : "s"}</p>
+                    </div>
+                    {!readOnly && correction.status === "pending_approval" ? (
+                      <div className="flex gap-2 sm:ml-auto">
+                        <button type="button" onClick={() => { setRejecting(rejecting === correction.id ? null : correction.id); setReversing(null); }} className="inline-flex h-8 items-center rounded-lg bg-[#f7f3ef] px-2.5 text-[9px] font-bold text-[#675b52] hover:bg-rose-50 hover:text-rose-700"><XCircle className="mr-1 h-3 w-3" />Reject</button>
+                        <button type="button" onClick={() => approve(correction.id)} disabled={Boolean(approving) || busy} className="inline-flex h-8 items-center rounded-lg bg-[#C85956] px-2.5 text-[9px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">{approving === correction.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <ShieldCheck className="mr-1 h-3 w-3" />}Approve & post</button>
+                      </div>
+                    ) : !readOnly && canReverse ? (
+                      <button type="button" onClick={() => { setReversing(reversing === correction.id ? null : correction.id); setRejecting(null); }} className="inline-flex h-8 items-center rounded-lg bg-[#f7f3ef] px-2.5 text-[9px] font-bold text-[#675b52] hover:bg-[#eee7e1] sm:ml-auto"><RotateCcw className="mr-1 h-3 w-3" />Request reversal</button>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-2.5 p-3">
+                    {showDocumentNote && correction.note ? <div className="rounded-xl bg-sky-50/60 px-3 py-2.5 text-[9px] leading-4 text-sky-900"><strong className="font-extrabold">Document note:</strong> {correction.note}</div> : null}
+                    {correction.lines.map((line) => <CorrectionLineCard key={line.id} line={line} variantById={variantById} receiptLineById={receiptLineById} variantLabel={variantLabel} />)}
+                    {correction.rejectionNote ? <p className="rounded-xl bg-red-50 px-3 py-2.5 text-[9px] font-semibold text-red-800">Rejected: {correction.rejectionNote}</p> : null}
+                    {!readOnly && rejecting === correction.id ? <div className="flex flex-col gap-2 sm:flex-row"><input value={rejectionNote} onChange={(event) => setRejectionNote(event.target.value)} placeholder="Required rejection reason" className={`${CONTROL} flex-1 bg-white`} /><button type="button" onClick={() => reject(correction.id)} disabled={rejectionNote.trim().length < 5 || busy} className="h-10 rounded-xl bg-[#C85956] px-3 text-[9.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">Confirm rejection</button></div> : null}
+                    {!readOnly && reversing === correction.id ? <div className="rounded-xl bg-white p-3"><p className="mb-2 text-[9px] text-[#8d8076]">A reversal does not erase this document; it creates a separately approved counter-entry.</p><div className="flex flex-col gap-2 sm:flex-row"><input value={reversalNote} onChange={(event) => setReversalNote(event.target.value)} placeholder="Why must this posted correction be reversed?" className={`${CONTROL} flex-1 bg-white`} /><button type="button" onClick={() => requestReversal(correction.id)} disabled={reversalNote.trim().length < 5 || busy} className="h-10 rounded-xl bg-[#C85956] px-3 text-[9.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-45">Create reversal</button></div></div> : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
     </section>
   );
 }

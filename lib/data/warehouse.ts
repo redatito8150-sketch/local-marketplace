@@ -115,6 +115,7 @@ export interface WarehouseCorrectionRow {
 export interface WarehouseReceiptVariantOption {
   variantId: string;
   productName: string;
+  productImage: string | null;
   sku: string;
   optionLabel: string;
 }
@@ -479,7 +480,7 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
 export async function getWarehouseReceiptVariantOptions(brandId: string): Promise<WarehouseReceiptVariantOption[]> {
   const { data: variantRows, error } = await supabaseAdmin
     .from("product_variants")
-    .select("id, sku, product_id, products!inner(name, brand_id)")
+    .select("id, sku, product_id, products!inner(name, image, brand_id)")
     .eq("products.brand_id", brandId)
     .eq("is_archived", false)
     .eq("selling_status", "active")
@@ -487,29 +488,51 @@ export async function getWarehouseReceiptVariantOptions(brandId: string): Promis
   if (error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) failed: ${error.message}`);
 
   const ids = (variantRows ?? []).map((row) => row.id as string);
-  const { data: valueRows, error: valueError } = ids.length
-    ? await supabaseAdmin
-      .from("product_variant_values")
-      .select("variant_id, option_values(label)")
-      .in("variant_id", ids)
-    : { data: [], error: null };
-  if (valueError) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) values failed: ${valueError.message}`);
+  const productIds = [...new Set((variantRows ?? []).map((row) => row.product_id as string))];
+  const [valuesResult, mediaResult] = await Promise.all([
+    ids.length
+      ? supabaseAdmin
+        .from("product_variant_values")
+        .select("variant_id, option_value_id, option_values(id, label, option_types(name))")
+        .in("variant_id", ids)
+      : Promise.resolve({ data: [], error: null }),
+    productIds.length
+      ? supabaseAdmin
+        .from("product_media")
+        .select("product_id, storage_reference, color_option_value_id")
+        .in("product_id", productIds)
+        .eq("is_archived", false)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (valuesResult.error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) values failed: ${valuesResult.error.message}`);
+  if (mediaResult.error) throw new Error(`getWarehouseReceiptVariantOptions(${brandId}) media failed: ${mediaResult.error.message}`);
 
-  const valuesByVariant = new Map<string, { label: string }[]>();
-  for (const row of valueRows ?? []) {
-    const option = row.option_values as unknown as { label: string } | null;
+  const optionsByVariant = new Map<string, { optionTypeId: string; optionTypeName: string; optionValueId: string; label: string }[]>();
+  for (const row of valuesResult.data ?? []) {
+    const option = row.option_values as unknown as { id: string; label: string; option_types: { name: string } | null } | null;
     if (!option) continue;
-    const current = valuesByVariant.get(row.variant_id as string) ?? [];
-    current.push(option);
-    valuesByVariant.set(row.variant_id as string, current);
+    const current = optionsByVariant.get(row.variant_id as string) ?? [];
+    current.push({
+      optionTypeId: option.option_types?.name ?? "",
+      optionTypeName: option.option_types?.name ?? "",
+      optionValueId: (row.option_value_id as string) || option.id,
+      label: option.label,
+    });
+    optionsByVariant.set(row.variant_id as string, current);
   }
+  const colorImages = buildColorImageLookup(mediaResult.data ?? []);
 
-  return (variantRows ?? []).map((row) => ({
-    variantId: row.id as string,
-    productName: (row.products as unknown as { name: string }).name,
-    sku: row.sku as string,
-    optionLabel: joinOptionLabel(valuesByVariant.get(row.id as string)),
-  }));
+  return (variantRows ?? []).map((row) => {
+    const product = row.products as unknown as { name: string; image: string | null };
+    const optionValues = optionsByVariant.get(row.id as string) ?? [];
+    return {
+      variantId: row.id as string,
+      productName: product.name,
+      productImage: resolveVariantImage(row.product_id as string, { optionValues }, colorImages, product.image) || null,
+      sku: row.sku as string,
+      optionLabel: joinOptionLabel(optionValues),
+    };
+  });
 }
 
 export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus): Promise<WarehouseTransferRow[]> {
