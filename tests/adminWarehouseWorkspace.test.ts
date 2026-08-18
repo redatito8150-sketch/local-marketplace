@@ -75,8 +75,10 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(history, /transfer\.status === "received" \? "Accepted"/);
   assert.match(history, /activity\.sort/);
   assert.doesNotMatch(page, /AdminWorkspaceNav/);
-  assert.match(page, /text-\[9\.5px\][^>]*>[\s\S]*?<ArrowLeft[^>]*>[\s\S]*?All requests[\s\S]*?<div className="flex flex-col gap-4 lg:flex-row lg:items-center">[\s\S]*?<BrandMark/);
+  assert.match(page, /All requests[\s\S]*?<header className="mb-4 rounded-\[22px\] border border-\[#e6ded7\] bg-white/);
+  assert.match(page, /<div className="flex flex-col gap-4 lg:flex-row lg:items-center">[\s\S]*?<BrandMark/);
   assert.doesNotMatch(page, /All requests<\/Link>\s*<BrandMark/);
+  assert.doesNotMatch(page, />Open brand</);
   assert.match(page, /getAuditLogsForEntity\("warehouse_transfer"/);
   assert.match(page, /PrintWarehouseDocumentButton/);
   assert.doesNotMatch(page, /WarehouseDocumentActions/);

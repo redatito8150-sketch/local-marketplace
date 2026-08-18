@@ -44,11 +44,13 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
 
   return (
     <div>
-      <header className="mb-4 rounded-[22px] bg-[#ece7e0] px-5 py-4 shadow-[0_12px_32px_rgba(72,50,36,.07)] print:shadow-none">
-        <Link href="/admin/warehouse" className="mb-2 inline-flex w-fit items-center gap-1 text-[9.5px] font-semibold text-[#756960] transition-colors hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25 print:hidden">
+      <div className="mb-2 print:hidden">
+        <Link href="/admin/warehouse" className="inline-flex w-fit items-center gap-1 text-[9.5px] font-semibold text-[#756960] transition-colors hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25">
           <ArrowLeft className="h-3 w-3" />
           All requests
         </Link>
+      </div>
+      <header className="mb-4 rounded-[22px] border border-[#e6ded7] bg-white px-5 py-4 shadow-[0_10px_30px_rgba(72,50,36,.045)] print:border-0 print:shadow-none">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
           <BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} />
           <div className="min-w-0">
@@ -56,7 +58,7 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
             <h1 className="mt-0.5 truncate text-[18px] font-extrabold text-[#302924]">{documentNumber}</h1>
             <p className="mt-1 text-[10.5px] text-[#756960]">{transfer.brandName} · Requested {formatDateTime(transfer.requestedAt)}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2 lg:ml-auto"><TonePill label={statusMeta.label} tone={statusMeta.tone} icon={statusMeta.icon} /><PrintWarehouseDocumentButton /><Link href={`/brand-portal/warehouse/${transfer.id}?brand=${encodeURIComponent(transfer.brandSlug)}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#e2dcd4] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#d8d0c8] hover:text-[#302924] print:hidden">View brand portal<ExternalLink className="h-3 w-3" /></Link><Link href={`/admin/brands/${encodeURIComponent(transfer.brandSlug)}/edit`} className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-[#e2dcd4] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#d8d0c8] hover:text-[#302924] print:hidden">Open brand<ExternalLink className="h-3 w-3" /></Link></div>
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto"><TonePill label={statusMeta.label} tone={statusMeta.tone} icon={statusMeta.icon} /><PrintWarehouseDocumentButton /><Link href={`/brand-portal/warehouse/${transfer.id}?brand=${encodeURIComponent(transfer.brandSlug)}`} className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#e6ded7] bg-[#f8f5f2] px-3 text-[10.5px] font-bold text-[#62564d] hover:bg-[#efe9e4] hover:text-[#302924] print:hidden">View brand portal<ExternalLink className="h-3 w-3" /></Link></div>
         </div>
       </header>
 
