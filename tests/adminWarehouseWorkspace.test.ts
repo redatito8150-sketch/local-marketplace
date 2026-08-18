@@ -108,6 +108,9 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(resolution, /written_off/);
   assert.match(resolution, /returned_to_brand/);
   assert.match(resolution, /restored_to_sellable/);
+  for (const surface of [receive, resolution, read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx")]) {
+    assert.doesNotMatch(surface, /bg-\[#242424\]|hover:bg-\[#242424\]|bg-amber-800|hover:bg-amber-900/);
+  }
 });
 
 test("partial receiving API accepts only unreconciled submitted lines and uses the canonical document RPC", () => {

@@ -299,7 +299,7 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
                     </button>
                   ) : discrepancy === 0 ? <TonePill label="Reconciled" tone="emerald" icon={CheckCircle2} /> : unresolved ? <TonePill label={receivedThroughV2.has(item.id) ? "Open discrepancy" : "Legacy quarantine"} tone="amber" icon={AlertTriangle} /> : <TonePill label={item.quarantineResolution ? titleCase(item.quarantineResolution) : "Resolved"} tone="neutral" icon={CheckCircle2} />}
 
-                  {showLedger ? <Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(brandSlug)}&variantId=${encodeURIComponent(item.variantId)}`} className="inline-flex h-10 items-center gap-1 rounded-xl bg-[#e2dcd4] px-3 text-[9.5px] font-bold text-[#5b5049] hover:bg-[#242424] hover:text-white"><Activity className="h-3 w-3" />Ledger</Link> : null}
+                  {showLedger ? <Link href={`/admin/inventory?view=activity&brand=${encodeURIComponent(brandSlug)}&variantId=${encodeURIComponent(item.variantId)}`} className="inline-flex h-10 items-center gap-1 rounded-xl bg-[#e2dcd4] px-3 text-[9.5px] font-bold text-[#5b5049] hover:bg-[#efe9e4] hover:text-[#302924]"><Activity className="h-3 w-3" />Ledger</Link> : null}
                 </div>
               </div>
 
@@ -352,7 +352,7 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {selected.size ? <button type="button" onClick={clearChanges} className="inline-flex h-10 items-center gap-1.5 px-2 text-[10px] font-bold text-[#756960] hover:text-[#C85956]"><RotateCcw className="h-3.5 w-3.5" />Clear changes</button> : null}
-              <button type="button" onClick={beginReview} disabled={!valid} className="inline-flex h-11 items-center rounded-xl bg-[#242424] px-5 text-[12px] font-bold text-white hover:bg-[#3a332e] disabled:cursor-not-allowed disabled:opacity-40"><ShieldCheck className="mr-2 h-4 w-4" />Review receipt · {formatCount(selected.size)} {selected.size === 1 ? "variant" : "variants"}</button>
+              <button type="button" onClick={beginReview} disabled={!valid} className="inline-flex h-11 items-center rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white hover:bg-[#b84e4b] disabled:cursor-not-allowed disabled:opacity-40"><ShieldCheck className="mr-2 h-4 w-4" />Review receipt · {formatCount(selected.size)} {selected.size === 1 ? "variant" : "variants"}</button>
             </div>
           </div>
 
