@@ -33,6 +33,7 @@ export type NotificationType =
   | "storage_error"
   | "warehouse_transfer_requested"
   | "warehouse_transfer_received"
+  | "warehouse_transfer_cancelled"
   | "warehouse_transfer_rejected";
 
 // Green = something was added, red = something was removed, orange for
@@ -67,6 +68,7 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   role_deleted: DISCORD_COLORS.red,
   role_unassigned: DISCORD_COLORS.red,
   warehouse_transfer_rejected: DISCORD_COLORS.red,
+  warehouse_transfer_cancelled: DISCORD_COLORS.red,
 };
 
 export interface NotifyOptions {

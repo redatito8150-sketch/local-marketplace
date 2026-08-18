@@ -59,7 +59,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const allTransfers = await getAllWarehouseTransfers();
   const q = params.q?.trim() ?? "";
   const normalizedQuery = q.toLocaleLowerCase("en-US");
-  const status = params.status === "action_required" || params.status === "open" || isWarehouseStatus(params.status) ? params.status : "";
+  const status = params.status === "action_required" || params.status === "requested" || isWarehouseStatus(params.status) ? params.status : "";
   const direction = params.direction === "to_local" || params.direction === "to_brand" ? params.direction : "";
   const brand = params.brand ?? "";
   const discrepancy = params.discrepancy === "open" || params.discrepancy === "resolved" ? params.discrepancy : "";
@@ -77,7 +77,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const filtered = allTransfers.filter((transfer) => {
     const hasOpenDiscrepancy = hasOpenWarehouseIssue(transfer);
     if (status === "action_required" && !ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) && !hasOpenDiscrepancy) return false;
-    if (status === "open" && !OPEN_WAREHOUSE_STATUSES.has(transfer.status)) return false;
+    if (status === "requested" && !["pending", "submitted"].includes(transfer.status)) return false;
     if (isWarehouseStatus(status) && transfer.status !== status) return false;
     if (direction && transfer.direction !== direction) return false;
     if (brand && transfer.brandSlug !== brand) return false;

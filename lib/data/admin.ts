@@ -1032,6 +1032,13 @@ async function getFullNamesByActorId(rows: AuditLogRow[]): Promise<Map<string, s
   return nameByActorId;
 }
 
+async function getStaffActorIds(rows: AuditLogRow[]): Promise<Set<string>> {
+  const actorIds = [...new Set(rows.map((row) => row.actor_id).filter((id): id is string => Boolean(id)))];
+  if (!actorIds.length) return new Set();
+  const { data } = await supabaseAdmin.from("profiles").select("id, is_admin").in("id", actorIds);
+  return new Set((data ?? []).filter((profile) => profile.is_admin).map((profile) => profile.id as string));
+}
+
 export interface AuditLogFilters {
   entityType?: string;
   action?: string;
@@ -1531,8 +1538,14 @@ export async function getAuditLogsForEntity(
     throw new Error(`getAuditLogsForEntity(${entityType}, ${entityId}) failed: ${error.message}`);
   }
   const rows = data as AuditLogRow[];
-  const nameByActorId = await getFullNamesByActorId(rows);
-  return rows.map((row) => toAuditLogRecord(row, nameByActorId));
+  const [nameByActorId, staffActorIds] = await Promise.all([
+    getFullNamesByActorId(rows),
+    getStaffActorIds(rows),
+  ]);
+  return rows.map((row) => ({
+    ...toAuditLogRecord(row, nameByActorId),
+    actorIsStaff: Boolean(row.actor_id && staffActorIds.has(row.actor_id)),
+  }));
 }
 
 interface CouponRow {

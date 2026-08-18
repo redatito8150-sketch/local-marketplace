@@ -508,7 +508,9 @@ export default function WarehouseCorrectionWorkspace({
 
               {itemDrafts.length ? <div className="mt-3 flex flex-wrap gap-1.5">{itemDrafts.map((draft) => <span key={draft.id} className="rounded-lg bg-violet-50 px-2.5 py-1 text-[9px] font-bold text-violet-800">Draft · {draft.label}</span>)}</div> : null}
 
-              {rowCorrectionGroups.length ? <details className="group mt-3 w-fit max-w-full open:w-full">
+              {rowCorrectionGroups.length ? <>
+                {rowCorrectionGroups.map(({ correction }) => <span key={`anchor-${correction.id}`} id={`warehouse-correction-${correction.id}`} className="block scroll-mt-24" />)}
+                <details className="group mt-3 w-fit max-w-full open:w-full">
                 <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-lg bg-[#f8f4f0] px-2.5 py-1.5 text-[9px] font-extrabold text-[#62564d] outline-none transition hover:bg-[#f3ece6] focus-visible:ring-2 focus-visible:ring-[#C85956] [&::-webkit-details-marker]:hidden">
                   <FilePenLine className="h-3 w-3 text-[#C85956]" />
                   Corrected · {formatCount(rowCorrectionCount)} change{rowCorrectionCount === 1 ? "" : "s"}
@@ -549,7 +551,8 @@ export default function WarehouseCorrectionWorkspace({
                     </section>;
                   })}
                 </div>
-              </details> : null}
+                </details>
+              </> : null}
 
               {!readOnly && editingItemId === item.id ? (
                 <div className="mt-4 rounded-2xl bg-[#f8f4f0] p-4">

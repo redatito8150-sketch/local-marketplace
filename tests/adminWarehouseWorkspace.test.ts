@@ -14,7 +14,7 @@ test("warehouse data exposes formal documents, every lifecycle state, exact Vari
   assert.match(data, /buildColorImageLookup/);
   assert.match(data, /resolveVariantImage/);
   assert.match(data, /brands\(name, slug, logo_image\)/);
-  assert.match(data, /Promise\.all\(\[\s*emailFor\(t\.requested_by/);
+  assert.match(data, /Promise\.all\(\[\s*actorIdentityFor\(t\.requested_by/);
 });
 
 test("Stock requests is a compact searchable queue with inline status, brand and date filters", () => {
@@ -26,7 +26,8 @@ test("Stock requests is a compact searchable queue with inline status, brand and
   assert.match(filters, /Requested date range/);
   assert.match(filters, /compact/);
   assert.match(filters, /All brands/);
-  assert.match(filters, /value: "open", label: "Requested"/);
+  assert.match(filters, /value: "requested", label: "Requested"/);
+  assert.match(filters, /value: "approved", label: "Awaiting arrival"/);
   assert.match(filters, /value: "action_required", label: "Needs review"/);
   assert.match(filters, /filter\.value === "action_required" && needsReviewCount > 0/);
   assert.match(filters, /value: "received", label: "Received"/);
@@ -74,13 +75,14 @@ test("warehouse details show one combined document history, printing, partial re
   assert.doesNotMatch(history, /label: "Review"/);
   assert.doesNotMatch(history, /label: "Approved"/);
   assert.doesNotMatch(history, /label: "In transit"/);
-  assert.match(history, /transfer\.status === "received" \? "Accepted"/);
+  assert.match(history, /transfer\.status === "received" \? "Received"/);
   assert.match(history, /activity\.sort/);
   assert.doesNotMatch(page, /AdminWorkspaceNav/);
   assert.match(page, /<WarehouseDocumentHeader[^>]*backLabel="All requests"/);
   assert.match(documentHeader, /<BrandMark/);
   assert.match(documentHeader, /border border-\[#e6ded7\] bg-white/);
   assert.match(documentHeader, />Corrected<\/span>/);
+  assert.match(documentHeader, /Expected arrival/);
   assert.doesNotMatch(page, />Open brand</);
   assert.match(page, /getAuditLogsForEntity\("warehouse_transfer"/);
   assert.match(page, /PrintWarehouseDocumentButton/);
@@ -122,7 +124,8 @@ test("warehouse details show one combined document history, printing, partial re
 test("partial receiving API accepts only unreconciled submitted lines and uses the canonical document RPC", () => {
   const route = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
   assert.match(route, /RECEIVABLE_STATUSES/);
-  assert.match(route, /"pending", "submitted", "approved", "in_transit", "partially_received"/);
+  assert.match(route, /"approved", "in_transit", "partially_received"/);
+  assert.doesNotMatch(route, /"pending", "submitted", "approved"/);
   assert.match(route, /\.in\("id", submittedIds\)/);
   assert.match(route, /item\.received_ok_qty == null/);
   assert.match(route, /receive_warehouse_document_v2/);

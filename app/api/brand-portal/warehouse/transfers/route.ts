@@ -12,10 +12,9 @@ type TransferItemInput = { variantId: string; requestedQty: number; unitCost?: n
 // "اذن صرف مخزن" — a Zakhnook Partner brand asking Zakhnook's warehouse to
 // take physical custody of some of its own declared stock. Nothing on the
 // storefront changes yet (product_variants.quantity is untouched) — this
-// only creates the pending record + notifies the admin bell, exactly like
-// every other Instant-Publish-adjacent write in this app, except there's
-// nothing to "approve into effect" here: the effect only happens once a
-// warehouse receiver actually confirms receipt (see
+// only creates the requested record + notifies the admin bell. Zakhnook
+// accepts it into the non-stock "awaiting arrival" stage first; the actual
+// inventory effect happens only once a warehouse receiver confirms receipt (see
 // app/api/admin/warehouse/transfers/[id]/receive/route.ts).
 export async function POST(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
@@ -78,9 +77,7 @@ export async function POST(request: NextRequest) {
   });
   // Deliberately NOT resolvable (no auditLogId) — Approve/Revert is the
   // Instant-Publish semantics for a change that already went live and can
-  // be undone. A transfer request hasn't taken effect on anything yet; the
-  // real decision (receive with discrepancies, or reject) only happens
-  // from the dedicated Local Warehouse admin page this links to.
+  // be undone. A request still has no inventory effect at this stage.
   await notify(
     "warehouse_transfer_requested",
     `Local Warehouse transfer requested: ${owner.brandName ?? owner.brandSlug ?? ""}`,

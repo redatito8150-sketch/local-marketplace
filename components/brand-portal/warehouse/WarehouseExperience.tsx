@@ -11,7 +11,7 @@ import { OPEN_WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META, warehouseDocumentLabel 
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
 
-type DocumentFilter = "all" | "open" | "action_required" | "received";
+type DocumentFilter = "all" | "requested" | "awaiting_arrival" | "action_required" | "received";
 type DirectionFilter = "all" | WarehouseTransferRow["direction"];
 type ReturnColorGroup = { label: string; variants: Array<{ variant: WarehouseVariantRow; size: string }> };
 type ReturnProductGroup = { productId: string; productName: string; colors: ReturnColorGroup[] };
@@ -164,7 +164,7 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
   const deferredDocumentQuery = useDeferredValue(documentQuery.trim().toLocaleLowerCase());
   const issueCount = transfers.filter(hasOpenDocumentIssue).length;
   const filteredTransfers = useMemo(() => transfers
-    .filter((transfer) => documentFilter === "all" || (documentFilter === "open" && OPEN_WAREHOUSE_STATUSES.has(transfer.status)) || (documentFilter === "received" && transfer.status === "received") || (documentFilter === "action_required" && hasOpenDocumentIssue(transfer)))
+    .filter((transfer) => documentFilter === "all" || (documentFilter === "requested" && ["pending", "submitted"].includes(transfer.status)) || (documentFilter === "awaiting_arrival" && transfer.status === "approved") || (documentFilter === "received" && transfer.status === "received") || (documentFilter === "action_required" && hasOpenDocumentIssue(transfer)))
     .filter((transfer) => directionFilter === "all" || transfer.direction === directionFilter)
     .filter((transfer) => {
       const requestedAt = new Date(transfer.requestedAt).getTime();
@@ -177,7 +177,8 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
   const filtersActive = Boolean(documentQuery || directionFilter !== "all" || documentFilter !== "all" || fromDate || toDate);
   const statusFilters: Array<{ value: DocumentFilter; label: string }> = [
     { value: "all", label: "All" },
-    { value: "open", label: "Requested" },
+    { value: "requested", label: "Requested" },
+    { value: "awaiting_arrival", label: "Awaiting arrival" },
     { value: "action_required", label: "Needs review" },
     { value: "received", label: "Received" },
   ];

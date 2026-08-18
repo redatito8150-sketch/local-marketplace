@@ -58,6 +58,34 @@ final result: passed
 
 ---
 
+# Warehouse acceptance and private actor history — design QA
+
+## Evidence
+
+- Previous document state: `design-qa-artifacts/warehouse-corrections-compact-button-collapsed.png`
+- Current document state: `design-qa-artifacts/warehouse-acceptance-history-privacy.png`
+- Routes checked: `/admin/warehouse` and `/admin/warehouse/88f37b84-fd10-45be-83c4-906c598bfd59`
+
+## Checks performed
+
+- Confirmed the new queue filter presents `Requested` and `Awaiting arrival` as distinct compact states.
+- Confirmed the brand select keeps the existing neutral border without the blue focus ring.
+- Confirmed the document page remains visually unchanged above Document history, preserving the selected compact correction design.
+- Confirmed Document history now shows `Requested by @Salsabil Ahmed`, masks administrative actors as `Zakhnook Staff Team`, and exposes identity affordances only in the full Admin surface.
+- Confirmed correction history is reduced to one linked CRN event per correction, with no repeated correction payload or generic `Update` entry.
+- Confirmed the current production-backed local preview still renders before the new migration is applied.
+- Confirmed no horizontal overflow or broken control wrapping in the queue and document view.
+
+## Findings and resolution
+
+1. The native brand select had a prominent blue focus ring. Its focus styling now preserves only the existing neutral border.
+2. `Requested` previously grouped all open workflow states, obscuring the new acceptance stage. It is now split from `Awaiting arrival` in both Admin and Brand Portal.
+3. Audit entries previously exposed email addresses and repeated large correction descriptions. The new compact actor/CRN presentation removes that repetition while retaining full-Admin traceability.
+
+final result: passed
+
+---
+
 # Warehouse correction history — design QA
 
 ## Evidence

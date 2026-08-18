@@ -26,7 +26,7 @@ type ReceiveDocumentResult = {
   remaining_unreconciled: number;
 };
 
-const RECEIVABLE_STATUSES = new Set(["pending", "submitted", "approved", "in_transit", "partially_received"]);
+const RECEIVABLE_STATUSES = new Set(["approved", "in_transit", "partially_received"]);
 
 // Zakhnook's own warehouse staff (or an admin) confirming a physical
 // delivery against its transfer request — every line must be fully

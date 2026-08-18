@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 
-type StatusFilter = "" | "open" | "action_required" | "received";
+type StatusFilter = "" | "requested" | "approved" | "action_required" | "received";
 
 const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
   { value: "", label: "All" },
-  { value: "open", label: "Requested" },
+  { value: "requested", label: "Requested" },
+  { value: "approved", label: "Awaiting arrival" },
   { value: "action_required", label: "Needs review" },
   { value: "received", label: "Received" },
 ];
@@ -113,7 +114,7 @@ export default function WarehouseQueueFilters({
             id="warehouse-brand-filter"
             value={brand}
             onChange={(event) => navigate({ brand: event.target.value })}
-            className="h-10 min-w-[148px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#C85956]/45 focus:ring-4 focus:ring-[#C85956]/8"
+            className="h-10 min-w-[148px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#e7ddd5] focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
           >
             <option value="">All brands</option>
             {brandOptions.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}

@@ -109,7 +109,17 @@ export interface WarehouseCorrectionRow {
   requestedByLabel: string | null;
   approvedByLabel: string | null;
   rejectedByLabel: string | null;
+  requestedByActor: WarehouseActorIdentity | null;
+  approvedByActor: WarehouseActorIdentity | null;
+  rejectedByActor: WarehouseActorIdentity | null;
   lines: WarehouseCorrectionLineRow[];
+}
+
+export interface WarehouseActorIdentity {
+  id: string;
+  displayName: string;
+  email: string | null;
+  isStaff: boolean;
 }
 
 export interface WarehouseReceiptVariantOption {
@@ -140,6 +150,10 @@ export interface WarehouseTransferRow {
   receivingNote: string | null;
   approvedAt: string | null;
   approvedByEmail: string | null;
+  expectedArrivalAt: string | null;
+  requestedByActor: WarehouseActorIdentity | null;
+  approvedByActor: WarehouseActorIdentity | null;
+  decidedByActor: WarehouseActorIdentity | null;
   updatedAt: string;
   items: WarehouseTransferItemRow[];
   receipts: WarehouseReceiptRow[];
@@ -292,10 +306,33 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
   return itemsByTransfer;
 }
 
-async function emailFor(userId: string | null): Promise<string | null> {
+async function actorIdentityFor(userId: string | null): Promise<WarehouseActorIdentity | null> {
   if (!userId) return null;
-  const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
-  return data.user?.email ?? null;
+  const [{ data: profile }, authResult] = await Promise.all([
+    supabaseAdmin.from("profiles").select("id, full_name, email, is_admin").eq("id", userId).maybeSingle(),
+    supabaseAdmin.auth.admin.getUserById(userId),
+  ]);
+  const email = (profile?.email as string | null)?.trim() || authResult.data.user?.email || null;
+  return {
+    id: userId,
+    displayName: (profile?.full_name as string | null)?.trim() || email?.split("@")[0] || "Team member",
+    email,
+    isStaff: Boolean(profile?.is_admin),
+  };
+}
+
+async function expectedArrivalForTransfer(transferId: string): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("warehouse_transfers")
+    .select("expected_arrival_at")
+    .eq("id", transferId)
+    .maybeSingle();
+  if (error) {
+    const detail = [error.message, error.details, error.hint].filter(Boolean).join(" ");
+    if (new Set(["42703", "PGRST204"]).has(error.code) && detail.includes("expected_arrival_at")) return null;
+    throw new Error(`expectedArrivalForTransfer(${transferId}) failed: ${error.message}`);
+  }
+  return data?.expected_arrival_at as string | null ?? null;
 }
 
 function resolveWarehouseReconciliationStatus(
@@ -349,6 +386,10 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     receivingNote: t.receiving_note as string | null,
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
+    expectedArrivalAt: null,
+    requestedByActor: null,
+    approvedByActor: null,
+    decidedByActor: null,
     updatedAt: t.updated_at as string,
     items,
     receipts: [],
@@ -433,15 +474,21 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
   }));
 
   const actorIds = [...new Set((correctionRows ?? []).flatMap((row) => [row.requested_by, row.approved_by, row.rejected_by]).filter((id): id is string => typeof id === "string"))];
-  const actorById = new Map<string, string>();
+  const actorById = new Map<string, WarehouseActorIdentity>();
   if (actorIds.length) {
     const { data: actors, error: actorError } = await supabaseAdmin
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, is_admin")
       .in("id", actorIds);
     if (actorError) throw new Error(`getWarehouseDocumentHistory(${transferId}) actors failed: ${actorError.message}`);
     for (const actor of actors ?? []) {
-      actorById.set(actor.id as string, (actor.full_name as string | null)?.trim() || (actor.email as string | null)?.trim() || "Administrator");
+      const email = (actor.email as string | null)?.trim() || null;
+      actorById.set(actor.id as string, {
+        id: actor.id as string,
+        displayName: (actor.full_name as string | null)?.trim() || email?.split("@")[0] || "Team member",
+        email,
+        isStaff: Boolean(actor.is_admin),
+      });
     }
   }
 
@@ -458,9 +505,12 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     rejectionNote: row.rejection_note as string | null,
     reversesCorrectionId: row.reverses_correction_id as string | null,
     approvalMode: row.approval_mode === "admin_auto" ? "admin_auto" : "independent",
-    requestedByLabel: typeof row.requested_by === "string" ? actorById.get(row.requested_by) ?? "Administrator" : null,
-    approvedByLabel: typeof row.approved_by === "string" ? actorById.get(row.approved_by) ?? "Administrator" : null,
-    rejectedByLabel: typeof row.rejected_by === "string" ? actorById.get(row.rejected_by) ?? "Administrator" : null,
+    requestedByLabel: typeof row.requested_by === "string" ? actorById.get(row.requested_by)?.displayName ?? "Administrator" : null,
+    approvedByLabel: typeof row.approved_by === "string" ? actorById.get(row.approved_by)?.displayName ?? "Administrator" : null,
+    rejectedByLabel: typeof row.rejected_by === "string" ? actorById.get(row.rejected_by)?.displayName ?? "Administrator" : null,
+    requestedByActor: typeof row.requested_by === "string" ? actorById.get(row.requested_by) ?? null : null,
+    approvedByActor: typeof row.approved_by === "string" ? actorById.get(row.approved_by) ?? null : null,
+    rejectedByActor: typeof row.rejected_by === "string" ? actorById.get(row.rejected_by) ?? null : null,
     lines: ((row.warehouse_correction_lines ?? []) as Array<Record<string, unknown>>).map((line) => ({
       id: line.id as string,
       action: line.action as WarehouseCorrectionLineRow["action"],
@@ -570,6 +620,10 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     receivingNote: t.receiving_note as string | null,
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
+    expectedArrivalAt: null,
+    requestedByActor: null,
+    approvedByActor: null,
+    decidedByActor: null,
     updatedAt: t.updated_at as string,
     items,
     receipts: [],
@@ -591,10 +645,11 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
     attachItems([t]),
     getWarehouseDocumentHistory(id),
   ]);
-  const [requestedByEmail, approvedByEmail, decidedByEmail] = await Promise.all([
-    emailFor(t.requested_by as string | null),
-    emailFor(t.approved_by as string | null),
-    emailFor(t.decided_by as string | null),
+  const [requestedByActor, approvedByActor, decidedByActor, expectedArrivalAt] = await Promise.all([
+    actorIdentityFor(t.requested_by as string | null),
+    actorIdentityFor(t.approved_by as string | null),
+    actorIdentityFor(t.decided_by as string | null),
+    expectedArrivalForTransfer(id),
   ]);
   return {
     id: t.id as string,
@@ -613,13 +668,17 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
         ? "open_discrepancy"
         : t.reconciliation_status as WarehouseTransferRow["reconciliationStatus"],
     requestedAt: t.requested_at as string,
-    requestedByEmail,
+    requestedByEmail: requestedByActor?.email ?? null,
     brandNote: t.brand_note as string | null,
     decidedAt: t.decided_at as string | null,
-    decidedByEmail,
+    decidedByEmail: decidedByActor?.email ?? null,
     receivingNote: t.receiving_note as string | null,
     approvedAt: t.approved_at as string | null,
-    approvedByEmail,
+    approvedByEmail: approvedByActor?.email ?? null,
+    expectedArrivalAt,
+    requestedByActor,
+    approvedByActor,
+    decidedByActor,
     updatedAt: t.updated_at as string,
     items: itemsByTransfer.get(t.id as string) ?? [],
     receipts: history.receipts,

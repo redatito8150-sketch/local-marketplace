@@ -81,9 +81,10 @@ test("correction details are shared while actor identity remains in Document his
   assert.match(workspace, /No stock movement/);
   assert.match(workspace, /<strong className="font-extrabold text-\[#62564d\]">Verified:<\/strong>/);
   assert.doesNotMatch(workspace, /requestedByLabel|approvedByLabel|rejectedByLabel/);
-  assert.match(history, /Requested by \$\{correction\.requestedByLabel/);
-  assert.match(history, /Approved by \$\{correction\.approvedByLabel/);
-  assert.match(history, /Rejected by \$\{correction\.rejectedByLabel/);
-  assert.match(data, /\.select\("id, full_name, email"\)/);
+  assert.match(history, /Correction applied/);
+  assert.match(history, /#warehouse-correction-\$\{correction\.id\}/);
+  assert.match(history, /Zakhnook Staff Team/);
+  assert.match(history, /canRevealActorIdentity/);
+  assert.match(data, /\.select\("id, full_name, email, is_admin"\)/);
   assert.match(data, /productImage: resolveVariantImage/);
 });

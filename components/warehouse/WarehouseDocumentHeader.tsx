@@ -35,6 +35,7 @@ export default function WarehouseDocumentHeader({
           <p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#C85956]">{warehouseDocumentLabel(transfer.direction)}</p>
           <h1 className="mt-0.5 truncate text-[18px] font-extrabold text-[#302924]">{documentNumber}</h1>
           <p className="mt-1 text-[10.5px] text-[#756960]">{transfer.brandName} · Requested {formatDateTime(transfer.requestedAt)}</p>
+          {transfer.expectedArrivalAt ? <p className="mt-0.5 text-[10px] font-semibold text-sky-800">Expected arrival {formatDateTime(transfer.expectedArrivalAt)}</p> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
           <div className="flex flex-col items-start gap-1">

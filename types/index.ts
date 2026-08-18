@@ -1086,6 +1086,7 @@ export interface AuditLogRecord {
   // back to actorLabel (email) when unset, including for every historical
   // row logged before this existed.
   actorName?: string;
+  actorIsStaff?: boolean;
   entityType: string;
   entityId: string;
   action: string;

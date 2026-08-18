@@ -33,9 +33,9 @@ export const WAREHOUSE_STATUS_META: Record<
   { label: string; shortLabel: string; tone: WarehouseTone; icon: React.ElementType; order: number }
 > = {
   draft: { label: "Draft", shortLabel: "Draft", tone: "neutral", icon: FileText, order: 0 },
-  pending: { label: "Pending review", shortLabel: "Pending", tone: "amber", icon: Clock3, order: 1 },
+  pending: { label: "Requested", shortLabel: "Requested", tone: "amber", icon: Clock3, order: 1 },
   submitted: { label: "Submitted", shortLabel: "Submitted", tone: "amber", icon: Clock3, order: 1 },
-  approved: { label: "Approved", shortLabel: "Approved", tone: "blue", icon: CheckCircle2, order: 2 },
+  approved: { label: "Awaiting arrival", shortLabel: "Awaiting arrival", tone: "blue", icon: CheckCircle2, order: 2 },
   in_transit: { label: "In transit", shortLabel: "In transit", tone: "blue", icon: Truck, order: 3 },
   receiving: { label: "Receiving", shortLabel: "Receiving", tone: "violet", icon: PackageCheck, order: 4 },
   partially_received: { label: "Partially received", shortLabel: "Partial", tone: "violet", icon: PackageCheck, order: 4 },
