@@ -104,15 +104,18 @@ test("advanced movement filters collapse behind More filters without a wide sing
 test("Stock requests uses consistent English copy and pinned English dates", () => {
   const warehouse = read("app/admin/warehouse/page.tsx");
   const detail = read("app/admin/warehouse/[id]/page.tsx");
+  const documentHeader = read("components/warehouse/WarehouseDocumentHeader.tsx");
   const history = read("components/warehouse/WarehouseDocumentHistory.tsx");
 
   assert.match(warehouse, />Stock requests<\/h1>/);
   assert.doesNotMatch(warehouse, /اذن صرف مخزن/);
   assert.match(warehouse, /formatDateTime\(transfer\.requestedAt\)/);
-  assert.match(detail, /formatDateTime\(transfer\.requestedAt\)/);
+  assert.match(detail, /WarehouseDocumentHeader/);
+  assert.match(documentHeader, /formatDateTime\(transfer\.requestedAt\)/);
   assert.match(history, /timestamp: transfer\.decidedAt/);
   assert.match(history, /formatDateTime\(entry\.timestamp\)/);
   assert.doesNotMatch(warehouse, /toLocaleString\(\)/);
   assert.doesNotMatch(detail, /toLocaleString\(\)/);
+  assert.doesNotMatch(documentHeader, /toLocaleString\(\)/);
   assert.doesNotMatch(history, /toLocaleString\(\)/);
 });
