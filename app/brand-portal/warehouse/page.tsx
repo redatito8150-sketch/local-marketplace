@@ -40,12 +40,7 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
   return (
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
-      <DashboardPageHeader
-        eyebrow="Zakhnook fulfilled"
-        title="Shipments & Transfers"
-        description="Track every restock shipment, return and recorded difference in one place. Start new restock requests from Inventory."
-      />
-      <div className="mt-6">
+      <div className={owner.isImpersonating ? "mt-5" : ""}>
         <WarehouseExperience
           variants={variants}
           transfers={transfers}

@@ -67,8 +67,14 @@ test("large inventories render in bounded pages — Inventory pagination happens
 
 test("Warehouse is one document workspace and stock return is a focused drawer action", () => {
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
-  assert.match(warehouse, /Restock shipments and stock returns in one record/);
+  assert.match(warehouse, /Track restock requests, returns and recorded warehouse corrections for your brand/);
   assert.match(warehouse, /Request stock return/);
+  assert.match(warehouse, /Search document, product or SKU/);
+  assert.match(warehouse, /Requested date range/);
+  assert.match(warehouse, /Stock transfer note|warehouseDocumentLabel/);
+  assert.match(warehouse, /label: "Needs review"/);
+  assert.doesNotMatch(warehouse, /Warehouse summary/);
+  assert.doesNotMatch(warehouse, /All brands/);
   assert.match(warehouse, /role="dialog"/);
   assert.match(warehouse, /variant\.optionLabel\.split\(" \/ "\)/);
   assert.match(warehouse, /product\.colors\.entries\(\)/);
@@ -78,8 +84,8 @@ test("Warehouse is one document workspace and stock return is a focused drawer a
 });
 
 test("Warehouse understands every document lifecycle status", () => {
-  const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+  const warehouse = read("components/admin/warehouse/warehouseUi.tsx");
   for (const status of ["draft", "pending", "submitted", "approved", "in_transit", "receiving", "partially_received", "received", "rejected", "cancelled"]) {
-    assert.match(warehouse, new RegExp(`"${status}"`));
+    assert.match(warehouse, new RegExp(`(?:"${status}"|\\b${status}:)`));
   }
 });

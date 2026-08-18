@@ -3,19 +3,19 @@
 import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDownToLine, CheckCircle2, ChevronDown, Clock3, ExternalLink, Loader2, PackageCheck, RotateCcw, Search, Truck, X, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
+import DateRangePicker from "@/components/ui/DateRangePicker";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardUI";
+import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
+import { OPEN_WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META, warehouseDocumentLabel } from "@/components/admin/warehouse/warehouseUi";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
 
-type DocumentFilter = "all" | "active" | "completed" | "issues";
+type DocumentFilter = "all" | "open" | "action_required" | "received";
 type DirectionFilter = "all" | WarehouseTransferRow["direction"];
-type StatusMeta = { label: string; className: string; icon: React.ElementType };
 type ReturnColorGroup = { label: string; variants: Array<{ variant: WarehouseVariantRow; size: string }> };
 type ReturnProductGroup = { productId: string; productName: string; colors: ReturnColorGroup[] };
 
-const OPEN_STATUSES = new Set<WarehouseTransferRow["status"]>(["draft", "pending", "submitted", "approved", "in_transit", "receiving", "partially_received"]);
-const TERMINAL_STATUSES = new Set<WarehouseTransferRow["status"]>(["received", "rejected", "cancelled"]);
 const DOCUMENT_PAGE_SIZE = 12;
 const RETURN_PRODUCT_PAGE_SIZE = 8;
 
@@ -23,23 +23,8 @@ function withBrand(path: string, brandParam?: string): string {
   return brandParam ? `${path}?brand=${encodeURIComponent(brandParam)}` : path;
 }
 
-function hasDocumentIssue(transfer: WarehouseTransferRow): boolean {
-  return transfer.hasDiscrepancy
-    || ["open_discrepancy", "partially_settled"].includes(transfer.reconciliationStatus)
-    || transfer.items.some((item) => (item.damagedQty ?? 0) > 0 || (item.missingQty ?? 0) > 0);
-}
-
-function statusMeta(transfer: WarehouseTransferRow): StatusMeta {
-  if (transfer.status === "rejected") return { label: "Rejected", className: "bg-red-50 text-red-700", icon: XCircle };
-  if (transfer.status === "cancelled") return { label: "Cancelled", className: "bg-stone-100 text-stone-600", icon: XCircle };
-  if (transfer.status === "received") {
-    if (hasDocumentIssue(transfer)) return { label: "Received with differences", className: "bg-amber-50 text-amber-900", icon: AlertTriangle };
-    return { label: transfer.direction === "to_brand" ? "Returned" : "Received", className: "bg-emerald-50 text-emerald-800", icon: CheckCircle2 };
-  }
-  if (transfer.status === "partially_received") return { label: "Received with differences", className: "bg-amber-50 text-amber-900", icon: AlertTriangle };
-  if (transfer.direction === "to_brand") return { label: "Return requested", className: "bg-sky-50 text-sky-800", icon: RotateCcw };
-  if (["in_transit", "receiving"].includes(transfer.status)) return { label: "Awaiting receipt", className: "bg-sky-50 text-sky-800", icon: Truck };
-  return { label: "Requested", className: "bg-amber-50 text-amber-800", icon: Clock3 };
+function hasOpenDocumentIssue(transfer: WarehouseTransferRow): boolean {
+  return transfer.reconciliationStatus === "open_discrepancy" || transfer.reconciliationStatus === "partially_settled";
 }
 
 function documentNumber(transfer: WarehouseTransferRow): string {
@@ -63,19 +48,31 @@ function DocumentList({ transfers, brandParam }: { transfers: WarehouseTransferR
 
   if (!transfers.length) return <DashboardEmptyState title="No matching documents" description="Try another status, direction or search term." />;
 
-  return <><div className="divide-y divide-[#e3dbd4]">{visible.map((transfer) => {
-    const meta = statusMeta(transfer);
-    const Icon = meta.icon;
+  return <>
+    <div className="hidden grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] items-center gap-4 border-b border-[#e4ddd7] bg-[#fcfaf8] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.09em] text-[#756960] lg:grid">
+      <span>Document</span><span>Requested<small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">variants / units</small></span><span>Status</span><span>Dates</span><span />
+    </div>
+    <div className="divide-y divide-[#e8e1db]">{visible.map((transfer) => {
+    const meta = WAREHOUSE_STATUS_META[transfer.status];
+    const needsReview = hasOpenDocumentIssue(transfer);
+    const tone = needsReview ? "red" : meta.tone;
+    const StatusIcon = needsReview ? AlertTriangle : transfer.direction === "to_brand" && OPEN_WAREHOUSE_STATUSES.has(transfer.status) ? RotateCcw : meta.icon;
+    const statusLabel = needsReview ? "Needs review" : transfer.direction === "to_brand" && OPEN_WAREHOUSE_STATUSES.has(transfer.status) ? "Return requested" : transfer.direction === "to_brand" && transfer.status === "received" ? "Returned" : meta.shortLabel;
+    const railClass = tone === "amber" ? "bg-amber-400" : tone === "emerald" ? "bg-emerald-500" : tone === "red" ? "bg-red-500" : tone === "blue" ? "bg-sky-500" : tone === "violet" ? "bg-violet-500" : "bg-stone-400";
+    const statusClass = tone === "amber" ? "text-amber-800" : tone === "emerald" ? "text-emerald-800" : tone === "red" ? "text-red-700" : tone === "blue" ? "text-sky-800" : tone === "violet" ? "text-violet-800" : "text-stone-600";
     const requested = transfer.items.reduce((sum, item) => sum + item.requestedQty, 0);
-    const processed = transfer.items.reduce((sum, item) => sum + (item.receivedOkQty ?? item.returnedQty ?? 0), 0);
-    return <article key={transfer.id} className="group px-4 py-4 transition-colors hover:bg-white/45 sm:px-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-center">
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-[12px] font-extrabold tracking-[-0.01em] text-[#302924]">{documentNumber(transfer)}</h3><span className={`inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[9px] font-bold ${meta.className}`}><Icon aria-hidden="true" className="h-3 w-3" />{meta.label}</span>{hasDocumentIssue(transfer) ? <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800"><AlertTriangle aria-hidden="true" className="h-3 w-3" />Issue recorded</span> : null}</div><p className="mt-1.5 text-[10px] text-[#81746b]">{transfer.direction === "to_local" ? "Stock sent to Zakhnook" : "Stock returned to your brand"} · {formatDateTime(transfer.requestedAt)}</p></div>
-        <dl className="grid grid-cols-3 gap-5 text-right sm:min-w-[280px]"><div><dt className="text-[8px] font-bold uppercase tracking-[0.06em] text-[#9a8d83]">Variants</dt><dd className="mt-0.5 text-[13px] font-extrabold tabular-nums text-[#403730]">{transfer.items.length}</dd></div><div><dt className="text-[8px] font-bold uppercase tracking-[0.06em] text-[#9a8d83]">Requested</dt><dd className="mt-0.5 text-[13px] font-extrabold tabular-nums text-[#403730]">{requested}</dd></div><div><dt className="text-[8px] font-bold uppercase tracking-[0.06em] text-[#9a8d83]">Processed</dt><dd className="mt-0.5 text-[13px] font-extrabold tabular-nums text-[#403730]">{processed}</dd></div></dl>
-        <Link href={withBrand(`/brand-portal/warehouse/${transfer.id}`, brandParam)} aria-label={`Open ${documentNumber(transfer)}`} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl bg-[#242424] px-3 text-[9.5px] font-bold text-white transition hover:bg-[#3a332e] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15">Open<ExternalLink className="h-3 w-3" /></Link>
-      </div>
-    </article>;
-  })}</div><Pager page={safePage} count={transfers.length} pageSize={DOCUMENT_PAGE_SIZE} onPage={setPage} /></>;
+    return <Link key={transfer.id} href={withBrand(`/brand-portal/warehouse/${transfer.id}`, brandParam)} aria-label={`Open ${documentNumber(transfer)}`} className="group relative grid gap-3 px-4 py-4 transition-colors hover:bg-[#fdfbf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 sm:px-5 lg:grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] lg:items-center lg:gap-4">
+      <span aria-hidden="true" className={`absolute bottom-0 left-0 top-0 w-[3px] ${railClass}`} />
+      <div className="flex min-w-0 items-center gap-3"><BrandMark brand={{ name: transfer.brandName, logoImage: transfer.brandLogoImage }} /><div className="min-w-0"><p className="truncate text-[12px] font-extrabold text-[#302924]">{documentNumber(transfer)}</p><p className="mt-1 truncate text-[10px] font-medium text-[#81746b]">{warehouseDocumentLabel(transfer.direction)}</p></div></div>
+      <div><p className="text-[12px] font-extrabold tabular-nums text-[#302924]">{formatCount(transfer.items.length)} / {formatCount(requested)}</p><p className="mt-1 text-[9px] text-[#8d8076]">variants / units</p></div>
+      <div className="flex flex-col items-start gap-0.5"><span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>{transfer.status === "received" && transfer.reconciliationStatus === "corrected" ? <span className="pl-5 text-[8.5px] font-bold tracking-[0.02em] text-[#7b6f66]">Corrected</span> : null}</div>
+      <div><p className="text-[10.5px] font-semibold text-[#4f453e]"><span className="font-extrabold">Created</span> {formatDateTime(transfer.requestedAt)}</p><p className="mt-1 text-[9.5px] text-[#8d8076]">Updated {formatDateTime(transfer.updatedAt)}</p></div>
+      <ChevronRight className="h-4 w-4 text-[#a2948a] transition-transform group-hover:translate-x-0.5 group-hover:text-[#C85956]" />
+    </Link>;
+  })}</div>
+    <div className="border-t border-[#e8e1db] px-4 py-3 text-[9.5px] text-[#8d8076] sm:px-5">Showing {formatCount(visible.length)} of {formatCount(transfers.length)} matching documents</div>
+    <Pager page={safePage} count={transfers.length} pageSize={DOCUMENT_PAGE_SIZE} onPage={setPage} />
+  </>;
 }
 
 function buildReturnGroups(variants: WarehouseVariantRow[], query: string): ReturnProductGroup[] {
@@ -159,34 +156,58 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
   const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("all");
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
   const [documentQuery, setDocumentQuery] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [returnOpen, setReturnOpen] = useState(false);
   const [message, setMessage] = useState("");
   const closeReturn = useCallback(() => setReturnOpen(false), []);
   const deferredDocumentQuery = useDeferredValue(documentQuery.trim().toLocaleLowerCase());
-  const activeCount = transfers.filter((transfer) => OPEN_STATUSES.has(transfer.status)).length;
-  const awaitingReceiptCount = transfers.filter((transfer) => transfer.direction === "to_local" && OPEN_STATUSES.has(transfer.status)).length;
-  const issueCount = transfers.filter(hasDocumentIssue).length;
-  const completedCount = transfers.filter((transfer) => TERMINAL_STATUSES.has(transfer.status)).length;
+  const issueCount = transfers.filter(hasOpenDocumentIssue).length;
   const filteredTransfers = useMemo(() => transfers
-    .filter((transfer) => documentFilter === "all" || (documentFilter === "active" && OPEN_STATUSES.has(transfer.status)) || (documentFilter === "completed" && TERMINAL_STATUSES.has(transfer.status)) || (documentFilter === "issues" && hasDocumentIssue(transfer)))
+    .filter((transfer) => documentFilter === "all" || (documentFilter === "open" && OPEN_WAREHOUSE_STATUSES.has(transfer.status)) || (documentFilter === "received" && transfer.status === "received") || (documentFilter === "action_required" && hasOpenDocumentIssue(transfer)))
     .filter((transfer) => directionFilter === "all" || transfer.direction === directionFilter)
+    .filter((transfer) => {
+      const requestedAt = new Date(transfer.requestedAt).getTime();
+      if (fromDate && requestedAt < new Date(`${fromDate}T00:00:00`).getTime()) return false;
+      if (toDate && requestedAt > new Date(`${toDate}T23:59:59.999`).getTime()) return false;
+      return true;
+    })
     .filter((transfer) => !deferredDocumentQuery || `${documentNumber(transfer)} ${transfer.items.map((item) => `${item.productName} ${item.optionLabel} ${item.sku}`).join(" ")}`.toLocaleLowerCase().includes(deferredDocumentQuery))
-    .sort((first, second) => Number(OPEN_STATUSES.has(second.status)) - Number(OPEN_STATUSES.has(first.status)) || Date.parse(second.requestedAt) - Date.parse(first.requestedAt)), [deferredDocumentQuery, directionFilter, documentFilter, transfers]);
-  const summary = [
-    { label: "Active", value: activeCount, note: "Needs tracking", tone: "bg-[#C85956]" },
-    { label: "Awaiting receipt", value: awaitingReceiptCount, note: "Stock coming in", tone: "bg-sky-500" },
-    { label: "Issues", value: issueCount, note: "Differences recorded", tone: "bg-amber-500" },
-    { label: "Completed", value: completedCount, note: "Closed documents", tone: "bg-emerald-500" },
+    .sort((first, second) => Number(hasOpenDocumentIssue(second)) - Number(hasOpenDocumentIssue(first)) || Date.parse(second.requestedAt) - Date.parse(first.requestedAt)), [deferredDocumentQuery, directionFilter, documentFilter, fromDate, toDate, transfers]);
+  const filtersActive = Boolean(documentQuery || directionFilter !== "all" || documentFilter !== "all" || fromDate || toDate);
+  const statusFilters: Array<{ value: DocumentFilter; label: string }> = [
+    { value: "all", label: "All" },
+    { value: "open", label: "Requested" },
+    { value: "action_required", label: "Needs review" },
+    { value: "received", label: "Received" },
   ];
 
-  return <div className="space-y-4">
-    <section aria-label="Warehouse summary" className="overflow-hidden rounded-[18px] bg-[#ece7e0] shadow-[0_10px_28px_rgba(72,50,36,.06)]"><div className="grid grid-cols-2 lg:grid-cols-4">{summary.map((item, index) => <div key={item.label} className={`flex min-h-[72px] items-center gap-3 px-4 py-3 ${index % 2 === 0 ? "border-r" : ""} ${index < 2 ? "border-b lg:border-b-0" : ""} ${index < 3 ? "lg:border-r" : ""} border-[#ddd4cc]`}><span className={`h-8 w-1 rounded-full ${item.tone}`} /><div className="min-w-0"><p className="text-[9px] font-bold text-[#81746b]">{item.label}</p><div className="mt-0.5 flex items-baseline gap-2"><p className="text-[18px] font-extrabold tabular-nums tracking-[-0.04em] text-[#302924]">{item.value}</p><p className="truncate text-[8.5px] text-[#9a8d83]">{item.note}</p></div></div></div>)}</div></section>
-    <section className="overflow-hidden rounded-[20px] bg-[#ece7e0] shadow-[0_12px_32px_rgba(72,50,36,.07)]">
-      <header className="border-b border-[#ddd4cc] px-4 py-4 sm:px-5"><div className="flex flex-col gap-3 lg:flex-row lg:items-center"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><PackageCheck className="h-4 w-4 text-[#C85956]" /><h2 className="text-[13px] font-extrabold tracking-[-0.015em] text-[#302924]">Documents</h2></div><p className="mt-1 text-[9.5px] text-[#81746b]">Restock shipments and stock returns in one record.</p></div>{!readOnly ? <button type="button" onClick={() => setReturnOpen(true)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20"><ArrowDownToLine className="h-3.5 w-3.5" />Request stock return</button> : <span className="text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span>}</div>
-        <div className="mt-4 grid gap-2 lg:grid-cols-[minmax(240px,1fr)_auto_180px] lg:items-center"><label className="relative block"><span className="sr-only">Search documents</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d9086]" /><input value={documentQuery} onChange={(event) => setDocumentQuery(event.target.value)} autoComplete="off" placeholder="Document, product or SKU…" className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-[10.5px] text-[#403730] outline-none ring-1 ring-[#e4dbd4] transition focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label><div aria-label="Document status" className="flex min-w-0 items-center gap-1 overflow-x-auto rounded-xl bg-[#e2dcd5] p-1">{(["all", "active", "completed", "issues"] as DocumentFilter[]).map((filter) => <button key={filter} type="button" aria-pressed={documentFilter === filter} onClick={() => setDocumentFilter(filter)} className={`h-8 whitespace-nowrap rounded-lg px-3 text-[9.5px] font-bold capitalize transition active:scale-[0.98] ${documentFilter === filter ? "bg-white text-[#302924] shadow-[0_1px_4px_rgba(72,50,36,.09)]" : "text-[#81746b] hover:text-[#302924]"}`}>{filter}</button>)}</div><select aria-label="Document direction" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} className="h-10 rounded-xl bg-white px-3 text-[10px] font-semibold text-[#51473f] outline-none ring-1 ring-[#e4dbd4] focus-visible:ring-2 focus-visible:ring-[#C85956]/30"><option value="all">All directions</option><option value="to_local">Sent to Zakhnook</option><option value="to_brand">Returned to brand</option></select></div>
-      </header>
+  return <div>
+    <header>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Shipments & Transfers</h1><span className="text-[11px] font-semibold text-[#81746b]">{formatCount(transfers.length)} documents</span></div>
+          <p className="mt-2 max-w-2xl text-[11.5px] leading-5 text-[#756960]">Track restock requests, returns and recorded warehouse corrections for your brand.</p>
+        </div>
+        {!readOnly ? <button type="button" onClick={() => setReturnOpen(true)} className="inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20"><ArrowDownToLine className="h-3.5 w-3.5" />Request stock return</button> : <span className="inline-flex h-9 items-center rounded-xl bg-[#f2ede8] px-3 text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span>}
+      </div>
+    </header>
+
+    <section className="mt-5 overflow-visible rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
+      <div className="border-b border-[#e4ddd7] px-3 py-3 sm:px-4">
+        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
+          <div className="flex min-w-0 items-center gap-2">
+            <label className="relative min-w-0 flex-1 sm:flex-none"><span className="sr-only">Search documents</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d8f84]" /><input value={documentQuery} onChange={(event) => setDocumentQuery(event.target.value)} autoComplete="off" placeholder="Search document, product or SKU" className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] focus:border-[#C85956]/45 focus:bg-white focus:ring-4 focus:ring-[#C85956]/8 sm:w-[330px]" /></label>
+            <DateRangePicker key={`${fromDate}-${toDate}`} defaultFrom={fromDate} defaultTo={toDate} fromName={null} toName={null} label="Requested date range" compact onRangeChange={({ from, to }) => { setFromDate(from); setToDate(to); }} />
+          </div>
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 xl:pb-0">
+            <div aria-label="Document status" className="flex h-10 flex-none items-center overflow-hidden rounded-xl border border-[#e7ddd5] bg-white">{statusFilters.map((filter) => { const active = documentFilter === filter.value; return <button key={filter.value} type="button" aria-pressed={active} onClick={() => setDocumentFilter(filter.value)} className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}><span>{filter.label}</span>{filter.value === "action_required" && issueCount > 0 ? <span className={`ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-extrabold tabular-nums ${active ? "bg-[#C85956] text-white" : "bg-[#f4dfdc] text-[#b64d4a]"}`}>{issueCount}</span> : null}</button>; })}</div>
+            <select aria-label="Document direction" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} className="h-10 min-w-[168px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#C85956]/45 focus:ring-4 focus:ring-[#C85956]/8"><option value="all">All directions</option><option value="to_local">Sent to Zakhnook</option><option value="to_brand">Returned to brand</option></select>
+          </div>
+        </div>
+      </div>
       {message ? <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-semibold text-emerald-800 sm:px-5">{message}</div> : null}
-      <div className="flex items-center justify-between border-b border-[#ddd4cc] bg-[#f2ede8] px-4 py-2.5 sm:px-5"><p className="text-[9.5px] text-[#81746b]"><strong className="tabular-nums text-[#403730]">{filteredTransfers.length}</strong> matching documents</p>{(documentQuery || directionFilter !== "all" || documentFilter !== "all") ? <button type="button" onClick={() => { setDocumentQuery(""); setDirectionFilter("all"); setDocumentFilter("all"); }} className="text-[9px] font-bold text-[#C85956] hover:underline">Reset filters</button> : null}</div>
+      {filtersActive ? <div className="flex items-center justify-between border-b border-[#e8e1db] bg-[#fcfaf8] px-4 py-2.5 sm:px-5"><p className="text-[9.5px] text-[#81746b]"><strong className="tabular-nums text-[#403730]">{formatCount(filteredTransfers.length)}</strong> matching documents</p><button type="button" onClick={() => { setDocumentQuery(""); setDirectionFilter("all"); setDocumentFilter("all"); setFromDate(""); setToDate(""); }} className="text-[9px] font-bold text-[#C85956] hover:underline">Reset filters</button></div> : null}
       <DocumentList transfers={filteredTransfers} brandParam={brandParam} />
     </section>
     <ReturnRequestDrawer open={returnOpen} onClose={closeReturn} onSubmitted={() => setMessage("Return request submitted for warehouse review.")} variants={variants} brandParam={brandParam} />
