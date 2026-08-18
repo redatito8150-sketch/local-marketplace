@@ -64,21 +64,31 @@ export default async function AdminWarehouseTransferPage(props: { params: Promis
       <div className="space-y-4">
         {transfer.brandNote ? <section className="rounded-[18px] bg-[#f7f3ef] px-4 py-3"><p className="text-[9.5px] font-bold uppercase tracking-[0.07em] text-[#756960]">Brand note</p><p className="mt-1.5 text-[11.5px] leading-5 text-[#403730]">{transfer.brandNote}</p></section> : null}
 
-        <TransferReceiveForm
-          transferId={transfer.id}
-          items={transfer.items}
-          variantOptions={variantOptions}
-          brandSlug={transfer.brandSlug}
-          receiptItemIds={transfer.receipts.flatMap((receipt) => receipt.lines.map((line) => line.expectedTransferItemId))}
-          receivable={receivable}
-          showLedger={["received", "partially_received", "rejected"].includes(transfer.status)}
-          isReturn={isReturn}
-        />
+        {transfer.status === "received" ? (
+          <WarehouseCorrectionWorkspace
+            transferId={transfer.id}
+            items={transfer.items}
+            variants={variantOptions}
+            corrections={transfer.corrections}
+            receipts={transfer.receipts}
+            brandSlug={transfer.brandSlug}
+          />
+        ) : (
+          <TransferReceiveForm
+            transferId={transfer.id}
+            items={transfer.items}
+            variantOptions={variantOptions}
+            brandSlug={transfer.brandSlug}
+            receiptItemIds={transfer.receipts.flatMap((receipt) => receipt.lines.map((line) => line.expectedTransferItemId))}
+            receivable={receivable}
+            showLedger={["partially_received", "rejected"].includes(transfer.status)}
+            isReturn={isReturn}
+          />
+        )}
         {transfer.status === "receiving" ? <section className="rounded-[20px] bg-violet-50 px-5 py-4 text-violet-900"><p className="text-[12px] font-extrabold">Receiving is already in progress</p><p className="mt-1 text-[10.5px]">Wait for the active warehouse operation to finish before reconciling another group of variants.</p></section> : null}
 
-        {transfer.receipts.length ? <ReceiptHistory receipts={transfer.receipts} variants={variantOptions} items={transfer.items} /> : null}
-        {transfer.status === "received" || transfer.status === "partially_received" ? <WarehouseCorrectionWorkspace transferId={transfer.id} variants={variantOptions} corrections={transfer.corrections} receipts={transfer.receipts} /> : null}
-        <DocumentHistory transfer={transfer} logs={auditLogs} />
+        {transfer.receipts.length && transfer.status !== "received" ? <ReceiptHistory receipts={transfer.receipts} variants={variantOptions} items={transfer.items} /> : null}
+        <DocumentHistory transfer={transfer} logs={auditLogs} corrections={transfer.corrections} />
       </div>
     </div>
   );
@@ -120,7 +130,7 @@ type DocumentActivityEntry = {
   detail: string;
 };
 
-function DocumentHistory({ transfer, logs }: { transfer: WarehouseTransferRow; logs: Awaited<ReturnType<typeof getAuditLogsForEntity>> }) {
+function DocumentHistory({ transfer, logs, corrections }: { transfer: WarehouseTransferRow; logs: Awaited<ReturnType<typeof getAuditLogsForEntity>>; corrections: WarehouseTransferRow["corrections"] }) {
   const createLog = logs.find((log) => log.action.toLowerCase().includes("create"));
   const finalAction = transfer.status === "received" || transfer.status === "partially_received" ? "receiv" : transfer.status === "rejected" ? "reject" : transfer.status === "cancelled" ? "cancel" : null;
   const finalLog = finalAction ? logs.find((log) => log.action.toLowerCase().includes(finalAction)) : undefined;
@@ -152,6 +162,22 @@ function DocumentHistory({ transfer, logs }: { transfer: WarehouseTransferRow; l
       label: outcomeLabel,
       timestamp: transfer.decidedAt,
       detail: `${outcomeLabel} by ${transfer.decidedByEmail ?? finalLog?.actorName ?? finalLog?.actorLabel ?? "Warehouse team"}`,
+    });
+  }
+
+  for (const correction of corrections) {
+    const statusLabel = correction.status === "pending_approval"
+      ? "Correction requested"
+      : correction.status === "posted"
+        ? "Correction posted"
+        : correction.status === "rejected"
+          ? "Correction rejected"
+          : "Correction reversed";
+    activity.push({
+      id: `correction-${correction.id}-${correction.status}`,
+      label: statusLabel,
+      timestamp: correction.postedAt ?? correction.approvedAt ?? correction.requestedAt,
+      detail: `${correction.correctionNumber} · ${correction.note}`,
     });
   }
 

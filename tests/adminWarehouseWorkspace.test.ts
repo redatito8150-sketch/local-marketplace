@@ -72,7 +72,8 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(receive, /issueOpen/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Substitution/);
-  assert.match(page, /showLedger=\{\["received", "partially_received", "rejected"\]\.includes\(transfer\.status\)\}/);
+  assert.match(page, /transfer\.status === "received"[\s\S]*?<WarehouseCorrectionWorkspace/);
+  assert.match(page, /showLedger=\{\["partially_received", "rejected"\]\.includes\(transfer\.status\)\}/);
   assert.match(receive, /\{showLedger \? <Link[\s\S]*?>Ledger<\/Link> : null\}/);
   assert.match(receive, /Final receipt review/);
   assert.match(receive, /Idempotency-Key/);

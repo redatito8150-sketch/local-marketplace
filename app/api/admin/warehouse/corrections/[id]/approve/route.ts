@@ -20,7 +20,7 @@ export async function POST(_request: Request, props: { params: Promise<{ id: str
     return NextResponse.json({ error: "The person who requested a correction cannot approve it" }, { status: 409 });
   }
 
-  const { data: result, error } = await supabaseAdmin.rpc("approve_warehouse_correction", {
+  const { data: result, error } = await supabaseAdmin.rpc("approve_warehouse_correction_v2", {
     p_correction_id: id,
     p_approver_id: approver.id,
   } as never);

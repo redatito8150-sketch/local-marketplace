@@ -27,7 +27,8 @@ export async function POST(request: NextRequest) {
       toVariantId?: string | null;
       quantity?: number;
       sourceReceiptLineId?: string | null;
-      sourceBucket?: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | null;
+      sourceCorrectionLineId?: string | null;
+      sourceBucket?: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | "sellable" | "document" | null;
       note?: string;
     }>;
     variantId?: string;
@@ -40,9 +41,9 @@ export async function POST(request: NextRequest) {
   if (!operationKey) return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 });
 
   if (body?.transferId) {
-    const correctionTypes = new Set(["reclassification", "quantity_adjustment", "missing_recovery", "condition_resolution", "reversal"]);
+    const correctionTypes = new Set(["reclassification", "quantity_adjustment", "missing_recovery", "condition_resolution", "document_amendment", "reversal"]);
     const reasonCodes = new Set(["wrong_variant", "count_error", "duplicate_receipt", "missing_found", "damage_regraded", "return_to_brand", "write_off", "document_error", "other"]);
-    const actions = new Set(["reclassify", "adjust_in", "adjust_out", "restore_to_sellable", "return_to_brand", "write_off", "accept_discrepancy"]);
+    const actions = new Set(["reclassify", "adjust_in", "adjust_out", "move_to_hold", "restore_to_sellable", "return_to_brand", "write_off", "accept_discrepancy"]);
     if (!body.correctionType || !correctionTypes.has(body.correctionType)) {
       return NextResponse.json({ error: "Choose a valid correction type" }, { status: 400 });
     }
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "At least one valid positive-quantity correction line is required" }, { status: 400 });
     }
 
-    const { data: result, error } = await supabaseAdmin.rpc("request_warehouse_correction", {
+    const { data: result, error } = await supabaseAdmin.rpc("request_warehouse_correction_v2", {
       p_transfer_id: body.transferId,
       p_actor_id: receiver.id,
       p_correction_type: body.correctionType,
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
         to_variant_id: line.toVariantId ?? null,
         quantity: line.quantity,
         source_receipt_line_id: line.sourceReceiptLineId ?? null,
+        source_correction_line_id: line.sourceCorrectionLineId ?? null,
         source_bucket: line.sourceBucket ?? null,
         note: line.note?.trim() || null,
       })),

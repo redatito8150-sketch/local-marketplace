@@ -83,11 +83,12 @@ export interface WarehouseReceiptRow {
 
 export interface WarehouseCorrectionLineRow {
   id: string;
-  action: "reclassify" | "adjust_in" | "adjust_out" | "restore_to_sellable" | "return_to_brand" | "write_off" | "accept_discrepancy";
+  action: "reclassify" | "adjust_in" | "adjust_out" | "move_to_hold" | "restore_to_sellable" | "return_to_brand" | "write_off" | "accept_discrepancy";
   fromVariantId: string | null;
   toVariantId: string | null;
   sourceReceiptLineId: string | null;
-  sourceBucket: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | null;
+  sourceCorrectionLineId: string | null;
+  sourceBucket: "damaged" | "missing" | "substitution" | "excess" | "unidentified" | "sellable" | "document" | null;
   quantity: number;
   note: string | null;
 }
@@ -95,7 +96,7 @@ export interface WarehouseCorrectionLineRow {
 export interface WarehouseCorrectionRow {
   id: string;
   correctionNumber: string;
-  correctionType: "reclassification" | "quantity_adjustment" | "missing_recovery" | "condition_resolution" | "reversal";
+  correctionType: "reclassification" | "quantity_adjustment" | "missing_recovery" | "condition_resolution" | "document_amendment" | "reversal";
   status: "pending_approval" | "posted" | "rejected" | "reversed";
   reasonCode: string;
   note: string;
@@ -333,7 +334,7 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
   receipts: WarehouseReceiptRow[];
   corrections: WarehouseCorrectionRow[];
 }> {
-  const [{ data: receiptRows, error: receiptError }, { data: correctionRows, error: correctionError }] = await Promise.all([
+  const [receiptResult, initialCorrectionResult] = await Promise.all([
     supabaseAdmin
       .from("warehouse_receipts")
       .select("id, receipt_number, status, settlement_status, note, posted_at, warehouse_receipt_lines(id, expected_transfer_item_id, expected_variant_id, actual_variant_id, expected_qty, actual_good_qty, actual_damaged_qty, unidentified_qty, expected_missing_qty, actual_excess_qty, outcome, settlement_status, unidentified_sku, item_note)")
@@ -341,10 +342,33 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
       .order("posted_at", { ascending: false }),
     supabaseAdmin
       .from("warehouse_corrections")
-      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_correction_line_id, source_bucket, quantity, note)")
       .eq("transfer_id", transferId)
       .order("requested_at", { ascending: false }),
   ]);
+
+  const { data: receiptRows, error: receiptError } = receiptResult;
+  let correctionRows = initialCorrectionResult.data as unknown as Array<Record<string, unknown>> | null;
+  let correctionError = initialCorrectionResult.error;
+
+  // The closed-document workflow adds a self-reference used to resolve stock
+  // that was moved to hold by an earlier correction. During local review, keep
+  // the existing receipt history visible before that migration is applied.
+  const correctionErrorText = correctionError
+    ? [correctionError.message, correctionError.details, correctionError.hint].filter(Boolean).join(" ")
+    : "";
+  const missingCorrectionSourceColumn = correctionError
+    && new Set(["42703", "PGRST204"]).has(correctionError.code)
+    && correctionErrorText.includes("source_correction_line_id");
+  if (missingCorrectionSourceColumn) {
+    const fallback = await supabaseAdmin
+      .from("warehouse_corrections")
+      .select("id, correction_number, correction_type, status, reason_code, note, requested_at, approved_at, posted_at, rejection_note, reverses_correction_id, warehouse_correction_lines(id, action, from_variant_id, to_variant_id, source_receipt_line_id, source_bucket, quantity, note)")
+      .eq("transfer_id", transferId)
+      .order("requested_at", { ascending: false });
+    correctionRows = fallback.data as unknown as Array<Record<string, unknown>> | null;
+    correctionError = fallback.error;
+  }
 
   // The migration may not have been applied to a developer database yet.
   // Keep the existing warehouse detail page usable while the branch is being
@@ -393,12 +417,13 @@ async function getWarehouseDocumentHistory(transferId: string): Promise<{
     postedAt: row.posted_at as string | null,
     rejectionNote: row.rejection_note as string | null,
     reversesCorrectionId: row.reverses_correction_id as string | null,
-    lines: ((row.warehouse_correction_lines ?? []) as unknown as Array<Record<string, unknown>>).map((line) => ({
+    lines: ((row.warehouse_correction_lines ?? []) as Array<Record<string, unknown>>).map((line) => ({
       id: line.id as string,
       action: line.action as WarehouseCorrectionLineRow["action"],
       fromVariantId: line.from_variant_id as string | null,
       toVariantId: line.to_variant_id as string | null,
       sourceReceiptLineId: line.source_receipt_line_id as string | null,
+      sourceCorrectionLineId: line.source_correction_line_id as string | null,
       sourceBucket: line.source_bucket as WarehouseCorrectionLineRow["sourceBucket"],
       quantity: line.quantity as number,
       note: line.note as string | null,
