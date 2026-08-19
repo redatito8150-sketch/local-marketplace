@@ -10,8 +10,22 @@ import { NextRequest } from "next/server";
 const buckets = new Map<string, { count: number; resetAt: number }>();
 
 export function getClientIp(request: NextRequest): string {
+  // `x-vercel-forwarded-for` is set by Vercel's edge network itself and
+  // cannot be supplied or overridden by the client — the most trustworthy
+  // signal when deployed there. `x-forwarded-for` can be prepended with
+  // arbitrary client-supplied values, but proxies only ever *append*, never
+  // rewrite, earlier entries — so the last hop is Vercel's own observed
+  // client IP, not attacker-controlled, whereas the first hop is. Falling
+  // back to the first hop (as before) would let a client spoof a fresh
+  // bucket key on every request and defeat rate limiting entirely.
+  const vercelForwardedFor = request.headers.get("x-vercel-forwarded-for");
+  if (vercelForwardedFor) return vercelForwardedFor.split(",")[0].trim();
+
   const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  if (forwardedFor) {
+    const hops = forwardedFor.split(",").map((hop) => hop.trim()).filter(Boolean);
+    if (hops.length > 0) return hops[hops.length - 1];
+  }
   return request.headers.get("x-real-ip") ?? "unknown";
 }
 

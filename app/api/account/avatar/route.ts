@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { readFormData } from "@/lib/uploads/formData";
 import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
+import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
 
 const BUCKET = "product-images";
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -32,6 +33,9 @@ export async function POST(request: NextRequest) {
   }
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: "Your photo must be smaller than 2 MB." }, { status: 400 });
+  }
+  if (!(await hasExpectedImageSignature(file))) {
+    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
   }
 
   const path = `account-avatars/${user.id}/avatar.${extension}`;

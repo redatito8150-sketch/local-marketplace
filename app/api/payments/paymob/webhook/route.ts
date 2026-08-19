@@ -8,6 +8,7 @@ import { sendEmail } from "@/lib/email/sendEmail";
 import { orderConfirmationEmail } from "@/lib/email/templates/orderConfirmation";
 import { getOrderForAdmin } from "@/lib/data/admin";
 import { notifyBrandOwnersOfNewOrder } from "@/lib/orders/notifyBrandOwnersOfNewOrder";
+import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Paymob's "Transaction Processed" server-to-server callback — the ONLY
 // authoritative source of payment status in this codebase. Nothing the
@@ -23,6 +24,15 @@ import { notifyBrandOwnersOfNewOrder } from "@/lib/orders/notifyBrandOwnersOfNew
 // multiple doc mirrors, not confirmed against a live sandbox payload yet
 // — the top item to verify before this goes near production).
 export async function POST(request: NextRequest) {
+  // Coarse noise/flood guard only — HMAC verification below is what
+  // actually protects payment integrity and runs regardless. This just
+  // keeps an unauthenticated flood of bogus POSTs from spamming the
+  // #errors Discord channel or adding load; generous enough not to affect
+  // real Paymob delivery volume.
+  if (!checkRateLimit(`paymob-webhook:${getClientIp(request)}`, 60, 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const hmac = request.nextUrl.searchParams.get("hmac");
 
   const hmacSecret = process.env.PAYMOB_HMAC_SECRET;
