@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
+import { prepareSafeImageUpload, type PreparedImageUpload } from "@/lib/uploads/imageValidation";
 import { reviewInputSchema, toReviewInsert } from "@/lib/reviews/validation";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
@@ -52,7 +52,12 @@ export async function POST(request: NextRequest) {
   if(!parsed.success)return NextResponse.json({error:parsed.error.issues[0]?.message},{status:400});
   const files=form.getAll("images").filter((item):item is File=>typeof item !== "string"&&item.size>0);
   if(files.length>5)return NextResponse.json({error:"Up to 5 images are allowed."},{status:400});
-  for(const file of files)if(file.size>5*1024*1024||!["image/jpeg","image/png","image/webp"].includes(file.type)||!await hasExpectedImageSignature(file))return NextResponse.json({error:"Images must be JPG, PNG, or WebP and no larger than 5MB."},{status:400});
+  const preparedFiles: PreparedImageUpload[]=[];
+  for(const file of files){
+    const prepared=await prepareSafeImageUpload(file,{allowedMimeTypes:["image/jpeg","image/png","image/webp"],maxBytes:5*1024*1024});
+    if(!prepared.ok)return NextResponse.json({error:prepared.error},{status:400});
+    preparedFiles.push(prepared.upload);
+  }
   const { data: eligible, error: eligibilityError } = await supabaseAdmin.rpc("review_purchase_is_eligible", {
     p_user_id: user.id,
     p_product_id: parsed.data.productId,
@@ -73,8 +78,8 @@ export async function POST(request: NextRequest) {
   }
   const uploaded:string[]=[];
   try{
-    for(let index=0;index<files.length;index++){const file=files[index];const ext=file.type.split("/")[1];const path=`${user.id}/${review.id}/${randomUUID()}.${ext}`;
-      const upload=await supabaseAdmin.storage.from("review-images").upload(path,file,{contentType:file.type,upsert:false});if(upload.error)throw upload.error;uploaded.push(path);
+    for(let index=0;index<preparedFiles.length;index++){const file=preparedFiles[index];const path=`${user.id}/${review.id}/${randomUUID()}.${file.extension}`;
+      const upload=await supabaseAdmin.storage.from("review-images").upload(path,file.bytes,{contentType:file.mimeType,upsert:false});if(upload.error)throw upload.error;uploaded.push(path);
       const imageRow=await supabaseAdmin.from("review_images").insert({review_id:review.id,storage_path:path,display_order:index});if(imageRow.error)throw imageRow.error;
     }
   }catch(error){if(uploaded.length)await supabaseAdmin.storage.from("review-images").remove(uploaded);await supabaseAdmin.from("reviews").update({deleted_at:new Date().toISOString()}).eq("id",review.id);return NextResponse.json({error:"Images could not be saved."},{status:500});}

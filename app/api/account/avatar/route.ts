@@ -4,7 +4,8 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { readFormData } from "@/lib/uploads/formData";
 import { queueStorageCleanupTargets } from "@/lib/account/storageCleanup";
-import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { prepareSafeImageUpload } from "@/lib/uploads/imageValidation";
 
 const BUCKET = "product-images";
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -21,27 +22,30 @@ function avatarPaths(userId: string) {
 export async function POST(request: NextRequest) {
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  if (!checkRateLimit(`account-avatar-upload:${user.id}`, 20, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many uploads — please slow down" }, { status: 429 });
+  }
 
   const formData = await readFormData(request);
   const file = formData.get("avatar");
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "Choose an image to upload." }, { status: 400 });
   }
-  const extension = EXTENSIONS[file.type];
-  if (!extension) {
-    return NextResponse.json({ error: "Use a JPG, PNG, or WebP image." }, { status: 400 });
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "Your photo must be smaller than 2 MB." }, { status: 400 });
-  }
-  if (!(await hasExpectedImageSignature(file))) {
-    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
-  }
+  const prepared = await prepareSafeImageUpload(file, {
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+    maxBytes: MAX_FILE_SIZE,
+    maxDimension: 2_048,
+  });
+  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 });
 
-  const path = `account-avatars/${user.id}/avatar.${extension}`;
+  const path = `account-avatars/${user.id}/avatar.${prepared.upload.extension}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: true, cacheControl: "3600" });
+    .upload(path, prepared.upload.bytes, {
+      contentType: prepared.upload.mimeType,
+      upsert: true,
+      cacheControl: "3600",
+    });
   if (uploadError) {
     return safeErrorResponse("account.avatar.upload", uploadError, "Upload failed. Please try again.");
   }

@@ -1,10 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/supabase/accountAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { notify } from "@/lib/notify";
-import { hasExpectedDocumentSignature } from "@/lib/uploads/imageValidation";
+import {
+  prepareSafeApplicationDocument,
+  safeDocumentDisplayName,
+} from "@/lib/uploads/applicationDocument";
 import { readFormData } from "@/lib/uploads/formData";
 import {
   getApplicationDocuments,
@@ -14,6 +18,7 @@ import {
 import {
   ALLOWED_DOCUMENT_MIME_TYPES,
   DOCUMENTS_BUCKET,
+  MAX_ACTIVE_APPLICATION_DOCUMENTS,
   MAX_DOCUMENT_SIZE_BYTES,
 } from "@/lib/join/constants";
 import type { ApplicationDocumentType } from "@/types";
@@ -25,16 +30,6 @@ const DOCUMENT_TYPES: ApplicationDocumentType[] = [
   "authorized_representative",
   "other_supporting_document",
 ];
-
-function sanitizeFileName(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9.]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(-80) || "document"
-  );
-}
 
 // Own uploaded documents for the applicant's current application.
 export async function GET() {
@@ -95,19 +90,45 @@ export async function POST(request: NextRequest) {
   if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.type)) {
     return NextResponse.json({ error: "Unsupported document type" }, { status: 400 });
   }
-  if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
-    return NextResponse.json({ error: "File is larger than 10MB" }, { status: 400 });
-  }
-  if (!(await hasExpectedDocumentSignature(file))) {
-    return NextResponse.json({ error: "The file content does not match its type" }, { status: 400 });
+
+  let replacingExisting = false;
+  if (replaceDocumentId) {
+    const { data: replacement, error: replacementError } = await supabaseAdmin
+      .from("brand_application_documents")
+      .select("id")
+      .eq("id", replaceDocumentId)
+      .eq("application_id", application.id)
+      .eq("upload_status", "uploaded")
+      .is("removed_at", null)
+      .maybeSingle();
+    if (replacementError) return safeErrorResponse("join.application.documents.replace.lookup", replacementError);
+    if (!replacement) return NextResponse.json({ error: "Document to replace was not found" }, { status: 404 });
+    replacingExisting = true;
   }
 
-  const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+  const { count: activeDocumentCount, error: countError } = await supabaseAdmin
+    .from("brand_application_documents")
+    .select("id", { count: "exact", head: true })
+    .eq("application_id", application.id)
+    .eq("upload_status", "uploaded")
+    .is("removed_at", null);
+  if (countError) return safeErrorResponse("join.application.documents.count", countError);
+  if (!replacingExisting && (activeDocumentCount ?? 0) >= MAX_ACTIVE_APPLICATION_DOCUMENTS) {
+    return NextResponse.json(
+      { error: `Up to ${MAX_ACTIVE_APPLICATION_DOCUMENTS} active documents are allowed per application` },
+      { status: 409 }
+    );
+  }
+
+  const prepared = await prepareSafeApplicationDocument(file, MAX_DOCUMENT_SIZE_BYTES);
+  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 });
+
+  const fileName = `${randomUUID()}.${prepared.upload.extension}`;
   const path = `${user.id}/${application.id}/${fileName}`;
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from(DOCUMENTS_BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, prepared.upload.bytes, { contentType: prepared.upload.mimeType, upsert: false });
 
   if (uploadError) {
     await notify("storage_error", "Application document upload failed", uploadError.message);
@@ -119,10 +140,10 @@ export async function POST(request: NextRequest) {
     .insert({
       application_id: application.id,
       uploaded_by: user.id,
-      file_name: file.name.slice(0, 200),
+      file_name: safeDocumentDisplayName(file.name, prepared.upload.extension),
       storage_path: path,
-      mime_type: file.type,
-      file_size_bytes: file.size,
+      mime_type: prepared.upload.mimeType,
+      file_size_bytes: prepared.upload.bytes.byteLength,
       document_type: documentType,
       upload_status: "uploaded",
     })
@@ -134,7 +155,7 @@ export async function POST(request: NextRequest) {
     return safeErrorResponse("join.application.documents.post", error);
   }
 
-  if (replaceDocumentId) {
+  if (replacingExisting) {
     await supabaseAdmin
       .from("brand_application_documents")
       .update({ upload_status: "replaced", replaced_by: data.id })

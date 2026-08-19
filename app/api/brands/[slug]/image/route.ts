@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
-import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
+import { prepareSafeImageUpload } from "@/lib/uploads/imageValidation";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readFormData } from "@/lib/uploads/formData";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -16,21 +17,11 @@ import { BRAND_IMAGE_FIELDS, BRAND_IMAGE_FIELD_TO_COLUMN, type BrandImageField }
 // bucket (bucket-creation-via-SQL is documented elsewhere in this repo as
 // unreliable and needing manual dashboard verification; this sidesteps
 // that entirely).
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"] as const;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const BUCKET = "product-images";
 const ALLOWED_FIELDS = BRAND_IMAGE_FIELDS;
 const FIELD_TO_COLUMN = BRAND_IMAGE_FIELD_TO_COLUMN;
-
-function sanitizeFileName(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9.]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(-80) || "image"
-  );
-}
 
 // Owner-only (not assistants — same precedent as the brand-portal's own
 // page-content editor) or any platform admin, exactly mirroring the
@@ -66,21 +57,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
   if (typeof field !== "string" || !ALLOWED_FIELDS.includes(field as BrandImageField)) {
     return NextResponse.json({ error: "Invalid image field" }, { status: 400 });
   }
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "Image is larger than 5MB" }, { status: 400 });
-  }
-  if (!(await hasExpectedImageSignature(file))) {
-    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
-  }
+  const prepared = await prepareSafeImageUpload(file, {
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+    maxBytes: MAX_FILE_SIZE,
+  });
+  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 });
 
-  const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+  const fileName = `${randomUUID()}.${prepared.upload.extension}`;
   const path = `brands/${params.slug}/${field}-${fileName}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, prepared.upload.bytes, { contentType: prepared.upload.mimeType, upsert: false });
 
   if (uploadError) {
     await notify("storage_error", "Brand image upload failed", uploadError.message);

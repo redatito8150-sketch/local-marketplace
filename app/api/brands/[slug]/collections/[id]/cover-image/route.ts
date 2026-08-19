@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { requireCollectionsEditor } from "@/lib/brandCollectionsAuth";
-import { hasExpectedImageSignature } from "@/lib/uploads/imageValidation";
+import { prepareSafeImageUpload } from "@/lib/uploads/imageValidation";
 import { readFormData } from "@/lib/uploads/formData";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
@@ -11,20 +12,10 @@ import { logAudit } from "@/lib/auditLog";
 // Same bucket/validation as app/api/brands/[slug]/image — a collection's
 // cover slideshow (components/brand/CollectionCoverCarousel) can hold more
 // than one photo, added/removed one at a time here.
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"] as const;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const MAX_IMAGES = 4;
 const BUCKET = "product-images";
-
-function sanitizeFileName(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9.]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(-80) || "image"
-  );
-}
 
 async function loadOwnCollection(id: string, brandId: string) {
   const { data } = await supabaseAdmin.from("collections").select("*").eq("id", id).maybeSingle();
@@ -54,21 +45,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ slug
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "Image is larger than 5MB" }, { status: 400 });
-  }
-  if (!(await hasExpectedImageSignature(file))) {
-    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
-  }
+  const prepared = await prepareSafeImageUpload(file, {
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+    maxBytes: MAX_FILE_SIZE,
+  });
+  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 });
 
-  const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+  const fileName = `${randomUUID()}.${prepared.upload.extension}`;
   const path = `brands/${params.slug}/collections/${params.id}-${fileName}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, prepared.upload.bytes, { contentType: prepared.upload.mimeType, upsert: false });
 
   if (uploadError) {
     await notify("storage_error", "Collection cover upload failed", uploadError.message);

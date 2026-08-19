@@ -242,6 +242,7 @@ export function isValidStatusTransition(from: ApplicationStatus, to: Application
 }
 
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+export const MAX_ACTIVE_APPLICATION_DOCUMENTS = 20;
 export const ALLOWED_DOCUMENT_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png"];
 export const DOCUMENTS_BUCKET = "brand-application-documents";
 

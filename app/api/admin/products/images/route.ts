@@ -1,30 +1,21 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { notify } from "@/lib/notify";
 import {
-  hasExpectedImageSignature,
   isCanonicalProductFolderId,
   isUuid,
+  prepareSafeImageUpload,
 } from "@/lib/uploads/imageValidation";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { readFormData } from "@/lib/uploads/formData";
 import { safeErrorResponse } from "@/lib/apiError";
 
-const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"] as const;
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const BUCKET = "product-images";
-
-function sanitizeFileName(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replace(/[^a-z0-9.]+/g, "-")
-      .replace(/(^-|-$)/g, "")
-      .slice(-80) || "image"
-  );
-}
 
 type Uploader =
   | { kind: "admin"; userId: string }
@@ -114,24 +105,20 @@ export async function POST(request: NextRequest) {
   if (!isCanonicalProductFolderId(folderId)) {
     return NextResponse.json({ error: "Invalid upload folder" }, { status: 400 });
   }
-  if (!ALLOWED_MIME_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "Image is larger than 5MB" }, { status: 400 });
-  }
-  if (!(await hasExpectedImageSignature(file))) {
-    return NextResponse.json({ error: "The file content is not a valid image" }, { status: 400 });
-  }
+  const prepared = await prepareSafeImageUpload(file, {
+    allowedMimeTypes: ALLOWED_MIME_TYPES,
+    maxBytes: MAX_FILE_SIZE,
+  });
+  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 });
 
-  const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+  const fileName = `${randomUUID()}.${prepared.upload.extension}`;
   const path = await uploadPathFor(folderId, fileName, uploader);
   if (!path) {
     return NextResponse.json({ error: "Not authorized for this product" }, { status: 403 });
   }
   const { error: uploadError } = await supabaseAdmin.storage
     .from(BUCKET)
-    .upload(path, file, { contentType: file.type, upsert: false });
+    .upload(path, prepared.upload.bytes, { contentType: prepared.upload.mimeType, upsert: false });
 
   if (uploadError) {
     await notify("storage_error", "Product image upload failed", uploadError.message);

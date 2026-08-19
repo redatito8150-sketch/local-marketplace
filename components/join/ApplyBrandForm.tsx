@@ -12,6 +12,8 @@ import {
   LEGAL_STATUS_OPTIONS,
   LEGAL_STATUSES_WITH_COMMERCIAL_REGISTRATION,
   LEGAL_STATUSES_WITH_TAX_CARD,
+  MAX_ACTIVE_APPLICATION_DOCUMENTS,
+  MAX_DOCUMENT_SIZE_BYTES,
   PREPARATION_TIME_OPTIONS,
   PRODUCT_CATEGORY_OPTIONS,
   RETURNS_POLICY_OPTIONS,
@@ -434,10 +436,25 @@ export default function ApplyBrandForm({
 
   async function handleUpload(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    if (documents.length + files.length > MAX_ACTIVE_APPLICATION_DOCUMENTS) {
+      setError(`You can keep up to ${MAX_ACTIVE_APPLICATION_DOCUMENTS} documents in one application.`);
+      return;
+    }
+    const invalidFile = files.find(
+      (file) =>
+        !["application/pdf", "image/jpeg", "image/png"].includes(file.type) ||
+        !file.size ||
+        file.size > MAX_DOCUMENT_SIZE_BYTES
+    );
+    if (invalidFile) {
+      setError("Each document must be a PDF, JPG, or PNG file no larger than 10 MB.");
+      return;
+    }
     setUploading(true);
     setError("");
     try {
-      for (const file of Array.from(fileList)) {
+      for (const file of files) {
         const res = await uploadDocument(file);
         setDocuments((docs) => [...docs, res.document]);
       }
@@ -914,6 +931,9 @@ export default function ApplyBrandForm({
                 onChange={(e) => handleUpload(e.target.files)}
               />
             </label>
+            <p className="mt-1.5 text-[11.5px] text-ink-soft/50">
+              Maximum 10 MB per file · up to {MAX_ACTIVE_APPLICATION_DOCUMENTS} documents
+            </p>
             {!application && (
               <p className="mt-1.5 text-[12px] text-ink-soft/50">
                 Save your progress (click Next) before uploading documents.

@@ -354,8 +354,9 @@ create trigger brand_applications_updated_at
   for each row execute function public.brand_applications_set_updated_at();
 
 -- One row per uploaded legal/supporting document. Stored in the private
--- brand-application-documents bucket (public = false) — never a public URL,
--- always a short-lived signed URL issued from an admin-gated route.
+-- brand-application-documents bucket (public = false) — never a public URL.
+-- Admin access is streamed through an authenticated route as an opaque,
+-- no-sniff attachment rather than exposing the underlying Storage URL.
 create table if not exists brand_application_documents (
   id uuid primary key default gen_random_uuid(),
   application_id uuid not null references brand_applications (id) on delete cascade,
