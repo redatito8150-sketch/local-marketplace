@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getSafeRedirectPath } from "../lib/auth/safeRedirect.ts";
-import { decidePostAuthDestination } from "../lib/auth/postAuthDestination.ts";
+import { decidePostAuthDestination, getAccountEntryReturnPath } from "../lib/auth/postAuthDestination.ts";
 import { parseGoogleAuthFlag } from "../lib/auth/googleAuthFlag.ts";
 
 test("getSafeRedirectPath accepts a plain internal path", () => {
@@ -69,6 +69,30 @@ test("decidePostAuthDestination prevents cross-workspace redirect loops", () => 
   assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "customer" }, "/brand-portal"), "/account/overview");
   assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: true, role: "admin" }, "/admin/warehouse"), "/admin/warehouse");
   assert.equal(decidePostAuthDestination({ onboardingCompletedAt: "2026-01-01T00:00:00.000Z", isAdmin: false, role: "brand_owner" }, "/brand-portal/warehouse"), "/brand-portal/warehouse");
+});
+
+test("direct account entry keeps every completed role in the personal account", () => {
+  const accountEntry = getAccountEntryReturnPath(null);
+  const completedAt = "2026-01-01T00:00:00.000Z";
+
+  assert.equal(accountEntry, "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: completedAt, isAdmin: true, role: "admin" }, accountEntry), "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: completedAt, isAdmin: false, role: "brand_owner" }, accountEntry), "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: completedAt, isAdmin: false, role: "brand_assistant" }, accountEntry), "/account/overview");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: completedAt, isAdmin: false, role: "customer" }, accountEntry), "/account/overview");
+});
+
+test("account entry preserves safe protected destinations and rejects unsafe ones", () => {
+  assert.equal(getAccountEntryReturnPath("/admin/warehouse"), "/admin/warehouse");
+  assert.equal(getAccountEntryReturnPath("/account/wishlist"), "/account/wishlist");
+  assert.equal(getAccountEntryReturnPath("https://evil.com"), "/account/overview");
+  assert.equal(getAccountEntryReturnPath("//evil.com"), "/account/overview");
+});
+
+test("account entry still sends incomplete profiles through onboarding", () => {
+  const accountEntry = getAccountEntryReturnPath(null);
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: null, isAdmin: true, role: "admin" }, accountEntry), "/onboarding/add-address");
+  assert.equal(decidePostAuthDestination({ onboardingCompletedAt: null, isAdmin: false, role: "brand_owner" }, accountEntry), "/onboarding/add-address");
 });
 
 test("parseGoogleAuthFlag only accepts the exact string 'true'", () => {

@@ -12,7 +12,7 @@ import GoogleAuthButton from "@/components/auth/GoogleAuthButton";
 import AuthOrbitStage from "@/components/auth/AuthOrbitStage";
 import AuthPageSkeleton from "@/components/auth/AuthPageSkeleton";
 import TotpCodeInput from "@/components/auth/TotpCodeInput";
-import { decidePostAuthDestination } from "@/lib/auth/postAuthDestination";
+import { decidePostAuthDestination, getAccountEntryReturnPath } from "@/lib/auth/postAuthDestination";
 import { isCompleteTotpCode } from "@/lib/auth/oneTimeCode";
 
 const inputClass =
@@ -45,6 +45,7 @@ function AccountPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = searchParams.get("next");
+  const accountEntryReturnPath = getAccountEntryReturnPath(nextParam);
   const oauthFailed = searchParams.get("error") === "oauth_failed";
   const [mode, setMode] = useState<"sign-in" | "create">("sign-in");
   const [fullName, setFullName] = useState("");
@@ -60,8 +61,8 @@ function AccountPageContent() {
 
   useEffect(() => {
     if (!user || loading || mfaChallenge || mfaError || !profile) return;
-    router.replace(decidePostAuthDestination(profile, nextParam));
-  }, [user, profile, loading, mfaChallenge, mfaError, router, nextParam]);
+    router.replace(decidePostAuthDestination(profile, accountEntryReturnPath));
+  }, [user, profile, loading, mfaChallenge, mfaError, router, accountEntryReturnPath]);
 
   const switchMode = (value: "sign-in" | "create") => {
     setMode(value);
@@ -184,7 +185,7 @@ function AccountPageContent() {
 
             {oauthFailed && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-[12px] font-medium text-red-700">Google sign-in didn&apos;t complete. Please try again or continue with email.</p>}
 
-            <div className="mt-6"><SocialOptions next={nextParam} /></div>
+            <div className="mt-6"><SocialOptions next={accountEntryReturnPath} /></div>
             <div className="my-5 flex items-center gap-3 text-[9px] font-bold uppercase tracking-[0.16em] text-white/25"><span className="h-px flex-1 bg-white/10" />or use email<span className="h-px flex-1 bg-white/10" /></div>
 
             <form onSubmit={handleSubmit} className="space-y-3">

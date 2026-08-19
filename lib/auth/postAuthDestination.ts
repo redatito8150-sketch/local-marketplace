@@ -6,10 +6,21 @@ export interface PostAuthProfile {
   role: string;
 }
 
+const ACCOUNT_OVERVIEW_PATH = "/account/overview";
+
+// `/account` is both the sign-in screen and the public entry point to a
+// person's account. Once someone is already signed in, a direct visit must
+// stay in the personal account regardless of any Admin or Brand role. An
+// explicit, safe `next` path still wins when authentication was requested by
+// a protected page.
+export function getAccountEntryReturnPath(next?: string | null): string {
+  return getSafeRedirectPath(next, ACCOUNT_OVERVIEW_PATH);
+}
+
 function defaultWorkspace(profile: PostAuthProfile): string {
   if (profile.isAdmin) return "/admin";
   if (profile.role === "brand_owner" || profile.role === "brand_assistant") return "/brand-portal";
-  return "/account/overview";
+  return ACCOUNT_OVERVIEW_PATH;
 }
 
 // The single "where does this signed-in user land" rule, shared by the
