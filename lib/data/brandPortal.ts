@@ -4,7 +4,7 @@ import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
-import type { OrderItemDiscountSource, SellingStatus, StockStatus } from "@/types";
+import type { OrderItemDiscountSource, ProductStatus, ProductVariant, SellingStatus, StockStatus } from "@/types";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 
 // Every query here uses the cookie-aware anon client by default (never
@@ -89,6 +89,8 @@ interface OrderItemRow {
   color: string | null;
   price: number;
   currency: "USD" | "EGP";
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   quantity: number;
   original_unit_price: number | null;
   discount_percent_snapshot: number | null;
@@ -560,9 +562,14 @@ export async function getInventoryPageForBrand(
 export interface BrandProductListItem {
   id: string;
   name: string;
+  sku: string;
+  variantSkus: string[];
   image: string;
   price: number;
   currency: "USD" | "EGP";
+  discountPercent?: number;
+  discountEndsAt?: string;
+  variants: ProductVariant[];
   mainCategory?: string;
   productType?: string;
   collection?: string;
@@ -574,7 +581,7 @@ export interface BrandProductListItem {
   stockUnits: number;
   createdAt: string;
   updatedAt: string;
-  status: string;
+  status: ProductStatus;
   draftStartedAt?: string;
   publishDate?: string;
   pausedByBrand: boolean;
@@ -589,15 +596,18 @@ export interface BrandProductListItem {
 interface BrandProductRow {
   id: string;
   name: string;
+  sku: string;
   image: string;
   price: number;
   currency: "USD" | "EGP";
+  discount_percent: number | null;
+  discount_ends_at: string | null;
   product_type_id: string;
   collection_id: string | null;
   featured: boolean;
   default_low_stock_threshold: number;
   created_at: string;
-  status: string;
+  status: ProductStatus;
   draft_started_at: string | null;
   publish_date: string | null;
   paused_by_brand: boolean;
@@ -621,7 +631,7 @@ export async function getProductsForBrand(
   const { data, error } = await supabaseAdmin
     .from("products")
     .select(
-      "id, name, image, price, currency, product_type_id, collection_id, featured, default_low_stock_threshold, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at, launch_policy, first_stocked_at, first_visible_at"
+      "id, name, sku, image, price, currency, discount_percent, discount_ends_at, product_type_id, collection_id, featured, default_low_stock_threshold, created_at, status, draft_started_at, publish_date, paused_by_brand, pending_changes, review_notes, deletion_requested_at, launch_policy, first_stocked_at, first_visible_at"
     )
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false });
@@ -662,9 +672,14 @@ export async function getProductsForBrand(
     return {
       id: row.id,
       name: row.name,
+      sku: row.sku,
+      variantSkus: variants.map((variant) => variant.sku),
       image: row.image,
       price: Number(row.price),
       currency: row.currency,
+      discountPercent: row.discount_percent ?? undefined,
+      discountEndsAt: row.discount_ends_at ?? undefined,
+      variants,
       mainCategory: path?.mainCategory,
       productType: path?.productTypeName,
       collection: row.collection_id ? collectionNamesById.get(row.collection_id) : undefined,

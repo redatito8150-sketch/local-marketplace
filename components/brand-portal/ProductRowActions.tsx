@@ -1,29 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { createPortal } from "react-dom";
-import { Archive, MoreHorizontal, Pause, Pencil, Play, Trash2, X } from "lucide-react";
+import { Archive, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import type { ProductStatus } from "@/types";
 import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
+import ProductActionDialog from "@/components/products/ProductActionDialog";
+import ProductOverflowMenu from "@/components/products/ProductOverflowMenu";
 
 type PendingAction = "archive" | "delete_draft" | "delete_archived" | null;
 
-export default function ProductRowActions({ productId, name, editHref }: { productId: string; name: string; editHref: string }) {
+type ProductRowActionsProps = {
+  productId: string;
+  name: string;
+  editHref: string;
+  status: ProductStatus;
+  pausedByBrand: boolean;
+};
+
+const menuItemClass = "flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset";
+
+export default function ProductRowActions({ productId, name, editHref, status, pausedByBrand }: ProductRowActionsProps) {
   const router = useRouter();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuPanelRef = useRef<HTMLDivElement>(null);
   const operationKeyRef = useRef("");
-  const [menuOpen, setMenuOpen] = useState(false);
-  // Fixed-position coordinates computed from the trigger button, not CSS
-  // absolute positioning relative to the row it's in — the row lives
-  // inside a horizontally (and, per the CSS overflow spec, therefore also
-  // vertically) clipped table wrapper (`overflow-x-auto`), which was
-  // silently cutting the menu off for rows near the bottom of the visible
-  // area. Rendering the menu through a portal into document.body, at
-  // fixed screen coordinates, escapes that ancestor entirely regardless
-  // of which row it's opened from.
-  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [eligibility, setEligibility] = useState<ProductDeletionEligibility | null>(null);
   const [loading, setLoading] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -33,6 +33,7 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
   const [error, setError] = useState("");
 
   async function loadEligibility() {
+    if (eligibility || loading) return;
     setLoading(true);
     try {
       const response = await fetch(`/api/brand-portal/products/${productId}/deletion`, { cache: "no-store" });
@@ -43,32 +44,16 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
     }
   }
 
-  function openMenu() {
-    const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) setMenuPos({ top: rect.bottom + 4, right: Math.max(8, window.innerWidth - rect.right) });
-    setMenuOpen(true);
-    if (!eligibility) loadEligibility();
-  }
-
-  function closeMenu() {
-    setMenuOpen(false);
-  }
-
   async function togglePause() {
-    if (!eligibility) return;
     setLoading(true);
     try {
       const query = editHref.includes("?") ? editHref.slice(editHref.indexOf("?")) : "";
       const response = await fetch(`/api/brand-portal/products/${productId}${query}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle-pause", pausedByBrand: eligibility.lifecycle !== "paused" }),
+        body: JSON.stringify({ action: "toggle-pause", pausedByBrand: !pausedByBrand }),
       });
-      if (response.ok) {
-        closeMenu();
-        setEligibility({ ...eligibility, lifecycle: eligibility.lifecycle === "paused" ? "published" : "paused" });
-        router.refresh();
-      }
+      if (response.ok) router.refresh();
     } finally {
       setLoading(false);
     }
@@ -80,7 +65,6 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
     setReason("");
     setError("");
     operationKeyRef.current = action.startsWith("delete_") ? crypto.randomUUID() : "";
-    closeMenu();
   }
 
   async function confirm() {
@@ -111,113 +95,62 @@ export default function ProductRowActions({ productId, name, editHref }: { produ
   const isDelete = pendingAction === "delete_draft" || pendingAction === "delete_archived";
   const canConfirm = !busy && (!isDelete || confirmText === name);
 
-  // Closes on any pointerdown outside both the trigger and the (portaled,
-  // so not a DOM descendant of the trigger anymore) menu panel, and on
-  // Escape — matching ordinary dropdown/menu behavior. Also closes on
-  // scroll (capture phase, since the table wrapper's own scroll doesn't
-  // bubble to window otherwise) and on resize, since a fixed-position menu
-  // doesn't reposition itself as the page underneath it moves.
-  useEffect(() => {
-    if (!menuOpen) return;
-    function handlePointerDown(event: MouseEvent) {
-      if (!(event.target instanceof Node)) return;
-      if (triggerRef.current?.contains(event.target)) return;
-      if (menuPanelRef.current?.contains(event.target)) return;
-      closeMenu();
-    }
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") closeMenu();
-    }
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("scroll", closeMenu, true);
-    window.addEventListener("resize", closeMenu);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("scroll", closeMenu, true);
-      window.removeEventListener("resize", closeMenu);
-    };
-  }, [menuOpen]);
-
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => (menuOpen ? closeMenu() : openMenu())}
-        aria-label={`Actions for ${name}`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        className="flex h-9 w-9 items-center justify-center rounded-lg text-[#75685f] hover:bg-[#f1eae2]"
-      >
-        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-      </button>
+      <div className="flex items-center gap-1">
+        {status === "published" ? (
+          <button type="button" disabled={loading} onClick={togglePause} title={pausedByBrand ? "Resume" : "Pause temporarily"} aria-label={`${pausedByBrand ? "Resume" : "Pause"} ${name}`} className="flex h-10 w-10 items-center justify-center rounded-xl text-[#75685f] transition-colors duration-150 hover:bg-[#f1eae2] hover:text-[#242424] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">
+            {pausedByBrand ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        ) : null}
 
-      {menuOpen && menuPos && createPortal(
-        <div
-          ref={menuPanelRef}
-          role="menu"
-          style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}
-          className="z-50 w-60 rounded-xl border border-[#e3dcd3] bg-white p-1.5 shadow-xl"
-        >
-          <Link href={editHref} onClick={closeMenu} className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
-            <Pencil className="h-4 w-4" aria-hidden="true" /> Edit product
+        <ProductOverflowMenu label={`More actions for ${name}`} onOpen={loadEligibility}>
+          <Link role="menuitem" tabIndex={-1} href={editHref} className={`${menuItemClass} text-[#51473f] hover:bg-[#f7f0e8] focus-visible:ring-mahalyred/25`}>
+            <Pencil className="h-4 w-4" aria-hidden="true" />Edit product
           </Link>
-          {loading && <p className="px-3 py-2 text-[11.5px] text-[#8a7d73]">Checking product…</p>}
-          {(eligibility?.lifecycle === "published" || eligibility?.lifecycle === "paused") && (
-            <button type="button" onClick={togglePause} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
-              {eligibility.lifecycle === "paused" ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}
-              {eligibility.lifecycle === "paused" ? "Resume" : "Pause temporarily"}
+          {loading ? <p className="px-3 py-2 text-[11.5px] text-[#8a7d73]" aria-live="polite">Checking product…</p> : null}
+          {eligibility?.canArchive ? (
+            <button role="menuitem" tabIndex={-1} type="button" onClick={() => open("archive")} className={`${menuItemClass} text-red-700 hover:bg-red-50 focus-visible:ring-red-300`}>
+              <Archive className="h-4 w-4" aria-hidden="true" />Archive permanently
             </button>
-          )}
-          {eligibility?.canArchive && (
-            <button type="button" onClick={() => open("archive")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] hover:bg-[#f7f0e8]">
-              <Archive className="h-4 w-4" aria-hidden="true" /> Archive
+          ) : null}
+          {eligibility?.canDeleteDraft ? (
+            <button role="menuitem" tabIndex={-1} type="button" onClick={() => open("delete_draft")} className={`${menuItemClass} text-red-700 hover:bg-red-50 focus-visible:ring-red-300`}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" />Delete pristine Draft
             </button>
-          )}
-          {eligibility?.canDeleteDraft && (
-            <button type="button" onClick={() => open("delete_draft")} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 hover:bg-red-50">
-              <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete pristine Draft
-            </button>
-          )}
-        </div>,
-        document.body
-      )}
+          ) : null}
+        </ProductOverflowMenu>
+      </div>
 
-      {pendingAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="product-action-title">
-          <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="Close" onClick={() => !busy && setPendingAction(null)} />
-          <div className="relative w-full max-w-md rounded-2xl border border-[#e3dcd3] bg-white p-6 shadow-xl">
-            <button type="button" onClick={() => setPendingAction(null)} className="absolute right-4 top-4 rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><X className="h-4 w-4" /></button>
-            <h2 id="product-action-title" className="pr-10 text-lg font-bold text-[#242424]">
-              {pendingAction === "archive" ? `Archive ${name}?` : `Permanently delete ${name}?`}
-            </h2>
-            <p className="mt-2 text-[13px] leading-6 text-[#75685f]">
-              {pendingAction === "archive"
-                ? "This hides the product immediately. Archived is final; it cannot be resumed or restored."
-                : "This cannot be undone. The product and its disposable catalog data will be permanently removed."}
-            </p>
-            {isDelete && (
-              <>
-                <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Reason (optional)
-                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-[#ddd6cd] p-2.5" />
-                </label>
-                <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Type <strong>{name}</strong> to confirm
-                  <input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} autoComplete="off" className="mt-1.5 w-full rounded-lg border border-[#ddd6cd] p-2.5" />
-                </label>
-              </>
-            )}
-            {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] leading-5 text-red-700">{error}</p>}
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setPendingAction(null)} disabled={busy} className="h-10 rounded-lg border border-[#ddd6cd] px-4 text-[12.5px] font-semibold">Cancel</button>
-              <button type="button" onClick={confirm} disabled={!canConfirm} className="h-10 rounded-lg bg-[#C85956] px-4 text-[12.5px] font-semibold text-white disabled:opacity-50">
-                {busy ? "Working…" : pendingAction === "archive" ? "Archive" : "Delete permanently"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ProductActionDialog
+        open={Boolean(pendingAction)}
+        onClose={() => !busy && setPendingAction(null)}
+        title={pendingAction === "archive" ? `Archive ${name}?` : `Permanently delete ${name}?`}
+        busy={busy}
+        footer={<>
+          <button type="button" onClick={() => setPendingAction(null)} disabled={busy} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12.5px] font-semibold text-[#62564d] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={confirm} disabled={!canConfirm} className="h-10 rounded-xl bg-mahalyred px-4 text-[12.5px] font-semibold text-white transition-colors duration-150 hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">
+            {busy ? "Working…" : pendingAction === "archive" ? "Archive" : "Delete permanently"}
+          </button>
+        </>}
+      >
+        <p className="mt-2 text-[13px] leading-6 text-[#75685f]">
+          {pendingAction === "archive"
+            ? "This hides the product immediately. Archived is final; it cannot be resumed or restored."
+            : "This cannot be undone. The product and its disposable catalog data will be permanently removed."}
+        </p>
+        {isDelete ? (
+          <>
+            <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Reason (optional)
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} className="mt-1.5 w-full rounded-lg border border-[#ddd6cd] p-2.5 outline-none focus-visible:border-mahalyred/50 focus-visible:ring-4 focus-visible:ring-mahalyred/10" />
+            </label>
+            <label className="mt-4 block text-[12px] font-semibold text-[#51473f]">Type <strong>{name}</strong> to confirm
+              <input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} autoComplete="off" className="mt-1.5 h-11 w-full rounded-lg border border-[#ddd6cd] px-3 outline-none focus-visible:border-mahalyred/50 focus-visible:ring-4 focus-visible:ring-mahalyred/10" />
+            </label>
+          </>
+        ) : null}
+        {error ? <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] leading-5 text-red-700">{error}</p> : null}
+      </ProductActionDialog>
     </>
   );
 }

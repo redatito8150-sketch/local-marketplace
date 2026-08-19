@@ -1,75 +1,84 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Star } from "lucide-react";
-import type { ProductRecord } from "@/types";
-import { formatPrice } from "@/lib/format";
+import { CheckCircle2, PackageOpen, XCircle } from "lucide-react";
+import type { ProductRecord, StockStatus } from "@/types";
+import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import AdminProductDeletionActions from "@/components/admin/AdminProductDeletionActions";
-import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
-import { isPublishDateLive } from "@/lib/newArrivals";
+import ProductActionDialog from "@/components/products/ProductActionDialog";
+import { ProductStatusBadges } from "@/components/products/ProductStatusBadges";
+import ProductPriceDisplay from "@/components/products/ProductPriceDisplay";
 
-function StatusCell({ product }: { product: ProductRecord }) {
-  if (product.status === "draft") {
-    const daysLeft = draftDaysRemaining(product.draftStartedAt);
-    return (
-      <span
-        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-          daysLeft != null && daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
-        }`}
-        title={daysLeft != null ? "Draft review is due soon. Publish it or permanently delete it if it is still pristine." : undefined}
-      >
-        Draft{daysLeft != null ? ` — ${Math.max(daysLeft, 0)}d left` : ""}
-      </span>
-    );
-  }
-  if (product.status === "archived") {
-    return (
-      <div className="flex flex-col items-start gap-1">
-        <span className="rounded-full bg-stone-100 px-2.5 py-1 text-[11px] font-semibold text-ink-soft/65">Archived</span>
-      </div>
-    );
-  }
-  // A "published" row with a future Publish Date isn't actually live yet —
-  // same gate the storefront queries use (lib/newArrivals.ts). Plain
-  // "Published" here would mislead the admin into thinking it's already
-  // visible to customers.
-  if (product.status === "published" && !isPublishDateLive(product.publishDate ?? null)) {
-    return (
-      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold text-blue-700" title={product.publishDate}>
-        Scheduled — {new Date(product.publishDate!).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-      </span>
-    );
-  }
-  // Internally published but still hidden from every customer-facing
-  // surface — waiting on its launch-policy stock gate, not a mistake in
-  // how "Published" is being read. See private.is_product_customer_visible()
-  // (supabase/migrations/20260815000000_product_launch_policy_and_opening_stock.sql).
-  if (product.launchPolicy === "when_stocked" && !product.firstStockedAt) {
-    return (
-      <div className="flex flex-col items-start gap-1">
-        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>
-        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10.5px] font-semibold text-amber-800" title="Hidden from customers until its first stock is added or received.">Waiting for stock</span>
-      </div>
-    );
-  }
-  return <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">Published</span>;
-}
+type BulkResult = { succeeded: string[]; failed: { productId: string; message: string }[] };
 
 function existingNameById(products: ProductRecord[], id: string): string {
-  return products.find((p) => p.id === id)?.name ?? id;
+  return products.find((product) => product.id === id)?.name ?? id;
 }
 
-export default function BulkProductActions({ products }: { products: ProductRecord[] }) {
+function getInventorySummary(product: ProductRecord): { status: StockStatus; units: number; variants: number; issueCount: number } {
+  const variants = (product.variants ?? []).filter((variant) => !variant.isArchived);
+  const activeVariants = variants.filter((variant) => variant.sellingStatus === "active");
+  const statuses = activeVariants.map((variant) => calculateStockStatus(
+    variant.quantity,
+    effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.defaultLowStockThreshold ?? 0)
+  ));
+  const status: StockStatus = !statuses.length || statuses.every((value) => value === "out_of_stock")
+    ? "out_of_stock"
+    : statuses.some((value) => value === "low_stock" || value === "out_of_stock")
+      ? "low_stock"
+      : "in_stock";
+  return {
+    status,
+    units: activeVariants.reduce((sum, variant) => sum + Math.max(0, variant.quantity), 0),
+    variants: variants.length,
+    issueCount: statuses.filter((value) => value !== "in_stock").length,
+  };
+}
+
+function InventorySummary({ product }: { product: ProductRecord }) {
+  const inventory = getInventorySummary(product);
+  const status = inventory.status === "out_of_stock"
+    ? { label: "Out of stock", dot: "bg-red-500", text: "text-red-700" }
+    : inventory.status === "low_stock"
+      ? { label: "Low stock", dot: "bg-amber-500", text: "text-amber-700" }
+      : { label: "In stock", dot: "bg-emerald-500", text: "text-emerald-700" };
+  return (
+    <div>
+      <p className={`inline-flex items-center gap-1.5 text-[12.5px] font-bold ${status.text}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} aria-hidden="true" />{status.label}
+      </p>
+      <p className="mt-1 text-[11px] tabular-nums text-[#94867c]">
+        {inventory.units} units · {inventory.variants} {inventory.variants === 1 ? "variant" : "variants"}
+        {inventory.issueCount > 0 ? ` · ${inventory.issueCount} need attention` : ""}
+      </p>
+    </div>
+  );
+}
+
+function ProductImage({ product, className, priority = false }: { product: ProductRecord; className: string; priority?: boolean }) {
+  return (
+    <span className={`relative block flex-none overflow-hidden rounded-xl bg-[#f1eae2] ${className}`}>
+      {product.image ? <Image src={product.image} alt={product.name} fill sizes="96px" priority={priority} className="object-cover" /> : <span className="flex h-full w-full items-center justify-center text-[#a29489]"><PackageOpen className="h-5 w-5" aria-hidden="true" /></span>}
+    </span>
+  );
+}
+
+export default function BulkProductActions({ products, totalProducts, clearHref }: { products: ProductRecord[]; totalProducts: number; clearHref: string }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
+  const [error, setError] = useState("");
+  const [confirmArchive, setConfirmArchive] = useState(false);
+
+  const selectedProducts = products.filter((product) => selected.has(product.id));
 
   const toggleOne = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
+    setSelected((current) => {
+      const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -77,200 +86,122 @@ export default function BulkProductActions({ products }: { products: ProductReco
   };
 
   const toggleAll = () => {
-    setSelected((prev) => (prev.size === products.length ? new Set() : new Set(products.map((p) => p.id))));
+    setSelected((current) => current.size === products.length ? new Set() : new Set(products.map((product) => product.id)));
   };
-
-  const [bulkResult, setBulkResult] = useState<{ succeeded: string[]; failed: { productId: string; message: string }[] } | null>(null);
 
   const runBulkAction = async (action: "publish" | "archive") => {
     setBusy(true);
     setBulkResult(null);
+    setError("");
     try {
-      const res = await fetch("/api/admin/products/bulk", {
+      const response = await fetch("/api/admin/products/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: [...selected], action }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(data.error ?? "Bulk action failed");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "The selected products could not be updated. Check their status and try again.");
         return;
       }
-      // Structured per-product outcome — never a blind "N affected." A
-      // publish/archive bulk update reports `succeeded` as every id whose
-      // row was actually changed (see the route's .select("id") after the
-      // update); Archive reports a real per-product `failed`
-      // list with the exact blocker reason for anything the database
-      // refused (e.g. history that must be retained).
       setBulkResult({ succeeded: data.succeeded ?? [], failed: data.failed ?? [] });
       setSelected(new Set());
+      setConfirmArchive(false);
       router.refresh();
     } finally {
       setBusy(false);
     }
   };
 
-  // Featured is admin-list-only merchandising — a single-product toggle,
-  // not a selection-driven bulk action, but it reuses the same endpoint.
-  const toggleFeatured = async (id: string, nextFeatured: boolean) => {
-    setTogglingId(id);
-    try {
-      const res = await fetch("/api/admin/products/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: [id], action: nextFeatured ? "feature" : "unfeature" }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert(data.error ?? "Failed to update Featured");
-        return;
-      }
-      router.refresh();
-    } finally {
-      setTogglingId(null);
-    }
-  };
-
   return (
-    <div className="mt-6 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-      {selected.size > 0 && (
-        <div className="flex min-w-[920px] items-center justify-between gap-4 border-b border-slate-200 bg-red-50/60 px-5 py-3">
-          <span className="text-[13px] font-medium text-ink">{selected.size} selected</span>
+    <section className="mt-3 overflow-hidden rounded-[18px] border border-[#e3dcd3] bg-white shadow-[0_10px_30px_rgba(67,45,29,0.035)]" aria-label="Products">
+      {selected.size > 0 ? (
+        <div className="flex flex-col gap-3 border-b border-[#eadfd7] bg-[#fff8f6] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-mahalyred px-2 text-[11px] font-bold tabular-nums text-white">{selected.size}</span>
+            <div><p className="text-[12.5px] font-bold text-[#302924]">Products selected</p><button type="button" onClick={() => setSelected(new Set())} className="mt-0.5 text-[10.5px] font-semibold text-[#81746a] underline-offset-4 hover:text-mahalyred hover:underline">Clear selection</button></div>
+          </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => runBulkAction("publish")}
-              className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50 disabled:opacity-60"
-            >
-              Publish
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => runBulkAction("archive")}
-              className="rounded-md border border-stone-150 bg-white px-3 py-1.5 text-[12px] font-medium text-ink hover:bg-stone-50 disabled:opacity-60"
-            >
-              Archive
-            </button>
+            <button type="button" disabled={busy} onClick={() => runBulkAction("publish")} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12px] font-semibold text-[#51473f] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Publish</button>
+            <button type="button" disabled={busy} onClick={() => setConfirmArchive(true)} className="h-10 rounded-xl bg-mahalyred px-4 text-[12px] font-semibold text-white transition-colors duration-150 hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">Archive</button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {bulkResult && (
-        <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-[12.5px]">
-          {bulkResult.succeeded.length > 0 && (
-            <p className="text-emerald-700">{bulkResult.succeeded.length} product(s) updated successfully.</p>
-          )}
-          {bulkResult.failed.length > 0 && (
-            <div className="mt-1 text-red-700">
-              <p className="font-semibold">{bulkResult.failed.length} could not be processed:</p>
-              <ul className="mt-1 list-disc pl-5">
-                {bulkResult.failed.map((f) => (
-                  <li key={f.productId}>{existingNameById(products, f.productId)}: {f.message}</li>
+      <div aria-live="polite" aria-atomic="true">
+        {error ? <p role="alert" className="border-b border-red-100 bg-red-50 px-4 py-3 text-[12px] font-medium text-red-700">{error}</p> : null}
+        {bulkResult ? (
+          <div className="border-b border-[#eee7de] bg-[#fcfaf8] px-4 py-3 text-[12px]">
+            {bulkResult.succeeded.length > 0 ? <p className="inline-flex items-center gap-2 font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" aria-hidden="true" />{bulkResult.succeeded.length} {bulkResult.succeeded.length === 1 ? "product" : "products"} updated</p> : null}
+            {bulkResult.failed.length > 0 ? <div className="mt-2 text-red-700"><p className="inline-flex items-center gap-2 font-semibold"><XCircle className="h-4 w-4" aria-hidden="true" />{bulkResult.failed.length} could not be processed</p><ul className="mt-1 list-disc pl-6">{bulkResult.failed.map((failure) => <li key={failure.productId}>{existingNameById(products, failure.productId)}: {failure.message}</li>)}</ul></div> : null}
+          </div>
+        ) : null}
+      </div>
+
+      {products.length ? (
+        <>
+          <div className="hidden overflow-x-auto lg:block">
+            <table className="w-full min-w-[1080px] text-left text-[13px]">
+              <thead className="border-b border-[#e8e0d7] bg-[#fbf8f4] text-[10.5px] uppercase tracking-[0.08em] text-[#897b70]">
+                <tr>
+                  <th className="w-14 px-4 py-3"><label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl hover:bg-[#f1eae2]"><input type="checkbox" checked={products.length > 0 && selected.size === products.length} onChange={toggleAll} aria-label="Select all products on this page" className="h-4 w-4 accent-mahalyred" /></label></th>
+                  <th className="px-4 py-3 font-semibold">Product</th>
+                  <th className="px-4 py-3 font-semibold">Category</th>
+                  <th className="px-4 py-3 font-semibold">Price</th>
+                  <th className="px-4 py-3 font-semibold">Inventory</th>
+                  <th className="px-4 py-3 font-semibold">Status & visibility</th>
+                  <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#eee7de]">
+                {products.map((product, index) => (
+                  <tr key={product.id} className={`transition-colors duration-150 hover:bg-[#fbf8f4] ${selected.has(product.id) ? "bg-[#fff8f6]" : ""}`}>
+                    <td className="px-4 py-3"><label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl hover:bg-[#f1eae2]"><input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleOne(product.id)} aria-label={`Select ${product.name}`} className="h-4 w-4 accent-mahalyred" /></label></td>
+                    <td className="px-4 py-3">
+                      <Link href={`/admin/products/${product.id}/edit`} className="group flex min-w-0 items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
+                        <ProductImage product={product} className="h-16 w-14" priority={index === 0} />
+                        <div className="min-w-0"><p className="max-w-[260px] truncate font-bold text-[#242424] transition-colors duration-150 group-hover:text-mahalyred">{product.name}</p><p className="mt-1 truncate text-[10.5px] text-[#8a7d73]">{product.sku}</p><p className="mt-1 truncate text-[10.5px] font-bold text-mahalyred/80" translate="no">{product.brandName}</p></div>
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-[#75685f]"><p>{product.mainCategory || "Not assigned"}</p>{product.productTypeName ? <p className="mt-1 text-[11px] text-[#9b8e84]">{product.productTypeName}</p> : null}</td>
+                    <td className="px-4 py-3"><ProductPriceDisplay product={product} /></td>
+                    <td className="px-4 py-3"><InventorySummary product={product} /></td>
+                    <td className="px-4 py-3"><ProductStatusBadges product={product} showReviewNotes /></td>
+                    <td className="px-4 py-3"><div className="flex items-center justify-end"><AdminProductDeletionActions product={product} /></div></td>
+                  </tr>
                 ))}
-              </ul>
-            </div>
-          )}
-        </div>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="divide-y divide-[#eee7de] lg:hidden">
+            {products.map((product, index) => (
+              <article key={product.id} className={selected.has(product.id) ? "bg-[#fff8f6] p-4 sm:p-5" : "p-4 sm:p-5"}>
+                <div className="flex items-start gap-3">
+                  <label className="flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-xl bg-[#f7f2ec]"><input type="checkbox" checked={selected.has(product.id)} onChange={() => toggleOne(product.id)} aria-label={`Select ${product.name}`} className="h-4 w-4 accent-mahalyred" /></label>
+                  <Link href={`/admin/products/${product.id}/edit`} className="flex-none rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"><ProductImage product={product} className="h-24 w-20" priority={index === 0} /></Link>
+                  <div className="min-w-0 flex-1"><Link href={`/admin/products/${product.id}/edit`} className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"><h2 className="truncate text-[15px] font-bold text-[#242424] hover:text-mahalyred">{product.name}</h2></Link><p className="mt-1 truncate text-[10.5px] text-[#8a7d73]">{product.sku}</p><p className="mt-1 truncate text-[11px] font-bold text-mahalyred/80" translate="no">{product.brandName}</p><div className="mt-2"><ProductPriceDisplay product={product} compact /></div></div>
+                </div>
+                <div className="mt-4"><ProductStatusBadges product={product} showReviewNotes /></div>
+                <div className="mt-4 flex flex-col gap-3 border-t border-[#eee7de] pt-4 sm:flex-row sm:items-center sm:justify-between"><InventorySummary product={product} /><div className="self-end sm:self-auto"><AdminProductDeletionActions product={product} /></div></div>
+              </article>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="px-5 py-14 text-center"><PackageOpen className="mx-auto h-6 w-6 text-[#a29489]" aria-hidden="true" /><h2 className="mt-3 text-[15px] font-bold text-[#302924]">{totalProducts ? "No matching products" : "No products yet"}</h2><p className="mx-auto mt-2 max-w-md text-[12px] leading-5 text-[#81746a]">{totalProducts ? "Clear or adjust the filters to return to the full catalog." : "Add the first product to start building the marketplace catalog."}</p>{totalProducts ? <Link href={clearHref} className="mt-4 inline-flex h-10 items-center rounded-xl border border-[#ddd6cd] px-4 text-[12px] font-semibold text-[#51473f] hover:bg-[#f7f2ec]">Clear filters</Link> : <Link href="/admin/products/new" className="mt-4 inline-flex h-10 items-center rounded-xl bg-mahalyred px-4 text-[12px] font-semibold text-white hover:bg-mahalyred-dark">Add product</Link>}</div>
       )}
 
-      <table className="w-full min-w-[920px] text-left text-[13px]">
-        <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[10.5px] uppercase tracking-[0.08em] text-slate-500 backdrop-blur">
-          <tr>
-            <th className="w-10 px-5 py-3">
-              <input
-                type="checkbox"
-                checked={products.length > 0 && selected.size === products.length}
-                onChange={toggleAll}
-                aria-label="Select all products"
-              />
-            </th>
-            <th className="px-5 py-3 font-medium">Product</th>
-            <th className="px-5 py-3 font-medium">Brand</th>
-            <th className="px-5 py-3 font-medium">Category</th>
-            <th className="px-5 py-3 font-medium">Price</th>
-            <th className="px-5 py-3 font-medium">Status</th>
-            <th className="px-5 py-3 font-medium">Stock</th>
-            <th className="px-5 py-3 font-medium" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-stone-150">
-          {products.map((product) => (
-            <tr key={product.id} className="transition-colors hover:bg-slate-50/70">
-              <td className="px-5 py-3">
-                <input
-                  type="checkbox"
-                  checked={selected.has(product.id)}
-                  onChange={() => toggleOne(product.id)}
-                  aria-label={`Select ${product.name}`}
-                />
-              </td>
-              <td className="flex items-center gap-3 px-5 py-3">
-                <div className="h-10 w-10 overflow-hidden rounded-md bg-stone-100">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={product.image}
-                    alt={product.name}
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-                <div><p className="font-bold text-slate-900">{product.name}</p><p className="mt-0.5 text-[10.5px] text-slate-400">{product.sku}</p></div>
-              </td>
-              <td className="px-5 py-3 text-ink-soft/70">{product.brandName}</td>
-              <td className="px-5 py-3 capitalize text-ink-soft/70">
-                {product.mainCategory || "—"}
-              </td>
-              <td className="px-5 py-3 font-medium text-ink">
-                {formatPrice(product.price, product.currency)}
-              </td>
-              <td className="px-5 py-3">
-                <StatusCell product={product} />
-              </td>
-              <td className="px-5 py-3">
-                <span
-                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                    product.inStock
-                      ? "bg-green-50 text-green-700"
-                      : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  {product.inStock ? "In stock" : "Out of stock"}
-                </span>
-              </td>
-              <td className="px-5 py-3">
-                <div className="flex items-center justify-end gap-1">
-                  <button
-                    type="button"
-                    disabled={togglingId === product.id}
-                    onClick={() => toggleFeatured(product.id, !product.featured)}
-                    aria-label={product.featured ? `Unfeature ${product.name}` : `Feature ${product.name}`}
-                    aria-pressed={product.featured}
-                    title={product.featured ? "Featured — click to unfeature" : "Not featured — click to feature"}
-                    className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink disabled:opacity-50"
-                  >
-                    <Star className="h-4 w-4" strokeWidth={1.6} fill={product.featured ? "#C85956" : "none"} color={product.featured ? "#C85956" : "currentColor"} />
-                  </button>
-                  <Link
-                    href={`/admin/products/${product.id}/edit`}
-                    aria-label={`Edit ${product.name}`}
-                    className="rounded-md p-1.5 text-ink-soft/60 transition-colors hover:bg-stone-100 hover:text-ink"
-                  >
-                    <Pencil className="h-4 w-4" strokeWidth={1.6} />
-                  </Link>
-                  <AdminProductDeletionActions product={product} />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {products.length === 0 && (
-        <p className="px-5 py-10 text-center text-sm text-ink-soft/60">
-          No products yet.
-        </p>
-      )}
-    </div>
+      <ProductActionDialog
+        open={confirmArchive}
+        onClose={() => !busy && setConfirmArchive(false)}
+        title={`Archive ${selected.size} ${selected.size === 1 ? "product" : "products"}?`}
+        busy={busy}
+        footer={<><button type="button" onClick={() => setConfirmArchive(false)} disabled={busy} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12.5px] font-semibold text-[#62564d] hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Cancel</button><button type="button" onClick={() => runBulkAction("archive")} disabled={busy || !selected.size} className="h-10 rounded-xl bg-mahalyred px-4 text-[12.5px] font-semibold text-white hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">{busy ? "Archiving…" : "Move to Archived"}</button></>}
+      >
+        <p className="text-[13px] leading-6 text-[#75685f]">Archived is final. These products will be hidden immediately and cannot be resumed or restored.</p>
+        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto rounded-xl bg-[#faf7f4] p-3 text-[12px] font-semibold text-[#51473f]">{selectedProducts.slice(0, 6).map((product) => <li key={product.id} className="truncate">{product.name} <span className="font-normal text-[#94867c]">· {product.brandName}</span></li>)}{selectedProducts.length > 6 ? <li className="text-[#94867c]">+{selectedProducts.length - 6} more</li> : null}</ul>
+      </ProductActionDialog>
+    </section>
   );
 }

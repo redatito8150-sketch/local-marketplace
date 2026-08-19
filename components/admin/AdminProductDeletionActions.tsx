@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Archive, Pause, Play, ShieldAlert, Trash2, X } from "lucide-react";
+import { Archive, Pause, Pencil, Play, ShieldAlert, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { DeletionBlocker, ProductDeletionEligibility } from "@/lib/admin/productDeletion";
 import { getAdminDeletionBlockerHref } from "@/lib/admin/productDeletionLinks";
 import type { ProductRecord } from "@/types";
+import ProductActionDialog from "@/components/products/ProductActionDialog";
+import ProductOverflowMenu from "@/components/products/ProductOverflowMenu";
 
 type LifecycleAction = "archive" | "delete_draft" | "archive_dirty_draft";
 
@@ -20,6 +22,21 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
+
+  async function toggleFeatured() {
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/admin/products/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [product.id], action: product.featured ? "unfeature" : "feature" }),
+      });
+      if (response.ok) router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function togglePause() {
     setBusy(true);
@@ -129,17 +146,31 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
 
   return <>
     <div className="flex items-center gap-1">
-      {product.status === "published" && <button type="button" disabled={busy} onClick={togglePause} title={product.pausedByBrand ? "Resume" : "Pause temporarily"} aria-label={`${product.pausedByBrand ? "Resume" : "Pause"} ${product.name}`} className="rounded-md p-1.5 text-ink-soft/60 hover:bg-stone-100 hover:text-ink">{product.pausedByBrand ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}</button>}
-      {product.status === "published" && <button type="button" onClick={openArchive} title="Archive permanently" aria-label={`Archive ${product.name}`} className="rounded-md p-1.5 text-ink-soft/60 hover:bg-stone-100 hover:text-ink"><Archive className="h-4 w-4" /></button>}
-      {product.status === "draft" && <button type="button" disabled={checking} onClick={inspectDraft} title="Check Draft deletion" aria-label={`Delete ${product.name}`} className="rounded-md p-1.5 text-ink-soft/60 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /></button>}
+      {product.status === "published" && <button type="button" disabled={busy} onClick={togglePause} title={product.pausedByBrand ? "Resume" : "Pause temporarily"} aria-label={`${product.pausedByBrand ? "Resume" : "Pause"} ${product.name}`} className="flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft/60 transition-colors duration-150 hover:bg-stone-100 hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">{product.pausedByBrand ? <Play className="h-4 w-4" aria-hidden="true" /> : <Pause className="h-4 w-4" aria-hidden="true" />}</button>}
+      <ProductOverflowMenu label={`More actions for ${product.name}`}>
+        <button role="menuitem" tabIndex={-1} type="button" disabled={busy} onClick={toggleFeatured} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-[#51473f] transition-colors duration-150 hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-mahalyred/25 disabled:opacity-50">
+          <Star className="h-4 w-4" fill={product.featured ? "currentColor" : "none"} aria-hidden="true" />{product.featured ? "Remove from Featured" : "Add to Featured"}
+        </button>
+        <Link role="menuitem" tabIndex={-1} href={`/admin/products/${product.id}/edit`} className="flex min-h-10 items-center gap-2 rounded-lg px-3 py-2.5 text-[12.5px] font-medium text-[#51473f] transition-colors duration-150 hover:bg-[#f7f0e8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-mahalyred/25">
+          <Pencil className="h-4 w-4" aria-hidden="true" />Edit product
+        </Link>
+        {product.status === "published" && <button role="menuitem" tabIndex={-1} type="button" onClick={openArchive} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-300"><Archive className="h-4 w-4" aria-hidden="true" />Archive permanently</button>}
+        {product.status === "draft" && <button role="menuitem" tabIndex={-1} type="button" disabled={checking} onClick={inspectDraft} className="flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12.5px] font-medium text-red-700 transition-colors duration-150 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-300 disabled:opacity-50"><Trash2 className="h-4 w-4" aria-hidden="true" />Check Draft deletion</button>}
+      </ProductOverflowMenu>
     </div>
 
-    {action && <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <button type="button" className="absolute inset-0 bg-slate-900/40" onClick={() => !busy && setAction(null)} aria-label="Close" />
-      <div className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-        <button type="button" onClick={() => setAction(null)} className="absolute right-4 top-4 rounded-lg p-2 hover:bg-slate-100" aria-label="Close"><X className="h-4 w-4" /></button>
-        <h2 className="pr-10 text-lg font-bold">{title}</h2>
-
+    <ProductActionDialog
+      open={Boolean(action)}
+      onClose={() => !busy && setAction(null)}
+      title={title}
+      busy={busy}
+      footer={<>
+        <button type="button" onClick={() => setAction(null)} disabled={busy} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12.5px] font-semibold text-[#62564d] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Cancel</button>
+        <button type="button" onClick={confirm} disabled={busy || checking || (action === "delete_draft" && confirmText !== product.name) || (isDirtyDraftArchive && !reason.trim())} className="h-10 rounded-xl bg-mahalyred px-4 text-[12.5px] font-semibold text-white transition-colors duration-150 hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">
+          {busy ? "Working…" : action === "archive" || isDirtyDraftArchive ? "Move to Archived" : "Delete permanently"}
+        </button>
+      </>}
+    >
         {checking ? <p className="mt-3 text-[13px] text-slate-600">Checking product history and stock…</p> : <>
           <p className="mt-2 text-[13px] leading-6 text-slate-600">
             {action === "archive"
@@ -153,7 +184,7 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
             {blockers.map((blocker) => {
               const blockerHref = getAdminDeletionBlockerHref(blocker, product.id);
               return <div key={blocker.code} className="flex gap-2 text-[12px] leading-5 text-[#51473f]">
-                <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" />
+                <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" aria-hidden="true" />
                 <div>
                   <p className="font-semibold">{blocker.message}</p>
                   <p className="text-[#75685f]">{blocker.resolution}</p>
@@ -163,18 +194,11 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
             })}
           </div>}
 
-          {action === "delete_draft" && <label className="mt-4 block text-[12px] font-semibold">Type <strong>{product.name}</strong> to confirm<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} className="mt-1.5 w-full rounded-lg border p-2.5" /></label>}
-          {isDirtyDraftArchive && <label className="mt-4 block text-[12px] font-semibold">Archive reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="Why this non-pristine Draft is being Archived" className="mt-1.5 w-full rounded-lg border p-2.5" /></label>}
+          {action === "delete_draft" && <label className="mt-4 block text-[12px] font-semibold">Type <strong>{product.name}</strong> to confirm<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} autoComplete="off" className="mt-1.5 h-11 w-full rounded-xl border border-[#ddd6cd] px-3 outline-none focus-visible:border-mahalyred/50 focus-visible:ring-4 focus-visible:ring-mahalyred/10" /></label>}
+          {isDirtyDraftArchive && <label className="mt-4 block text-[12px] font-semibold">Archive reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="Explain why this Draft must be Archived…" className="mt-1.5 w-full rounded-xl border border-[#ddd6cd] p-3 outline-none focus-visible:border-mahalyred/50 focus-visible:ring-4 focus-visible:ring-mahalyred/10" /></label>}
         </>}
 
         {error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] text-red-700">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={() => setAction(null)} className="h-10 rounded-lg border px-4 text-[12.5px] font-semibold">Cancel</button>
-          <button type="button" onClick={confirm} disabled={busy || checking || (action === "delete_draft" && confirmText !== product.name) || (isDirtyDraftArchive && !reason.trim())} className="h-10 rounded-lg bg-[#C85956] px-4 text-[12.5px] font-semibold text-white disabled:opacity-50">
-            {busy ? "Working…" : action === "archive" || isDirtyDraftArchive ? "Move to Archived" : "Delete permanently"}
-          </button>
-        </div>
-      </div>
-    </div>}
+    </ProductActionDialog>
   </>;
 }

@@ -1,31 +1,24 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { AlertTriangle, ChevronLeft, ChevronRight, PackageOpen, Plus, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, PackageOpen, Plus } from "lucide-react";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
 import { getProductsForBrand, type BrandProductListItem } from "@/lib/data/brandPortal";
 import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import { listArchivedProducts } from "@/lib/admin/productDeletion";
-import { draftDaysRemaining } from "@/lib/admin/expireDrafts";
-import { isPublishDateLive } from "@/lib/newArrivals";
-import { formatPrice } from "@/lib/format";
 import BrandPicker from "@/components/brand-portal/BrandPicker";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
-import ProductFilters from "@/components/brand-portal/ProductFilters";
 import ProductRowActions from "@/components/brand-portal/ProductRowActions";
 import ShowNowButton from "@/components/brand-portal/ShowNowButton";
+import ProductCatalogFilters from "@/components/products/ProductCatalogFilters";
+import ProductQuickViews from "@/components/products/ProductQuickViews";
+import { canShowProductNow, ProductStatusBadges } from "@/components/products/ProductStatusBadges";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import { needsBrandProductAttention } from "@/lib/brand-portal/productAttention";
+import ProductPriceDisplay from "@/components/products/ProductPriceDisplay";
+import { getProductPricePresentation } from "@/lib/products/pricingPresentation";
 
 const PAGE_SIZE = 25;
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Draft", className: "bg-[#eee9e4] text-[#6f6259]" },
-  pending_review: { label: "Pending Review", className: "bg-amber-50 text-amber-700" },
-  changes_requested: { label: "Changes Requested", className: "bg-red-50 text-red-700" },
-  published: { label: "Published", className: "bg-emerald-50 text-emerald-700" },
-  archived: { label: "Archived", className: "bg-[#eee9e4] text-[#6f6259]" },
-};
-
 type ProductParams = {
   brand?: string;
   q?: string;
@@ -40,7 +33,6 @@ type ProductParams = {
 };
 
 type DisplayProduct = BrandProductListItem & {
-  statusInfo: { label: string; className: string };
   editHref: string;
   inventoryHref: string;
   brandParam: string;
@@ -73,7 +65,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   const attentionProducts = allProducts.filter(needsBrandProductAttention);
   const query = params.q?.trim().toLowerCase();
   const filteredProducts = allProducts.filter((product) => {
-    if (query && !product.name.toLowerCase().includes(query)) return false;
+    if (query && !`${product.name} ${product.sku} ${product.variantSkus.join(" ")}`.toLowerCase().includes(query)) return false;
     if (params.status && product.status !== params.status) return false;
     if (params.category && product.mainCategory !== params.category) return false;
     if (params.productType && product.productType !== params.productType) return false;
@@ -88,9 +80,9 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     : params.sort === "name"
       ? a.name.localeCompare(b.name)
       : params.sort === "price-asc"
-        ? a.price - b.price
+        ? getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin
         : params.sort === "price-desc"
-          ? b.price - a.price
+          ? getProductPricePresentation(b).currentMin - getProductPricePresentation(a).currentMin
           : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const unique = (values: Array<string | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
@@ -117,7 +109,6 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
   const canShowNow = owner.accessLevel === "owner" && !owner.isImpersonating;
   const displayProducts: DisplayProduct[] = paginatedProducts.map((product) => ({
     ...product,
-    statusInfo: getStatusInfo(product),
     editHref: `/brand-portal/products/${product.id}/edit${brandParam}`,
     inventoryHref: buildInventoryHref(product, owner.isImpersonating ? owner.brandSlug ?? undefined : undefined),
     brandParam,
@@ -136,24 +127,25 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
         actions={<Link href={`/brand-portal/products/new${brandParam}`} className={`${dashboardButtonPrimary} active:translate-y-px`}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Add product</Link>}
       />
 
-      <QuickViews
-        activeView={activeView}
-        brandParams={viewBaseParams}
-        archivedCount={archivedCount}
-        counts={{
-          all: allProducts.length,
-          published: allProducts.filter((product) => product.status === "published").length,
-          drafts: allProducts.filter((product) => product.status === "draft").length,
-          attention: attentionProducts.length,
-        }}
+      <ProductQuickViews
+        activeId={activeView}
+        views={[
+          { id: "all", label: "All products", href: buildQuickViewHref("/brand-portal/products", viewBaseParams), count: allProducts.length },
+          { id: "published", label: "Published", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "published" }), count: allProducts.filter((product) => product.status === "published").length },
+          { id: "drafts", label: "Drafts", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "draft" }), count: allProducts.filter((product) => product.status === "draft").length },
+          { id: "attention", label: "Needs attention", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { attention: "1" }), count: attentionProducts.length, attention: true },
+        ]}
+        archived={{ href: buildQuickViewHref("/brand-portal/products/archived", viewBaseParams), count: archivedCount }}
       />
 
-      <ProductFilters
+      <ProductCatalogFilters
+        action="/brand-portal/products"
         params={{ ...params, brand: owner.isImpersonating ? owner.brandSlug ?? undefined : undefined }}
         clearHref={`/brand-portal/products${brandParam}`}
         categories={categories}
         productTypes={productTypes}
         collections={collections}
+        preserveBrand
       />
 
       <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -219,16 +211,16 @@ function ProductTableRow({ product }: { product: DisplayProduct }) {
           <ProductImage product={product} className="h-16 w-14" />
           <div className="min-w-0">
             <p className="max-w-[260px] truncate font-bold text-[#242424] group-hover:text-mahalyred">{product.name}</p>
-            <p className="mt-1 truncate text-[11.5px] text-[#8a7d73]">{product.collection ?? "No collection"}</p>
-            <p className="mt-1 text-[10.5px] text-[#a29489]">{formatUpdatedAt(product.updatedAt)}</p>
+            <p className="mt-1 truncate text-[10.5px] text-[#8a7d73]">{product.sku}</p>
+            <p className="mt-1 truncate text-[10.5px] text-[#9b8e84]">{product.collection ?? "No collection"} · {formatUpdatedAt(product.updatedAt)}</p>
           </div>
         </Link>
       </td>
       <td className="px-5 py-4 text-[#75685f]"><p>{product.mainCategory ?? "Not assigned"}</p>{product.productType && <p className="mt-1 text-[11px] text-[#9b8e84]">{product.productType}</p>}</td>
-      <td className="px-5 py-4 font-bold tabular-nums text-[#242424]">{formatPrice(product.price, product.currency)}</td>
+      <td className="px-5 py-4"><ProductPriceDisplay product={product} /></td>
       <td className="px-5 py-4"><InventorySummary product={product} /></td>
       <td className="px-5 py-4"><ProductStatuses product={product} /></td>
-      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} /></td>
+      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} pausedByBrand={product.pausedByBrand} /></td>
     </tr>
   );
 }
@@ -240,15 +232,16 @@ function ProductMobileCard({ product }: { product: DisplayProduct }) {
         <Link href={product.editHref} className="flex-none rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"><ProductImage product={product} className="h-24 w-20" /></Link>
         <div className="min-w-0 flex-1">
           <Link href={product.editHref} className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"><h2 className="truncate text-[15px] font-bold text-[#242424] hover:text-mahalyred">{product.name}</h2></Link>
+          <p className="mt-1 truncate text-[10.5px] text-[#8a7d73]">{product.sku}</p>
           <p className="mt-1 text-[12px] text-[#81746a]">{[product.mainCategory, product.productType].filter(Boolean).join(" / ") || "Category not assigned"}</p>
           <p className="mt-1 text-[10.5px] text-[#a29489]">{formatUpdatedAt(product.updatedAt)}</p>
-          <p className="mt-2 text-[14px] font-bold tabular-nums text-[#242424]">{formatPrice(product.price, product.currency)}</p>
+          <div className="mt-2"><ProductPriceDisplay product={product} compact /></div>
           <div className="mt-3 flex flex-wrap gap-1.5"><ProductStatuses product={product} /></div>
         </div>
       </div>
       <div className="mt-4 flex flex-col gap-3 border-t border-[#eee7de] pt-4 sm:flex-row sm:items-center sm:justify-between">
         <InventorySummary product={product} />
-        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} />
+        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} pausedByBrand={product.pausedByBrand} />
       </div>
     </article>
   );
@@ -292,106 +285,14 @@ function InventorySummary({ product }: { product: DisplayProduct }) {
   );
 }
 
-function QuickViews({
-  activeView,
-  brandParams,
-  counts,
-  archivedCount,
-}: {
-  activeView: "all" | "published" | "drafts" | "attention" | null;
-  brandParams: { brand?: string };
-  counts: Record<"all" | "published" | "drafts" | "attention", number>;
-  archivedCount: number;
-}) {
-  const views = [
-    { id: "all" as const, label: "All products", params: {} },
-    { id: "published" as const, label: "Published", params: { status: "published" } },
-    { id: "drafts" as const, label: "Drafts", params: { status: "draft" } },
-    { id: "attention" as const, label: "Needs attention", params: { attention: "1" } },
-  ];
-  const archivedHref = `/brand-portal/products/archived${brandParams.brand ? `?brand=${brandParams.brand}` : ""}`;
-  return (
-    <nav aria-label="Product quick views" className="mt-6 flex gap-2 overflow-x-auto pb-1">
-      {views.map((view) => {
-        const selected = activeView === view.id;
-        const query = new URLSearchParams();
-        if (brandParams.brand) query.set("brand", brandParams.brand);
-        for (const [key, value] of Object.entries(view.params)) query.set(key, value);
-        const href = `/brand-portal/products${query.size ? `?${query}` : ""}`;
-        const attention = view.id === "attention";
-        return (
-          <Link
-            key={view.id}
-            href={href}
-            aria-current={selected ? "page" : undefined}
-            className={`inline-flex h-10 flex-none items-center gap-2 rounded-xl border px-3.5 text-[12.5px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 ${selected
-              ? "border-mahalyred bg-mahalyred text-white"
-              : attention && counts.attention > 0
-                ? "border-[#edcbc7] bg-[#fff7f5] text-mahalyred hover:bg-[#f8e9e7]"
-                : "border-[#e3dcd3] bg-[#fffdf9] text-[#62564d] hover:bg-[#f7f2ec]"}`}
-          >
-            {attention && <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />}
-            {view.label}
-            <span className={`min-w-5 rounded-md px-1.5 py-0.5 text-center text-[10.5px] tabular-nums ${selected ? "bg-white/20 text-white" : "bg-[#eee7df] text-[#75685f]"}`}>{counts[view.id]}</span>
-          </Link>
-        );
-      })}
-      {/* Archived products live on their own database-paginated page
-          (never loaded into this in-memory list) — a real navigation
-          link, not a filter within this page. */}
-      <Link
-        href={archivedHref}
-        className="inline-flex h-10 flex-none items-center gap-2 rounded-xl border border-[#e3dcd3] bg-[#fffdf9] px-3.5 text-[12.5px] font-semibold text-[#62564d] transition-colors hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25"
-      >
-        Archived
-        <span className="min-w-5 rounded-md bg-[#eee7df] px-1.5 py-0.5 text-center text-[10.5px] tabular-nums text-[#75685f]">{archivedCount}</span>
-      </Link>
-    </nav>
-  );
-}
-
-// Plain-language launch state — never raw database terms (launch_policy,
-// first_stocked_at). Only meaningful for a currently-Published, non-paused
-// product; the base status/Paused badges already cover every other case.
-function getLaunchStateBadge(product: DisplayProduct): { label: string; className: string; showNow?: boolean } | null {
-  if (product.status !== "published" || product.pausedByBrand) return null;
-  if (product.publishDate && !isPublishDateLive(product.publishDate)) {
-    return { label: "Scheduled", className: "bg-sky-50 text-sky-700" };
-  }
-  if (product.launchPolicy === "when_stocked" && !product.firstStockedAt) {
-    return { label: "Waiting for stock", className: "bg-amber-50 text-amber-700", showNow: true };
-  }
-  return product.inStock
-    ? { label: "Visible · in stock", className: "bg-emerald-50 text-emerald-700" }
-    : { label: "Visible · out of stock", className: "bg-[#eee9e4] text-[#6f6259]" };
-}
-
 function ProductStatuses({ product }: { product: DisplayProduct }) {
-  const launchState = getLaunchStateBadge(product);
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${product.statusInfo.className}`}>{product.statusInfo.label}</span>
-      {launchState && <span className={`rounded-lg px-2.5 py-1 text-[10.5px] font-bold ${launchState.className}`}>{launchState.label}</span>}
-      {product.featured && (
-        <span title="Selected by the marketplace team" className="inline-flex items-center gap-1 rounded-lg bg-[#f8e9e7] px-2.5 py-1 text-[10.5px] font-bold text-mahalyred">
-          <Star className="h-3 w-3" fill="currentColor" aria-hidden="true" /> Featured
-        </span>
-      )}
-      {product.hasPendingEdit && <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Edit pending</span>}
-      {product.pausedByBrand && <span className="rounded-lg bg-[#eee9e4] px-2.5 py-1 text-[10.5px] font-bold text-[#6f6259]">Paused</span>}
-      {launchState?.showNow && product.canShowNow && <ShowNowButton productId={product.id} brandParam={product.brandParam} />}
-      {product.reviewNotes && <p className="w-full max-w-xs pt-1 text-[11px] leading-4 text-red-700">{product.reviewNotes}</p>}
-    </div>
+    <ProductStatusBadges
+      product={product}
+      showReviewNotes
+      action={canShowProductNow(product) && product.canShowNow ? <ShowNowButton productId={product.id} brandParam={product.brandParam} /> : null}
+    />
   );
-}
-
-function getStatusInfo(product: BrandProductListItem) {
-  const baseStatusInfo = STATUS_LABELS[product.status] ?? { label: product.status, className: "bg-[#eee9e4] text-[#6f6259]" };
-  const daysLeft = product.status === "draft" ? draftDaysRemaining(product.draftStartedAt) : null;
-  const isScheduled = product.status === "published" && !isPublishDateLive(product.publishDate ?? null);
-  if (daysLeft != null) return { label: `Draft: ${Math.max(daysLeft, 0)}d left`, className: daysLeft <= 3 ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800" };
-  if (isScheduled) return { label: `Scheduled: ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(product.publishDate!))}`, className: "bg-[#eef3f5] text-[#4e6876]" };
-  return baseStatusInfo;
 }
 
 function attentionPriority(product: BrandProductListItem) {
@@ -418,6 +319,13 @@ function formatUpdatedAt(value: string) {
   if (days === 1) return "Updated yesterday";
   if (days < 30) return `Updated ${days} days ago`;
   return `Updated ${new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: updatedAt.getFullYear() === new Date().getFullYear() ? undefined : "numeric" }).format(updatedAt)}`;
+}
+
+function buildQuickViewHref(basePath: string, brandParams: { brand?: string }, values: Record<string, string> = {}) {
+  const query = new URLSearchParams();
+  if (brandParams.brand) query.set("brand", brandParams.brand);
+  for (const [key, value] of Object.entries(values)) query.set(key, value);
+  return `${basePath}${query.size ? `?${query}` : ""}`;
 }
 
 function buildPageHref(params: ProductParams, page: number) {

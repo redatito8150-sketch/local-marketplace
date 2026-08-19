@@ -1,31 +1,44 @@
 import Link from "next/link";
-import { Archive, Download, History, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getAllProductsForAdmin } from "@/lib/data/admin";
 import { listArchivedProducts } from "@/lib/admin/productDeletion";
+import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import BulkProductActions from "@/components/admin/BulkProductActions";
-import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
-import { DashboardPageHeader, dashboardButtonPrimary, dashboardButtonSecondary } from "@/components/dashboard/DashboardUI";
+import ProductCatalogTools from "@/components/admin/ProductCatalogTools";
+import ProductCatalogFilters, { type ProductCatalogFilterParams } from "@/components/products/ProductCatalogFilters";
+import ProductQuickViews from "@/components/products/ProductQuickViews";
+import { DashboardPageHeader, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
+import type { ProductRecord } from "@/types";
+import { getProductPricePresentation } from "@/lib/products/pricingPresentation";
 
-type ProductSearchParams = {
-  q?: string; status?: string; brand?: string; category?: string; productType?: string;
-  collection?: string; inventory?: string; featured?: string; minPrice?: string; maxPrice?: string; sort?: string;
-};
+const PAGE_SIZE = 25;
+
+type ProductSearchParams = ProductCatalogFilterParams & { page?: string };
+
+function productNeedsAttention(product: ProductRecord) {
+  if (product.status === "pending_review" || product.status === "changes_requested") return true;
+  const variants = (product.variants ?? []).filter((variant) => !variant.isArchived && variant.sellingStatus === "active");
+  return variants.some((variant) => calculateStockStatus(
+    variant.quantity,
+    effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.defaultLowStockThreshold ?? 0)
+  ) !== "in_stock");
+}
 
 export default async function AdminProductsPage(props: { searchParams: Promise<ProductSearchParams> }) {
   const params = await props.searchParams;
-  // Archived products get their own database-paginated page. This list
-  // stays focused on products that can still be edited or published.
-  // The Archived badge count is loaded without the Archived rows.
   const [allProductsWithArchived, archivedCount] = await Promise.all([
     getAllProductsForAdmin(),
     listArchivedProducts({ limit: 1 }).then((page) => page.total).catch(() => 0),
   ]);
   const allProducts = allProductsWithArchived.filter((product) => product.status !== "archived");
+  const attentionProducts = allProducts.filter(productNeedsAttention);
   const normalizedQuery = params.q?.trim().toLowerCase();
   const minPrice = params.minPrice ? Number(params.minPrice) : undefined;
   const maxPrice = params.maxPrice ? Number(params.maxPrice) : undefined;
   const filteredProducts = allProducts.filter((product) => {
-    if (normalizedQuery && !`${product.name} ${product.brandName} ${product.sku}`.toLowerCase().includes(normalizedQuery)) return false;
+    const pricing = getProductPricePresentation(product);
+    const variantSkus = product.variants?.map((variant) => variant.sku).join(" ") ?? "";
+    if (normalizedQuery && !`${product.name} ${product.brandName} ${product.sku} ${variantSkus}`.toLowerCase().includes(normalizedQuery)) return false;
     if (params.status && product.status !== params.status) return false;
     if (params.brand && product.brandSlug !== params.brand) return false;
     if (params.category && product.mainCategory !== params.category) return false;
@@ -35,51 +48,95 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
     if (params.inventory === "out" && product.inStock) return false;
     if (params.featured === "yes" && !product.featured) return false;
     if (params.featured === "no" && product.featured) return false;
-    if (minPrice !== undefined && Number.isFinite(minPrice) && product.price < minPrice) return false;
-    if (maxPrice !== undefined && Number.isFinite(maxPrice) && product.price > maxPrice) return false;
+    if (params.attention && !productNeedsAttention(product)) return false;
+    if (minPrice !== undefined && Number.isFinite(minPrice) && pricing.currentMin < minPrice) return false;
+    if (maxPrice !== undefined && Number.isFinite(maxPrice) && pricing.currentMin > maxPrice) return false;
     return true;
   });
-  filteredProducts.sort((a, b) => params.sort === "price-asc" ? a.price - b.price : params.sort === "price-desc" ? b.price - a.price : params.sort === "name" ? a.name.localeCompare(b.name) : 0);
+  filteredProducts.sort((a, b) => params.sort === "price-asc"
+    ? getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin
+    : params.sort === "price-desc"
+      ? getProductPricePresentation(b).currentMin - getProductPricePresentation(a).currentMin
+      : params.sort === "name"
+        ? a.name.localeCompare(b.name)
+        : 0);
 
   const unique = (values: Array<string | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
-  const brands = unique(allProducts.map((product) => product.brandSlug));
+  const brandValues = unique(allProducts.map((product) => product.brandSlug));
   const brandLabels = new Map(allProducts.map((product) => [product.brandSlug, product.brandName]));
   const categories = unique(allProducts.map((product) => product.mainCategory));
   const productTypes = unique(allProducts.map((product) => product.productTypeName));
   const collections = unique(allProducts.map((product) => product.collectionName));
-  const activeCount = [params.q, params.status, params.brand, params.category, params.productType, params.collection, params.inventory, params.featured, params.minPrice, params.maxPrice, params.sort].filter(Boolean).length;
+  const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+  const currentPage = Math.min(requestedPage, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const paginatedProducts = filteredProducts.slice(pageStart, pageStart + PAGE_SIZE);
+  const firstResult = filteredProducts.length ? pageStart + 1 : 0;
+  const lastResult = Math.min(pageStart + PAGE_SIZE, filteredProducts.length);
+  const activeView = params.attention ? "attention" : params.status === "published" ? "published" : params.status === "draft" ? "drafts" : params.status ? null : "all";
 
   return (
-    <div>
+    <div className="mx-auto max-w-[1540px]">
       <DashboardPageHeader
-        eyebrow="Commerce"
-        title={`Products (${filteredProducts.length})`}
-        description={`${allProducts.length} products in the full catalog. Search and filter without changing product data.`}
-        actions={<>
-          <Link href="/admin/products/archived" className={dashboardButtonSecondary}><Archive className="mr-2 h-4 w-4" />Archived ({archivedCount})</Link>
-          <Link href="/admin/products/deletion-history" className={dashboardButtonSecondary}><History className="mr-2 h-4 w-4" />Deletion history</Link>
-          {/* A file download endpoint, not a navigable page. */}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/api/admin/products/export" className={dashboardButtonSecondary}><Download className="mr-2 h-4 w-4" />Export CSV</a>
-          <Link href="/admin/products/new" className={dashboardButtonPrimary}><Plus className="mr-2 h-4 w-4" />Add product</Link>
-        </>}
+        title="Products"
+        description={`${allProducts.length} active catalog ${allProducts.length === 1 ? "product" : "products"} across ${brandValues.length} ${brandValues.length === 1 ? "brand" : "brands"}.`}
+        actions={<><ProductCatalogTools archivedCount={archivedCount} /><Link href="/admin/products/new" className={`${dashboardButtonPrimary} active:scale-[0.98]`}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Add product</Link></>}
       />
-      <DashboardFilters action="/admin/products" clearHref="/admin/products" activeCount={activeCount}>
-        <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Product, brand or SKU" className={`${dashboardFilterControl} w-full lg:min-w-[220px]`} /></DashboardFilterField>
-        {/* Archived products live on their own database-paginated page,
-            never mixed into this in-memory-filtered list. */}
-        <DashboardFilterField label="Status"><select name="status" defaultValue={params.status ?? ""} className={dashboardFilterControl}><option value="">All statuses</option>{["draft","pending_review","changes_requested","published"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Brand"><select name="brand" defaultValue={params.brand ?? ""} className={dashboardFilterControl}><option value="">All brands</option>{brands.map((value) => <option key={value} value={value}>{brandLabels.get(value) ?? value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Category"><select name="category" defaultValue={params.category ?? ""} className={dashboardFilterControl}><option value="">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Product type"><select name="productType" defaultValue={params.productType ?? ""} className={dashboardFilterControl}><option value="">All types</option>{productTypes.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Collection"><select name="collection" defaultValue={params.collection ?? ""} className={dashboardFilterControl}><option value="">All collections</option>{collections.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Inventory"><select name="inventory" defaultValue={params.inventory ?? ""} className={dashboardFilterControl}><option value="">Any stock</option><option value="in">In stock</option><option value="out">Out of stock</option></select></DashboardFilterField>
-        <DashboardFilterField label="Featured"><select name="featured" defaultValue={params.featured ?? ""} className={dashboardFilterControl}><option value="">Any</option><option value="yes">Featured</option><option value="no">Not featured</option></select></DashboardFilterField>
-        <DashboardFilterField label="Min price"><input name="minPrice" type="number" min="0" defaultValue={params.minPrice ?? ""} className={`${dashboardFilterControl} lg:min-w-[110px]`} /></DashboardFilterField>
-        <DashboardFilterField label="Max price"><input name="maxPrice" type="number" min="0" defaultValue={params.maxPrice ?? ""} className={`${dashboardFilterControl} lg:min-w-[110px]`} /></DashboardFilterField>
-        <DashboardFilterField label="Sort"><select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}><option value="">Newest</option><option value="name">Name A–Z</option><option value="price-asc">Price low to high</option><option value="price-desc">Price high to low</option></select></DashboardFilterField>
-      </DashboardFilters>
-      <BulkProductActions products={filteredProducts} />
+
+      <ProductQuickViews
+        activeId={activeView}
+        views={[
+          { id: "all", label: "All products", href: "/admin/products", count: allProducts.length },
+          { id: "published", label: "Published", href: "/admin/products?status=published", count: allProducts.filter((product) => product.status === "published").length },
+          { id: "drafts", label: "Drafts", href: "/admin/products?status=draft", count: allProducts.filter((product) => product.status === "draft").length },
+          { id: "attention", label: "Needs attention", href: "/admin/products?attention=1", count: attentionProducts.length, attention: true },
+        ]}
+        archived={{ href: "/admin/products/archived", count: archivedCount }}
+      />
+
+      <ProductCatalogFilters
+        action="/admin/products"
+        clearHref="/admin/products"
+        params={params}
+        categories={categories}
+        productTypes={productTypes}
+        collections={collections}
+        brands={brandValues.map((value) => ({ value, label: brandLabels.get(value) ?? value }))}
+        showAdminFilters
+      />
+
+      <div className="mt-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[13px] font-semibold tabular-nums text-[#51473f]">{filteredProducts.length === allProducts.length ? `${allProducts.length} catalog ${allProducts.length === 1 ? "product" : "products"}` : `${filteredProducts.length} of ${allProducts.length} products`}</p>
+        {filteredProducts.length ? <p className="text-[12px] tabular-nums text-[#81746a]">Showing {firstResult}–{lastResult}</p> : null}
+      </div>
+
+      <BulkProductActions products={paginatedProducts} totalProducts={allProducts.length} clearHref="/admin/products" />
+
+      {totalPages > 1 ? (
+        <nav aria-label="Product pages" className="mt-5 flex items-center justify-between gap-3">
+          <PaginationLink href={buildPageHref(params, currentPage - 1)} disabled={currentPage === 1} label="Previous"><ChevronLeft className="h-4 w-4" aria-hidden="true" /> Previous</PaginationLink>
+          <p className="text-[12px] font-medium tabular-nums text-[#75685f]">Page {currentPage} of {totalPages}</p>
+          <PaginationLink href={buildPageHref(params, currentPage + 1)} disabled={currentPage === totalPages} label="Next">Next <ChevronRight className="h-4 w-4" aria-hidden="true" /></PaginationLink>
+        </nav>
+      ) : null}
     </div>
   );
+}
+
+function buildPageHref(params: ProductSearchParams, page: number) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value && key !== "page") query.set(key, value);
+  }
+  if (page > 1) query.set("page", String(page));
+  const suffix = query.toString();
+  return `/admin/products${suffix ? `?${suffix}` : ""}`;
+}
+
+function PaginationLink({ href, disabled, label, children }: { href: string; disabled: boolean; label: string; children: React.ReactNode }) {
+  const className = "inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-[12.5px] font-semibold";
+  return disabled
+    ? <span aria-disabled="true" className={`${className} border-[#e8e0d7] bg-[#f7f3ee] text-[#b5aaa1]`}>{children}</span>
+    : <Link href={href} aria-label={label} className={`${className} border-[#ddd6cd] bg-white text-[#51473f] hover:bg-[#f1eae2] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25`}>{children}</Link>;
 }
