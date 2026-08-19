@@ -21,6 +21,27 @@ const pixelLoader = read("lib/payments/paymobPixelLoader.ts");
 const cardReducer = read("lib/payments/cardPaymentAttempt.ts");
 const nextConfig = read("next.config.js");
 
+// next.config.js builds its CSP at module load from NODE_ENV, so each
+// environment's real policy is obtained by evaluating the file's source in a
+// fresh scope with that value — `require` would hand back a single cached
+// module and report whichever environment happened to load first.
+async function cspFor(nodeEnv: "development" | "production"): Promise<string> {
+  // A stub `process` rather than mutating the real one: NODE_ENV is
+  // non-configurable in current Node, and the real environment must not be
+  // disturbed for the rest of the suite.
+  const stubProcess = { env: { ...process.env, NODE_ENV: nodeEnv } };
+  const module_ = {
+    exports: {} as { headers?: () => Promise<Array<{ headers: Array<{ key: string; value: string }> }>> },
+  };
+  new Function("module", "exports", "process", nextConfig)(module_, module_.exports, stubProcess);
+  const headerGroups = (await module_.exports.headers?.()) ?? [];
+  const header = headerGroups
+    .flatMap((group) => group.headers)
+    .find((entry) => entry.key === "Content-Security-Policy");
+  if (!header) throw new Error("next.config.js produced no Content-Security-Policy header");
+  return header.value;
+}
+
 test("Card payment posts only to the Paymob intention endpoint, with an Idempotency-Key header", () => {
   assert.match(checkoutPage, /"\/api\/payments\/paymob\/intention"/);
   assert.match(checkoutPage, /"Idempotency-Key":\s*idempotencyKey/);
@@ -144,10 +165,34 @@ test("Pixel cleanup calls .unmount() only after confirming it's actually a funct
   assert.ok(guardedCallMatch, "expected .unmount() to only be called inside the typeof guard");
 });
 
-test("CSP allows exactly the new external hosts this integration needs, nothing broader", () => {
-  assert.match(nextConfig, /script-src[^"]*https:\/\/cdn\.jsdelivr\.net/);
+test("CSP allows exactly the new external hosts this integration needs, nothing broader", async () => {
+  // Asserted against the directive the config actually produces, not the
+  // source text: script-src is now assembled from a variable (so that
+  // 'unsafe-eval' can be dropped outside development), which a raw
+  // source-text regex would miss even though the policy is correct.
+  const productionCsp = await cspFor("production");
+  const scriptSrc = productionCsp.split("; ").find((d) => d.startsWith("script-src"));
+  assert.ok(scriptSrc?.includes("https://cdn.jsdelivr.net"), `script-src must allow the Pixel CDN, got: ${scriptSrc}`);
   assert.match(nextConfig, /connect-src[^`]*https:\/\/accept\.paymob\.com/);
   assert.match(nextConfig, /frame-src 'self' https:\/\/eg\.checkout\.paymob\.com/);
+});
+
+test("production CSP drops 'unsafe-eval' while development keeps it for HMR", async () => {
+  // The Paymob Pixel bundle's only `new Function` uses are the standard
+  // webpack global-detection fallbacks, both inside try/catch with a
+  // `window` fallback, so blocking eval cannot break card checkout.
+  const developmentCsp = await cspFor("development");
+  const productionCsp = await cspFor("production");
+  const devScriptSrc = developmentCsp.split("; ").find((d) => d.startsWith("script-src"));
+  const prodScriptSrc = productionCsp.split("; ").find((d) => d.startsWith("script-src"));
+
+  assert.ok(devScriptSrc?.includes("'unsafe-eval'"), "development needs 'unsafe-eval' for the webpack HMR runtime");
+  assert.ok(!prodScriptSrc?.includes("'unsafe-eval'"), `production must not ship 'unsafe-eval', got: ${prodScriptSrc}`);
+
+  // Both keep 'unsafe-inline': Next.js inlines its hydration bootstrap, and
+  // a nonce would force every static/ISR route to render dynamically.
+  assert.ok(prodScriptSrc?.includes("'unsafe-inline'"), "removing 'unsafe-inline' would break Next.js hydration");
+  assert.ok(productionCsp.includes("object-src 'none'"), "object-src should be denied outright");
 });
 
 test("mobile app files are untouched by this phase", () => {
