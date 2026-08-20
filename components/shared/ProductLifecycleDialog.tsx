@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { AlertTriangle, Archive, Loader2, RefreshCcw, ShieldAlert, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { DeletionBlocker, ProductDeletionEligibility } from "@/lib/admin/productDeletion";
+import type {
+  DeletionBlocker,
+  DeletionBlockerDestination,
+  ProductDeletionEligibility,
+} from "@/lib/admin/productDeletion";
 import ProductActionDialog from "@/components/products/ProductActionDialog";
 
 // Shared "Delete permanently" dialog for a Published/Paused product,
@@ -34,7 +38,8 @@ export interface ProductLifecycleDialogProps {
   // deleted, but only an Owner/Admin may actually confirm the destructive
   // action. Archive is still offered to an Assistant per existing policy.
   canDeletePermanently: boolean;
-  resolveBlockerHref: (blocker: DeletionBlocker) => string | null;
+  resolveBlockerDestination: (blocker: DeletionBlocker) => DeletionBlockerDestination | null;
+  resolveBlockerNotice?: (blocker: DeletionBlocker) => string | null;
   // Shown once, above the archive-confirmation copy, so an Assistant sees
   // why they can't finish the delete path themselves.
   restrictedDeleteMessage?: string;
@@ -44,12 +49,14 @@ function BlockerList({
   title,
   blockers,
   tone,
-  resolveHref,
+  resolveDestination,
+  resolveNotice,
 }: {
   title: string;
   blockers: DeletionBlocker[];
   tone: "immutable" | "temporary";
-  resolveHref: (blocker: DeletionBlocker) => string | null;
+  resolveDestination: (blocker: DeletionBlocker) => DeletionBlockerDestination | null;
+  resolveNotice: (blocker: DeletionBlocker) => string | null;
 }) {
   if (blockers.length === 0) return null;
   const toneClass = tone === "immutable" ? "border-[#eadfd8] bg-[#fffaf7]" : "border-amber-200 bg-amber-50";
@@ -59,7 +66,8 @@ function BlockerList({
       <p className="text-[11.5px] font-bold uppercase tracking-[0.06em] text-[#6f6259]">{title}</p>
       <ul className="mt-2 space-y-2.5">
         {blockers.map((blocker) => {
-          const href = resolveHref(blocker);
+          const destination = resolveDestination(blocker);
+          const notice = resolveNotice(blocker);
           const quantityLabel =
             blocker.quantity != null ? ` (${blocker.quantity})` : blocker.count != null ? ` (${blocker.count})` : "";
           return (
@@ -75,11 +83,12 @@ function BlockerList({
                   {quantityLabel}
                 </p>
                 <p className="text-[#75685f]">{blocker.resolution}</p>
-                {href && (
-                  <Link href={href} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
-                    Open related area
+                {destination && (
+                  <Link href={destination.href} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
+                    {destination.label}
                   </Link>
                 )}
+                {notice ? <p className="mt-1 font-semibold text-[#75685f]">{notice}</p> : null}
               </div>
             </li>
           );
@@ -97,7 +106,8 @@ export default function ProductLifecycleDialog({
   productName,
   apiPath,
   canDeletePermanently,
-  resolveBlockerHref,
+  resolveBlockerDestination,
+  resolveBlockerNotice = () => null,
   restrictedDeleteMessage = "Only the brand owner or an authorized admin can permanently delete a product.",
 }: ProductLifecycleDialogProps) {
   const [phase, setPhase] = useState<Phase>("loading");
@@ -311,8 +321,8 @@ export default function ProductLifecycleDialog({
               </p>
             )}
 
-            <BlockerList title="Permanent business history" blockers={immutable} tone="immutable" resolveHref={resolveBlockerHref} />
-            <BlockerList title="Temporary blockers" blockers={temporary} tone="temporary" resolveHref={resolveBlockerHref} />
+            <BlockerList title="Permanent business history" blockers={immutable} tone="immutable" resolveDestination={resolveBlockerDestination} resolveNotice={resolveBlockerNotice} />
+            <BlockerList title="Temporary blockers" blockers={temporary} tone="temporary" resolveDestination={resolveBlockerDestination} resolveNotice={resolveBlockerNotice} />
 
             {error && (
               <p role="alert" className="mt-3 rounded-lg bg-red-50 p-3 text-[12.5px] text-red-700">

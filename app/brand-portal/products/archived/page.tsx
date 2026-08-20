@@ -46,7 +46,7 @@ export default async function ArchivedProductsPage(props: { searchParams: Promis
                 <span className="relative block h-16 w-14 flex-none overflow-hidden rounded-xl bg-[#f1eae2]">{row.image ? <Image src={row.image} alt={row.name} fill sizes="96px" className="object-cover" /> : <span className="flex h-full items-center justify-center text-[#a29489]"><PackageOpen className="h-5 w-5" /></span>}</span>
                 <div className="min-w-0"><p className="truncate font-bold text-[#242424]">{row.name}</p><p className="mt-1 text-[11.5px] text-[#8a7d73]">{row.sku}</p><ArchiveState eligibility={row.eligibility} /></div>
               </div>
-              <ArchivedProductRowActions productId={row.id} productName={row.name} eligibility={row.eligibility} audience="brand" readOnly={owner.isImpersonating || owner.accessLevel !== "owner"} />
+              <ArchivedProductRowActions productId={row.id} productName={row.name} eligibility={row.eligibility} audience="brand" brandParam={brandParam} readOnly={owner.isImpersonating || owner.accessLevel !== "owner"} />
             </div>
           ))}
         </div> : <DashboardEmptyState title="No Archived products" description={params.q ? "Adjust the search to find more products." : "Products you Archive will appear here."} />}

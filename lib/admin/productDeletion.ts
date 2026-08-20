@@ -12,6 +12,11 @@ export interface DeletionBlocker {
   href?: string | null;
 }
 
+export interface DeletionBlockerDestination {
+  href: string;
+  label: string;
+}
+
 export interface ProductDeletionEligibility {
   productId: string;
   lifecycle: ProductLifecycleState;
