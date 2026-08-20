@@ -48,7 +48,7 @@ export default function ProductCatalogFilters({
 }: ProductCatalogFiltersProps) {
   const advancedValues = [params.status, params.category, params.productType, params.collection, params.inventory];
   if (showAdminFilters) advancedValues.push(params.featured, params.minPrice, params.maxPrice);
-  const uncommonQuickViewStatus = params.status && !["published", "draft"].includes(params.status);
+  const uncommonQuickViewStatus = params.status && !["published", "paused", "draft"].includes(params.status);
   const advancedActive = Boolean(uncommonQuickViewStatus || params.category || params.productType || params.collection || params.inventory || (showAdminFilters && (params.brand || params.featured || params.minPrice || params.maxPrice)));
   const activeCount = [params.q, showAdminFilters ? params.brand : undefined, params.attention, ...advancedValues].filter(Boolean).length;
 

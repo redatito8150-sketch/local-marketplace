@@ -157,14 +157,14 @@ test(
 
     const { data: adminView, error: adminError } = await admin
       .from("products")
-      .select("id, status, paused_by_brand")
-      .or("status.neq.published,paused_by_brand.eq.true");
+      .select("id, status")
+      .neq("status", "published");
     assert.ifError(adminError);
 
     const { data: anonView, error: anonError } = await anon
       .from("products")
-      .select("id, status, paused_by_brand")
-      .or("status.neq.published,paused_by_brand.eq.true");
+      .select("id, status")
+      .neq("status", "published");
     assert.ifError(anonError);
 
     assert.equal(
@@ -242,7 +242,7 @@ test(
     const { data: hiddenProducts, error: hiddenError } = await admin
       .from("products")
       .select("id")
-      .or("status.neq.published,paused_by_brand.eq.true");
+      .neq("status", "published");
     assert.ifError(hiddenError);
     const hiddenProductIds = new Set((hiddenProducts ?? []).map((p) => p.id as string));
 

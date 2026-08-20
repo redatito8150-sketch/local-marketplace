@@ -155,7 +155,7 @@ export function validateProductSections(body: ProductInput): ProductValidationIs
   if (!body.productTypeId?.trim()) {
     add("basic", "A complete Main Category / Product Group / Product Type selection is required", "product-taxonomy");
   }
-  if (!(["draft", "published", "archived"] as ProductStatus[]).includes(body.status)) {
+  if (!(["draft", "published", "paused", "archived"] as ProductStatus[]).includes(body.status)) {
     add("visibility", "Invalid status", "product-status");
   }
 

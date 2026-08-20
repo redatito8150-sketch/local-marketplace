@@ -23,8 +23,9 @@ import { checkRateLimit } from "@/lib/rateLimit";
 import { safeErrorResponse } from "@/lib/apiError";
 import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
-import { archiveProduct } from "@/lib/admin/productDeletion";
+import { archiveProduct, pauseProduct, resumeProduct } from "@/lib/admin/productDeletion";
 import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
+import { notifyBrandOwnersOfProductLifecycle } from "@/lib/admin/productLifecycleNotifications";
 
 async function loadOwnedProduct(id: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -58,27 +59,33 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // validation, available to owner and assistant alike. Independent of
   // everything below.
   if (body.action === "toggle-pause") {
-    if (existing.status !== "published") {
-      return NextResponse.json({ error: "Only a Published product can be paused or resumed" }, { status: 409 });
+    if (typeof body.paused !== "boolean") {
+      return NextResponse.json({ error: "A boolean paused value is required" }, { status: 400 });
     }
-    const paused = Boolean(body.pausedByBrand);
-    const { error } = await supabaseAdmin
-      .from("products")
-      .update({ paused_by_brand: paused })
-      .eq("id", params.id);
-
-    if (error) {
-      return safeErrorResponse("brand-portal.products.toggle-pause", error, "Failed to update");
+    const paused = body.paused;
+    // Row-locked, canonical status = 'paused'/'published' transition — see
+    // supabase/migrations/20260819120000_paused_status_and_delete_first_lifecycle.sql.
+    // Resume revalidates brand/variant/completeness/hold state inside the
+    // same transaction and never re-stamps first_visible_at.
+    const result = paused
+      ? await pauseProduct(params.id, owner.brandId, owner.user.id)
+      : await resumeProduct(params.id, owner.brandId, owner.user.id);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
     }
 
-    await logAudit({
+    if (result.code === "ALREADY_PAUSED" || result.code === "ALREADY_PUBLISHED") {
+      return NextResponse.json({ ok: true, lifecycle: result.lifecycle });
+    }
+
+    const auditLogId = await logAudit({
       actorId: owner.user.id,
       actorLabel: owner.user.email ?? owner.user.id,
       entityType: "product",
       entityId: params.id,
       action: paused ? "pause" : "unpause",
-      before: { pausedByBrand: existing.paused_by_brand },
-      after: { pausedByBrand: paused },
+      before: { status: existing.status },
+      after: { status: result.lifecycle },
       brandSlug: owner.brandSlug ?? undefined,
     });
     await notify(
@@ -93,12 +100,23 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         detailLabel: "Brand",
       }
     );
+    await notifyBrandOwnersOfProductLifecycle({
+      brandSlug: owner.brandSlug,
+      productId: params.id,
+      type: "product_updated",
+      title: `${existing.name} was ${paused ? "paused" : "resumed"}`,
+      body: paused
+        ? "This product is now hidden from customers."
+        : "This product was resumed. Its launch policy, schedule, and stock determine whether customers can see it.",
+      deliveryToken: auditLogId ?? `${paused ? "paused" : "resumed"}:${Date.now()}`,
+      excludeUserId: owner.user.id,
+    });
 
-    // Resume respects launch policy + current stock — never auto-visible
-    // just because it was resumed; a no-op unless genuinely eligible now.
+    // Idempotent — only ever stamps a still-null first_visible_at, so this
+    // can never re-qualify an already-visible product as a New Arrival.
     if (!paused) await stampFirstVisibleIfEligible(params.id);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, lifecycle: result.lifecycle });
   }
 
   // Lightweight quick-action from the products list row (replaces the old
@@ -110,6 +128,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
     if (!result.ok) {
       return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "PRODUCT_NOT_OWNED" ? 403 : result.code === "PRODUCT_NOT_FOUND" ? 404 : 409 });
+    }
+    if (result.code === "ALREADY_ARCHIVED") {
+      return NextResponse.json({ ok: true, code: result.code, lifecycle: result.lifecycle });
     }
 
     const auditLogId = await logAudit({
@@ -133,6 +154,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         actorLabel: owner.user.email ?? owner.user.id,
       }
     );
+    await notifyBrandOwnersOfProductLifecycle({
+      brandSlug: owner.brandSlug,
+      productId: params.id,
+      type: "product_archived",
+      title: `${existing.name} was moved to Archived`,
+      body: "The product has permanent business history, so its records were preserved in Archived. Contact an admin if it needs to be restored to Paused.",
+      deliveryToken: auditLogId ?? result.code,
+      excludeUserId: owner.user.id,
+    });
 
     return NextResponse.json({ ok: true, warning: stockWarning ?? undefined });
   }
@@ -151,7 +181,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       { status: 409 }
     );
   }
-  if (productBody.status === "archived" && existing.status !== "published") {
+  if (productBody.status === "archived" && !["published", "paused"].includes(existing.status)) {
     return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
   }
   // CORRECTIVE PASS: a Published product can never revert to Draft — the
@@ -160,15 +190,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // application-level error instead of a raw DB exception, and fires
   // before the status-coercion logic below could otherwise let a bare
   // {status: "draft"} PATCH through unnoticed.
-  if (existing.status === "published" && productBody.status === "draft") {
-    return NextResponse.json({ error: "A Published product cannot be reverted to Draft." }, { status: 409 });
+  if (["published", "paused"].includes(existing.status) && productBody.status === "draft") {
+    return NextResponse.json({ error: "A Published or Paused product cannot be reverted to Draft." }, { status: 409 });
   }
   if (productBody.status === "archived") {
     const result = await archiveProduct(params.id, owner.brandId, owner.user.id, owner.user.email ?? owner.user.id);
     if (!result.ok) return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
     await logAudit({ actorId: owner.user.id, actorLabel: owner.user.email ?? owner.user.id, entityType: "product", entityId: params.id, action: "archive", before: existing, brandSlug: owner.brandSlug ?? undefined });
     await notify("product_archived", `Archived: ${existing.name}`, owner.brandName ?? "", { actorLabel: owner.user.email ?? owner.user.id });
-    return NextResponse.json({ id: params.id, variants: await loadProductVariants(params.id) });
+    return NextResponse.json({ id: params.id, status: "archived", variants: await loadProductVariants(params.id) });
   }
 
   // Brand is immutable after creation — whatever the client sends is
@@ -184,7 +214,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // distinct from the DELETE action below (a quick "remove this" shortcut
   // regardless of completeness); this path is gated by the same
   // completeness bar as publishing (validateProductSections below).
-  productBody.status = productBody.status === "draft" ? "draft" : "published";
+  productBody.status = existing.status === "published" || existing.status === "paused"
+    ? existing.status
+    : productBody.status === "draft" ? "draft" : "published";
 
   const validationError = validateProductInput(productBody);
   if (validationError) {
@@ -307,7 +339,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     );
   }
 
-  return NextResponse.json({ id: params.id, variants });
+  return NextResponse.json({ id: params.id, status: productBody.status, variants });
 }
 
 // The old DELETE handler here only ever archived the product (never

@@ -8,7 +8,6 @@ import { CheckCircle2, PackageOpen, XCircle } from "lucide-react";
 import type { ProductRecord, StockStatus } from "@/types";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import AdminProductDeletionActions from "@/components/admin/AdminProductDeletionActions";
-import ProductActionDialog from "@/components/products/ProductActionDialog";
 import { ProductStatusBadges } from "@/components/products/ProductStatusBadges";
 import ProductPriceDisplay from "@/components/products/ProductPriceDisplay";
 import SortableTableHeader from "@/components/dashboard/SortableTableHeader";
@@ -73,9 +72,6 @@ export default function BulkProductActions({ products, totalProducts, clearHref,
   const [busy, setBusy] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkResult | null>(null);
   const [error, setError] = useState("");
-  const [confirmArchive, setConfirmArchive] = useState(false);
-
-  const selectedProducts = products.filter((product) => selected.has(product.id));
 
   const toggleOne = (id: string) => {
     setSelected((current) => {
@@ -90,7 +86,7 @@ export default function BulkProductActions({ products, totalProducts, clearHref,
     setSelected((current) => current.size === products.length ? new Set() : new Set(products.map((product) => product.id)));
   };
 
-  const runBulkAction = async (action: "publish" | "archive") => {
+  const runBulkAction = async (action: "feature" | "unfeature") => {
     setBusy(true);
     setBulkResult(null);
     setError("");
@@ -107,7 +103,6 @@ export default function BulkProductActions({ products, totalProducts, clearHref,
       }
       setBulkResult({ succeeded: data.succeeded ?? [], failed: data.failed ?? [] });
       setSelected(new Set());
-      setConfirmArchive(false);
       router.refresh();
     } finally {
       setBusy(false);
@@ -123,8 +118,8 @@ export default function BulkProductActions({ products, totalProducts, clearHref,
             <div><p className="text-[12.5px] font-bold text-[#302924]">Products selected</p><button type="button" onClick={() => setSelected(new Set())} className="mt-0.5 text-[10.5px] font-semibold text-[#81746a] underline-offset-4 hover:text-mahalyred hover:underline">Clear selection</button></div>
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" disabled={busy} onClick={() => runBulkAction("publish")} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12px] font-semibold text-[#51473f] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Publish</button>
-            <button type="button" disabled={busy} onClick={() => setConfirmArchive(true)} className="h-10 rounded-xl bg-mahalyred px-4 text-[12px] font-semibold text-white transition-colors duration-150 hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">Archive</button>
+            <button type="button" disabled={busy} onClick={() => runBulkAction("feature")} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12px] font-semibold text-[#51473f] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Add to Featured</button>
+            <button type="button" disabled={busy} onClick={() => runBulkAction("unfeature")} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12px] font-semibold text-[#51473f] transition-colors duration-150 hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Remove from Featured</button>
           </div>
         </div>
       ) : null}
@@ -192,17 +187,6 @@ export default function BulkProductActions({ products, totalProducts, clearHref,
       ) : (
         <div className="px-5 py-14 text-center"><PackageOpen className="mx-auto h-6 w-6 text-[#a29489]" aria-hidden="true" /><h2 className="mt-3 text-[15px] font-bold text-[#302924]">{totalProducts ? "No matching products" : "No products yet"}</h2><p className="mx-auto mt-2 max-w-md text-[12px] leading-5 text-[#81746a]">{totalProducts ? "Clear or adjust the filters to return to the full catalog." : "Add the first product to start building the marketplace catalog."}</p>{totalProducts ? <Link href={clearHref} className="mt-4 inline-flex h-10 items-center rounded-xl border border-[#ddd6cd] px-4 text-[12px] font-semibold text-[#51473f] hover:bg-[#f7f2ec]">Clear filters</Link> : <Link href="/admin/products/new" className="mt-4 inline-flex h-10 items-center rounded-xl bg-mahalyred px-4 text-[12px] font-semibold text-white hover:bg-mahalyred-dark">Add product</Link>}</div>
       )}
-
-      <ProductActionDialog
-        open={confirmArchive}
-        onClose={() => !busy && setConfirmArchive(false)}
-        title={`Archive ${selected.size} ${selected.size === 1 ? "product" : "products"}?`}
-        busy={busy}
-        footer={<><button type="button" onClick={() => setConfirmArchive(false)} disabled={busy} className="h-10 rounded-xl border border-[#ddd6cd] bg-white px-4 text-[12.5px] font-semibold text-[#62564d] hover:bg-[#f7f2ec] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25 disabled:opacity-50">Cancel</button><button type="button" onClick={() => runBulkAction("archive")} disabled={busy || !selected.size} className="h-10 rounded-xl bg-mahalyred px-4 text-[12.5px] font-semibold text-white hover:bg-mahalyred-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/30 disabled:opacity-50">{busy ? "Archiving…" : "Move to Archived"}</button></>}
-      >
-        <p className="text-[13px] leading-6 text-[#75685f]">Archived is final. These products will be hidden immediately and cannot be resumed or restored.</p>
-        <ul className="mt-4 max-h-40 space-y-2 overflow-y-auto rounded-xl bg-[#faf7f4] p-3 text-[12px] font-semibold text-[#51473f]">{selectedProducts.slice(0, 6).map((product) => <li key={product.id} className="truncate">{product.name} <span className="font-normal text-[#94867c]">· {product.brandName}</span></li>)}{selectedProducts.length > 6 ? <li className="text-[#94867c]">+{selectedProducts.length - 6} more</li> : null}</ul>
-      </ProductActionDialog>
     </section>
   );
 }

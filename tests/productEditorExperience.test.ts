@@ -280,7 +280,9 @@ test("the creation wizard follows the final lifecycle: Draft can publish, but ca
 
   assert.doesNotMatch(chromeSource, /Keep archived/);
   assert.match(formSource, /canPublish=\{publishReadinessIssues\.length === 0\}/);
-  assert.match(formSource, /canArchive=\{form\.status === "published" && publishReadinessIssues\.length === 0\}/);
+  assert.doesNotMatch(formSource, /canArchive=/);
+  assert.doesNotMatch(chromeSource, />Archive</);
+  assert.match(formSource, /showDraftAction=\{!hasLeftDraft\}/);
 });
 
 test("brand-portal product creation uses a standalone shell without the portal sidebar", () => {

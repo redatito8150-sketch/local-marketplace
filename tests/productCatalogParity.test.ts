@@ -30,10 +30,12 @@ test("canonical product presentation covers review, scheduled, paused, and stock
   }
 });
 
-test("Admin product list confirms bulk archive and has a real mobile card layout", () => {
+test("Admin product list limits bulk operations to reversible merchandising and has a real mobile card layout", () => {
   const workspace = read("components/admin/BulkProductActions.tsx");
-  assert.match(workspace, /setConfirmArchive\(true\)/);
-  assert.match(workspace, /Archived is final/);
+  assert.match(workspace, /Add to Featured/);
+  assert.match(workspace, /Remove from Featured/);
+  assert.doesNotMatch(workspace, />Publish</);
+  assert.doesNotMatch(workspace, />Archive</);
   assert.match(workspace, /lg:hidden/);
   assert.match(workspace, /hidden overflow-x-auto lg:block/);
 });

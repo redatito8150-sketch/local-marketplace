@@ -154,11 +154,16 @@ export interface FilterGroup {
 // calculation used by every interface (product form, brand/admin
 // inventory pages, cart/checkout).
 
+// "paused" is canonical, not a derived display label — a paused product's
+// database row genuinely has status = 'paused', never
+// status = 'published' with a secondary flag. See
+// supabase/migrations/20260819120000_paused_status_and_delete_first_lifecycle.sql.
 export type ProductStatus =
   | "draft"
   | "pending_review"
   | "changes_requested"
   | "published"
+  | "paused"
   | "archived";
 
 // Manually controlled ("Selling Status" — independent of the automatically
@@ -499,7 +504,6 @@ export interface ProductRecord extends ProductTaxonomyFields {
   reviewedBy?: string;
   reviewedAt?: string;
   deletionRequestedAt?: string;
-  pausedByBrand: boolean;
 }
 
 // ── Admin (raw `brands` row shape, used by the admin CRUD form/API) ────────

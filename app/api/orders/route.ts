@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
   const [{ data: products, error: productsError }, variantsByProduct, mediaResult] = await Promise.all([
     supabaseAdmin
       .from("products")
-      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, paused_by_brand, default_low_stock_threshold, first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner(is_active)")
+      .select("id, name, brand_name, brand_slug, brand_id, price, discount_percent, discount_ends_at, currency, image, status, publish_date, default_low_stock_threshold, first_stocked_at, launch_policy, brands!products_brand_slug_fkey!inner(is_active)")
       .in("id", productIds),
     getVariantsForProducts(productIds, supabaseAdmin).catch((error: Error) => {
       logError("Order variant lookup failed", error.message);
@@ -201,7 +201,6 @@ export async function POST(request: NextRequest) {
     if (
       !product ||
       product.status !== "published" ||
-      product.paused_by_brand ||
       !isPublishDateLive(product.publish_date) ||
       !brand?.is_active ||
       !isLaunched

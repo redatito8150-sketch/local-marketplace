@@ -27,7 +27,6 @@ export interface ProductLookupRow {
   currency: "USD" | "EGP";
   status: string;
   publish_date: string | null;
-  paused_by_brand: boolean;
   brands: { is_active: boolean } | null;
   image: string;
   color_images_by_option_value_id?: Record<string, string>;
@@ -98,7 +97,6 @@ export function resolveIntentionCart(
     if (
       !product ||
       product.status !== "published" ||
-      product.paused_by_brand ||
       !isPublishDateLive(product.publish_date, now) ||
       !product.brands?.is_active ||
       !isLaunched

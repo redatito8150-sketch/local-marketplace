@@ -10,7 +10,7 @@ type ProductActionDialogProps = {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  footer: React.ReactNode;
+  footer?: React.ReactNode;
   busy?: boolean;
 };
 
@@ -106,7 +106,7 @@ export default function ProductActionDialog({ open, onClose, title, children, fo
               </button>
             </div>
             <div className="mt-3">{children}</div>
-            <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div>
+            {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
           </motion.div>
         </motion.div>
       ) : null}

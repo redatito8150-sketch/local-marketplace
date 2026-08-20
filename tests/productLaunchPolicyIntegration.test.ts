@@ -53,8 +53,17 @@ let schemaReady = false;
 async function probeSchemaReady(): Promise<boolean> {
   if (!hasCredentials) return false;
   admin = createClient(supabaseUrl!, serviceRoleKey!);
-  const { error } = await admin.from("products").select("launch_policy, first_visible_at").limit(1);
-  return !error;
+  const { error: columnsError } = await admin.from("products").select("launch_policy, first_visible_at").limit(1);
+  if (columnsError) return false;
+  // The pause/resume assertions below require the delete-first lifecycle
+  // migration too. Probe the new RPC with a guaranteed-missing product so
+  // no state can change; an older schema returns a missing-function error.
+  const { data, error: lifecycleError } = await admin.rpc("pause_product", {
+    p_product_id: `schema-probe-${randomUUID()}`,
+    p_brand_id: null,
+    p_actor_id: null,
+  });
+  return !lifecycleError && data?.code === "PRODUCT_NOT_FOUND";
 }
 
 schemaReady = await probeSchemaReady();
@@ -82,6 +91,7 @@ async function createPublishedProduct(brandId: string, launchPolicy: "show_now" 
   const { error } = await admin!.from("products").insert({
     id, name: "Launch Policy Test Product", brand_name: "Test", brand_id: brandId,
     price: 10, currency: "USD", image: "https://example.invalid/x.jpg", sku: id,
+    description: "Complete launch-policy integration product.",
     product_type_id: taxonomy?.id, audience: "unisex", status: "published",
     launch_policy: launchPolicy, publish_date: new Date(Date.now() - 60_000).toISOString(),
   });
@@ -247,12 +257,14 @@ test("pause blocks visibility even after stock arrives, and resume respects the 
       p_adjustments: [{ variant_id: variantId, type: "add", amount: 1 }],
       p_reason: "First stock", p_note: null, p_source: "brand_portal", p_operation_key: randomUUID(),
     });
-    await admin!.from("products").update({ paused_by_brand: true }).eq("id", productId);
+    const pause = await admin!.rpc("pause_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null });
+    assert.equal(pause.data?.code, "PRODUCT_PAUSED");
 
     const pausedVisibility = await admin!.rpc("is_product_customer_visible", { p_product_id: productId });
     assert.equal(pausedVisibility.data, false, "pause must block visibility even with stock available");
 
-    await admin!.from("products").update({ paused_by_brand: false }).eq("id", productId);
+    const resume = await admin!.rpc("resume_product", { p_product_id: productId, p_brand_id: brand.id, p_actor_id: null });
+    assert.equal(resume.data?.code, "PRODUCT_RESUMED");
     const resumedVisibility = await admin!.rpc("is_product_customer_visible", { p_product_id: productId });
     assert.equal(resumedVisibility.data, true, "resume returns to the visibility determined by policy + stock");
   } finally {

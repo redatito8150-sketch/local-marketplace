@@ -66,7 +66,6 @@ interface ProductRow {
   reviewed_by: string | null;
   reviewed_at: string | null;
   deletion_requested_at: string | null;
-  paused_by_brand: boolean;
   launch_policy: "show_now" | "when_stocked" | null;
   first_stocked_at: string | null;
   first_visible_at: string | null;
@@ -145,7 +144,6 @@ function toProductRecord(row: ProductRow, ctx: AdminProductDisplayContext): Prod
     reviewedBy: row.reviewed_by ?? undefined,
     reviewedAt: row.reviewed_at ?? undefined,
     deletionRequestedAt: row.deletion_requested_at ?? undefined,
-    pausedByBrand: row.paused_by_brand,
     launchPolicy: row.launch_policy ?? "show_now",
     firstStockedAt: row.first_stocked_at ?? undefined,
     firstVisibleAt: row.first_visible_at ?? undefined,

@@ -92,7 +92,6 @@ export interface ProductRow {
   featured: boolean;
   status: ProductStatus;
   publish_date: string | null;
-  paused_by_brand: boolean;
   // Immutable — the first moment this product actually became visible to a
   // real customer. Drives the "New" window (lib/newArrivals.ts) instead of
   // publish_date, which can be hidden behind a when_stocked launch policy.
@@ -109,7 +108,7 @@ export interface ProductRow {
 // workflow/moderation columns must be added deliberately instead of leaking
 // automatically through select("*") when the schema evolves.
 export const PRODUCT_PUBLIC_SELECT =
-  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, paused_by_brand, default_low_stock_threshold, created_at, first_visible_at, first_stocked_at" as const;
+  "id, name, brand_name, brand_slug, brand_id, product_type_id, audience, collection_id, material, materials, fit, price, discount_percent, discount_ends_at, currency, image, images, rating, review_count, description, details, care_instructions, shipping_returns, model_height, model_wearing, sku, is_new, featured, status, publish_date, default_low_stock_threshold, created_at, first_visible_at, first_stocked_at" as const;
 
 // Per-request lookup context for the display-only fields resolved from
 // product_type_id/collection_id — loaded once and reused across a batch
@@ -251,7 +250,6 @@ export async function getProductsByCategory(
     .select(PRODUCT_PUBLIC_SELECT)
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter())
     .order("created_at", { ascending: true });
 
@@ -272,7 +270,6 @@ export async function getProductCountLabel(
     .select("id", { count: "exact", head: true })
     .in("audience", shopCategoryAudiences(category))
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
 
   if (error) {
@@ -297,7 +294,6 @@ export async function getNewArrivals(limit: number = 24): Promise<Product[]> {
     .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .not("first_visible_at", "is", null)
     .gte("first_visible_at", windowStart)
     .order("first_visible_at", { ascending: false })
@@ -328,7 +324,6 @@ export async function getAllActiveProducts(
     .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
 
   if (featuredOnly) query = query.eq("featured", true);
@@ -355,7 +350,6 @@ export async function getActiveProductsByIds(ids: string[], limit = 20): Promise
     .select(PRODUCT_PUBLIC_SELECT)
     .in("id", selected)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
   if (error) throw new Error(`getActiveProductsByIds failed: ${error.message}`);
   const rows = ((data as ProductRow[]) ?? []);
@@ -458,7 +452,6 @@ export async function getMarketplaceCatalogPage(options: MarketplaceCatalogOptio
     .from("storefront_products")
     .select(PRODUCT_PUBLIC_SELECT, { count: "exact" })
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
 
   const search = options.search?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
@@ -544,7 +537,6 @@ export async function getMarketplaceCatalogFacets(): Promise<MarketplaceCatalogF
     .from("storefront_products")
     .select("id, brand_name, audience, product_type_id, collection_id, material, fit, discount_percent, discount_ends_at, price")
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter())
     .limit(2000);
 
@@ -615,10 +607,14 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
   if (error) {
     throw new Error(`getProductById(${id}) failed: ${error.message}`);
   }
+  // storefront_products already filters to customer-visible rows (status
+  // = 'published', among other predicates — see
+  // private.is_product_customer_visible), so a Paused product's status is
+  // 'paused' and it never reaches this query at all. The explicit status
+  // check here is defense in depth, not the primary gate.
   if (
     !data ||
     (data as ProductRow).status !== "published" ||
-    (data as ProductRow).paused_by_brand ||
     !isPublishDateLive((data as ProductRow).publish_date)
   )
     return null;
@@ -701,7 +697,6 @@ export async function getProductById(id: string): Promise<ProductDetail | null> 
     .select("id")
     .neq("id", id)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter())
     .eq("product_type_id", row.product_type_id)
     .limit(4);
@@ -740,7 +735,6 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
       .select(PRODUCT_PUBLIC_SELECT)
       .ilike("name", pattern)
       .eq("status", "published")
-      .eq("paused_by_brand", false)
       .or(publishDateLiveFilter())
       .limit(limit),
     supabase
@@ -748,7 +742,6 @@ async function runProductSearch(query: string, limit: number): Promise<ProductRo
       .select(PRODUCT_PUBLIC_SELECT)
       .ilike("brand_name", pattern)
       .eq("status", "published")
-      .eq("paused_by_brand", false)
       .or(publishDateLiveFilter())
       .limit(limit),
   ]);

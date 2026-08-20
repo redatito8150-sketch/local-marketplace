@@ -108,7 +108,7 @@ function AllProductsCatalog({ products, brands, params }: { products: AdminInven
   const fulfillment = params.fulfillment === "partner" || params.fulfillment === "brand" ? params.fulfillment : "";
   const issuesOnly = params.issues === "1";
   const stock = params.stock === "healthy" || params.stock === "low_stock" || params.stock === "out_of_stock" ? params.stock : "";
-  const status = params.status === "draft" || params.status === "published" ? params.status : "";
+  const status = params.status === "draft" || params.status === "published" || params.status === "paused" ? params.status : "";
 
   const filtered = products.filter((product) => {
     if (brandFilter && product.brandSlug !== brandFilter) return false;
@@ -291,7 +291,7 @@ function CatalogFilters({ products, brands, query, brand, fulfillment, issuesOnl
           <div className="absolute left-0 top-[calc(100%+8px)] z-30 grid w-full max-w-[620px] gap-3 rounded-2xl border border-[#e7ddd5] bg-white p-4 shadow-[0_18px_48px_rgba(72,50,36,.16)] sm:grid-cols-2">
             <label><span className="mb-1.5 block text-[10px] font-bold text-[#81746a]">Brand</span><select name="brand" defaultValue={brand} className={`${CONTROL} w-full`}><option value="">All brands</option>{brands.map((b) => <option key={b.id} value={b.slug}>{b.name}</option>)}</select></label>
             <label><span className="mb-1.5 block text-[10px] font-bold text-[#81746a]">Fulfillment</span><select name="fulfillment" defaultValue={fulfillment} className={`${CONTROL} w-full`}><option value="">All fulfillment modes</option><option value="partner">Partner (Zakhnook stock)</option><option value="brand">Brand-fulfilled</option></select></label>
-            <label><span className="mb-1.5 block text-[10px] font-bold text-[#81746a]">Product status</span><select name="status" defaultValue={status} className={`${CONTROL} w-full`}><option value="">All product states</option><option value="published">Published</option><option value="draft">Draft</option></select></label>
+            <label><span className="mb-1.5 block text-[10px] font-bold text-[#81746a]">Product status</span><select name="status" defaultValue={status} className={`${CONTROL} w-full`}><option value="">All product states</option><option value="published">Published</option><option value="paused">Paused</option><option value="draft">Draft</option></select></label>
             <label className={`${CONTROL} mt-[22px] flex cursor-pointer items-center gap-2`}><input type="checkbox" name="issues" value="1" defaultChecked={issuesOnly} className="h-3.5 w-3.5 accent-[#C85956]" />Issues only</label>
           </div>
         </details>

@@ -76,7 +76,7 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
   const currentPage = Math.min(requestedPage, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
   const paginatedProducts = filteredProducts.slice(pageStart, pageStart + PAGE_SIZE);
-  const activeView = params.attention ? "attention" : params.status === "published" ? "published" : params.status === "draft" ? "drafts" : params.status ? null : "all";
+  const activeView = params.attention ? "attention" : params.status === "published" ? "published" : params.status === "paused" ? "paused" : params.status === "draft" ? "drafts" : params.status ? null : "all";
 
   return (
     <div className="mx-auto max-w-[1540px]">
@@ -100,6 +100,7 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
           views={[
             { id: "all", label: "All products", href: "/admin/products", count: allProducts.length },
             { id: "published", label: "Published", href: "/admin/products?status=published", count: allProducts.filter((product) => product.status === "published").length },
+            { id: "paused", label: "Paused", href: "/admin/products?status=paused", count: allProducts.filter((product) => product.status === "paused").length },
             { id: "drafts", label: "Drafts", href: "/admin/products?status=draft", count: allProducts.filter((product) => product.status === "draft").length },
             { id: "attention", label: "Needs attention", href: "/admin/products?attention=1", count: attentionProducts.length, attention: true },
           ]}

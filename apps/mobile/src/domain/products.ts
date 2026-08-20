@@ -220,7 +220,7 @@ export async function getProductPage(options: ProductQueryOptions = {}) {
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 40);
   const page = Math.max(options.page ?? 0, 0);
   let request = supabase.from("products").select(productSelect, { count: "exact" })
-    .eq("status", "published").eq("paused_by_brand", false);
+    .eq("status", "published");
   if (options.audience) request = request.eq("audience", options.audience);
   if (options.productTypeId) request = request.eq("product_type_id", options.productTypeId);
   if (options.brand) request = request.eq("brand_name", options.brand);
@@ -282,7 +282,7 @@ export async function getProducts(options: ProductQueryOptions = {}) {
 export async function getCatalogFacets(): Promise<CatalogFacets> {
   const { data, error } = await supabase.from("products")
     .select("id,audience,brand_name,price")
-    .eq("status", "published").eq("paused_by_brand", false).limit(2000);
+    .eq("status", "published").limit(2000);
   if (error) throw new Error("We couldn't load catalog filters.");
   const rows = data ?? [];
   const products = await attachVariantDerivedFields(rows.map((row) => normalize(row)));
@@ -302,7 +302,7 @@ export async function getCatalogFacets(): Promise<CatalogFacets> {
 
 export async function getProduct(id: string) {
   const { data, error } = await supabase.from("products").select(productSelect)
-    .eq("id", id).eq("status", "published").eq("paused_by_brand", false).maybeSingle();
+    .eq("id", id).eq("status", "published").maybeSingle();
   if (error) throw new Error("We couldn't load this product.");
   if (!data) return null;
   const [product] = await attachVariantDerivedFields([normalize(data)]);

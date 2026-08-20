@@ -17,7 +17,13 @@ export function getAdminDeletionBlockerHref(blocker: DeletionBlocker, productId:
     case "PRODUCT_HAS_ACTIVE_HOLD":
       return "/admin/products/archived";
     case "PRODUCT_HAS_ORDER_HISTORY":
+    case "PRODUCT_HAS_COMPLETED_SALES":
+    case "PRODUCT_HAS_OPEN_ORDERS":
+    case "PRODUCT_HAS_CANCELLED_ORDERS":
       return "/admin/orders";
+    case "PRODUCT_HAS_REFUNDS":
+    case "PRODUCT_HAS_OPEN_PAYMENT_ATTEMPT":
+      return "/admin/payments";
     case "PRODUCT_HAS_REVIEWS":
       return "/admin/reviews";
     default:

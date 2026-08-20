@@ -44,6 +44,11 @@ type DisplayProduct = BrandProductListItem & {
   // safeguard — impersonation must never let an admin act as the brand)
   // never even sees the control.
   canShowNow: boolean;
+  // Permanent deletion (and, by extension, the Archive fallback it can
+  // surface) is an owner-only destructive action — an Assistant keeps
+  // Pause/Resume/Edit but never sees the delete-first entry point at all,
+  // and an admin viewing via impersonation never gains it either.
+  canDeletePermanently: boolean;
 };
 
 export default async function BrandPortalProductsPage(props: { searchParams: Promise<ProductParams> }) {
@@ -98,23 +103,27 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     ? "attention"
     : params.status === "published"
       ? "published"
-      : params.status === "draft"
-        ? "drafts"
-        : params.status
-          ? null
-          : "all";
+      : params.status === "paused"
+        ? "paused"
+        : params.status === "draft"
+          ? "drafts"
+          : params.status
+            ? null
+            : "all";
   const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
   const currentPage = Math.min(requestedPage, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
   const paginatedProducts = filteredProducts.slice(pageStart, pageStart + PAGE_SIZE);
   const canShowNow = owner.accessLevel === "owner" && !owner.isImpersonating;
+  const canDeletePermanently = owner.accessLevel === "owner" && !owner.isImpersonating;
   const displayProducts: DisplayProduct[] = paginatedProducts.map((product) => ({
     ...product,
     editHref: `/brand-portal/products/${product.id}/edit${brandParam}`,
     inventoryHref: buildInventoryHref(product, owner.isImpersonating ? owner.brandSlug ?? undefined : undefined),
     brandParam,
     canShowNow,
+    canDeletePermanently,
   }));
 
   return (
@@ -140,6 +149,7 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
           views={[
             { id: "all", label: "All products", href: buildQuickViewHref("/brand-portal/products", viewBaseParams), count: allProducts.length },
             { id: "published", label: "Published", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "published" }), count: allProducts.filter((product) => product.status === "published").length },
+            { id: "paused", label: "Paused", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "paused" }), count: allProducts.filter((product) => product.status === "paused").length },
             { id: "drafts", label: "Drafts", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "draft" }), count: allProducts.filter((product) => product.status === "draft").length },
             { id: "attention", label: "Needs attention", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { attention: "1" }), count: attentionProducts.length, attention: true },
           ]}
@@ -210,7 +220,7 @@ function ProductTableRow({ product }: { product: DisplayProduct }) {
       <td className="px-5 py-4"><ProductPriceDisplay product={product} /></td>
       <td className="px-5 py-4"><InventorySummary product={product} /></td>
       <td className="px-5 py-4"><ProductStatuses product={product} /></td>
-      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} pausedByBrand={product.pausedByBrand} /></td>
+      <td className="px-5 py-4"><ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} brandParam={product.brandParam} canDeletePermanently={product.canDeletePermanently} /></td>
     </tr>
   );
 }
@@ -231,7 +241,7 @@ function ProductMobileCard({ product }: { product: DisplayProduct }) {
       </div>
       <div className="mt-4 flex flex-col gap-3 border-t border-[#eee7de] pt-4 sm:flex-row sm:items-center sm:justify-between">
         <InventorySummary product={product} />
-        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} pausedByBrand={product.pausedByBrand} />
+        <ProductRowActions productId={product.id} name={product.name} editHref={product.editHref} status={product.status} brandParam={product.brandParam} canDeletePermanently={product.canDeletePermanently} />
       </div>
     </article>
   );

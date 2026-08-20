@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getProductForAdmin, getAllBrandsForAdmin } from "@/lib/data/admin";
 import { getSiteContentWithFallback } from "@/lib/data/siteContent";
 import { getTaxonomyTree } from "@/lib/data/taxonomy";
@@ -23,6 +23,7 @@ export default async function EditProductPage(props: { params: Promise<{ id: str
   }));
 
   if (!product) notFound();
+  if (product.status === "archived") redirect("/admin/products/archived");
 
   return (
       <ProductForm

@@ -20,6 +20,9 @@ export default async function EditBrandPortalProductPage(
 
   const product = await getProductForAdmin(params.id);
   if (!product || product.brandId !== owner.brandId) notFound();
+  if (product.status === "archived") {
+    redirect(`/brand-portal/products/archived${owner.isImpersonating ? `?brand=${owner.brandSlug}` : ""}`);
+  }
 
   const [taxonomy, taxonomyNodes, lockedBrandRecord] = await Promise.all([
     getSiteContentWithFallback("product_taxonomy", DEFAULT_PRODUCT_TAXONOMY),
@@ -37,10 +40,11 @@ export default async function EditBrandPortalProductPage(
 
   return (
     <div>
-      {product.status === "published" && (
+      {(product.status === "published" || product.status === "paused") && (
         <p className="mb-6 rounded-md bg-beige-100 px-4 py-2.5 text-[12.5px] text-ink">
-          This product is live. Your changes will be reviewed before they replace what shoppers
-          currently see.
+          {product.status === "paused"
+            ? "This product is Paused and hidden from customers. Saving catalog changes will not resume it."
+            : "This product is live. Saved catalog changes apply immediately; use Pause first if it should be hidden while you edit."}
         </p>
       )}
       {product.reviewNotes && (

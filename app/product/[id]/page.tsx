@@ -25,7 +25,6 @@ export async function generateStaticParams() {
     .from("products")
     .select("id")
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
   return (data ?? []).map((row) => ({ id: row.id as string }));
 }

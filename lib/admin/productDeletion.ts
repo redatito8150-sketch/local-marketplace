@@ -15,14 +15,22 @@ export interface DeletionBlocker {
 export interface ProductDeletionEligibility {
   productId: string;
   lifecycle: ProductLifecycleState;
+  // Now true only when the product has immutable history AND is otherwise
+  // live (Published/Paused) — Archive is a fallback, never an ordinary
+  // action, so this is what the UI gates the "Archive product" button on.
   canArchive: boolean;
   canDeleteDraft: boolean;
+  // A Published/Paused product with no immutable history and no temporary
+  // blockers — the delete-first path this branch adds.
+  canDeleteLive: boolean;
   canDeleteArchived: boolean;
+  canRestore: boolean;
   mustRetainHistory: boolean;
   hasTemporaryBlockers: boolean;
   hasActiveHold: boolean;
   immutableReasons: DeletionBlocker[];
   temporaryBlockers: DeletionBlocker[];
+  restoreBlockers: DeletionBlocker[];
   blockers: DeletionBlocker[];
 }
 
@@ -45,12 +53,15 @@ function toEligibility(raw: unknown): ProductDeletionEligibility {
     lifecycle: value.lifecycle ?? "deleted",
     canArchive: Boolean(value.canArchive),
     canDeleteDraft: Boolean(value.canDeleteDraft),
+    canDeleteLive: Boolean(value.canDeleteLive),
     canDeleteArchived: Boolean(value.canDeleteArchived),
+    canRestore: Boolean(value.canRestore),
     mustRetainHistory: Boolean(value.mustRetainHistory),
     hasTemporaryBlockers: Boolean(value.hasTemporaryBlockers),
     hasActiveHold: Boolean(value.hasActiveHold),
     immutableReasons: Array.isArray(value.immutableReasons) ? value.immutableReasons : [],
     temporaryBlockers: Array.isArray(value.temporaryBlockers) ? value.temporaryBlockers : [],
+    restoreBlockers: Array.isArray(value.restoreBlockers) ? value.restoreBlockers : [],
     blockers: Array.isArray(value.blockers) ? value.blockers : [],
   };
 }
@@ -101,6 +112,62 @@ export function deleteDraftProduct(productId: string, brandId: string | null, ac
 
 export function deleteArchivedProduct(productId: string, brandId: string | null, actorId: string, actorLabel: string, reason: string, operationKey: string) {
   return deleteProduct("delete_archived_product", productId, brandId, actorId, actorLabel, reason, operationKey);
+}
+
+// Permanent deletion of a Published/Paused product — the delete-first path.
+// actorLabel is accepted for signature symmetry with the other delete
+// helpers even though the underlying RPC doesn't persist it directly (it's
+// captured by the caller's own logAudit() instead, same as archive/pause).
+export function deleteLiveProduct(
+  productId: string,
+  brandId: string | null,
+  actorId: string,
+  actorLabel: string,
+  reason: string,
+  operationKey: string
+) {
+  return callDeletionRpc("delete_live_product", {
+    p_product_id: productId,
+    p_brand_id: brandId,
+    p_actor_id: actorId,
+    p_actor_label: actorLabel,
+    p_reason: reason,
+    p_operation_key: operationKey,
+  });
+}
+
+export function pauseProduct(productId: string, brandId: string | null, actorId: string) {
+  return callDeletionRpc("pause_product", {
+    p_product_id: productId,
+    p_brand_id: brandId,
+    p_actor_id: actorId,
+  });
+}
+
+export function resumeProduct(productId: string, brandId: string | null, actorId: string) {
+  return callDeletionRpc("resume_product", {
+    p_product_id: productId,
+    p_brand_id: brandId,
+    p_actor_id: actorId,
+  });
+}
+
+// Admin-only. Restores an Archived product to Paused, never Published —
+// the owner still has to Resume it deliberately.
+export function adminRestoreArchivedProduct(
+  productId: string,
+  actorId: string,
+  actorLabel: string,
+  reason: string,
+  operationKey: string
+) {
+  return callDeletionRpc("admin_restore_archived_product", {
+    p_product_id: productId,
+    p_actor_id: actorId,
+    p_actor_label: actorLabel,
+    p_reason: reason,
+    p_operation_key: operationKey,
+  });
 }
 
 export function adminEmergencyHideProduct(productId: string, actorId: string, actorLabel: string, reason: string) {
@@ -199,7 +266,7 @@ export interface ProductDeletionHistoryRow {
   product_sku_snapshot: string | null;
   product_image_snapshot: string | null;
   brand_id: string;
-  deleted_from: "draft" | "archived";
+  deleted_from: "draft" | "published" | "paused" | "archived";
   deleted_by_label: string;
   reason: string | null;
   media_jobs_queued: number;

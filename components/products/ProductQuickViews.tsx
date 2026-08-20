@@ -15,7 +15,7 @@ export default function ProductQuickViews({ views, activeId, archived }: { views
       <nav aria-label="Product quick views" className="flex h-10 min-w-0 overflow-x-auto rounded-xl border border-[#e5ddd5] bg-[#fcfaf8]">
         {views.map((view) => {
           const selected = view.id === activeId;
-          const dot = view.id === "published" ? "bg-emerald-500" : view.id === "drafts" ? "bg-amber-500" : view.attention ? "bg-red-500" : "bg-[#C85956]";
+          const dot = view.id === "published" ? "bg-emerald-500" : view.id === "paused" ? "bg-stone-400" : view.id === "drafts" ? "bg-amber-500" : view.attention ? "bg-red-500" : "bg-[#C85956]";
           return (
             <Link
               key={view.id}

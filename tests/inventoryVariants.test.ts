@@ -72,7 +72,7 @@ test("isVariantPurchasable: requires active, in-stock, non-archived, and (if kno
       sellingStatus: "active",
       quantity: 1,
       isArchived: false,
-      pausedByBrand: true,
+      productStatus: "paused",
     }),
     false
   );

@@ -173,7 +173,7 @@ test("scheduled visibility activation runs hourly in Supabase Cron, with an auth
 
 test("the product editor's header no longer renders a Publish action in the create experience — only the bottom action bar does", () => {
   const chrome = read("components/admin/ProductEditorChrome.tsx");
-  assert.match(chrome, /const showPublishAction = !createExperience;/);
+  assert.match(chrome, /const showPublishAction = !createExperience && status !== "archived";/);
 });
 
 test("Save as Draft is unconditionally available on every creation step (no hasPersistedProduct gate)", () => {

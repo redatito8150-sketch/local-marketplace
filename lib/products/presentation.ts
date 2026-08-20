@@ -6,7 +6,6 @@ export type ProductBadgeTone = "neutral" | "success" | "warning" | "danger" | "i
 
 export type ProductPresentationInput = {
   status?: ProductStatus;
-  pausedByBrand?: boolean;
   publishDate?: string;
   draftStartedAt?: string;
   launchPolicy?: "show_now" | "when_stocked";
@@ -55,17 +54,17 @@ export function getProductStatusPresentation(product: ProductPresentationInput):
     return { lifecycle: { label: "Archived", tone: "neutral" }, canShowNow: false };
   }
 
-  if (product.publishDate && !isPublishDateLive(product.publishDate)) {
+  if (status === "paused") {
     return {
-      lifecycle: { label: `Scheduled · ${formatSchedule(product.publishDate)}`, tone: "info" },
+      lifecycle: { label: "Paused", tone: "neutral" },
+      visibility: { label: "Hidden from customers", tone: "neutral" },
       canShowNow: false,
     };
   }
 
-  if (product.pausedByBrand) {
+  if (product.publishDate && !isPublishDateLive(product.publishDate)) {
     return {
-      lifecycle: { label: "Published", tone: "success" },
-      visibility: { label: "Paused", tone: "neutral" },
+      lifecycle: { label: `Scheduled · ${formatSchedule(product.publishDate)}`, tone: "info" },
       canShowNow: false,
     };
   }
@@ -86,4 +85,3 @@ export function getProductStatusPresentation(product: ProductPresentationInput):
     canShowNow: false,
   };
 }
-

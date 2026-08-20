@@ -59,7 +59,6 @@ async function getProductCardsByIds(ids: string[]): Promise<Product[]> {
     .select(PRODUCT_PUBLIC_SELECT)
     .in("id", ids)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
   if (error) {
     throw new Error(`getProductCardsByIds failed: ${error.message}`);
@@ -102,7 +101,6 @@ async function getTopSellingProductIdsForBrand(
     .select("id")
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
 
   if (brandProductsError) {
@@ -152,7 +150,6 @@ export async function getBestSellingProductsForBrand(
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", brandSlug)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter())
     .order("created_at", { ascending: false })
     .limit(limit);

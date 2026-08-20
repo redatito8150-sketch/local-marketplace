@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, Archive, ArrowLeft, ArrowRight, Check, ChevronLeft, Clock3, Eye, EyeOff, Loader2, PackageCheck, Save } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Check, ChevronLeft, Clock3, Eye, EyeOff, Loader2, PackageCheck, Save } from "lucide-react";
 import type { ProductStatus } from "@/types";
 import type { ProductEditorSectionId, ProductValidationIssue } from "@/lib/admin/productValidation";
 
@@ -43,8 +43,6 @@ export function ProductEditorHeader({
   completed,
   onNavigateStep,
   onSaveDraft,
-  onArchive,
-  canArchive,
   canPublish,
   onPublish,
   onBack,
@@ -55,6 +53,8 @@ export function ProductEditorHeader({
   hasPersistedProduct = true,
   fulfillmentLabel,
   showFulfillmentBadge = false,
+  showDraftAction = true,
+  publishLabel = "Publish Product",
 }: {
   title: string;
   status: ProductStatus;
@@ -66,11 +66,6 @@ export function ProductEditorHeader({
   completed: Set<ProductEditorSectionId>;
   onNavigateStep: (id: ProductEditorSectionId) => void;
   onSaveDraft: () => void;
-  onArchive: () => void;
-  // Archiving needs the same full-info completeness as Publishing (just
-  // not live purchasable stock) — disabled with an explanatory title
-  // until that's true, same as Publish itself failing validation would.
-  canArchive: boolean;
   canPublish: boolean;
   onPublish: () => void;
   onBack: () => void;
@@ -81,10 +76,13 @@ export function ProductEditorHeader({
   hasPersistedProduct?: boolean;
   fulfillmentLabel?: string;
   showFulfillmentBadge?: boolean;
+  showDraftAction?: boolean;
+  publishLabel?: string;
 }) {
   const statusStyles: Record<ProductStatus, string> = {
     draft: "bg-amber-50 text-amber-800",
     published: "bg-emerald-50 text-emerald-700",
+    paused: "bg-stone-100 text-ink-soft/65",
     archived: "bg-stone-100 text-ink-soft/65",
     pending_review: "bg-sky-50 text-sky-700",
     changes_requested: "bg-red-50 text-red-700",
@@ -103,10 +101,10 @@ export function ProductEditorHeader({
   // bottom action bar (ProductWizardBottomBar) now — the header stays
   // focused on Back, save state, progress, fulfillment identity, and Live
   // Preview for the whole wizard, including its last step. This only
-  // affects the create experience; edit mode (an existing, unrelated
-  // experience) keeps its header Save draft/Archive/Publish actions
-  // exactly as before.
-  const showPublishAction = !createExperience;
+  // affects the create experience; edit mode keeps only the actions valid
+  // for its current lifecycle. Archive/deletion lives in the product-list
+  // preflight dialog, not in this ordinary catalog editor.
+  const showPublishAction = !createExperience && status !== "archived";
 
   return (
     <header className={`sticky z-30 mb-6 border-b border-[#e4ddd5] bg-[#FAF8F4]/95 backdrop-blur ${standalone ? "top-0 -mx-4 px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8" : "top-[72px] -mx-4 border-y px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10"}`}>
@@ -175,19 +173,8 @@ export function ProductEditorHeader({
             {previewOpen ? "Hide preview" : "Preview product"}
           </button>
         ) : null}
-        {!createExperience ? (
+        {!createExperience && showDraftAction ? (
           <button type="button" disabled={submitting} onClick={onSaveDraft} className="hidden min-h-10 items-center gap-1.5 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-ink hover:bg-[#f4eee8] disabled:opacity-50 sm:inline-flex"><Save className="h-3.5 w-3.5" /> Save draft</button>
-        ) : null}
-        {!createExperience ? (
-          <button
-            type="button"
-            disabled={submitting || !canArchive}
-            onClick={onArchive}
-            title={canArchive ? undefined : "Complete all required product info first"}
-            className="hidden min-h-10 items-center gap-1.5 rounded-lg border border-[#dcd3ca] bg-white px-3.5 text-[12px] font-semibold text-ink hover:bg-[#f4eee8] disabled:cursor-not-allowed disabled:opacity-50 sm:inline-flex"
-          >
-            <Archive className="h-3.5 w-3.5" /> Archive
-          </button>
         ) : null}
         {showPublishAction ? (
           <button
@@ -197,7 +184,7 @@ export function ProductEditorHeader({
             title={!canPublish ? "Complete all required product info first" : undefined}
             className="min-h-10 rounded-lg bg-mahalyred px-4 text-[12px] font-semibold text-cream transition-colors hover:bg-[#b94d4a] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            Publish Product
+            {publishLabel}
           </button>
         ) : null}
       </div>
@@ -281,8 +268,6 @@ export function ProductEditorBottomBar({
   dirty,
   submitting,
   onSaveDraft,
-  onArchive,
-  canArchive,
   onPublish,
   showDraft = true,
   publishLabel = "Publish Product",
@@ -290,8 +275,6 @@ export function ProductEditorBottomBar({
   dirty: boolean;
   submitting: boolean;
   onSaveDraft: () => void;
-  onArchive: () => void;
-  canArchive: boolean;
   onPublish: () => void;
   // False once a product has ever left Draft — there's no path back to
   // it, so re-offering "Save as Draft" on an already-published/archived
@@ -304,15 +287,6 @@ export function ProductEditorBottomBar({
   return <div className="sticky bottom-0 z-20 -mx-4 mt-8 flex flex-wrap items-center gap-2 border-t border-stone-150 bg-cream/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:rounded-xl lg:border">
     <span className="mr-auto text-[11.5px] font-medium text-ink-soft/55">{dirty ? "Unsaved changes" : "All changes saved"}</span>
     {showDraft && <button type="button" disabled={submitting} onClick={onSaveDraft} className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:opacity-50">Save as Draft</button>}
-    <button
-      type="button"
-      disabled={submitting || !canArchive}
-      onClick={onArchive}
-      title={canArchive ? undefined : "Complete all required product info first"}
-      className="min-h-10 rounded-md border border-stone-150 px-3 text-[12px] font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      Archive
-    </button>
     <button type="button" disabled={submitting} onClick={onPublish} className="min-h-10 rounded-md bg-mahalyred px-4 text-[12px] font-semibold text-cream disabled:opacity-50">{publishLabel}</button>
   </div>;
 }

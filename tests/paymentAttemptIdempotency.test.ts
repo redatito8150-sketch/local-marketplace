@@ -46,7 +46,6 @@ function product(): ProductLookupRow {
     currency: "EGP",
     status: "published",
     publish_date: null,
-    paused_by_brand: false,
     brands: { is_active: true },
     image: "https://example.com/linen-shirt.jpg",
     first_stocked_at: "2026-01-01T00:00:00.000Z",

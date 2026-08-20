@@ -83,8 +83,8 @@ test("admin and Brand Portal product catalogs share the same filter system and s
   assert.match(brand, /archived=\{\{ href: buildQuickViewHref\("\/brand-portal\/products\/archived"/);
   assert.match(quickViews, /aria-label="Product quick views"/);
   assert.match(quickViews, /border-r border-\[#eee7e1\]/);
-  assert.match(admin, /\/>\}\n      \/>\n\n      <BulkProductActions/);
-  assert.match(brand, /\/>\}\n      \/>\n\n      <DashboardPanel/);
+  assert.match(admin, /\/>\}\r?\n      \/>\r?\n\r?\n      <BulkProductActions/);
+  assert.match(brand, /\/>\}\r?\n      \/>\r?\n\r?\n      <DashboardPanel/);
   assert.doesNotMatch(brand, /Showing \{firstResult\}/);
   assert.match(adminTable, /SortableTableHeader/);
   assert.match(brand, /SortableTableHeader/);

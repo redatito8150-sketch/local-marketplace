@@ -614,7 +614,8 @@ export default function ProductForm({
       const nextVariants: InventoryVariantsValue = data.variants
         ? { ...form.inventoryVariants, variants: variantsToRows(data.variants) }
         : form.inventoryVariants;
-      const nextForm = { ...form, status: targetStatus, inventoryVariants: nextVariants };
+      const persistedStatus = (data.status ?? targetStatus) as ProductStatus;
+      const nextForm = { ...form, status: persistedStatus, inventoryVariants: nextVariants };
       setForm(nextForm);
       saveOperationKey.current = crypto.randomUUID();
       setSavedSnapshot(nextForm);
@@ -765,8 +766,6 @@ export default function ProductForm({
         completed={completedSections}
         onNavigateStep={navigateToSection}
         onSaveDraft={() => submit("draft")}
-        onArchive={() => submit("archived")}
-        canArchive={form.status === "published" && publishReadinessIssues.length === 0}
         canPublish={publishReadinessIssues.length === 0}
         onPublish={() => submit("published")}
         onBack={handleCancel}
@@ -777,6 +776,8 @@ export default function ProductForm({
         hasPersistedProduct={Boolean(currentProductId)}
         fulfillmentLabel={isPartnerBrand ? "Zakhnook fulfilled" : "Brand fulfilled"}
         showFulfillmentBadge={isCreateExperience && activeSection !== "basic"}
+        showDraftAction={!hasLeftDraft}
+        publishLabel={hasLeftDraft ? "Update" : "Publish Product"}
       />
       {(!isCreateExperience || activeSection === "basic") ? <div className={`mb-6 flex items-start gap-3 rounded-xl border px-4 py-3.5 ${isPartnerBrand ? "border-[#e4cfc0] bg-[#fff7f1]" : "border-[#d9ddd4] bg-[#f5f7f1]"}`}>
         <div className={`mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg ${isPartnerBrand ? "bg-[#C85956]/10 text-[#C85956]" : "bg-[#5d6c55]/10 text-[#5d6c55]"}`}>
@@ -1140,7 +1141,7 @@ export default function ProductForm({
             isCreateExperience is derived from the static `mode` prop and
             never changes. A server-side transition guard
             (private.enforce_product_lifecycle_transition(), supabase/
-            migrations/20260815000000_product_launch_policy_and_opening_stock.sql)
+            migrations/20260819120000_paused_status_and_delete_first_lifecycle.sql)
             is the real enforcement boundary regardless of what this UI
             shows. */}
         {isCreateExperience && form.status === "draft" ? (
@@ -1160,8 +1161,6 @@ export default function ProductForm({
             dirty={hasUnsavedChanges}
             submitting={submitting}
             onSaveDraft={() => submit("draft")}
-            onArchive={() => submit("archived")}
-            canArchive={form.status === "published" && publishReadinessIssues.length === 0}
             onPublish={() => submit("published")}
             showDraft={!hasLeftDraft}
             publishLabel={hasLeftDraft ? "Update" : "Publish Product"}

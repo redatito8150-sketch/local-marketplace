@@ -58,7 +58,7 @@ export async function getCartValidationData(
     // through to "not found at all" -> unavailable.
     supabase
       .from("storefront_products")
-      .select("id, status, paused_by_brand, price, currency, image, discount_percent, discount_ends_at")
+      .select("id, status, price, currency, image, discount_percent, discount_ends_at")
       .in("id", ids),
     getVariantsForProducts(ids),
     supabase
@@ -87,7 +87,10 @@ export async function getCartValidationData(
     const variants = variantsByProduct.get(productId) ?? [];
     result.set(productId, {
       productId,
-      productAvailable: row.status === "published" && !row.paused_by_brand,
+      // storefront_products already excludes Paused/Archived/Draft rows —
+      // status here can only ever be 'published' for a row that came back
+      // at all, but the explicit check is kept as defense in depth.
+      productAvailable: row.status === "published",
       image: row.image as string,
       colorImages: colorImagesByProduct.get(productId) ?? {},
       currency: row.currency as "USD" | "EGP",

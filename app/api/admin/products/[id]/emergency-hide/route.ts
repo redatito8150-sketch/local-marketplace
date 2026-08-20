@@ -35,7 +35,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   const result = await adminEmergencyHideProduct(params.id, staff.user.id, staff.user.email ?? staff.user.id, reason);
   if (!result.ok) {
-    return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "PRODUCT_NOT_FOUND" ? 404 : 400 });
+    return NextResponse.json(
+      { error: result.message, code: result.code, blockers: result.blockers, eligibility: result.eligibility },
+      { status: result.code === "PRODUCT_NOT_FOUND" ? 404 : 409 }
+    );
   }
 
   const auditLogId = await logAudit({

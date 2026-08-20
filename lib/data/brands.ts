@@ -91,7 +91,6 @@ export async function getBrandContent(slug: string): Promise<BrandPageContent | 
     .select(PRODUCT_PUBLIC_SELECT)
     .eq("brand_slug", slug)
     .eq("status", "published")
-    .eq("paused_by_brand", false)
     .or(publishDateLiveFilter());
 
   if (productsError) {

@@ -8,8 +8,10 @@ import {
   archiveProduct,
   deleteArchivedProduct,
   deleteDraftProduct,
+  deleteLiveProduct,
   getProductDeletionEligibility,
 } from "@/lib/admin/productDeletion";
+import { notifyBrandOwnersOfProductLifecycle } from "@/lib/admin/productLifecycleNotifications";
 
 async function loadOwnedProduct(productId: string, brandId: string) {
   const { data } = await supabaseAdmin
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
   return NextResponse.json({ eligibility });
 }
 
-type Action = "archive" | "delete_draft" | "delete_archived";
+type Action = "archive" | "delete_draft" | "delete_live" | "delete_archived";
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const { id } = await props.params;
@@ -43,12 +45,9 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
-  const product = await loadOwnedProduct(id, owner.brandId);
-  if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
-
   const body = await request.json().catch(() => null);
   const action = body?.action as Action;
-  if (!["archive", "delete_draft", "delete_archived"].includes(action)) {
+  if (!["archive", "delete_draft", "delete_live", "delete_archived"].includes(action)) {
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   }
 
@@ -56,9 +55,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   if (action !== "archive" && owner.accessLevel !== "owner") {
     return NextResponse.json({ error: "Only the brand owner can permanently delete a product" }, { status: 403 });
   }
-  if (action !== "archive" && body?.confirmationName !== product.name) {
+  const product = await loadOwnedProduct(id, owner.brandId);
+  if (product && action !== "archive" && body?.confirmationName !== product.name) {
     return NextResponse.json({ error: "Type the exact product name to confirm permanent deletion" }, { status: 400 });
   }
+  if (!product && action === "archive") return NextResponse.json({ error: "Product not found" }, { status: 404 });
 
   const actorLabel = owner.user.email ?? owner.user.id;
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
@@ -68,6 +69,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     result = await archiveProduct(id, owner.brandId, owner.user.id, actorLabel);
   } else if (action === "delete_draft") {
     result = await deleteDraftProduct(id, owner.brandId, owner.user.id, actorLabel, reason, operationKey);
+  } else if (action === "delete_live") {
+    result = await deleteLiveProduct(id, owner.brandId, owner.user.id, actorLabel, reason, operationKey);
   } else {
     result = await deleteArchivedProduct(id, owner.brandId, owner.user.id, actorLabel, reason, operationKey);
   }
@@ -79,23 +82,40 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: result.message, code: result.code, blockers: result.blockers ?? [] }, { status });
   }
 
-  await logAudit({
+  if (result.code === "ALREADY_DELETED" || result.code === "ALREADY_ARCHIVED") {
+    return NextResponse.json(result);
+  }
+
+  const auditLogId = await logAudit({
     actorId: owner.user.id,
     actorLabel,
     entityType: "product",
     entityId: id,
     action: action === "archive" ? "archive" : action === "delete_draft" ? "product_draft_deleted" : "product_deleted",
-    before: product,
+    before: product ?? undefined,
     after: { lifecycle: result.lifecycle, reason: reason || undefined },
     brandSlug: owner.brandSlug ?? undefined,
   });
 
   await notify(
     action === "archive" ? "product_archived" : "product_deleted",
-    `${action === "archive" ? "Archived" : "Permanently deleted"}: ${product.name}`,
+    `${action === "archive" ? "Archived" : "Permanently deleted"}: ${product?.name ?? id}`,
     reason || owner.brandName || "",
     { actorLabel }
   );
+  await notifyBrandOwnersOfProductLifecycle({
+    brandSlug: owner.brandSlug,
+    productId: id,
+    type: action === "archive" ? "product_archived" : "product_deleted",
+    title: action === "archive"
+      ? `${product?.name ?? id} was moved to Archived`
+      : `${product?.name ?? id} was permanently deleted`,
+    body: action === "archive"
+      ? "The product has permanent business history, so its records were preserved in Archived. Contact an admin if it needs to be restored to Paused."
+      : "The product was permanently deleted after the final database check found no history or active blockers.",
+    deliveryToken: auditLogId ?? `${result.code}:${Date.now()}`,
+    excludeUserId: owner.user.id,
+  });
 
   return NextResponse.json(result);
 }

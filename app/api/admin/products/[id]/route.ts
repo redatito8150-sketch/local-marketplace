@@ -20,6 +20,7 @@ import { checkAndNotifyWishlistPriceDrop } from "@/lib/wishlistPriceDrop";
 import { getPartnerStockWarning } from "@/lib/admin/warehouseArchiveWarning";
 import { archiveProduct } from "@/lib/admin/productDeletion";
 import { stampFirstVisibleIfEligible } from "@/lib/admin/productLaunch";
+import { notifyBrandOwnersOfProductLifecycle } from "@/lib/admin/productLifecycleNotifications";
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -49,7 +50,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       { status: 409 }
     );
   }
-  if (body.status === "archived" && existing.status !== "published") {
+  if (body.status === "archived" && !["published", "paused"].includes(existing.status)) {
     return NextResponse.json({ error: "Only a Published or Paused product can be Archived" }, { status: 409 });
   }
   // CORRECTIVE PASS: a Published product can never revert to Draft — the
@@ -57,15 +58,32 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // enforces this for every caller regardless of what this route does;
   // this guard just returns a clear application-level error instead of a
   // raw DB exception bubbling up as a 500.
-  if (existing.status === "published" && body.status === "draft") {
-    return NextResponse.json({ error: "A Published product cannot be reverted to Draft." }, { status: 409 });
+  if (["published", "paused"].includes(existing.status) && body.status === "draft") {
+    return NextResponse.json({ error: "A Published or Paused product cannot be reverted to Draft." }, { status: 409 });
   }
   if (body.status === "archived") {
     const result = await archiveProduct(params.id, null, admin.id, admin.email ?? admin.id);
     if (!result.ok) return NextResponse.json({ error: result.message, code: result.code }, { status: 409 });
-    await logAudit({ actorId: admin.id, actorLabel: admin.email ?? admin.id, entityType: "product", entityId: params.id, action: "archive", before: existing });
+    if (result.code === "ALREADY_ARCHIVED") {
+      return NextResponse.json({ id: params.id, status: "archived", variants: await loadProductVariants(params.id) });
+    }
+    const auditLogId = await logAudit({ actorId: admin.id, actorLabel: admin.email ?? admin.id, entityType: "product", entityId: params.id, action: "archive", before: existing });
     await notify("product_archived", `Archived: ${existing.name}`, existing.brand_name, { actorLabel: admin.email ?? admin.id });
-    return NextResponse.json({ id: params.id, variants: await loadProductVariants(params.id) });
+    await notifyBrandOwnersOfProductLifecycle({
+      brandSlug: existing.brand_slug,
+      productId: params.id,
+      type: "product_archived",
+      title: `${existing.name} was moved to Archived`,
+      body: "Zakhnook preserved this product because it has permanent business history. Contact an admin if it needs to be restored to Paused.",
+      deliveryToken: auditLogId ?? result.code,
+    });
+    return NextResponse.json({ id: params.id, status: "archived", variants: await loadProductVariants(params.id) });
+  }
+  // Ordinary edits never perform lifecycle transitions. A live product
+  // keeps its exact Published/Paused state; only the dedicated Pause/Resume
+  // RPC may change between them after the database revalidates readiness.
+  if (existing.status === "published" || existing.status === "paused") {
+    body.status = existing.status;
   }
   // Brand and SKU are immutable after creation — whatever the client
   // sends is ignored, always the existing product's own values.
@@ -179,7 +197,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     after: { ...bodyForDiff, Variants: variantChanges || undefined },
   });
 
-  return NextResponse.json({ id: params.id, variants });
+  return NextResponse.json({ id: params.id, status: body.status, variants });
 }
 
 // The old DELETE handler here did a raw, unguarded `supabaseAdmin.from(

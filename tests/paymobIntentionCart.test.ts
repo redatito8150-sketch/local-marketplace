@@ -18,7 +18,6 @@ function product(overrides: Partial<ProductLookupRow> = {}): ProductLookupRow {
     currency: "EGP",
     status: "published",
     publish_date: null,
-    paused_by_brand: false,
     brands: { is_active: true },
     image: "https://example.com/linen-shirt.jpg",
     first_stocked_at: "2026-01-01T00:00:00.000Z",
@@ -78,7 +77,9 @@ test("resolveIntentionCart accepts a when_stocked product once first_stocked_at 
 test("resolveIntentionCart rejects an unpublished, paused, or inactive-brand product", () => {
   for (const overrides of [
     { status: "draft" },
-    { paused_by_brand: true },
+    // Paused is its own canonical status now, not `published` with a
+    // secondary flag — the single status check below already covers it.
+    { status: "paused" },
     { brands: { is_active: false } },
     { publish_date: "2099-01-01T00:00:00.000Z" },
   ]) {

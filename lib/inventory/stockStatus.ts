@@ -21,17 +21,18 @@ export function effectiveLowStockThreshold(
 // Active, quantity > 0, and the parent product is published/available —
 // the product-level half of that last condition is checked by the caller
 // (this function only knows about the variant + its own product's status).
+// A Paused product's canonical status is 'paused', not 'published' with a
+// secondary flag, so the single productStatus check below already excludes
+// it — no separate pausedByBrand parameter is needed.
 export function isVariantPurchasable(input: {
   sellingStatus: SellingStatus;
   quantity: number;
   isArchived: boolean;
   productStatus?: string;
-  pausedByBrand?: boolean;
 }): boolean {
   if (input.isArchived) return false;
   if (input.sellingStatus !== "active") return false;
   if (input.quantity <= 0) return false;
   if (input.productStatus !== undefined && input.productStatus !== "published") return false;
-  if (input.pausedByBrand) return false;
   return true;
 }

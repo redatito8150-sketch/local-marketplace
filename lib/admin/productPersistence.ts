@@ -71,7 +71,12 @@ export function buildProductPersistencePayload(
   // or a genuine draft -> published first-publish transition, and the
   // database's own products_enforce_lifecycle_transition trigger is the
   // hard backstop even if this omission were ever bypassed.
-  if (body.launchPolicy && (overrides?.status ?? body.status) !== "draft" && overrides?.previousStatus !== "published") {
+  if (
+    body.launchPolicy
+    && (overrides?.status ?? body.status) !== "draft"
+    && overrides?.previousStatus !== "published"
+    && overrides?.previousStatus !== "paused"
+  ) {
     payload.launch_policy = body.launchPolicy;
   }
 

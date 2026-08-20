@@ -27,35 +27,52 @@ test("schedule APIs, pages, components, and cron are removed", () => {
 
 test("brand assistants may Archive but only owners may hard-delete", () => {
   const route = read("app/api/brand-portal/products/[id]/deletion/route.ts");
-  assert.match(route, /type Action = "archive" \| "delete_draft" \| "delete_archived"/);
+  assert.match(route, /type Action = "archive" \| "delete_draft" \| "delete_live" \| "delete_archived"/);
   assert.match(route, /action !== "archive" && owner\.accessLevel !== "owner"/);
 });
 
 test("both permanent-delete confirmations require the exact product name", () => {
   const brand = read("components/brand-portal/ProductRowActions.tsx");
   const archived = read("components/admin/ArchivedProductRowActions.tsx");
-  assert.match(brand, /confirmText === name/);
+  assert.match(brand, /confirmText !== name/);
   assert.match(archived, /confirmText !== productName/);
   assert.match(read("app/api/brand-portal/products/[id]/deletion/route.ts"), /confirmationName !== product\.name/);
   assert.match(read("app/api/admin/products/[id]/deletion/route.ts"), /confirmationName !== product\.name/);
 });
 
-test("Archived rows have no Edit or Restore action and show every blocker with its resolution", () => {
+// Delete-first spec (2026-08-19): Archived rows are still never directly
+// editable, but Restore now exists as the dedicated Admin-only escape
+// hatch — this test asserts the new shape (gated on audience === "admin",
+// posting to the separate /restore endpoint) instead of the old "Restore
+// doesn't exist at all" invariant.
+test("Archived rows have no Edit action, gate Restore to admin only, and show every blocker with its resolution", () => {
   const actions = read("components/admin/ArchivedProductRowActions.tsx");
-  assert.doesNotMatch(actions, /Edit product|Restore/);
+  assert.doesNotMatch(actions, /Edit product/);
+  assert.match(actions, /audience === "admin" && allowRestore && !readOnly && eligibility\.canRestore/);
+  assert.match(actions, /\/api\/admin\/products\/\$\{productId\}\/restore/);
   assert.match(actions, /eligibility\.immutableReasons/);
   assert.match(actions, /eligibility\.temporaryBlockers/);
   assert.match(actions, /blocker\.resolution/);
-  assert.match(actions, /blocker\.href/);
+  assert.match(actions, /blockerHref/);
 });
 
-test("generic product edit routes cannot move Archived products back to another status", () => {
+test("brand-portal Archived page tells the owner to contact an admin to restore a product", () => {
+  const page = read("app/brand-portal/products/archived/page.tsx");
+  assert.match(page, /contact an admin/i);
+});
+
+test("generic product edit routes cannot move Archived products back to another status — restoration only exists through the dedicated admin route", () => {
   for (const file of ["app/api/admin/products/[id]/route.ts", "app/api/brand-portal/products/[id]/route.ts"]) {
     const source = read(file);
     assert.match(source, /existing\.status === "archived"/);
-    assert.doesNotMatch(source, /restoreProduct|restore_product/);
+    assert.doesNotMatch(source, /restoreProduct|restore_product|admin_restore_archived_product/);
   }
-  assert.equal(existsSync("app/api/admin/products/[id]/restore/route.ts"), false);
+  // The one sanctioned path is a separate, admin-rank-gated route — not a
+  // branch on the generic PATCH handler.
+  assert.equal(existsSync("app/api/admin/products/[id]/restore/route.ts"), true);
+  const restoreRoute = read("app/api/admin/products/[id]/restore/route.ts");
+  assert.match(restoreRoute, /requireStaffRole\("admin"\)/);
+  assert.match(restoreRoute, /adminRestoreArchivedProduct/);
 });
 
 test("upload route registers exact Storage paths and rolls back a file if registry insertion fails", () => {
@@ -81,10 +98,15 @@ test("storage cleanup queues abandoned product uploads before draining jobs", ()
   assert.ok(route.indexOf('supabaseAdmin.rpc("queue_abandoned_product_uploads"') < route.indexOf("processStorageCleanupJobs({ limit: 100 })"));
 });
 
-test("admin bulk actions use Archive and never offer bulk permanent deletion", () => {
+test("admin bulk actions offer no lifecycle transition — they are reversible merchandising only", () => {
   const route = read("app/api/admin/products/bulk/route.ts");
-  assert.match(route, /"publish", "archive", "feature", "unfeature"/);
+  const component = read("components/admin/BulkProductActions.tsx");
+  assert.match(route, /const BULK_ACTIONS = \["feature", "unfeature"\]/);
+  assert.doesNotMatch(route, /BULK_ACTIONS[^\n]*publish/);
+  assert.doesNotMatch(route, /BULK_ACTIONS[^\n]*archive/);
   assert.doesNotMatch(route, /BULK_ACTIONS[^\n]*delete_draft/);
+  assert.doesNotMatch(route, /update\(\{ status/);
   assert.doesNotMatch(route, /\.from\("products"\)\.delete/);
   assert.doesNotMatch(route, /"retire"/);
+  assert.doesNotMatch(component, />Publish<|>Archive<|runBulkAction\("archive"\)/);
 });
