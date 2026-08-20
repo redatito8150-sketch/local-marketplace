@@ -9,6 +9,17 @@ import {
   queueAccountStorageCleanup,
 } from "@/lib/account/storageCleanup";
 
+// supabaseAdmin.rpc(...) returns a thenable query builder, not a real
+// Promise, so it has no .catch of its own to chain — this wraps it in one.
+async function unlockAccountForDeletion(userId: string): Promise<void> {
+  try {
+    await supabaseAdmin.rpc("unlock_account_for_deletion", { p_user_id: userId });
+  } catch {
+    // Best-effort release — the 10-minute staleness window in
+    // create_payment_attempt is the fallback if even this fails.
+  }
+}
+
 function isSameOrigin(request: NextRequest) {
   const origin = request.headers.get("origin");
   const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
@@ -52,45 +63,57 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Too many requests — please try again later" }, { status: 429 });
   }
 
-  // Audit finding PAY-02 (docs/audits/2026-08-20-production-security-
-  // correctness-reliability-audit-en.md): payment_attempts.user_id is
-  // ON DELETE CASCADE from auth.users. Deleting the account while a card
-  // payment is still in flight (created/pending/processing/paid/
-  // reflecting — not yet fulfilled, failed, expired, or cancelled) would
-  // silently erase the one local record of that payment right before a
-  // Paymob webhook needs it, leaving captured money with no order and no
-  // local trail. Terminal-state attempts (fulfilled, fulfillment_failed,
-  // failed, expired, cancelled) don't block deletion — nothing further can
-  // happen to them.
-  const { data: openAttempts, error: openAttemptsError } = await supabaseAdmin
-    .from("payment_attempts")
-    .select("id")
-    .eq("user_id", user.id)
-    .in("status", ["created", "pending", "processing", "paid", "reflecting"])
-    .limit(1);
-  if (openAttemptsError) {
-    return safeErrorResponse("account.delete.check-payment-attempts", openAttemptsError);
+  // Corrective pass 2, Section 3 (docs/audits/2026-08-20-production-
+  // security-correctness-reliability-audit-en.md): the previous check here
+  // was a plain SELECT, separate from the actual deletion — a card
+  // checkout could create a fresh payment_attempt in the gap between this
+  // read and auth.admin.deleteUser() below (classic time-of-check/time-of-
+  // use). lock_account_for_deletion() takes a `for update` lock on this
+  // user's profiles row and performs the SAME open-attempt check under
+  // that lock; create_payment_attempt() takes the identical lock on the
+  // identical row before creating anything, so the two can never both act
+  // on a state that's already stale by the time either one commits.
+  const { error: lockError } = await supabaseAdmin.rpc("lock_account_for_deletion", { p_user_id: user.id });
+  if (lockError) {
+    if (lockError.message?.startsWith("PAYMENT_ATTEMPT_IN_PROGRESS")) {
+      return NextResponse.json(
+        {
+          error: "You have a payment in progress. Please wait for it to complete before deleting your account.",
+          code: "PAYMENT_ATTEMPT_IN_PROGRESS",
+        },
+        { status: 409 }
+      );
+    }
+    return safeErrorResponse("account.delete.lock", lockError);
   }
-  if (openAttempts && openAttempts.length > 0) {
-    return NextResponse.json(
-      {
-        error: "You have a payment in progress. Please wait for it to complete before deleting your account.",
-        code: "PAYMENT_ATTEMPT_IN_PROGRESS",
-      },
-      { status: 409 }
-    );
+
+  // Preserves the accounting-relevant part of every payment_attempts row
+  // this user ever created (item ids/prices/quantities), while destroying
+  // the personal data inside shipping_snapshot (name/email/phone/address).
+  // Must run before auth.admin.deleteUser() below — payment_attempts.
+  // user_id becomes NULL the instant the auth user is gone (ON DELETE SET
+  // NULL), which would make these rows impossible to find by user_id
+  // afterward.
+  const { error: redactError } = await supabaseAdmin.rpc("redact_deleted_account_payment_snapshots", {
+    p_user_id: user.id,
+  });
+  if (redactError) {
+    await unlockAccountForDeletion(user.id);
+    return safeErrorResponse("account.delete.redact-payments", redactError);
   }
 
   let cleanupJobs;
   try {
     cleanupJobs = await queueAccountStorageCleanup(user.id);
   } catch (error) {
+    await unlockAccountForDeletion(user.id);
     return safeErrorResponse("account.delete.queue-storage", error as Error);
   }
 
   const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
   if (error) {
     await discardStorageCleanupJobs(cleanupJobs.map((job) => job.id)).catch(() => undefined);
+    await unlockAccountForDeletion(user.id);
     return safeErrorResponse("account.delete", error);
   }
 

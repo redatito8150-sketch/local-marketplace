@@ -4,23 +4,20 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logError } from "@/lib/errorLog";
 
 // Corrective pass 2, Section 1 (docs/audits/2026-08-20-production-security-
-// correctness-reliability-audit-en.md): replaces the old note-only
-// mark_payment_attempt_refund_recorded flow. This route now only ever
-// covers a captured attempt with a FAILED bucket that never became an
-// order at all (record_payment_attempt_refund rejects anything else) — a
-// specific paid order's own refund is recorded through the dedicated
-// per-order admin order route instead. Requires an exact amount and a
-// real Paymob provider reference; never calls Paymob's Refund API itself.
-export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// correctness-reliability-audit-en.md): the only way to record a refund
+// against a SPECIFIC paid card order — never an optional note, never
+// applied blanket across every sibling order under the same purchase.
+// Requires an exact amount and a real provider reference (from Paymob's
+// own dashboard — this never calls Paymob's Refund API itself); the
+// database enforces the amount can never exceed what was actually
+// captured for this order and that the same provider reference can never
+// be recorded twice. cancel_order only unblocks a card order once its
+// payment_status here reaches 'refunded'.
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const { id } = await props.params;
   const staff = await requireStaffRole("admin");
   if (!staff) {
     return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-  }
-
-  const { id } = await params;
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(id)) {
-    return NextResponse.json({ error: "Invalid payment attempt id" }, { status: 400 });
   }
 
   let body: { amountCents?: unknown; providerReference?: unknown; note?: unknown };
@@ -40,8 +37,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
 
-  const { data, error } = await supabaseAdmin.rpc("record_payment_attempt_refund", {
-    p_payment_attempt_id: id,
+  const { data, error } = await supabaseAdmin.rpc("record_order_refund", {
+    p_order_id: id,
     p_actor_id: staff.user.id,
     p_amount_cents: amountCents,
     p_provider_reference: providerReference,
@@ -51,15 +48,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (error) {
     const code = error.message.split(":")[0]?.trim();
     const MESSAGES: Record<string, string> = {
-      PAYMENT_ATTEMPT_NOT_FOUND: "Payment attempt not found.",
-      NO_FAILED_BUCKET_TO_REFUND: "This attempt has no failed, unrefunded bucket — record the refund against the specific order instead.",
-      REFUND_EXCEEDS_CAPTURED_BALANCE: "That amount is more than what's still refundable for this attempt.",
-      REFUND_REFERENCE_ALREADY_USED: "This provider reference was already used for a different refund.",
+      ORDER_NOT_FOUND: "Order not found.",
+      ORDER_NOT_CARD_PAID: "This order was not paid by card — there is nothing to refund here.",
+      ORDER_HAS_NO_CAPTURED_AMOUNT: "This order has no recorded captured amount to refund against.",
+      REFUND_EXCEEDS_CAPTURED_BALANCE: "That amount is more than what's still refundable on this order.",
+      REFUND_REFERENCE_ALREADY_USED: "This provider reference was already used for a different order or amount.",
       ACTOR_REQUIRED: "Could not identify the acting admin.",
       INVALID_AMOUNT: "Enter a valid refund amount.",
       PROVIDER_REFERENCE_REQUIRED: "A provider (Paymob) refund reference is required.",
     };
-    if (!MESSAGES[code]) logError("record_payment_attempt_refund failed", error.message);
+    if (!MESSAGES[code]) logError("admin.orders.refund", error.message);
     return NextResponse.json({ error: MESSAGES[code] ?? "Couldn't record the refund. Please try again." }, { status: 400 });
   }
 

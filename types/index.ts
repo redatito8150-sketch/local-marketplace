@@ -677,7 +677,11 @@ export interface OrderRecord {
   // place_paid_order) — this is the only evidence in the admin UI that an
   // order was actually paid by card through Paymob rather than COD.
   paymentMethod: "cash_on_delivery" | "card";
-  paymentStatus: "unpaid" | "paid" | "refunded";
+  // 'partially_refunded' added by corrective pass 2, Section 1
+  // (docs/audits/2026-08-20-production-security-correctness-reliability-
+  // audit-en.md) — set only by record_order_refund when a recorded refund
+  // covers less than the order's full captured amount.
+  paymentStatus: "unpaid" | "paid" | "partially_refunded" | "refunded";
   paymentAttemptId?: string;
 }
 

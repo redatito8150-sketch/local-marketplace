@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { resolveAvatarUrl } from "../lib/account/avatar.ts";
+import { cleanupOrFail, resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Integration checks against the live/configured Supabase project (same
 // convention as tests/security.rls.test.ts) for the account-linking /
@@ -20,33 +18,19 @@ import { resolveAvatarUrl } from "../lib/account/avatar.ts";
 // row via `profiles.id references auth.users on delete cascade`), so
 // nothing is left behind in the project.
 //
-// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
-// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md)
-// — this suite creates and deletes real auth.users rows against whichever
-// project .env.local points at, and must never run just because an
-// ordinary `npm test` found credentials on disk.
+// Requires RUN_LIVE_RLS=1 AND RUN_LIVE_RLS_ALLOWED_PROJECT_REF, resolved
+// through tests/helpers/liveSupabaseTestConfig.ts (corrective pass 2
+// Section 6, docs/audits/2026-08-20-production-security-correctness-
+// reliability-audit-en.md, TEST-01 follow-up) — this suite creates and
+// deletes real auth.users rows against whichever project .env.local points
+// at, and must only ever run against a disposable project the developer
+// has explicitly named. Cleanup failures now fail the suite instead of
+// being discarded.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-
-function loadEnv(): Record<string, string> {
-  if (!existsSync(envPath)) return {};
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const canRun = env.RUN_LIVE_RLS === "1" && Boolean(supabaseUrl && serviceRoleKey);
+const liveConfig = resolveLiveSupabaseTestConfig();
+const supabaseUrl = liveConfig?.supabaseUrl;
+const serviceRoleKey = liveConfig?.serviceRoleKey ?? undefined;
+const canRun = Boolean(liveConfig?.serviceRoleKey);
 
 function admin(): SupabaseClient {
   return createClient(supabaseUrl!, serviceRoleKey!, { auth: { persistSession: false } });
@@ -98,7 +82,7 @@ test(
       assert.equal(profile.avatar_url, null, "a fresh signup must never have a manual avatar");
       assert.equal(profile.provider_avatar_url, null, "no OAuth provider was involved");
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -120,7 +104,7 @@ test(
         "the Google photo is what the UI should display since it's the only one available"
       );
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -144,7 +128,7 @@ test(
       assert.equal(after.provider_avatar_url, googlePic);
       assert.equal(resolveAvatarUrl(after.avatar_url, after.provider_avatar_url), googlePic);
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -176,7 +160,7 @@ test(
         );
       }
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -203,7 +187,7 @@ test(
       assert.equal(after.avatar_url, manualUrl);
       assert.equal(resolveAvatarUrl(after.avatar_url, after.provider_avatar_url), manualUrl);
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -228,7 +212,7 @@ test(
       assert.equal(after.provider_avatar_url, googlePic, "provider_avatar_url must be left untouched by removal");
       assert.equal(resolveAvatarUrl(after.avatar_url, after.provider_avatar_url), googlePic);
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );
@@ -244,7 +228,7 @@ test(
       assert.ifError(error);
       assert.equal(data?.length, 1, "exactly one profile row must exist for this auth user");
     } finally {
-      await db.auth.admin.deleteUser(userId);
+      await cleanupOrFail("avatarLinking", [() => db.auth.admin.deleteUser(userId)]);
     }
   }
 );

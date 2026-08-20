@@ -126,6 +126,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: outcome.reason }, { status: outcome.status });
     }
 
+    // Corrective pass 2, Section 5: card checkout never used to finalize its
+    // own coupon usage anywhere — coupons.used_count was only ever
+    // incremented by place_order() (Cash on Delivery); a fulfilled card
+    // order silently never counted against max_uses at all. Idempotent
+    // (checks its own reservation/redemption state), safe to call on every
+    // delivery including replays.
+    if (outcome.action === "paid_and_fulfilled" && outcome.result.status === "fulfilled") {
+      const { error: redemptionError } = await supabaseAdmin.rpc("finalize_payment_attempt_coupon_redemption", {
+        p_payment_attempt_id: outcome.paymentAttemptId,
+      });
+      if (redemptionError) {
+        logError("Paymob webhook: coupon redemption finalization failed", redemptionError.message);
+      }
+    }
+
     if (outcome.action === "paid_and_fulfilled" && outcome.result.status === "fulfillment_failed") {
       logError(
         "Paymob payment succeeded but fulfillment failed entirely — needs manual refund",

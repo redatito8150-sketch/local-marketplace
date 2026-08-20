@@ -1,9 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { cleanupOrFail, resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Live cross-tenant isolation checks against the configured Supabase project.
 //
@@ -25,34 +23,19 @@ import path from "node:path";
 // Skipped (not failed) without credentials, same convention as
 // tests/security.rls.test.ts.
 //
-// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
-// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md)
-// — this suite creates and deletes real auth users and tenant rows against
-// whichever project .env.local points at, and must never run just because
-// an ordinary `npm test` found credentials on disk.
+// Requires RUN_LIVE_RLS=1 AND RUN_LIVE_RLS_ALLOWED_PROJECT_REF (see
+// tests/helpers/liveSupabaseTestConfig.ts, corrective pass 2 Section 6 —
+// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md,
+// TEST-01 follow-up) — this suite creates and deletes real auth users and
+// tenant rows against whichever project .env.local points at, and must
+// never run just because an ordinary `npm test` found credentials on disk.
+// Cleanup failures now fail the suite instead of being swallowed.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-
-function loadEnv(): Record<string, string> {
-  if (!existsSync(envPath)) return {};
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const hasCredentials = env.RUN_LIVE_RLS === "1" && Boolean(supabaseUrl && anonKey && serviceRoleKey);
+const liveConfig = resolveLiveSupabaseTestConfig();
+const hasCredentials = Boolean(liveConfig?.serviceRoleKey);
+const supabaseUrl = liveConfig?.supabaseUrl;
+const anonKey = liveConfig?.anonKey;
+const serviceRoleKey = liveConfig?.serviceRoleKey ?? undefined;
 
 interface TestAccount {
   id: string;
@@ -162,9 +145,10 @@ test(
         "user B cannot see its own address — the owner policy is broken, not just restrictive"
       );
     } finally {
-      for (const id of createdUserIds) {
-        await admin.auth.admin.deleteUser(id).catch(() => undefined);
-      }
+      await cleanupOrFail(
+        "crossTenantIsolation",
+        createdUserIds.map((id) => () => admin.auth.admin.deleteUser(id))
+      );
     }
   }
 );
@@ -221,9 +205,10 @@ test(
       assert.equal(aProfile?.is_admin, false, "user A ended up with is_admin = true");
       assert.notEqual(aProfile?.role, "admin", "user A ended up with the admin role");
     } finally {
-      for (const id of createdUserIds) {
-        await admin.auth.admin.deleteUser(id).catch(() => undefined);
-      }
+      await cleanupOrFail(
+        "crossTenantIsolation",
+        createdUserIds.map((id) => () => admin.auth.admin.deleteUser(id))
+      );
     }
   }
 );

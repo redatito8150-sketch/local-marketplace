@@ -1,9 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
+import { cleanupOrFail, resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Integration checks against the live/configured Supabase project — these
 // codify the manual verification performed during the production-readiness
@@ -11,39 +9,23 @@ import path from "node:path";
 // SECURITY DEFINER functions must reject the public anon key, and the
 // products RLS policy must not leak non-published/paused rows.
 //
-// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
-// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md):
-// this suite creates and deletes real auth users, addresses, and other rows
-// against whichever project .env.local points at (in this repo, that is the
-// real configured Supabase project, not a disposable one) — it must never
-// run just because an ordinary `npm test` found credentials on disk. Skipped
-// entirely (not failed) without both the opt-in and credentials, e.g. a CI
-// environment without .env.local.
+// Requires RUN_LIVE_RLS=1 AND RUN_LIVE_RLS_ALLOWED_PROJECT_REF, resolved
+// through tests/helpers/liveSupabaseTestConfig.ts (corrective pass 2
+// Section 6, docs/audits/2026-08-20-production-security-correctness-
+// reliability-audit-en.md, TEST-01 follow-up): this suite creates and
+// deletes real auth users, brands, products, and other rows against
+// whichever project .env.local points at — it must only ever run against a
+// disposable project the developer has explicitly named, never just
+// because an ordinary `npm test` found credentials on disk. Skipped
+// entirely (not failed) with no opt-in at all; throws loudly instead of
+// skipping if RUN_LIVE_RLS=1 is set but the allowlisted project ref is
+// missing, mismatched, or denylisted.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-
-function loadEnv(): Record<string, string> {
-  if (!existsSync(envPath)) return {};
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-
-const liveTestsOptedIn = env.RUN_LIVE_RLS === "1";
-const hasCredentials = liveTestsOptedIn && Boolean(supabaseUrl && anonKey);
+const liveConfig = resolveLiveSupabaseTestConfig();
+const supabaseUrl = liveConfig?.supabaseUrl;
+const anonKey = liveConfig?.anonKey;
+const serviceRoleKey = liveConfig?.serviceRoleKey ?? undefined;
+const hasCredentials = Boolean(liveConfig);
 const FAKE_UUID = "00000000-0000-0000-0000-000000000099";
 
 test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, async (t) => {
@@ -352,7 +334,9 @@ test(
       const sequences = skus.map((sku) => Number(sku.split("-")[1])).sort((x, y) => x - y);
       assert.deepEqual(sequences, [1, 2, 3]);
     } finally {
-      await admin.from("brands").delete().eq("id", brand.id);
+      await cleanupOrFail("security.rls next_product_sku", [
+        () => admin.from("brands").delete().eq("id", brand.id),
+      ]);
     }
   }
 );
@@ -397,8 +381,10 @@ test(
       assert.ok(renameError, "expected the sku_prefix lock trigger to reject the change");
       assert.match(renameError!.message, /SKU prefix cannot be changed/i);
     } finally {
-      await admin.from("products").delete().eq("brand_id", brand.id);
-      await admin.from("brands").delete().eq("id", brand.id);
+      await cleanupOrFail("security.rls sku_prefix lock", [
+        () => admin.from("products").delete().eq("brand_id", brand.id),
+        () => admin.from("brands").delete().eq("id", brand.id),
+      ]);
     }
   }
 );
@@ -446,9 +432,11 @@ test(
       assert.ok(productError, "expected the cross-brand collection guard trigger to reject the insert");
       assert.match(productError!.message, /different brand/i);
     } finally {
-      await admin.from("products").delete().eq("brand_id", brandB.id);
-      await admin.from("collections").delete().eq("brand_id", brandA.id);
-      await admin.from("brands").delete().in("id", [brandA.id, brandB.id]);
+      await cleanupOrFail("security.rls cross-brand collection guard", [
+        () => admin.from("products").delete().eq("brand_id", brandB.id),
+        () => admin.from("collections").delete().eq("brand_id", brandA.id),
+        () => admin.from("brands").delete().in("id", [brandA.id, brandB.id]),
+      ]);
     }
   }
 );

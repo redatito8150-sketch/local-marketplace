@@ -3,6 +3,7 @@ import { requireAdminUser, requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
+import { sendToDiscord, buildDiscordDescription, DISCORD_COLORS } from "@/lib/discord";
 import { notifyUser } from "@/lib/notify";
 import { getApplicationForAdmin } from "@/lib/data/admin";
 import { deleteApplicationTransactionally } from "@/lib/admin/applicationDeletion";
@@ -289,14 +290,28 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "APPLICATION_NOT_FOUND" ? 404 : 409 });
   }
 
-  await logAudit({
-    actorId: staff.user.id,
-    actorLabel: staff.user.email ?? staff.user.id,
-    entityType: "application",
-    entityId: params.id,
-    action: "delete",
-    before: application,
-    after: { reason, mediaJobsQueued: result.mediaJobsQueued },
+  // Corrective pass 2, Section 7 (docs/audits/2026-08-20-production-
+  // security-correctness-reliability-audit-en.md): the durable audit_logs
+  // row (actor, reason, timestamp, a safe before-snapshot, the queued
+  // cleanup count) is now written by admin_delete_brand_application()
+  // itself, inside the SAME transaction as the deletes — logAudit() here
+  // would create a second, redundant row. Only the best-effort Discord
+  // mirror still happens from the app layer, after commit, exactly as the
+  // requirement allows ("Discord or other external notifications may
+  // remain best-effort after commit").
+  await sendToDiscord("auditApplications", {
+    description: buildDiscordDescription({
+      headline: "Application deleted",
+      subline: application.brandName,
+      meta: [
+        { label: "Application ID", value: params.id },
+        { label: "Actor ID", value: staff.user.id },
+        { label: "Storage cleanup jobs queued", value: String(result.mediaJobsQueued) },
+      ],
+      detailLabel: "Reason",
+      detailBody: reason,
+    }),
+    color: DISCORD_COLORS.red,
   });
 
   return NextResponse.json({ id: params.id, deleted: true });

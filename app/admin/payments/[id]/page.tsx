@@ -6,10 +6,11 @@ import { PAYMENT_ATTEMPT_STATUS_LABELS, paymentAttemptStatusBadgeClass, ORDER_ST
 import RefundQueueActions from "@/components/admin/RefundQueueActions";
 import type { OrderStatus } from "@/types";
 
-// Mirrors mark_payment_attempt_refund_recorded's own eligibility check
-// (supabase/migrations/20260812000001_paymob_webhook_and_paid_fulfillment.sql)
-// — only shown when the action would actually succeed, not left for the
-// admin to discover via a rejected request.
+// Mirrors record_payment_attempt_refund's own coarse eligibility check
+// (supabase/migrations/20260821000000_production_audit_corrective_pass_2.sql)
+// — the RPC itself is the source of truth for whether a failed bucket
+// actually still needs refunding; this just avoids showing the action when
+// it obviously wouldn't apply.
 function isRefundEligible(status: string, refundedAt: string | null): boolean {
   return !refundedAt && (status === "fulfilled" || status === "fulfillment_failed");
 }

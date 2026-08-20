@@ -1,8 +1,13 @@
 import type { User } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getMfaUserState } from "@/lib/supabase/mfaAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { getUserPermissions } from "@/lib/supabase/permissions";
+import { getUserPermissions, type PermissionKey } from "@/lib/supabase/permissions";
+import {
+  DENY_UNMAPPED_BRAND_PORTAL_PATH,
+  getBrandPortalPathRequirement,
+} from "@/lib/admin/brandPortalPermissionPolicy";
 
 export type BrandAccessLevel = "owner" | "assistant";
 
@@ -15,6 +20,12 @@ export interface BrandOwnerContext {
   brandSlug: string | null;
   brandName: string | null;
   isAdmin: boolean;
+  // profiles.role === 'admin' — a full-rank admin, distinct from is_admin
+  // (which also covers narrower custom-role staff). Only a full-rank admin
+  // keeps unrestricted, owner-equivalent impersonation access; see
+  // hasRequiredBrandPortalPathPermission below for what a narrower
+  // custom-role staffer is additionally required to hold per path.
+  isFullAdmin: boolean;
   // True only when the caller is viewing a brand they don't personally
   // own (an admin using ?brand=slug) — this is what tells the data layer
   // to read via supabaseAdmin instead of relying on the owner-scoped RLS
@@ -59,10 +70,11 @@ export async function requireBrandOwner(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("is_admin")
+    .select("is_admin, role")
     .eq("id", user.id)
     .maybeSingle();
   const isAdmin = Boolean(profile?.is_admin);
+  const isFullAdmin = profile?.role === "admin";
 
   const { data: ownedBrands } = await supabaseAdmin
     .from("brands")
@@ -163,6 +175,7 @@ export async function requireBrandOwner(
       brandSlug: selectedMembership.slug,
       brandName: selectedMembership.name,
       isAdmin,
+      isFullAdmin,
       isImpersonating: false,
       accessLevel: selectedMembership.accessLevel,
       setupStatus: selectedMembership.setupStatus,
@@ -197,6 +210,7 @@ export async function requireBrandOwner(
       brandSlug: null,
       brandName: null,
       isAdmin: true,
+      isFullAdmin,
       isImpersonating: false,
       accessLevel: "owner",
       setupStatus: null,
@@ -216,19 +230,54 @@ export async function requireBrandOwner(
     .maybeSingle();
 
   if (!targetBrand) return null;
+
+  // Corrective pass 2, Section 2: manage_brands only gates *whether*
+  // impersonation may start. A full-rank admin (role === 'admin') keeps
+  // unrestricted, owner-equivalent recovery access by design — that is the
+  // one account tier this system trusts to always be able to step into any
+  // brand's shoes. A narrower custom-role staffer must additionally hold
+  // the specific permission the current path maps to (orders, inventory,
+  // collections, products, content, reviews, audit log, analytics — see
+  // lib/admin/brandPortalPermissionPolicy.ts) and is represented with
+  // accessLevel "assistant", never "owner" — the same reduced UI/action
+  // surface a real brand_assistant gets, so limited staff is never
+  // rendered or treated as if it were the Brand Owner.
+  let scopedAccessLevel: BrandAccessLevel = "owner";
+  if (!isFullAdmin) {
+    if (!(await hasRequiredBrandPortalPathPermission(permissions))) return null;
+    scopedAccessLevel = "assistant";
+  }
+
   return {
     user,
     brandId: targetBrand.id,
     brandSlug: targetBrand.slug,
     brandName: targetBrand.name,
     isAdmin: true,
+    isFullAdmin,
     isImpersonating: true,
-    accessLevel: "owner",
+    accessLevel: scopedAccessLevel,
     setupStatus: targetBrand.setup_status,
     isActive: targetBrand.is_active,
     isMahalyPartner: Boolean(targetBrand.is_mahaly_partner),
     availableBrands: [],
   };
+}
+
+// Mirrors lib/supabase/adminAuth.ts's hasRequiredPathPermission for the
+// Brand Portal's own permission map. Reads the same x-pathname header
+// proxy.ts already sets on every request (not admin-specific), so this
+// works identically from a Server Component page and a Route Handler.
+async function hasRequiredBrandPortalPathPermission(permissions: Set<PermissionKey>): Promise<boolean> {
+  const requestHeaders = await headers();
+  const pathname = requestHeaders.get("x-pathname");
+  if (!pathname) return false;
+
+  const requirement = getBrandPortalPathRequirement(pathname);
+  if (requirement === null) return true;
+  if (requirement === DENY_UNMAPPED_BRAND_PORTAL_PATH) return false;
+
+  return permissions.has(requirement);
 }
 
 // Portal APIs use this stricter guard. A suspended brand may still render its

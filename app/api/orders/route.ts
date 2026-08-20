@@ -348,6 +348,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    // Corrective pass 2, Section 5: private.coupons_enforce_max_uses_guard
+    // now rejects this UPDATE if used_count plus every still-outstanding
+    // card payment_attempt reservation would exceed max_uses — closing the
+    // COD-vs-in-flight-card race, not just card-vs-card.
+    if (message.startsWith("COUPON_LIMIT_REACHED")) {
+      return NextResponse.json(
+        { error: "This coupon has just reached its usage limit. Remove it to continue." },
+        { status: 409 }
+      );
+    }
     if (message.startsWith("IDEMPOTENCY_CONFLICT")) {
       return NextResponse.json(
         { error: "This checkout key was already used with different order details." },

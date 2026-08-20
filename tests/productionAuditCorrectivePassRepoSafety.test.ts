@@ -81,12 +81,13 @@ test("APP-01: application deletion is one transactional RPC that also queues Sto
   assert.doesNotMatch(route, /for \(const table of childTables\)/);
 });
 
-test("PAY-02: account deletion refuses to proceed while a payment attempt is still in flight, and payment_attempts.user_id survives deletion", () => {
-  const route = read("app/api/account/delete/route.ts");
-  assert.match(route, /PAYMENT_ATTEMPT_IN_PROGRESS/);
-  assert.match(route, /\["created", "pending", "processing", "paid", "reflecting"\]/);
+test("PAY-02: payment_attempts.user_id survives account deletion (ON DELETE SET NULL, nullable column)", () => {
   assert.match(migration, /alter table public\.payment_attempts alter column user_id drop not null;/);
   assert.match(migration, /foreign key \(user_id\) references auth\.users\(id\) on delete set null;/);
+  // The "refuses to proceed while a payment attempt is in flight" half of
+  // this finding was superseded by corrective pass 2, Section 3 (atomic
+  // deletion-vs-payment-creation via a shared row lock, not a standalone
+  // SELECT) — see productionAuditCorrectivePass2RepoSafety.test.ts.
 });
 
 test("PAY-03: cancel_order rejects a captured, un-refunded card order for every caller (Admin, Brand, and the customer path it already had)", () => {
@@ -97,10 +98,17 @@ test("PAY-03: cancel_order rejects a captured, un-refunded card order for every 
   assert.match(read("app/api/brand-portal/orders/[id]/cancel/route.ts"), /PAID_ORDER_REQUIRES_REFUND_REVIEW/);
 });
 
-test("PAY-09 (part 1): recording a manual refund also syncs orders.payment_status to 'refunded', so a refunded order no longer permanently blocks cancellation", () => {
-  const fn = migration.slice(migration.indexOf("create or replace function public.mark_payment_attempt_refund_recorded"));
-  assert.match(fn, /update public\.orders\s*\n\s*set payment_status = 'refunded'/);
-  assert.match(fn, /where master_order_id = v_attempt\.master_order_id/);
+// PAY-09 (part 1) as originally implemented here — mark_payment_attempt_
+// refund_recorded blanket-setting EVERY sibling order under one
+// master_order_id to 'refunded' — was exactly the "do not mark every order
+// under the same master_order_id as fully refunded" defect corrective pass
+// 2 was rejected over. That function is dropped by the corrective-pass-2
+// migration; its replacement (record_order_refund, scoped to one specific
+// order with an exact amount) is covered in
+// productionAuditCorrectivePass2RepoSafety.test.ts.
+test("PAY-09 (superseded): mark_payment_attempt_refund_recorded is dropped by the corrective-pass-2 migration, not left alongside its replacement", () => {
+  const pass2Migration = read("supabase/migrations/20260821000000_production_audit_corrective_pass_2.sql");
+  assert.match(pass2Migration, /drop function if exists public\.mark_payment_attempt_refund_recorded\(uuid, uuid, text\);/);
 });
 
 test("PAY-06: coupon usage is reserved atomically at payment-attempt creation via an additive, self-expiring reservation ledger", () => {
@@ -130,15 +138,17 @@ test("every new/rewritten function in the corrective migration is service_role-o
   }
 });
 
-// CFG-01 was investigated and found to be a false positive: Supabase's own
-// pg_cron already schedules private.execute_scheduled_product_visibility_
-// activation hourly (supabase/migrations/20260815214231_...sql), more
-// frequently than Vercel's Hobby-tier daily-only cron could provide — the
-// migration's own comment documents this as the deliberate reason the
-// Vercel route is left unscheduled. Recorded here as a fixture so a future
-// change to that migration doesn't silently invalidate this conclusion
-// without someone noticing.
-test("CFG-01 (verified false positive): Supabase pg_cron already schedules product-visibility activation hourly, independently of vercel.json", () => {
+// Corrective pass 2, Section 8: CFG-01 was previously called a "verified
+// false positive" on the strength of this migration file alone. A
+// migration existing in the repo is not proof it was ever applied to the
+// production database, nor that the pg_cron job it creates is still
+// scheduled and actually running there (pg_cron jobs live in the cron
+// extension's own catalog, unaffected by this repo's migration history if
+// someone later drops or reschedules the job by hand in production). This
+// is downgraded to "repository-configured, requires production
+// verification" — the exact read-only queries to run against production
+// (never executed by this pass) are in the corrective-pass report.
+test("CFG-01 (repository-configured, NOT independently verified against production): the migration that would schedule hourly product-visibility activation via pg_cron exists in this repo", () => {
   const cronMigration = read("supabase/migrations/20260815214231_product_visibility_activation_cron.sql");
   assert.match(cronMigration, /cron\.schedule\(\s*\n\s*'product-visibility-activation',\s*\n\s*'0 \* \* \* \*'/);
   assert.match(cronMigration, /private\.execute_scheduled_product_visibility_activation\(200\)/);

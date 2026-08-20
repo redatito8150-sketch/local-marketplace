@@ -6,6 +6,7 @@ import { ORDER_STATUS_LABELS, getValidOrderStatusOptions, orderStatusBadgeClass 
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
 import CancelMasterOrderButton from "@/components/admin/CancelMasterOrderButton";
+import RecordOrderRefundAction from "@/components/admin/RecordOrderRefundAction";
 import type { OrderStatus } from "@/types";
 
 export default async function AdminOrderDetailPage(
@@ -227,16 +228,32 @@ export default async function AdminOrderDetailPage(
                     ? "bg-green-50 text-green-700"
                     : order.paymentStatus === "refunded"
                     ? "bg-red-50 text-red-700"
+                    : order.paymentStatus === "partially_refunded"
+                    ? "bg-amber-50 text-amber-700"
                     : "bg-stone-100 text-ink-soft/70"
                 }`}
               >
-                {order.paymentStatus === "paid" ? "Paid" : order.paymentStatus === "refunded" ? "Refunded" : "Unpaid"}
+                {order.paymentStatus === "paid"
+                  ? "Paid"
+                  : order.paymentStatus === "refunded"
+                  ? "Refunded"
+                  : order.paymentStatus === "partially_refunded"
+                  ? "Partially refunded"
+                  : "Unpaid"}
               </span>
             </p>
             {order.paymentAttemptId && (
               <p className="text-[11.5px] text-ink-soft/50" title={order.paymentAttemptId}>
                 Paymob payment attempt: {order.paymentAttemptId.slice(0, 8)}…
               </p>
+            )}
+            {order.paymentMethod === "card" && order.paymentStatus !== "unpaid" && (
+              <div className="mt-3 border-t border-stone-150 pt-3">
+                <RecordOrderRefundAction
+                  orderId={order.id}
+                  paymentStatus={order.paymentStatus}
+                />
+              </div>
             )}
           </div>
         </div>
