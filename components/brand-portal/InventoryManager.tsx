@@ -3,14 +3,30 @@
 import Image from "next/image";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
 import type { BrandVariant, InventoryMovement } from "@/lib/data/brandPortal";
 import { INVENTORY_REASONS, type InventoryAdjustmentType } from "@/lib/inventory/adjustmentValidation";
 import { formatDateTime } from "@/lib/format";
+import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import ColorSwatch from "@/components/admin/ColorSwatch";
+import { compareSizeOrderables } from "@/lib/inventory/sizeOrder";
 
 type InventoryView = "inventory" | "activity";
+type LocalSort = `${string}-asc` | `${string}-desc`;
 
 const fieldClass = "mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] bg-white px-3 text-[12px] text-[#4d433c] outline-none focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8";
+
+function InventorySortHeader({ field, label, sort, onSort, className = "" }: { field: string; label: string; sort: LocalSort; onSort: (field: string) => void; className?: string }) {
+  const active = sort.startsWith(`${field}-`);
+  const Icon = active ? sort.endsWith("-asc") ? ArrowUp : ArrowDown : ArrowUpDown;
+  return <th className={className}><button type="button" onClick={() => onSort(field)} aria-label={`Sort by ${label}${active ? sort.endsWith("-asc") ? ", ascending" : ", descending" : ""}`} className={`group inline-flex min-h-8 items-center gap-1.5 rounded-lg px-1.5 text-left outline-none transition-colors hover:text-[#C85956] focus-visible:ring-2 focus-visible:ring-[#C85956]/25 ${active ? "text-[#C85956]" : ""}`}><span>{label}</span><Icon aria-hidden="true" className={`h-3 w-3 ${active ? "opacity-100" : "opacity-45 group-hover:opacity-100"}`} /></button></th>;
+}
+
+function toggleLocalSort(current: LocalSort, field: string, defaultDirection: "asc" | "desc" = "asc"): LocalSort {
+  if (current === `${field}-asc`) return `${field}-desc`;
+  if (current === `${field}-desc`) return `${field}-asc`;
+  return `${field}-${defaultDirection}`;
+}
 
 function localDateTimeValue(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -65,13 +81,6 @@ function SelectedVariantChips({ variants, onRemove }: { variants: BrandVariant[]
   </div>;
 }
 
-function StockInsight({ variant }: { variant: BrandVariant }) {
-  if (variant.estimatedDaysRemaining != null) {
-    return <><p className={`text-[11px] font-bold tabular-nums ${variant.estimatedDaysRemaining <= 14 ? "text-[#C85956]" : "text-[#4b413a]"}`}>{variant.estimatedDaysRemaining} days left</p><p className="mt-1 text-[9.5px] text-[#94867c]">At the last 30-day pace</p></>;
-  }
-  return <><p className="text-[11px] font-bold text-[#6f635b]">No recent sales</p><p className="mt-1 text-[9.5px] text-[#94867c]">Stock is stable</p></>;
-}
-
 type ColorVariantGroup = {
   key: string;
   label: string;
@@ -116,7 +125,13 @@ function buildVariantGroups(variants: BrandVariant[]): ProductVariantGroup[] {
     productName: product.productName,
     productImage: product.productImage,
     variants: product.variants,
-    colors: [...product.colors.values()],
+    colors: [...product.colors.values()].map((color) => ({
+      ...color,
+      variants: [...color.variants].sort((first, second) => compareSizeOrderables(
+        { id: first.variantId, label: first.size ?? "One size", sortOrder: first.sizeSortOrder, brandId: first.sizeBrandId },
+        { id: second.variantId, label: second.size ?? "One size", sortOrder: second.sizeSortOrder, brandId: second.sizeBrandId },
+      )),
+    })),
   }));
 }
 
@@ -144,7 +159,18 @@ function VariantStockHierarchy({ variants, selected, canSelect, isMahalyPartner,
   onToggleVariant: (variantId: string, checked: boolean) => void;
   onToggleVariants: (variantIds: string[], checked: boolean) => void;
 }) {
-  const groups = useMemo(() => buildVariantGroups(variants), [variants]);
+  const [sort, setSort] = useState<LocalSort>("product-asc");
+  const groups = useMemo(() => buildVariantGroups(variants).sort((first, second) => {
+    const direction = sort.endsWith("-desc") ? -1 : 1;
+    const firstSummary = stockGroupSummary(first.variants);
+    const secondSummary = stockGroupSummary(second.variants);
+    if (sort.startsWith("product-")) return direction * first.productName.localeCompare(second.productName);
+    if (sort.startsWith("available-")) return direction * (firstSummary.available - secondSummary.available);
+    if (sort.startsWith("incoming-")) return direction * (firstSummary.incoming - secondSummary.incoming);
+    if (sort.startsWith("ordered-")) return direction * (firstSummary.ordered - secondSummary.ordered);
+    if (sort.startsWith("status-")) return direction * (firstSummary.issueCount - secondSummary.issueCount);
+    return 0;
+  }), [sort, variants]);
   const [expandedProducts, setExpandedProducts] = useState<string[]>([]);
   const [expandedColors, setExpandedColors] = useState<string[]>([]);
   const isSelected = (items: BrandVariant[]) => items.every((variant) => selected.includes(variant.variantId));
@@ -161,16 +187,24 @@ function VariantStockHierarchy({ variants, selected, canSelect, isMahalyPartner,
 
   return <>
     <div className="hidden overflow-x-auto md:block">
-      <table className="w-full min-w-[900px] text-left text-[12px]">
-        <thead className="border-b border-[#eee7e1] bg-[#fcfaf8] text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]"><tr>{canSelect && <th className="w-12 px-5 py-3"><input aria-label="Select all visible variants" type="checkbox" className="h-4 w-4 accent-[#C85956]" checked={selected.length === variants.length && variants.length > 0} onChange={(event) => onToggleVariants(variants.map((variant) => variant.variantId), event.target.checked)} /></th>}<th className={!canSelect ? "pl-5" : undefined}>Product / variant</th><th>Available</th>{isMahalyPartner && <th>Incoming</th>}<th>Ordered 30d</th><th>Stock cover</th><th className="pr-5">Status</th></tr></thead>
+      <table className="w-full min-w-[920px] table-fixed text-left text-[12px]">
+        <colgroup>
+          {canSelect && <col style={{ width: "4%" }} />}
+          <col style={{ width: isMahalyPartner ? canSelect ? "32%" : "36%" : canSelect ? "40%" : "44%" }} />
+          <col style={{ width: isMahalyPartner ? "14%" : "18%" }} />
+          {isMahalyPartner && <col style={{ width: "14%" }} />}
+          <col style={{ width: isMahalyPartner ? "14%" : "18%" }} />
+          <col style={{ width: isMahalyPartner ? "22%" : "20%" }} />
+        </colgroup>
+        <thead className="border-b border-[#eeece9] bg-white text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]"><tr>{canSelect && <th className="w-12 px-5 py-3"><input aria-label="Select all visible variants" type="checkbox" className="h-4 w-4 accent-[#C85956]" checked={selected.length === variants.length && variants.length > 0} onChange={(event) => onToggleVariants(variants.map((variant) => variant.variantId), event.target.checked)} /></th>}<InventorySortHeader field="product" label="Product / variant" sort={sort} onSort={(field) => setSort((current) => toggleLocalSort(current, field))} className={!canSelect ? "pl-5" : undefined} /><InventorySortHeader field="available" label="Available" sort={sort} onSort={(field) => setSort((current) => toggleLocalSort(current, field, "desc"))} className="text-center" />{isMahalyPartner && <InventorySortHeader field="incoming" label="Incoming" sort={sort} onSort={(field) => setSort((current) => toggleLocalSort(current, field, "desc"))} className="text-center" />}<InventorySortHeader field="ordered" label="Ordered 30d" sort={sort} onSort={(field) => setSort((current) => toggleLocalSort(current, field, "desc"))} className="text-center" /><InventorySortHeader field="status" label="Status" sort={sort} onSort={(field) => setSort((current) => toggleLocalSort(current, field, "desc"))} className="pr-5 text-center" /></tr></thead>
         {groups.map((product) => {
           const productOpen = expandedProducts.includes(product.productId);
           const productSummary = stockGroupSummary(product.variants);
-          return <tbody key={product.productId} className="border-b border-[#e8dfd8] last:border-b-0">
-            <tr className={isSelected(product.variants) ? "bg-[#fff7f5]" : "bg-[#fbf8f4]"}>
+          return <tbody key={product.productId} className="border-b border-[#eeece9] last:border-b-0">
+            <tr className={isSelected(product.variants) ? "bg-[#fff7f5]" : "bg-white"}>
               {canSelect && <td className="px-5 py-3"><input aria-label={`Select all variants of ${product.productName}`} type="checkbox" className="h-4 w-4 accent-[#C85956]" checked={isSelected(product.variants)} onChange={(event) => onToggleVariants(product.variants.map((variant) => variant.variantId), event.target.checked)} /></td>}
               <td className={`py-3 ${!canSelect ? "pl-5" : ""}`}><button type="button" aria-expanded={productOpen} onClick={() => openProduct(product)} className="group flex w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25"><span className="flex h-7 w-7 flex-none items-center justify-center rounded-lg text-[#8d8076] transition-colors group-hover:bg-white group-hover:text-[#C85956]">{productOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</span><VariantImage image={product.productImage} alt={product.productName} /><span className="min-w-0"><span className="block truncate text-[12px] font-extrabold text-[#302924]">{product.productName}</span><span className="mt-1 block text-[9.5px] font-medium text-[#8d8076]">{product.variants.length} {product.variants.length === 1 ? "variant" : "variants"} · {product.colors.length} {product.colors.length === 1 ? "color" : "colors"}</span></span></button></td>
-              <AggregateCell value={productSummary.available} /><>{isMahalyPartner && <AggregateCell value={productSummary.incoming} accent={productSummary.incoming > 0} />}</><AggregateCell value={productSummary.ordered} /><td className="text-[9.5px] font-semibold text-[#8d8076]">Grouped view</td><GroupStatus summary={productSummary} className="pr-5" />
+              <AggregateCell value={productSummary.available} /><>{isMahalyPartner && <AggregateCell value={productSummary.incoming} accent={productSummary.incoming > 0} />}</><AggregateCell value={productSummary.ordered} /><GroupStatus summary={productSummary} className="pr-5" />
             </tr>
             {productOpen && product.colors.map((color) => {
               const colorOpen = expandedColors.includes(color.key);
@@ -179,16 +213,16 @@ function VariantStockHierarchy({ variants, selected, canSelect, isMahalyPartner,
                 <tr className={isSelected(color.variants) ? "bg-[#fffaf7]" : "bg-white"}>
                   {canSelect && <td className="px-5 py-2.5 pl-8"><input aria-label={`Select ${color.label} variants of ${product.productName}`} type="checkbox" className="h-4 w-4 accent-[#C85956]" checked={isSelected(color.variants)} onChange={(event) => onToggleVariants(color.variants.map((variant) => variant.variantId), event.target.checked)} /></td>}
                   <td className={`py-2.5 ${!canSelect ? "pl-10" : ""}`}><button type="button" aria-expanded={colorOpen} onClick={() => openColor(color)} className="group flex w-full min-w-0 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25"><span className="ml-3 flex h-7 w-7 flex-none items-center justify-center rounded-lg text-[#9b8e84] group-hover:text-[#C85956]">{colorOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span><VariantImage image={color.variants[0].image} alt={`${product.productName} in ${color.label}`} /><span className="min-w-0"><span className="block truncate font-bold text-[#4d433c]">{color.label}</span><span className="mt-1 inline-flex rounded-md bg-[#f1ebe5] px-2 py-0.5 text-[8.5px] font-bold text-[#81746b]">{color.variants.length} {color.variants.length === 1 ? "size" : "sizes"}</span></span></button></td>
-                  <AggregateCell value={colorSummary.available} /><>{isMahalyPartner && <AggregateCell value={colorSummary.incoming} accent={colorSummary.incoming > 0} />}</><AggregateCell value={colorSummary.ordered} /><td className="text-[9.5px] font-semibold text-[#8d8076]">All sizes</td><GroupStatus summary={colorSummary} className="pr-5" />
+                  <AggregateCell value={colorSummary.available} /><>{isMahalyPartner && <AggregateCell value={colorSummary.incoming} accent={colorSummary.incoming > 0} />}</><AggregateCell value={colorSummary.ordered} /><GroupStatus summary={colorSummary} className="pr-5" />
                 </tr>
                 {colorOpen && color.variants.map((variant, variantIndex) => {
                   const status = statusMeta(variant.stockStatus);
                   const checked = selected.includes(variant.variantId);
                   const closesColorGroup = variantIndex === color.variants.length - 1;
-                  return <tr key={variant.variantId} className={`border-t border-[#f2ece7] transition-colors ${closesColorGroup ? "border-b-2 border-b-[#d8ccc2]" : ""} ${checked ? "bg-[#fff7f5]" : "bg-white hover:bg-[#fdfbf9]"}`}>
+                  return <tr key={variant.variantId} className={`border-t border-[#f1efec] transition-colors ${closesColorGroup ? "border-b-2 border-b-[#e3dfdb]" : ""} ${checked ? "bg-[#fff7f5]" : "bg-white hover:bg-[#faf9f8]"}`}>
                     {canSelect && <td className="px-5 py-2.5 pl-12"><input aria-label={`Select ${variant.sku}`} type="checkbox" className="h-4 w-4 accent-[#C85956]" checked={checked} onChange={(event) => onToggleVariant(variant.variantId, event.target.checked)} /></td>}
-                    <td className={`py-2.5 ${!canSelect ? "pl-16" : ""}`}><div className="ml-12 min-w-0"><p className="font-bold text-[#51473f]">{variant.size || "One size"}</p><code className="mt-1 block max-w-[280px] truncate text-[8.5px] text-[#94867c]">{variant.sku}</code></div></td>
-                    <AggregateCell value={variant.quantity} /><>{isMahalyPartner && <AggregateCell value={variant.incomingQuantity} accent={variant.incomingQuantity > 0} />}</><AggregateCell value={variant.soldLast30Days} /><td><StockInsight variant={variant} /></td><td className="pr-5"><span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />{status.label}</span>{variant.suggestedRestock > 0 && <p className="mt-1 text-[9px] font-bold text-[#C85956]">Suggested +{variant.suggestedRestock}</p>}</td>
+                    <td className={`py-2.5 ${!canSelect ? "pl-16" : ""}`}><div className="ml-12 min-w-0"><div className="flex items-center gap-1.5"><span title={variant.color ?? "Default color"}><ColorSwatch swatchType={variant.swatchType} primaryColor={variant.primaryColor} secondaryColor={variant.secondaryColor} size={12} /></span><p className="font-bold text-[#51473f]">{variant.size || "One size"}</p></div><code className="mt-1 block max-w-[280px] truncate text-[8.5px] text-[#94867c]">{variant.sku}</code></div></td>
+                    <AggregateCell value={variant.quantity} /><>{isMahalyPartner && <AggregateCell value={variant.incomingQuantity} accent={variant.incomingQuantity > 0} />}</><AggregateCell value={variant.soldLast30Days} /><td className="pr-5 text-center"><span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />{status.label}</span>{variant.suggestedRestock > 0 && <p className="mt-1 text-[9px] font-bold text-[#C85956]">Suggested +{variant.suggestedRestock}</p>}</td>
                   </tr>;
                 })}
               </Fragment>;
@@ -203,9 +237,9 @@ function VariantStockHierarchy({ variants, selected, canSelect, isMahalyPartner,
       const productSummary = stockGroupSummary(product.variants);
       return <article key={product.productId} className={isSelected(product.variants) ? "bg-[#fff7f5]" : "bg-white"}>
         <div className="flex items-center gap-3 p-4">{canSelect && <input aria-label={`Select all variants of ${product.productName}`} type="checkbox" className="h-5 w-5 flex-none accent-[#C85956]" checked={isSelected(product.variants)} onChange={(event) => onToggleVariants(product.variants.map((variant) => variant.variantId), event.target.checked)} />}<button type="button" aria-expanded={productOpen} onClick={() => openProduct(product)} className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25">{productOpen ? <ChevronDown className="h-4 w-4 flex-none text-[#C85956]" /> : <ChevronRight className="h-4 w-4 flex-none text-[#8d8076]" />}<VariantImage image={product.productImage} alt={product.productName} /><span className="min-w-0 flex-1"><span className="block truncate text-[12px] font-extrabold text-[#302924]">{product.productName}</span><span className="mt-1 block text-[9.5px] text-[#8d8076]">{product.variants.length} variants · {productSummary.available} available{isMahalyPartner ? ` · ${productSummary.incoming} incoming` : ""}</span></span></button></div>
-        {productOpen && <div className="border-t border-[#eee7e1] bg-[#fcfaf8] px-3 py-2"><div aria-hidden="true" className="mx-auto mb-2 h-px w-[72%] bg-[#dfd4cb]" />{product.colors.map((color) => {
+        {productOpen && <div className="border-t border-[#eeece9] bg-white px-3 py-2"><div aria-hidden="true" className="mx-auto mb-2 h-px w-[72%] bg-[#e3dfdb]" />{product.colors.map((color) => {
           const colorOpen = expandedColors.includes(color.key);
-          return <div key={color.key} className="my-2 overflow-hidden rounded-xl border border-[#e8dfd8] bg-white"><div className="flex items-center gap-2.5 p-2.5">{canSelect && <input aria-label={`Select ${color.label} variants of ${product.productName}`} type="checkbox" className="h-4 w-4 flex-none accent-[#C85956]" checked={isSelected(color.variants)} onChange={(event) => onToggleVariants(color.variants.map((variant) => variant.variantId), event.target.checked)} />}<button type="button" aria-expanded={colorOpen} onClick={() => openColor(color)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">{colorOpen ? <ChevronDown className="h-3.5 w-3.5 flex-none text-[#C85956]" /> : <ChevronRight className="h-3.5 w-3.5 flex-none text-[#8d8076]" />}<VariantImage image={color.variants[0].image} alt={`${product.productName} in ${color.label}`} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-[#403730]">{color.label}</span><span className="mt-1 text-[9px] text-[#8d8076]">{color.variants.length} {color.variants.length === 1 ? "size" : "sizes"}</span></span></button></div>{colorOpen && <div className="divide-y divide-[#f0e9e3] border-t border-[#eee7e1]">{color.variants.map((variant) => { const status = statusMeta(variant.stockStatus); return <div key={variant.variantId} className="flex items-center gap-3 px-3 py-2.5">{canSelect && <input aria-label={`Select ${variant.sku}`} type="checkbox" className="h-4 w-4 flex-none accent-[#C85956]" checked={selected.includes(variant.variantId)} onChange={(event) => onToggleVariant(variant.variantId, event.target.checked)} />}<div className="min-w-0 flex-1"><p className="text-[10.5px] font-bold text-[#51473f]">{variant.size || "One size"}</p><code className="mt-1 block truncate text-[8px] text-[#94867c]">{variant.sku}</code></div><div className="text-right"><p className="text-[11px] font-extrabold tabular-nums text-[#302924]">{variant.quantity}</p><p className="text-[8px] text-[#94867c]">available</p></div><span className={`h-2 w-2 flex-none rounded-full ${status.dot}`} title={status.label} /></div>; })}</div>}</div>;
+          return <div key={color.key} className="my-2 overflow-hidden rounded-xl border border-[#e8e5e2] bg-white"><div className="flex items-center gap-2.5 p-2.5">{canSelect && <input aria-label={`Select ${color.label} variants of ${product.productName}`} type="checkbox" className="h-4 w-4 flex-none accent-[#C85956]" checked={isSelected(color.variants)} onChange={(event) => onToggleVariants(color.variants.map((variant) => variant.variantId), event.target.checked)} />}<button type="button" aria-expanded={colorOpen} onClick={() => openColor(color)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">{colorOpen ? <ChevronDown className="h-3.5 w-3.5 flex-none text-[#C85956]" /> : <ChevronRight className="h-3.5 w-3.5 flex-none text-[#8d8076]" />}<VariantImage image={color.variants[0].image} alt={`${product.productName} in ${color.label}`} /><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-bold text-[#403730]">{color.label}</span><span className="mt-1 text-[9px] text-[#8d8076]">{color.variants.length} {color.variants.length === 1 ? "size" : "sizes"}</span></span></button></div>{colorOpen && <div className="divide-y divide-[#f0efed] border-t border-[#eeece9]">{color.variants.map((variant) => { const status = statusMeta(variant.stockStatus); return <div key={variant.variantId} className="flex items-center gap-3 px-3 py-2.5">{canSelect && <input aria-label={`Select ${variant.sku}`} type="checkbox" className="h-4 w-4 flex-none accent-[#C85956]" checked={selected.includes(variant.variantId)} onChange={(event) => onToggleVariant(variant.variantId, event.target.checked)} />}<div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><span title={variant.color ?? "Default color"}><ColorSwatch swatchType={variant.swatchType} primaryColor={variant.primaryColor} secondaryColor={variant.secondaryColor} size={12} /></span><p className="text-[10.5px] font-bold text-[#51473f]">{variant.size || "One size"}</p></div><code className="mt-1 block truncate text-[8px] text-[#94867c]">{variant.sku}</code></div><div className="text-right"><p className="text-[11px] font-extrabold tabular-nums text-[#302924]">{variant.quantity}</p><p className="text-[8px] text-[#94867c]">available</p></div><span className={`h-2 w-2 flex-none rounded-full ${status.dot}`} title={status.label} /></div>; })}</div>}</div>;
         })}</div>}
       </article>;
     })}</div>
@@ -213,11 +247,11 @@ function VariantStockHierarchy({ variants, selected, canSelect, isMahalyPartner,
 }
 
 function AggregateCell({ value, accent = false, className = "" }: { value: number; accent?: boolean; className?: string }) {
-  return <td className={className}><p className={`text-[14px] font-extrabold tabular-nums ${accent ? "text-[#C85956]" : "text-[#403730]"}`}>{value}</p><p className="mt-0.5 text-[8.5px] text-[#94867c]">units</p></td>;
+  return <td className={`text-center ${className}`}><p className={`text-[14px] font-extrabold tabular-nums ${accent ? "text-[#C85956]" : "text-[#403730]"}`}>{value}</p><p className="mt-0.5 text-[8.5px] text-[#94867c]">units</p></td>;
 }
 
 function GroupStatus({ summary, className = "" }: { summary: ReturnType<typeof stockGroupSummary>; className?: string }) {
-  return <td className={className}>{summary.issueCount ? <span className="text-[9.5px] font-bold text-[#C85956]">{summary.issueCount} need restock</span> : <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${summary.status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${summary.status.dot}`} />Healthy</span>}</td>;
+  return <td className={`text-center ${className}`}>{summary.issueCount ? <span className="text-[9.5px] font-bold text-[#C85956]">{summary.issueCount} need restock</span> : <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${summary.status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${summary.status.dot}`} />Healthy</span>}</td>;
 }
 
 export default function InventoryManager({ variants, activityVariants, history, brandSlug, isMahalyPartner, accessLevel, readOnly, view, totalMatching }: {
@@ -256,6 +290,7 @@ export default function InventoryManager({ variants, activityVariants, history, 
   const restockOperationKey = useRef<string | null>(null);
   const [activityQuery, setActivityQuery] = useState("");
   const [activitySource, setActivitySource] = useState("");
+  const [activitySort, setActivitySort] = useState<LocalSort>("date-desc");
   const operationKey = useRef<string | null>(null);
   const variantById = useMemo(() => new Map(activityVariants.map((variant) => [variant.variantId, variant])), [activityVariants]);
   const selectableVariantById = useMemo(() => new Map(variants.map((variant) => [variant.variantId, variant])), [variants]);
@@ -423,6 +458,16 @@ export default function InventoryManager({ variants, activityVariants, history, 
     const query = activityQuery.trim().toLocaleLowerCase();
     if (query && !`${variant?.productName ?? ""} ${variant?.sku ?? movement.variantId} ${movement.reason} ${movement.note ?? ""}`.toLocaleLowerCase().includes(query)) return false;
     return !activitySource || movement.source === activitySource;
+  }).sort((first, second) => {
+    const direction = activitySort.endsWith("-desc") ? -1 : 1;
+    const firstVariant = variantById.get(first.variantId);
+    const secondVariant = variantById.get(second.variantId);
+    if (activitySort.startsWith("variant-")) return direction * (firstVariant?.sku ?? first.variantId).localeCompare(secondVariant?.sku ?? second.variantId, undefined, { numeric: true });
+    if (activitySort.startsWith("change-")) return direction * (first.quantityDelta - second.quantityDelta);
+    if (activitySort.startsWith("balance-")) return direction * (first.newQuantity - second.newQuantity);
+    if (activitySort.startsWith("reason-")) return direction * first.reason.localeCompare(second.reason);
+    if (activitySort.startsWith("source-")) return direction * first.source.localeCompare(second.source);
+    return direction * (Date.parse(first.createdAt) - Date.parse(second.createdAt));
   });
   const activitySources = [...new Set(history.map((movement) => movement.source))].sort();
 
@@ -437,17 +482,17 @@ export default function InventoryManager({ variants, activityVariants, history, 
   }
 
   if (view === "activity") {
-    return <section className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
-      <div className="border-b border-[#eee7e1] px-4 py-4 sm:px-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-          <div className="min-w-0 flex-1"><p className="text-[12px] font-extrabold text-[#302924]">Inventory activity</p><p className="mt-1 text-[10.5px] text-[#8d8076]">Showing {filteredHistory.length} of the latest {history.length} recorded changes.</p></div>
-          <label className="min-w-0 lg:w-64"><span className="sr-only">Search inventory activity</span><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} autoComplete="off" placeholder="Search product, SKU or reason…" className={`${fieldClass} mt-0`} /></label>
-          <label className="lg:w-48"><span className="sr-only">Filter activity source</span><select value={activitySource} onChange={(event) => setActivitySource(event.target.value)} className={`${fieldClass} mt-0`}><option value="">All sources</option>{activitySources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}</select></label>
-          <button type="button" onClick={downloadActivity} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#e3d8d0] px-3 text-[11px] font-bold text-[#5d5148] transition-colors hover:border-[#C85956]/30 hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/10"><Download aria-hidden="true" className="h-3.5 w-3.5" />Export CSV</button>
-        </div>
+    return <>
+      <div data-dashboard-filters="true" className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <label className="order-[1] min-w-0 sm:w-[320px]"><span className="sr-only">Search inventory activity</span><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} autoComplete="off" placeholder="Search product, SKU or reason…" className={`${fieldClass} mt-0`} /></label>
+          <button type="button" onClick={downloadActivity} className="order-[3] inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#e3d8d0] px-3 text-[11px] font-bold text-[#5d5148] transition-colors hover:border-[#C85956]/30 hover:text-[#C85956]"><Download aria-hidden="true" className="h-3.5 w-3.5" />Export CSV</button>
+          <DashboardMoreFilters label="More activity filters" active={Boolean(activitySource)}>
+            <DashboardFilterField label="Source"><select value={activitySource} onChange={(event) => setActivitySource(event.target.value)} className={`${dashboardFilterControl} w-full`}><option value="">All sources</option>{activitySources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}</select></DashboardFilterField>
+          </DashboardMoreFilters>
       </div>
+    <section className="mt-4 overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
       {filteredHistory.length ? <>
-        <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[820px] text-left text-[12px]"><thead className="border-b border-[#eee7e1] bg-[#fcfaf8] text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]"><tr><th className="px-5 py-3">Variant</th><th>Change</th><th>Before / after</th><th>Reason</th><th>Source</th><th className="pr-5 text-right">Date</th></tr></thead><tbody className="divide-y divide-[#f0e9e3]">{filteredHistory.map((movement) => {
+        <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[820px] text-left text-[12px]"><thead className="border-b border-[#eee7e1] bg-[#fcfaf8] text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]"><tr><InventorySortHeader field="variant" label="Variant" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} className="px-5 py-3" /><InventorySortHeader field="change" label="Change" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} /><InventorySortHeader field="balance" label="Before / after" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} /><InventorySortHeader field="reason" label="Reason" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="source" label="Source" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="date" label="Date" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} className="pr-5 text-right" /></tr></thead><tbody className="divide-y divide-[#f0e9e3]">{filteredHistory.map((movement) => {
           const variant = variantById.get(movement.variantId);
           return <tr key={movement.id} className="hover:bg-[#fdfbf9]"><td className="px-5 py-3.5"><p className="font-bold text-[#403730]">{variant?.productName ?? "Archived product"}</p><code className="mt-1 block text-[9.5px] text-[#8d8076]">{variant?.sku ?? movement.variantId}</code></td><td><span className={`font-extrabold tabular-nums ${movement.quantityDelta < 0 ? "text-red-700" : movement.quantityDelta > 0 ? "text-emerald-700" : "text-[#756960]"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span></td><td className="font-bold tabular-nums text-[#51473f]">{movement.previousQuantity} → {movement.newQuantity}</td><td className="max-w-[250px] pr-4"><p className="font-semibold text-[#51473f]">{movement.reason}</p>{movement.note && <p className="mt-1 truncate text-[10px] text-[#8d8076]">{movement.note}</p>}</td><td><span className="rounded-md bg-[#f3eee9] px-2 py-1 text-[9.5px] font-bold text-[#756960]">{sourceLabel(movement.source)}</span></td><td className="pr-5 text-right text-[10px] text-[#8d8076]">{formatDateTime(movement.createdAt)}</td></tr>;
         })}</tbody></table></div>
@@ -456,7 +501,8 @@ export default function InventoryManager({ variants, activityVariants, history, 
           return <article key={movement.id} className="px-4 py-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[12px] font-bold text-[#403730]">{variant?.productName ?? "Archived product"}</p><code className="mt-1 block truncate text-[9px] text-[#8d8076]">{variant?.sku ?? movement.variantId}</code></div><span className={`text-[13px] font-extrabold tabular-nums ${movement.quantityDelta < 0 ? "text-red-700" : movement.quantityDelta > 0 ? "text-emerald-700" : "text-[#756960]"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span></div><div className="mt-3 flex items-center justify-between gap-3 text-[10px]"><p className="font-semibold text-[#51473f]">{movement.reason}</p><p className="tabular-nums text-[#8d8076]">{movement.previousQuantity} → {movement.newQuantity}</p></div><div className="mt-2 flex items-center justify-between gap-3 text-[9.5px] text-[#94867c]"><span>{sourceLabel(movement.source)}</span><span>{formatDateTime(movement.createdAt)}</span></div></article>;
         })}</div>
       </> : <div className="px-5 py-14 text-center"><RotateCcw aria-hidden="true" className="mx-auto h-6 w-6 text-[#b8aaa0]" /><p className="mt-3 text-[12px] font-bold text-[#403730]">No matching activity</p><p className="mt-1 text-[10.5px] text-[#8d8076]">Clear the search or choose another source.</p></div>}
-    </section>;
+    </section>
+    </>;
   }
 
   return <div className="space-y-3">

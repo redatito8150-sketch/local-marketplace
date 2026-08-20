@@ -34,7 +34,7 @@ test("each selected Variant can be removed directly from the compact selection t
 test("partner inventory distinguishes available and incoming quantities", () => {
   const inventory = read("components/brand-portal/InventoryManager.tsx");
   const data = read("lib/data/brandPortal.ts");
-  assert.match(inventory, />Incoming</);
+  assert.match(inventory, /label="Incoming"/);
   assert.match(inventory, /variant\.incomingQuantity/);
   assert.match(data, /warehouse_transfer_items/);
   assert.match(data, /"pending", "submitted", "approved", "in_transit", "receiving", "partially_received"/);
@@ -56,6 +56,40 @@ test("variant stock is grouped by product, then color, with group selection", ()
   assert.match(inventory, /onToggleVariants\(product\.variants\.map/);
   assert.match(inventory, /onToggleVariants\(color\.variants\.map/);
   assert.doesNotMatch(inventory, /if \(!open\) onToggleVariants/);
+});
+
+test("Brand Portal inventory mirrors Admin size order, color swatches, white surfaces, and aligned metric columns", () => {
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  const data = read("lib/data/brandPortal.ts");
+  assert.match(inventory, /import ColorSwatch from "@\/components\/admin\/ColorSwatch"/);
+  assert.match(inventory, /compareSizeOrderables/);
+  assert.match(inventory, /primaryColor=\{variant\.primaryColor\}/);
+  assert.match(inventory, /table-fixed/);
+  assert.match(inventory, /<colgroup>/);
+  assert.match(inventory, /canSelect \? "32%" : "36%"/);
+  assert.match(inventory, /isMahalyPartner \? "22%" : "20%"/);
+  assert.doesNotMatch(inventory, /label="Stock cover"/);
+  assert.doesNotMatch(inventory, /function StockInsight/);
+  assert.match(inventory, /function AggregateCell[\s\S]*text-center/);
+  assert.match(data, /sizeSortOrder\?: number/);
+  assert.match(data, /sizeBrandId\?: string \| null/);
+  assert.match(data, /getVariantsForProducts\([\s\S]*supabaseAdmin/);
+  assert.match(data, /primaryColor: colorValue\?\.primaryColor/);
+});
+
+test("Brand Portal groups Inventory, Stock Transfers, and Variant movements in the sidebar instead of an in-page switcher", () => {
+  const navigation = read("components/brand-portal/BrandPortalNav.tsx");
+  const stockPage = read("app/brand-portal/stock/page.tsx");
+  const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+  for (const label of ["Inventory", "Stock Transfers", "Variant movements"]) assert.match(navigation, new RegExp(label));
+  assert.match(navigation, /aria-label="Inventory destinations"/);
+  assert.match(navigation, /Collapse Inventory destinations/);
+  assert.match(navigation, /Expand Inventory destinations/);
+  assert.match(navigation, /showWarehouse \? \[\{ label: "Stock Transfers"/);
+  assert.match(navigation, /withBrandHref\(child\.href, brand\)/);
+  assert.doesNotMatch(stockPage, /aria-label="Inventory views"/);
+  assert.match(stockPage, /title=\{view === "activity" \? "Variant movements" : "Inventory"\}/);
+  assert.match(warehouse, />Stock Transfers<\/h1>/);
 });
 
 test("large inventories render in bounded pages — Inventory pagination happens in Postgres and the return drawer paginates product groups", () => {
@@ -83,7 +117,7 @@ test("large inventories render in bounded pages — Inventory pagination happens
 
 test("Warehouse is one document workspace and stock return is a focused drawer action", () => {
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
-  assert.match(warehouse, /Track restock requests, returns and recorded warehouse corrections for your brand/);
+  assert.match(warehouse, /Track stock transfers, returns and recorded warehouse corrections for your brand/);
   assert.match(warehouse, /Request stock return/);
   assert.match(warehouse, /Search document, product or SKU/);
   assert.match(warehouse, /Requested date range/);

@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDownToLine, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardUI";
+import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
 import { OPEN_WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META, warehouseDocumentLabel } from "@/components/admin/warehouse/warehouseUi";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
@@ -18,6 +19,17 @@ type ReturnProductGroup = { productId: string; productName: string; colors: Retu
 
 const DOCUMENT_PAGE_SIZE = 12;
 const RETURN_PRODUCT_PAGE_SIZE = 8;
+type DocumentSort = "document-asc" | "document-desc" | "requested-asc" | "requested-desc" | "status-asc" | "status-desc" | "date-asc" | "date-desc";
+type DocumentSortField = "document" | "requested" | "status" | "date";
+
+function DocumentSortButton({ field, label, hint, sort, onSort }: { field: DocumentSortField; label: string; hint?: string; sort: DocumentSort; onSort: (field: DocumentSortField) => void }) {
+  const active = sort.startsWith(`${field}-`);
+  const Icon = active ? sort.endsWith("asc") ? ArrowUp : ArrowDown : ArrowUpDown;
+  return <button type="button" onClick={() => onSort(field)} className="group inline-flex items-center gap-1.5 text-left outline-none transition-colors hover:text-[#C85956] focus-visible:ring-2 focus-visible:ring-[#C85956]/25" aria-label={`Sort by ${label}${active ? sort.endsWith("asc") ? ", ascending" : ", descending" : ""}`}>
+    <span>{label}{hint ? <small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">{hint}</small> : null}</span>
+    <Icon aria-hidden="true" className={`h-3 w-3 transition-colors ${active ? "text-[#C85956]" : "text-[#b1a49a] group-hover:text-[#C85956]"}`} />
+  </button>;
+}
 
 function withBrand(path: string, brandParam?: string): string {
   return brandParam ? `${path}?brand=${encodeURIComponent(brandParam)}` : path;
@@ -42,15 +54,33 @@ function Pager({ page, count, pageSize, onPage }: { page: number; count: number;
 
 function DocumentList({ transfers, brandParam }: { transfers: WarehouseTransferRow[]; brandParam?: string }) {
   const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(transfers.length / DOCUMENT_PAGE_SIZE));
+  const [sort, setSort] = useState<DocumentSort>("date-desc");
+  const sortedTransfers = useMemo(() => [...transfers].sort((first, second) => {
+    const firstUnits = first.items.reduce((sum, item) => sum + item.requestedQty, 0);
+    const secondUnits = second.items.reduce((sum, item) => sum + item.requestedQty, 0);
+    if (sort === "document-asc") return documentNumber(first).localeCompare(documentNumber(second), undefined, { numeric: true });
+    if (sort === "document-desc") return documentNumber(second).localeCompare(documentNumber(first), undefined, { numeric: true });
+    if (sort === "requested-asc") return firstUnits - secondUnits;
+    if (sort === "requested-desc") return secondUnits - firstUnits;
+    if (sort === "status-asc") return WAREHOUSE_STATUS_META[first.status].order - WAREHOUSE_STATUS_META[second.status].order;
+    if (sort === "status-desc") return WAREHOUSE_STATUS_META[second.status].order - WAREHOUSE_STATUS_META[first.status].order;
+    if (sort === "date-asc") return Date.parse(first.requestedAt) - Date.parse(second.requestedAt);
+    return Date.parse(second.requestedAt) - Date.parse(first.requestedAt);
+  }), [sort, transfers]);
+  const pageCount = Math.max(1, Math.ceil(sortedTransfers.length / DOCUMENT_PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
-  const visible = transfers.slice((safePage - 1) * DOCUMENT_PAGE_SIZE, safePage * DOCUMENT_PAGE_SIZE);
+  const visible = sortedTransfers.slice((safePage - 1) * DOCUMENT_PAGE_SIZE, safePage * DOCUMENT_PAGE_SIZE);
+
+  function toggleSort(field: DocumentSortField) {
+    setSort((current) => current === `${field}-asc` ? `${field}-desc` as DocumentSort : `${field}-asc` as DocumentSort);
+    setPage(1);
+  }
 
   if (!transfers.length) return <DashboardEmptyState title="No matching documents" description="Try another status, direction or search term." />;
 
   return <>
     <div className="hidden grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] items-center gap-4 border-b border-[#e4ddd7] bg-[#fcfaf8] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.09em] text-[#756960] lg:grid">
-      <span>Document</span><span>Requested<small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">variants / units</small></span><span>Status</span><span>Dates</span><span />
+      <DocumentSortButton field="document" label="Document" sort={sort} onSort={toggleSort} /><DocumentSortButton field="requested" label="Requested" hint="variants / units" sort={sort} onSort={toggleSort} /><DocumentSortButton field="status" label="Status" sort={sort} onSort={toggleSort} /><DocumentSortButton field="date" label="Dates" sort={sort} onSort={toggleSort} /><span />
     </div>
     <div className="divide-y divide-[#e8e1db]">{visible.map((transfer) => {
     const meta = WAREHOUSE_STATUS_META[transfer.status];
@@ -70,7 +100,7 @@ function DocumentList({ transfers, brandParam }: { transfers: WarehouseTransferR
       <ChevronRight className="h-4 w-4 text-[#a2948a] transition-transform group-hover:translate-x-0.5 group-hover:text-[#C85956]" />
     </Link>;
   })}</div>
-    <div className="border-t border-[#e8e1db] px-4 py-3 text-[9.5px] text-[#8d8076] sm:px-5">Showing {formatCount(visible.length)} of {formatCount(transfers.length)} matching documents</div>
+    <div className="border-t border-[#e8e1db] px-4 py-3 text-[9.5px] text-[#8d8076] sm:px-5">Showing {formatCount(visible.length)} of {formatCount(sortedTransfers.length)} matching documents</div>
     <Pager page={safePage} count={transfers.length} pageSize={DOCUMENT_PAGE_SIZE} onPage={setPage} />
   </>;
 }
@@ -175,40 +205,47 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
     .filter((transfer) => !deferredDocumentQuery || `${documentNumber(transfer)} ${transfer.items.map((item) => `${item.productName} ${item.optionLabel} ${item.sku}`).join(" ")}`.toLocaleLowerCase().includes(deferredDocumentQuery))
     .sort((first, second) => Number(hasOpenDocumentIssue(second)) - Number(hasOpenDocumentIssue(first)) || Date.parse(second.requestedAt) - Date.parse(first.requestedAt)), [deferredDocumentQuery, directionFilter, documentFilter, fromDate, toDate, transfers]);
   const filtersActive = Boolean(documentQuery || directionFilter !== "all" || documentFilter !== "all" || fromDate || toDate);
-  const statusFilters: Array<{ value: DocumentFilter; label: string }> = [
-    { value: "all", label: "All" },
-    { value: "requested", label: "Requested" },
-    { value: "awaiting_arrival", label: "Awaiting arrival" },
-    { value: "action_required", label: "Needs review" },
-    { value: "received", label: "Received" },
+  const statusCounts: Record<DocumentFilter, number> = {
+    all: transfers.length,
+    requested: transfers.filter((transfer) => ["pending", "submitted"].includes(transfer.status)).length,
+    awaiting_arrival: transfers.filter((transfer) => transfer.status === "approved").length,
+    action_required: issueCount,
+    received: transfers.filter((transfer) => transfer.status === "received").length,
+  };
+  const statusFilters: Array<{ value: DocumentFilter; label: string; tone: string }> = [
+    { value: "all", label: "All", tone: "bg-[#C85956]" },
+    { value: "requested", label: "Requested", tone: "bg-amber-400" },
+    { value: "awaiting_arrival", label: "Awaiting arrival", tone: "bg-[#a9bbc5]" },
+    { value: "action_required", label: "Needs review", tone: "bg-red-500" },
+    { value: "received", label: "Received", tone: "bg-emerald-500" },
   ];
 
   return <div>
     <header>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Shipments & Transfers</h1><span className="text-[11px] font-semibold text-[#81746b]">{formatCount(transfers.length)} documents</span></div>
-          <p className="mt-2 max-w-2xl text-[11.5px] leading-5 text-[#756960]">Track restock requests, returns and recorded warehouse corrections for your brand.</p>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Stock Transfers</h1><span className="text-[11px] font-semibold text-[#81746b]">{formatCount(transfers.length)} documents</span></div>
+          <p className="mt-2 max-w-2xl text-[11.5px] leading-5 text-[#756960]">Track stock transfers, returns and recorded warehouse corrections for your brand.</p>
         </div>
         {!readOnly ? <button type="button" onClick={() => setReturnOpen(true)} className="inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20"><ArrowDownToLine className="h-3.5 w-3.5" />Request stock return</button> : <span className="inline-flex h-9 items-center rounded-xl bg-[#f2ede8] px-3 text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span>}
       </div>
     </header>
 
-    <section className="mt-5 overflow-visible rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
-      <div className="border-b border-[#e4ddd7] px-3 py-3 sm:px-4">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="flex min-w-0 items-center gap-2">
-            <label className="relative min-w-0 flex-1 sm:flex-none"><span className="sr-only">Search documents</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d8f84]" /><input value={documentQuery} onChange={(event) => setDocumentQuery(event.target.value)} autoComplete="off" placeholder="Search document, product or SKU" className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] focus:border-[#C85956]/45 focus:bg-white focus:ring-4 focus:ring-[#C85956]/8 sm:w-[330px]" /></label>
-            <DateRangePicker key={`${fromDate}-${toDate}`} defaultFrom={fromDate} defaultTo={toDate} fromName={null} toName={null} label="Requested date range" compact onRangeChange={({ from, to }) => { setFromDate(from); setToDate(to); }} />
-          </div>
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 xl:pb-0">
-            <div aria-label="Document status" className="flex h-10 flex-none items-center overflow-hidden rounded-xl border border-[#e7ddd5] bg-white">{statusFilters.map((filter) => { const active = documentFilter === filter.value; return <button key={filter.value} type="button" aria-pressed={active} onClick={() => setDocumentFilter(filter.value)} className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}><span>{filter.label}</span>{filter.value === "action_required" && issueCount > 0 ? <span className={`ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-extrabold tabular-nums ${active ? "bg-[#C85956] text-white" : "bg-[#f4dfdc] text-[#b64d4a]"}`}>{issueCount}</span> : null}</button>; })}</div>
-            <select aria-label="Document direction" value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} className="h-10 min-w-[168px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#C85956]/45 focus:ring-4 focus:ring-[#C85956]/8"><option value="all">All directions</option><option value="to_local">Sent to Zakhnook</option><option value="to_brand">Returned to brand</option></select>
-          </div>
+    <div className="mt-5" data-dashboard-filters="true">
+      <div>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <label className="relative order-[1] min-w-0 flex-1 sm:w-[330px] sm:flex-none"><span className="sr-only">Search documents</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d8f84]" /><input value={documentQuery} onChange={(event) => setDocumentQuery(event.target.value)} autoComplete="off" placeholder="Search document, product or SKU" className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] focus:bg-white" /></label>
+          <div aria-label="Document status" className="order-[2] flex h-10 min-w-0 flex-none items-center overflow-x-auto rounded-xl border border-[#e7ddd5] bg-white">{statusFilters.map((filter) => { const active = documentFilter === filter.value; return <button key={filter.value} type="button" aria-pressed={active} onClick={() => setDocumentFilter(filter.value)} className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}><span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${filter.tone}`} /><span>{filter.label}</span><span className="ml-1.5 tabular-nums text-[9px] opacity-65">{statusCounts[filter.value]}</span></button>; })}</div>
+          <DateRangePicker key={`${fromDate}-${toDate}`} defaultFrom={fromDate} defaultTo={toDate} fromName={null} toName={null} label="Requested date range" compact onRangeChange={({ from, to }) => { setFromDate(from); setToDate(to); }} />
+          {filtersActive ? <button type="button" aria-label="Clear warehouse filters" onClick={() => { setDocumentQuery(""); setDirectionFilter("all"); setDocumentFilter("all"); setFromDate(""); setToDate(""); }} className="order-[5] inline-flex h-10 w-10 items-center justify-center rounded-xl text-[#8d8076] transition-colors hover:bg-[#f7f1ec] hover:text-[#C85956]"><X className="h-3.5 w-3.5" aria-hidden="true" /></button> : null}
+          <DashboardMoreFilters label="More warehouse filters" active={directionFilter !== "all"}>
+            <DashboardFilterField label="Document direction"><select value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} className={`${dashboardFilterControl} w-full`}><option value="all">All directions</option><option value="to_local">Sent to Zakhnook</option><option value="to_brand">Returned to brand</option></select></DashboardFilterField>
+          </DashboardMoreFilters>
         </div>
       </div>
+    </div>
+    <section className="mt-4 overflow-hidden rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
       {message ? <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-semibold text-emerald-800 sm:px-5">{message}</div> : null}
-      {filtersActive ? <div className="flex items-center justify-between border-b border-[#e8e1db] bg-[#fcfaf8] px-4 py-2.5 sm:px-5"><p className="text-[9.5px] text-[#81746b]"><strong className="tabular-nums text-[#403730]">{formatCount(filteredTransfers.length)}</strong> matching documents</p><button type="button" onClick={() => { setDocumentQuery(""); setDirectionFilter("all"); setDocumentFilter("all"); setFromDate(""); setToDate(""); }} className="text-[9px] font-bold text-[#C85956] hover:underline">Reset filters</button></div> : null}
       <DocumentList transfers={filteredTransfers} brandParam={brandParam} />
     </section>
     <ReturnRequestDrawer open={returnOpen} onClose={closeReturn} onSubmitted={() => setMessage("Return request submitted for warehouse review.")} variants={variants} brandParam={brandParam} />

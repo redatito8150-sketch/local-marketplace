@@ -10,6 +10,7 @@ import ProductQuickViews from "@/components/products/ProductQuickViews";
 import { DashboardPageHeader, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import type { ProductRecord } from "@/types";
 import { getProductPricePresentation } from "@/lib/products/pricingPresentation";
+import { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 const PAGE_SIZE = 25;
 
@@ -53,13 +54,16 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
     if (maxPrice !== undefined && Number.isFinite(maxPrice) && pricing.currentMin > maxPrice) return false;
     return true;
   });
-  filteredProducts.sort((a, b) => params.sort === "price-asc"
-    ? getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin
-    : params.sort === "price-desc"
-      ? getProductPricePresentation(b).currentMin - getProductPricePresentation(a).currentMin
-      : params.sort === "name"
-        ? a.name.localeCompare(b.name)
-        : 0);
+  filteredProducts.sort((a, b) => {
+    const direction = params.sort?.endsWith("-desc") ? -1 : 1;
+    const units = (product: ProductRecord) => (product.variants ?? []).filter((variant) => !variant.isArchived && variant.sellingStatus === "active").reduce((sum, variant) => sum + Math.max(0, variant.quantity), 0);
+    if (params.sort?.startsWith("product-")) return direction * a.name.localeCompare(b.name);
+    if (params.sort?.startsWith("category-")) return direction * (a.mainCategory ?? "").localeCompare(b.mainCategory ?? "");
+    if (params.sort?.startsWith("price-")) return direction * (getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin);
+    if (params.sort?.startsWith("inventory-")) return direction * (units(a) - units(b));
+    if (params.sort?.startsWith("status-")) return direction * (a.status ?? "").localeCompare(b.status ?? "");
+    return 0;
+  });
 
   const unique = (values: Array<string | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
   const brandValues = unique(allProducts.map((product) => product.brandSlug));
@@ -72,8 +76,6 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
   const currentPage = Math.min(requestedPage, totalPages);
   const pageStart = (currentPage - 1) * PAGE_SIZE;
   const paginatedProducts = filteredProducts.slice(pageStart, pageStart + PAGE_SIZE);
-  const firstResult = filteredProducts.length ? pageStart + 1 : 0;
-  const lastResult = Math.min(pageStart + PAGE_SIZE, filteredProducts.length);
   const activeView = params.attention ? "attention" : params.status === "published" ? "published" : params.status === "draft" ? "drafts" : params.status ? null : "all";
 
   return (
@@ -82,17 +84,6 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
         title="Products"
         description={`${allProducts.length} active catalog ${allProducts.length === 1 ? "product" : "products"} across ${brandValues.length} ${brandValues.length === 1 ? "brand" : "brands"}.`}
         actions={<><ProductCatalogTools archivedCount={archivedCount} /><Link href="/admin/products/new" className={`${dashboardButtonPrimary} active:scale-[0.98]`}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Add product</Link></>}
-      />
-
-      <ProductQuickViews
-        activeId={activeView}
-        views={[
-          { id: "all", label: "All products", href: "/admin/products", count: allProducts.length },
-          { id: "published", label: "Published", href: "/admin/products?status=published", count: allProducts.filter((product) => product.status === "published").length },
-          { id: "drafts", label: "Drafts", href: "/admin/products?status=draft", count: allProducts.filter((product) => product.status === "draft").length },
-          { id: "attention", label: "Needs attention", href: "/admin/products?attention=1", count: attentionProducts.length, attention: true },
-        ]}
-        archived={{ href: "/admin/products/archived", count: archivedCount }}
       />
 
       <ProductCatalogFilters
@@ -104,14 +95,30 @@ export default async function AdminProductsPage(props: { searchParams: Promise<P
         collections={collections}
         brands={brandValues.map((value) => ({ value, label: brandLabels.get(value) ?? value }))}
         showAdminFilters
+        quickViews={<ProductQuickViews
+          activeId={activeView}
+          views={[
+            { id: "all", label: "All products", href: "/admin/products", count: allProducts.length },
+            { id: "published", label: "Published", href: "/admin/products?status=published", count: allProducts.filter((product) => product.status === "published").length },
+            { id: "drafts", label: "Drafts", href: "/admin/products?status=draft", count: allProducts.filter((product) => product.status === "draft").length },
+            { id: "attention", label: "Needs attention", href: "/admin/products?attention=1", count: attentionProducts.length, attention: true },
+          ]}
+        />}
       />
 
-      <div className="mt-5 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[13px] font-semibold tabular-nums text-[#51473f]">{filteredProducts.length === allProducts.length ? `${allProducts.length} catalog ${allProducts.length === 1 ? "product" : "products"}` : `${filteredProducts.length} of ${allProducts.length} products`}</p>
-        {filteredProducts.length ? <p className="text-[12px] tabular-nums text-[#81746a]">Showing {firstResult}–{lastResult}</p> : null}
-      </div>
-
-      <BulkProductActions products={paginatedProducts} totalProducts={allProducts.length} clearHref="/admin/products" />
+      <BulkProductActions
+        products={paginatedProducts}
+        totalProducts={allProducts.length}
+        clearHref="/admin/products"
+        sort={params.sort}
+        sortHrefs={{
+          product: tableSortHref("/admin/products", params, "product"),
+          category: tableSortHref("/admin/products", params, "category"),
+          price: tableSortHref("/admin/products", params, "price"),
+          inventory: tableSortHref("/admin/products", params, "inventory", "desc"),
+          status: tableSortHref("/admin/products", params, "status"),
+        }}
+      />
 
       {totalPages > 1 ? (
         <nav aria-label="Product pages" className="mt-5 flex items-center justify-between gap-3">

@@ -5,9 +5,10 @@ import { getAllBrandsForAdmin } from "@/lib/data/admin";
 import DeleteEntityButton from "@/components/admin/DeleteEntityButton";
 import BrandQuickToggle from "@/components/admin/BrandQuickToggle";
 import BrandSponsorControl from "@/components/admin/BrandSponsorControl";
-import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import DashboardFilters, { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButtonPrimary } from "@/components/dashboard/DashboardUI";
 import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
+import SortableTableHeader, { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 type BrandSearchParams = { q?: string; category?: string; ownership?: string; city?: string; sort?: string };
 
@@ -23,7 +24,15 @@ export default async function AdminBrandsPage(props: { searchParams: Promise<Bra
     if (params.ownership === "unlinked" && brand.ownerUserId) return false;
     return true;
   });
-  brands.sort((a, b) => params.sort === "name" ? a.name.localeCompare(b.name) : params.sort === "city" ? a.city.localeCompare(b.city) : 0);
+  brands.sort((a, b) => {
+    const direction = params.sort?.endsWith("-desc") ? -1 : 1;
+    if (params.sort?.startsWith("brand-")) return direction * a.name.localeCompare(b.name);
+    if (params.sort?.startsWith("category-")) return direction * a.category.localeCompare(b.category);
+    if (params.sort?.startsWith("city-")) return direction * a.city.localeCompare(b.city);
+    if (params.sort?.startsWith("owner-")) return direction * (Number(Boolean(a.ownerUserId)) - Number(Boolean(b.ownerUserId)));
+    if (params.sort?.startsWith("status-")) return direction * (Number(a.isActive) - Number(b.isActive));
+    return 0;
+  });
   const categories = [...new Set(allBrands.map((brand) => brand.category).filter(Boolean))].sort();
   const cities = [...new Set(allBrands.map((brand) => brand.city).filter(Boolean))].sort();
   const activeCount = [params.q, params.category, params.ownership, params.city, params.sort].filter(Boolean).length;
@@ -34,13 +43,14 @@ export default async function AdminBrandsPage(props: { searchParams: Promise<Bra
       <DashboardPageHeader eyebrow="Brands" title={`All brands (${brands.length})`} description={`${allBrands.length} marketplace brands. Review ownership links and open any brand's portal without changing its public page.`} actions={<Link href="/admin/brands/new" className={dashboardButtonPrimary}><Plus className="mr-2 h-4 w-4" />Add brand</Link>} />
       <DashboardFilters action="/admin/brands" clearHref="/admin/brands" activeCount={activeCount}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Brand, slug or category" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
-        <DashboardFilterField label="Category"><select name="category" defaultValue={params.category ?? ""} className={dashboardFilterControl}><option value="">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="City"><select name="city" defaultValue={params.city ?? ""} className={dashboardFilterControl}><option value="">All cities</option>{cities.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Owner account"><select name="ownership" defaultValue={params.ownership ?? ""} className={dashboardFilterControl}><option value="">Any ownership</option><option value="linked">Linked</option><option value="unlinked">Not linked</option></select></DashboardFilterField>
-        <DashboardFilterField label="Sort"><select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}><option value="">Newest</option><option value="name">Name A–Z</option><option value="city">City A–Z</option></select></DashboardFilterField>
+        <DashboardMoreFilters label="More brand filters" active={Boolean(params.category || params.city || params.ownership)}>
+          <DashboardFilterField label="Category"><select name="category" defaultValue={params.category ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">All categories</option>{categories.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
+          <DashboardFilterField label="City"><select name="city" defaultValue={params.city ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">All cities</option>{cities.map((value) => <option key={value}>{value}</option>)}</select></DashboardFilterField>
+          <DashboardFilterField label="Owner account"><select name="ownership" defaultValue={params.ownership ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">Any ownership</option><option value="linked">Linked</option><option value="unlinked">Not linked</option></select></DashboardFilterField>
+        </DashboardMoreFilters>
       </DashboardFilters>
       <DashboardPanel className="mt-6">
-        {brands.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-[13px]"><thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500"><tr><th className="px-5 py-3 font-semibold">Brand</th><th className="px-5 py-3 font-semibold">Category</th><th className="px-5 py-3 font-semibold">City</th><th className="px-5 py-3 font-semibold">Owner account</th><th className="px-5 py-3 font-semibold">Status</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-slate-100">{brands.map((brand) => (
+        {brands.length ? <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-[13px]"><thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500"><tr><SortableTableHeader label="Brand" href={tableSortHref("/admin/brands", params, "brand")} active={params.sort?.startsWith("brand-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Category" href={tableSortHref("/admin/brands", params, "category")} active={params.sort?.startsWith("category-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="City" href={tableSortHref("/admin/brands", params, "city")} active={params.sort?.startsWith("city-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Owner account" href={tableSortHref("/admin/brands", params, "owner", "desc")} active={params.sort?.startsWith("owner-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Status" href={tableSortHref("/admin/brands", params, "status", "desc")} active={params.sort?.startsWith("status-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-slate-100">{brands.map((brand) => (
           <tr key={brand.slug} className="hover:bg-slate-50/70"><td className="px-5 py-4"><div className="flex items-center gap-3"><div className="relative h-11 w-11 overflow-hidden rounded-xl bg-slate-100"><Image src={brand.heroImage} alt={brand.name} fill className="object-cover" /></div><div><p className="font-bold text-slate-900">{brand.name}</p><Link href={`/brands/${brand.slug}`} className="mt-0.5 block text-[11px] text-slate-500 hover:text-mahalyred hover:underline">/{brand.slug}</Link></div></div></td><td className="px-5 py-4 text-slate-600">{brand.category}</td><td className="px-5 py-4 text-slate-600">{brand.city}</td><td className="px-5 py-4">{brand.ownerEmail ? <div><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10.5px] font-bold text-emerald-700">Linked</span><p className="mt-1.5 text-[10.5px] text-slate-500">{brand.ownerEmail}</p></div> : <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10.5px] font-bold text-amber-700">Not linked</span>}</td><td className="px-5 py-4"><div className="flex flex-wrap items-center gap-1.5"><BrandQuickToggle slug={brand.slug} field="isActive" active={brand.isActive} label="Active" /><BrandQuickToggle slug={brand.slug} field="isMahalyPartner" active={brand.isMahalyPartner} label="Partner" /><BrandSponsorControl slug={brand.slug} isSponsored={brand.isSponsored} placements={brand.sponsoredPlacements} order={brand.sponsoredOrder} /></div></td><td className="px-5 py-4"><div className="flex items-center justify-end gap-1"><Link href={`/brand-portal?brand=${brand.slug}`} aria-label={`View ${brand.name}'s portal`} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><LayoutDashboard className="h-4 w-4" /></Link><Link href={`/admin/brands/${brand.slug}/edit`} aria-label={`Edit ${brand.name}`} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900"><Pencil className="h-4 w-4" /></Link><DeleteEntityButton apiPath={`/api/admin/brands/${brand.slug}`} name={brand.name} /></div></td></tr>
         ))}</tbody></table></div> : <DashboardEmptyState title="No matching brands" description={activeCount ? "Clear or adjust the filters to see more brands." : "Create the first brand to begin building the marketplace catalog."} />}
       </DashboardPanel>

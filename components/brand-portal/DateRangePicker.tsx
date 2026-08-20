@@ -120,6 +120,13 @@ export default function DateRangePicker({
   const [visibleMonth, setVisibleMonth] = useState(initialMonth);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const autoSubmitParentForm = () => {
+    window.setTimeout(() => {
+      const form = containerRef.current?.closest("form[data-auto-submit='true']") as HTMLFormElement | null;
+      form?.requestSubmit();
+    }, 0);
+  };
+
   useEffect(() => {
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) setOpen(false);
@@ -145,9 +152,11 @@ export default function DateRangePicker({
       setTo(from);
       setFrom(value);
       onRangeChange?.({ from: value, to: from });
+      autoSubmitParentForm();
     } else {
       setTo(value);
       onRangeChange?.({ from, to: value });
+      autoSubmitParentForm();
     }
   };
 
@@ -158,21 +167,24 @@ export default function DateRangePicker({
     setTo(dateKey(end));
     setVisibleMonth(startOfMonth(start));
     onRangeChange?.({ from: dateKey(start), to: dateKey(end) });
+    autoSubmitParentForm();
   };
 
   const clearRange = () => {
     setFrom("");
     setTo("");
     onRangeChange?.({ from: "", to: "" });
+    autoSubmitParentForm();
   };
 
   return (
-    <div ref={containerRef} className={`relative min-w-0 ${className}`}>
+    <div ref={containerRef} data-dashboard-filters="true" className={`relative order-[4] min-w-0 ${className}`}>
       {fromName && <input type="hidden" name={fromName} value={from} readOnly />}
       {toName && <input type="hidden" name={toName} value={to} readOnly />}
       <span className={compact ? "sr-only" : "text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]"}>{label}</span>
       <button
         type="button"
+        data-dashboard-filter-control="true"
         aria-label={compact ? `${label}: ${formatRange(from, to)}` : undefined}
         aria-haspopup="dialog"
         aria-expanded={open}

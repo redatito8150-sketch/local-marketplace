@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Banknote, Check, ChevronLeft, ChevronRight, Clock3, CreditCard, Download, Filter, PackageCheck, Printer, RotateCcw, Search, Truck, X } from "lucide-react";
+import { Banknote, Check, ChevronLeft, ChevronRight, Clock3, CreditCard, Download, PackageCheck, Printer, RotateCcw, Search, Truck, X } from "lucide-react";
 import BrandOrderStatusControl from "@/components/brand-portal/BrandOrderStatusControl";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
@@ -12,16 +12,17 @@ import type { BrandOrder } from "@/lib/data/brandPortal";
 import type { OrderStatus } from "@/types";
 import { getOrderPaymentPresentation, paymentToneClass } from "@/lib/orders/paymentPresentation";
 import { normalizeOrderStatus } from "@/lib/orders/lifecycle";
+import AutoSubmitForm from "@/components/dashboard/AutoSubmitForm";
 
 type Queue = "all" | "attention" | "active" | "fulfilled" | "cancelled";
 type Params = { brand?: string; q?: string; queue?: string; from?: string; to?: string; sort?: string };
 
-const QUEUES: Array<{ key: Queue; label: string }> = [
-  { key: "all", label: "All orders" },
-  { key: "attention", label: "Needs action" },
-  { key: "active", label: "In progress" },
-  { key: "fulfilled", label: "Delivered" },
-  { key: "cancelled", label: "Cancelled" },
+const QUEUES: Array<{ key: Queue; label: string; tone: string }> = [
+  { key: "all", label: "All orders", tone: "bg-[#C85956]" },
+  { key: "attention", label: "Needs action", tone: "bg-red-500" },
+  { key: "active", label: "In progress", tone: "bg-amber-400" },
+  { key: "fulfilled", label: "Delivered", tone: "bg-emerald-500" },
+  { key: "cancelled", label: "Cancelled", tone: "bg-[#a9bbc5]" },
 ];
 
 function productsSubtotal(order: BrandOrder) {
@@ -72,7 +73,6 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
   totalOrders: number;
 }) {
   const [selected, setSelected] = useState<BrandOrder | null>(null);
-  const [filtersOpen, setFiltersOpen] = useState(Boolean(params.from || params.to || params.sort));
   const activeQueue = (QUEUES.some((queue) => queue.key === params.queue) ? params.queue : "all") as Queue;
   const selectedPayment = selected ? getOrderPaymentPresentation(selected) : null;
 
@@ -106,34 +106,26 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
 
   return (
     <>
-      <section className="relative mt-6 overflow-visible rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.045)]">
-        <div className="grid border-b border-[#eee7e1] lg:grid-cols-[1.25fr_repeat(4,minmax(0,1fr))]">
-          {QUEUES.map((queue) => {
-            const active = activeQueue === queue.key;
-            return <Link key={queue.key} href={hrefFor({ queue: queue.key === "all" ? undefined : queue.key, page: undefined })} className={`group flex min-h-[76px] items-center justify-between gap-3 border-b border-[#eee7e1] px-5 transition-colors last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0 ${active ? "bg-[#fff7f5]" : "hover:bg-[#fcfaf8]"}`}>
-              <div><p className={`text-[11px] font-bold uppercase tracking-[0.1em] ${active ? "text-[#C85956]" : "text-[#9a8b80]"}`}>{queue.label}</p><p className="mt-1 text-[22px] font-bold tracking-[-0.04em] text-[#242424]">{counts[queue.key]}</p></div>
-              {active && <span className="h-8 w-1 rounded-full bg-[#C85956]" />}
-            </Link>;
-          })}
-        </div>
-
-        <form action="/brand-portal/orders" className="border-b border-[#eee7e1] px-4 py-4 sm:px-5">
+      <AutoSubmitForm action="/brand-portal/orders" className="relative mt-6">
           {params.brand && <input type="hidden" name="brand" value={params.brand} />}
           {activeQueue !== "all" && <input type="hidden" name="queue" value={activeQueue} />}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <label className="relative min-w-0 flex-1">
+          <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
+            <label className="relative order-[1] min-w-0 lg:w-[320px] lg:flex-none">
+              <span className="sr-only">Search orders</span>
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9d8f84]" />
-              <input name="q" defaultValue={params.q ?? ""} placeholder="Search order, customer or product" className="h-11 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-10 pr-4 text-[12.5px] text-[#242424] outline-none transition focus:border-[#C85956]/55 focus:bg-white focus:ring-4 focus:ring-[#C85956]/8" />
+              <input name="q" defaultValue={params.q ?? ""} placeholder="Search order, customer or product" className="h-10 w-full rounded-xl border border-[#e5ddd5] bg-[#fcfaf8] pl-10 pr-4 text-[11.5px] font-semibold text-[#51473f] outline-none transition placeholder:font-normal placeholder:text-[#9b8d82] hover:border-[#d8ccc3] focus:border-[#C85956]/45 focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#C85956]/8" />
             </label>
-            <button type="button" onClick={() => setFiltersOpen((value) => !value)} className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-4 text-[12px] font-bold transition ${filtersOpen ? "border-[#C85956]/30 bg-[#fff4f2] text-[#C85956]" : "border-[#e7ddd5] bg-white text-[#554940] hover:bg-[#fcfaf8]"}`}><Filter className="h-4 w-4" />More filters</button>
-            <button className="h-11 rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white transition hover:bg-[#b84e4b]">Search</button>
+            <nav aria-label="Order queue" className="order-[2] flex h-10 min-w-0 overflow-x-auto rounded-xl border border-[#e7ddd5] bg-[#fcfaf8]">
+              {QUEUES.map((queue) => {
+                const active = activeQueue === queue.key;
+                return <Link key={queue.key} href={hrefFor({ queue: queue.key === "all" ? undefined : queue.key, page: undefined })} aria-current={active ? "page" : undefined} className={`inline-flex h-full flex-none items-center gap-1.5 border-r border-[#eee7e1] px-3 text-[10.5px] font-bold transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 ${active ? "bg-[#f6e5e3] text-[#A94442]" : "text-[#6f635a] hover:bg-white hover:text-[#A94442]"}`}><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${queue.tone}`} />{queue.label}<span className="tabular-nums text-[9.5px] opacity-70">{counts[queue.key]}</span></Link>;
+              })}
+            </nav>
+            <DateRangePicker key={`${params.from ?? ""}-${params.to ?? ""}`} defaultFrom={params.from} defaultTo={params.to} compact label="Order date range" />
           </div>
-          {filtersOpen && <div className="mt-4 grid gap-3 border-t border-[#f0e9e3] pt-4 sm:grid-cols-[minmax(0,2fr)_minmax(160px,1fr)]">
-            <DateRangePicker key={`${params.from ?? ""}-${params.to ?? ""}`} defaultFrom={params.from} defaultTo={params.to} />
-            <label className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">Sort<select name="sort" defaultValue={params.sort ?? ""} className="mt-2 h-10 w-full rounded-xl border border-[#e7ddd5] bg-white px-3 text-[12px] normal-case tracking-normal text-[#51473f] outline-none focus:border-[#C85956]/55"><option value="">Newest first</option><option value="oldest">Oldest first</option></select></label>
-          </div>}
-        </form>
+      </AutoSubmitForm>
 
+      <section className="relative mt-4 overflow-hidden rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.045)]">
         <div className="flex items-center justify-between gap-3 border-b border-[#eee7e1] bg-[#fcfaf8] px-5 py-3">
           <div><p className="text-[11px] font-bold uppercase tracking-[0.1em] text-[#8d7f75]">Operational queue</p><p className="mt-0.5 text-[10.5px] text-[#9a8b80]">{totalOrders} matching {totalOrders === 1 ? "order" : "orders"}</p></div>
           <a href={exportHref} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#e4d9d1] bg-white px-3 text-[10.5px] font-bold text-[#5d5148] transition hover:border-[#C85956]/30 hover:text-[#C85956]"><Download className="h-3.5 w-3.5" />Export CSV</a>

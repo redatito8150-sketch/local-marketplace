@@ -2,11 +2,12 @@ import Link from "next/link";
 import { getAllPaymentAttemptsForAdmin } from "@/lib/data/admin";
 import { formatDateOnly, formatPrice } from "@/lib/format";
 import { PAYMENT_ATTEMPT_STATUSES, PAYMENT_ATTEMPT_STATUS_LABELS, paymentAttemptStatusBadgeClass } from "@/lib/admin/statuses";
-import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import DashboardFilters, { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
+import SortableTableHeader, { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 type PaymentSearchParams = { q?: string; status?: string; from?: string; to?: string; sort?: string; page?: string };
 const PAGE_SIZE = 25;
@@ -33,15 +34,16 @@ export default async function AdminPaymentsPage(props: { searchParams: Promise<P
     if (params.to && new Date(attempt.createdAt) > new Date(`${params.to}T23:59:59.999`)) return false;
     return true;
   });
-  filtered.sort((a, b) =>
-    params.sort === "oldest"
-      ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      : params.sort === "amount-desc"
-      ? b.amountCents - a.amountCents
-      : params.sort === "amount-asc"
-      ? a.amountCents - b.amountCents
-      : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+  filtered.sort((a, b) => {
+    const direction = params.sort?.endsWith("-desc") ? -1 : 1;
+    if (params.sort?.startsWith("reference-")) return direction * a.specialReference.localeCompare(b.specialReference, undefined, { numeric: true });
+    if (params.sort?.startsWith("customer-")) return direction * (a.userEmail ?? "").localeCompare(b.userEmail ?? "");
+    if (params.sort?.startsWith("purchase-")) return direction * (a.masterOrderNumber ?? "").localeCompare(b.masterOrderNumber ?? "", undefined, { numeric: true });
+    if (params.sort?.startsWith("amount-")) return direction * (a.amountCents - b.amountCents);
+    if (params.sort?.startsWith("status-")) return direction * a.status.localeCompare(b.status);
+    if (params.sort?.startsWith("date-")) return direction * (Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  });
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(Math.max(Number(params.page) || 1, 1), pageCount);
   const attempts = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -81,25 +83,19 @@ export default async function AdminPaymentsPage(props: { searchParams: Promise<P
             className={`${dashboardFilterControl} w-full lg:min-w-[240px]`}
           />
         </DashboardFilterField>
-        <DashboardFilterField label="Status">
-          <select name="status" defaultValue={params.status ?? ""} className={dashboardFilterControl}>
-            <option value="">All statuses</option>
-            {PAYMENT_ATTEMPT_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {PAYMENT_ATTEMPT_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-        </DashboardFilterField>
-        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" className="sm:col-span-2 lg:min-w-[320px]" />
-        <DashboardFilterField label="Sort">
-          <select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}>
-            <option value="">Newest</option>
-            <option value="oldest">Oldest</option>
-            <option value="amount-desc">Highest amount</option>
-            <option value="amount-asc">Lowest amount</option>
-          </select>
-        </DashboardFilterField>
+        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" compact />
+        <DashboardMoreFilters label="More payment filters" active={Boolean(params.status)}>
+          <DashboardFilterField label="Status">
+            <select name="status" defaultValue={params.status ?? ""} className={`${dashboardFilterControl} w-full`}>
+              <option value="">All statuses</option>
+              {PAYMENT_ATTEMPT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {PAYMENT_ATTEMPT_STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </DashboardFilterField>
+        </DashboardMoreFilters>
       </DashboardFilters>
 
       <DashboardPanel className="mt-6">
@@ -108,12 +104,12 @@ export default async function AdminPaymentsPage(props: { searchParams: Promise<P
             <table className="w-full min-w-[900px] text-left text-[13px]">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">Reference</th>
-                  <th className="px-5 py-3 font-semibold">Customer</th>
-                  <th className="px-5 py-3 font-semibold">Purchase</th>
-                  <th className="px-5 py-3 font-semibold">Amount</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
-                  <th className="px-5 py-3 font-semibold">Date</th>
+                  <SortableTableHeader label="Reference" href={tableSortHref("/admin/payments", params, "reference")} active={params.sort?.startsWith("reference-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader label="Customer" href={tableSortHref("/admin/payments", params, "customer")} active={params.sort?.startsWith("customer-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader label="Purchase" href={tableSortHref("/admin/payments", params, "purchase")} active={params.sort?.startsWith("purchase-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader label="Amount" href={tableSortHref("/admin/payments", params, "amount", "desc")} active={params.sort?.startsWith("amount-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader label="Status" href={tableSortHref("/admin/payments", params, "status")} active={params.sort?.startsWith("status-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader label="Date" href={tableSortHref("/admin/payments", params, "date", "desc")} active={!params.sort || params.sort.startsWith("date-")} direction={!params.sort || params.sort.endsWith("desc") ? "desc" : "asc"} />
                   <th className="px-5 py-3" />
                 </tr>
               </thead>

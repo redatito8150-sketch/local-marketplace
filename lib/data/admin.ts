@@ -18,6 +18,7 @@ import {
   OrderItemRecord,
   OrderRecord,
   OrderStatus,
+  OptionSwatchType,
   ProductColorOption,
   ProductRecord,
   ProductStatus,
@@ -1288,6 +1289,11 @@ export interface AdminInventoryVariantDetail {
   sellingStatus: string;
   color: string | null;
   size: string | null;
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
+  sizeSortOrder?: number;
+  sizeBrandId?: string | null;
 }
 
 export interface AdminInventoryProductDetail {
@@ -1436,8 +1442,10 @@ export async function getInventoryBrandDetailForAdmin(slug: string): Promise<Adm
         .filter((variant) => variant.sellingStatus !== "discontinued")
         .map((variant) => {
           const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
-          const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
-          const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
+          const colorOption = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color");
+          const color = colorOption?.label ?? null;
+          const sizeOption = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size");
+          const size = sizeOption?.label ?? null;
           return {
             id: variant.id,
             sku: variant.sku,
@@ -1449,6 +1457,11 @@ export async function getInventoryBrandDetailForAdmin(slug: string): Promise<Adm
             sellingStatus: variant.sellingStatus,
             color,
             size,
+            swatchType: colorOption?.swatchType,
+            primaryColor: colorOption?.primaryColor,
+            secondaryColor: colorOption?.secondaryColor,
+            sizeSortOrder: sizeOption?.sortOrder,
+            sizeBrandId: sizeOption?.brandId,
           } satisfies AdminInventoryVariantDetail;
         });
       return {
@@ -1511,8 +1524,10 @@ export async function getInventoryProductsForAdmin(): Promise<AdminInventoryProd
       .filter((variant) => variant.sellingStatus !== "discontinued")
       .map((variant) => {
         const threshold = effectiveLowStockThreshold(variant.lowStockThresholdOverride, product.default_low_stock_threshold);
-        const color = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color")?.label ?? null;
-        const size = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size")?.label ?? null;
+        const colorOption = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "color");
+        const color = colorOption?.label ?? null;
+        const sizeOption = variant.optionValues.find((value) => value.optionTypeName.toLocaleLowerCase("en-US") === "size");
+        const size = sizeOption?.label ?? null;
         return {
           id: variant.id,
           sku: variant.sku,
@@ -1524,6 +1539,11 @@ export async function getInventoryProductsForAdmin(): Promise<AdminInventoryProd
           sellingStatus: variant.sellingStatus,
           color,
           size,
+          swatchType: colorOption?.swatchType,
+          primaryColor: colorOption?.primaryColor,
+          secondaryColor: colorOption?.secondaryColor,
+          sizeSortOrder: sizeOption?.sortOrder,
+          sizeBrandId: sizeOption?.brandId,
         } satisfies AdminInventoryVariantDetail;
       });
     return [{

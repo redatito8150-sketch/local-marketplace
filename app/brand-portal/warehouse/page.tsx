@@ -21,11 +21,11 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
   if (!owner.isMahalyPartner) {
     return (
       <div>
-        <DashboardPageHeader eyebrow="Fulfillment" title="Shipments & Transfers" />
+        <DashboardPageHeader eyebrow="Inventory" title="Stock Transfers" />
         <div className="mt-6">
           <DashboardEmptyState
             title="Not available for this brand"
-            description="Shipments & Transfers is available to Zakhnook Fulfilled brands. Brand Fulfilled sellers manage their available quantities directly from Inventory."
+            description="Stock Transfers are available to Zakhnook Fulfilled brands. Brand Fulfilled sellers manage their available quantities directly from Inventory."
           />
         </div>
       </div>

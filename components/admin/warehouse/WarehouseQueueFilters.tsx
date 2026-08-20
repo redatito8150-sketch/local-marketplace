@@ -1,18 +1,19 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
+import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 
 type StatusFilter = "" | "requested" | "approved" | "action_required" | "received";
 
-const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
-  { value: "", label: "All" },
-  { value: "requested", label: "Requested" },
-  { value: "approved", label: "Awaiting arrival" },
-  { value: "action_required", label: "Needs review" },
-  { value: "received", label: "Received" },
+const STATUS_FILTERS: Array<{ value: StatusFilter; label: string; tone: string }> = [
+  { value: "", label: "All", tone: "bg-[#C85956]" },
+  { value: "requested", label: "Requested", tone: "bg-amber-400" },
+  { value: "approved", label: "Awaiting arrival", tone: "bg-[#a9bbc5]" },
+  { value: "action_required", label: "Needs review", tone: "bg-red-500" },
+  { value: "received", label: "Received", tone: "bg-emerald-500" },
 ];
 
 export default function WarehouseQueueFilters({
@@ -22,7 +23,7 @@ export default function WarehouseQueueFilters({
   from,
   to,
   brandOptions,
-  needsReviewCount,
+  statusCounts,
 }: {
   q: string;
   status: string;
@@ -30,11 +31,16 @@ export default function WarehouseQueueFilters({
   from: string;
   to: string;
   brandOptions: [string, string][];
-  needsReviewCount: number;
+  statusCounts: Record<StatusFilter, number>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [query, setQuery] = useState(q);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+  }, []);
 
   function navigate(changes: Record<string, string>) {
     const next = new URLSearchParams(searchParams.toString());
@@ -52,18 +58,23 @@ export default function WarehouseQueueFilters({
     navigate({ q: submittedQuery });
   }
 
+  function updateQuery(value: string) {
+    setQuery(value);
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => navigate({ q: value.trim() }), 320);
+  }
+
   return (
-    <div className="border-b border-[#e4ddd7] px-3 py-3 sm:px-4">
-      <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-        <div className="flex min-w-0 items-center gap-2">
-          <form onSubmit={submitSearch} className="relative min-w-0 flex-1 sm:flex-none">
+    <div data-dashboard-filters="true">
+      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <form onSubmit={submitSearch} className="relative order-[1] min-w-0 flex-1 sm:w-[320px] sm:flex-none">
             <label className="sr-only" htmlFor="warehouse-search">Search warehouse documents</label>
             <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d8f84]" />
             <input
               id="warehouse-search"
               name="q"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => updateQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key !== "Enter") return;
                 event.preventDefault();
@@ -71,23 +82,10 @@ export default function WarehouseQueueFilters({
               }}
               autoComplete="off"
               placeholder="Search document, brand, product or SKU"
-              className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] focus:border-[#C85956]/45 focus:bg-white focus:ring-4 focus:ring-[#C85956]/8 sm:w-[330px]"
+              className="h-10 w-full rounded-xl border border-[#e7ddd5] bg-[#fcfaf8] pl-9 pr-3 text-[11px] text-[#403730] outline-none transition placeholder:text-[#9b8d82] hover:border-[#d8ccc3] focus:border-[#C85956]/45 focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#C85956]/8 sm:w-[320px]"
             />
           </form>
-          <DateRangePicker
-            key={`${from}-${to}`}
-            defaultFrom={from}
-            defaultTo={to}
-            fromName={null}
-            toName={null}
-            label="Requested date range"
-            compact
-            onRangeChange={(range) => navigate(range)}
-          />
-        </div>
-
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 xl:pb-0">
-          <div aria-label="Document status" className="flex h-10 flex-none items-center overflow-hidden rounded-xl border border-[#e7ddd5] bg-white">
+          <div aria-label="Document status" className="order-[2] flex h-10 min-w-0 flex-none items-center overflow-x-auto rounded-xl border border-[#e7ddd5] bg-white">
             {STATUS_FILTERS.map((filter) => {
               const active = status === filter.value;
               return (
@@ -98,28 +96,31 @@ export default function WarehouseQueueFilters({
                   onClick={() => navigate({ status: filter.value })}
                   className={`h-full whitespace-nowrap border-r border-[#eee7e1] px-3 text-[10px] font-bold transition last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 ${active ? "bg-[#f7e8e6] text-[#C85956]" : "text-[#6f6259] hover:bg-[#fcfaf8] hover:text-[#302924]"}`}
                 >
+                  <span aria-hidden="true" className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full ${filter.tone}`} />
                   <span>{filter.label}</span>
-                  {filter.value === "action_required" && needsReviewCount > 0 ? (
-                    <span className={`ml-1.5 inline-flex min-w-4 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-extrabold tabular-nums ${active ? "bg-[#C85956] text-white" : "bg-[#f4dfdc] text-[#b64d4a]"}`}>
-                      {needsReviewCount}
-                    </span>
-                  ) : null}
+                  <span className="ml-1.5 tabular-nums text-[9px] opacity-65">{statusCounts[filter.value]}</span>
                 </button>
               );
             })}
           </div>
-
-          <label className="sr-only" htmlFor="warehouse-brand-filter">Partner brand</label>
-          <select
-            id="warehouse-brand-filter"
-            value={brand}
-            onChange={(event) => navigate({ brand: event.target.value })}
-            className="h-10 min-w-[148px] rounded-xl border border-[#e7ddd5] bg-white px-3 text-[10px] font-bold text-[#5d5148] outline-none transition focus:border-[#e7ddd5] focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0"
-          >
-            <option value="">All brands</option>
-            {brandOptions.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}
-          </select>
-        </div>
+          <DateRangePicker
+            key={`${from}-${to}`}
+            defaultFrom={from}
+            defaultTo={to}
+            fromName={null}
+            toName={null}
+            label="Requested date range"
+            compact
+            onRangeChange={(range) => navigate(range)}
+          />
+          <DashboardMoreFilters label="More warehouse filters" active={Boolean(brand)}>
+            <DashboardFilterField label="Partner brand">
+              <select id="warehouse-brand-filter" value={brand} onChange={(event) => navigate({ brand: event.target.value })} className={`${dashboardFilterControl} w-full`}>
+                <option value="">All brands</option>
+                {brandOptions.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}
+              </select>
+            </DashboardFilterField>
+          </DashboardMoreFilters>
       </div>
     </div>
   );

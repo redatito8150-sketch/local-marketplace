@@ -4,7 +4,7 @@ import { getFullTaxonomyTree, resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { getVariantsForProducts } from "@/lib/data/variants";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
-import type { OrderItemDiscountSource, ProductStatus, ProductVariant, SellingStatus, StockStatus } from "@/types";
+import type { OptionSwatchType, OrderItemDiscountSource, ProductStatus, ProductVariant, SellingStatus, StockStatus } from "@/types";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
 
 // Every query here uses the cookie-aware anon client by default (never
@@ -267,6 +267,11 @@ export interface BrandVariant {
   optionSummary: string;
   color?: string;
   size?: string;
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
+  sizeSortOrder?: number;
+  sizeBrandId?: string | null;
   quantity: number;
   incomingQuantity: number;
   lowStockThreshold: number;
@@ -404,6 +409,7 @@ export async function getVariantsForBrand(
     );
     const optionValues = optionValuesByVariant.get(row.id) ?? [];
     const colorValue = optionValues.find((option) => option.optionTypeName === "Color");
+    const sizeValue = optionValues.find((option) => option.optionTypeName === "Size");
     const soldLast30Days = soldByVariant.get(row.id) ?? 0;
     const daysRemaining = estimateDaysRemaining(row.quantity, soldLast30Days);
     return {
@@ -414,8 +420,13 @@ export async function getVariantsForBrand(
       productImage: row.products!.image,
       sku: row.sku,
       optionSummary: optionValues.map((option) => `${option.optionTypeName}: ${option.label}`).join(" / ") || "Default",
-      color: optionValues.find((o) => o.optionTypeName === "Color")?.label,
-      size: optionValues.find((o) => o.optionTypeName === "Size")?.label,
+      color: colorValue?.label,
+      size: sizeValue?.label,
+      swatchType: colorValue?.swatchType,
+      primaryColor: colorValue?.primaryColor,
+      secondaryColor: colorValue?.secondaryColor,
+      sizeSortOrder: sizeValue?.sortOrder,
+      sizeBrandId: sizeValue?.brandId,
       quantity: row.quantity,
       incomingQuantity: incomingByVariant.get(row.id) ?? 0,
       lowStockThreshold: threshold,
@@ -527,8 +538,24 @@ export async function getInventoryPageForBrand(
     summary: InventoryPageSummary;
   };
 
+  // The canonical inventory RPC deliberately stays focused on stock and
+  // pagination. Enrich the bounded page with the existing option metadata so
+  // the Brand Portal renders the exact same color swatches and authoritative
+  // size order as Admin Inventory without duplicating either rule in SQL.
+  const variantsByProduct = await getVariantsForProducts(
+    [...new Set(result.items.map((item) => item.productId))],
+    supabaseAdmin,
+  );
+  const optionValuesByVariant = new Map(
+    [...variantsByProduct.values()].flat().map((variant) => [variant.id, variant.optionValues]),
+  );
+
   return {
-    variants: result.items.map((item) => ({
+    variants: result.items.map((item) => {
+      const optionValues = optionValuesByVariant.get(item.variantId) ?? [];
+      const colorValue = optionValues.find((option) => option.optionTypeName === "Color");
+      const sizeValue = optionValues.find((option) => option.optionTypeName === "Size");
+      return {
       variantId: item.variantId,
       productId: item.productId,
       productName: item.productName,
@@ -541,6 +568,11 @@ export async function getInventoryPageForBrand(
       ].filter(Boolean).join(" / ") || "Default",
       color: item.color ?? undefined,
       size: item.size ?? undefined,
+      swatchType: colorValue?.swatchType,
+      primaryColor: colorValue?.primaryColor,
+      secondaryColor: colorValue?.secondaryColor,
+      sizeSortOrder: sizeValue?.sortOrder,
+      sizeBrandId: sizeValue?.brandId,
       quantity: item.availableAtZakhnook,
       incomingQuantity: item.incomingQuantity,
       lowStockThreshold: item.lowStockThreshold,
@@ -550,7 +582,8 @@ export async function getInventoryPageForBrand(
       estimatedDaysRemaining: item.estimatedDaysRemaining ?? undefined,
       suggestedRestock: item.suggestedRestock,
       latestRequest: item.latestRequest ?? undefined,
-    })),
+      };
+    }),
     summary: result.summary,
     nextCursor: result.nextCursor
       ? Buffer.from(JSON.stringify(result.nextCursor), "utf8").toString("base64url")

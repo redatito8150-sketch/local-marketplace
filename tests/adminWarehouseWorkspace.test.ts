@@ -17,7 +17,7 @@ test("warehouse data exposes formal documents, every lifecycle state, exact Vari
   assert.match(data, /Promise\.all\(\[\s*actorIdentityFor\(t\.requested_by/);
 });
 
-test("Stock requests is a compact searchable queue with inline status, brand and date filters", () => {
+test("Stock requests is a compact searchable queue with quick statuses, date and advanced brand filters", () => {
   const page = read("app/admin/warehouse/page.tsx");
   const filters = read("components/admin/warehouse/WarehouseQueueFilters.tsx");
   const dateRange = read("components/brand-portal/DateRangePicker.tsx");
@@ -25,23 +25,30 @@ test("Stock requests is a compact searchable queue with inline status, brand and
   assert.match(filters, /Search document, brand, product or SKU/);
   assert.match(filters, /Requested date range/);
   assert.match(filters, /compact/);
+  assert.match(filters, /router\.push/);
+  assert.doesNotMatch(filters, />Apply</);
   assert.match(filters, /All brands/);
-  assert.match(filters, /value: "requested", label: "Requested"/);
-  assert.match(filters, /value: "approved", label: "Awaiting arrival"/);
-  assert.match(filters, /value: "action_required", label: "Needs review"/);
-  assert.match(filters, /filter\.value === "action_required" && needsReviewCount > 0/);
-  assert.match(filters, /value: "received", label: "Received"/);
+  assert.match(filters, /value: "requested", label: "Requested", tone:/);
+  assert.match(filters, /value: "approved", label: "Awaiting arrival", tone:/);
+  assert.match(filters, /value: "action_required", label: "Needs review", tone:/);
+  assert.match(filters, /statusCounts\[filter\.value\]/);
+  assert.match(filters, /value: "received", label: "Received", tone:/);
+  assert.match(filters, /<DashboardMoreFilters label="More warehouse filters"/);
   assert.match(dateRange, /compact\?: boolean/);
   assert.match(dateRange, /compact && \(from \|\| to\).*Clear/);
   assert.match(page, /Needs review/);
   assert.match(page, /const needsReviewCount = allTransfers\.filter/);
   assert.doesNotMatch(page, />\{formatCount\(openDiscrepancies\.length\)\} unresolved<\/Link>/);
   assert.match(page, /Document \/ brand/);
+  assert.match(page, /WarehouseSortHeader label="Document \/ brand"/);
+  assert.match(page, /WarehouseSortHeader label="Requested"/);
+  assert.match(page, /WarehouseSortHeader label="Status"/);
+  assert.match(page, /WarehouseSortHeader label="Dates"/);
   assert.match(page, /Created/);
   assert.match(page, /Updated/);
   assert.match(page, /railClass/);
   assert.match(page, /statusLabel/);
-  assert.match(page, /const issuePriority = Number\(hasOpenWarehouseIssue\(b\)\) - Number\(hasOpenWarehouseIssue\(a\)\)/);
+  assert.match(page, /if \(sort\.startsWith\("status-"\)\)/);
   assert.doesNotMatch(page, /SummaryLink/);
   assert.doesNotMatch(page, /WarehouseFilters/);
   assert.match(page, /const PAGE_SIZE = 12/);

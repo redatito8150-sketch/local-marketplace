@@ -17,6 +17,7 @@ import { DashboardEmptyState, DashboardPageHeader, DashboardPanel, dashboardButt
 import { needsBrandProductAttention } from "@/lib/brand-portal/productAttention";
 import ProductPriceDisplay from "@/components/products/ProductPriceDisplay";
 import { getProductPricePresentation } from "@/lib/products/pricingPresentation";
+import SortableTableHeader, { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 const PAGE_SIZE = 25;
 type ProductParams = {
@@ -75,15 +76,16 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     if (params.attention && !needsBrandProductAttention(product)) return false;
     return true;
   });
-  filteredProducts.sort((a, b) => params.attention
-    ? attentionPriority(a) - attentionPriority(b) || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    : params.sort === "name"
-      ? a.name.localeCompare(b.name)
-      : params.sort === "price-asc"
-        ? getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin
-        : params.sort === "price-desc"
-          ? getProductPricePresentation(b).currentMin - getProductPricePresentation(a).currentMin
-          : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  filteredProducts.sort((a, b) => {
+    const direction = params.sort?.endsWith("-desc") ? -1 : 1;
+    if (params.sort?.startsWith("product-")) return direction * a.name.localeCompare(b.name);
+    if (params.sort?.startsWith("category-")) return direction * (a.mainCategory ?? "").localeCompare(b.mainCategory ?? "");
+    if (params.sort?.startsWith("price-")) return direction * (getProductPricePresentation(a).currentMin - getProductPricePresentation(b).currentMin);
+    if (params.sort?.startsWith("inventory-")) return direction * (a.stockUnits - b.stockUnits);
+    if (params.sort?.startsWith("status-")) return direction * a.status.localeCompare(b.status);
+    if (params.attention) return attentionPriority(a) - attentionPriority(b) || Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  });
 
   const unique = (values: Array<string | undefined>) => [...new Set(values.filter((value): value is string => Boolean(value)))].sort();
   const categories = unique(allProducts.map((product) => product.mainCategory));
@@ -114,8 +116,6 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
     brandParam,
     canShowNow,
   }));
-  const firstResult = filteredProducts.length ? pageStart + 1 : 0;
-  const lastResult = Math.min(pageStart + PAGE_SIZE, filteredProducts.length);
 
   return (
     <div className="mx-auto max-w-[1540px]">
@@ -127,17 +127,6 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
         actions={<Link href={`/brand-portal/products/new${brandParam}`} className={`${dashboardButtonPrimary} active:translate-y-px`}><Plus className="mr-2 h-4 w-4" aria-hidden="true" />Add product</Link>}
       />
 
-      <ProductQuickViews
-        activeId={activeView}
-        views={[
-          { id: "all", label: "All products", href: buildQuickViewHref("/brand-portal/products", viewBaseParams), count: allProducts.length },
-          { id: "published", label: "Published", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "published" }), count: allProducts.filter((product) => product.status === "published").length },
-          { id: "drafts", label: "Drafts", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "draft" }), count: allProducts.filter((product) => product.status === "draft").length },
-          { id: "attention", label: "Needs attention", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { attention: "1" }), count: attentionProducts.length, attention: true },
-        ]}
-        archived={{ href: buildQuickViewHref("/brand-portal/products/archived", viewBaseParams), count: archivedCount }}
-      />
-
       <ProductCatalogFilters
         action="/brand-portal/products"
         params={{ ...params, brand: owner.isImpersonating ? owner.brandSlug ?? undefined : undefined }}
@@ -146,16 +135,17 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
         productTypes={productTypes}
         collections={collections}
         preserveBrand
+        quickViews={<ProductQuickViews
+          activeId={activeView}
+          views={[
+            { id: "all", label: "All products", href: buildQuickViewHref("/brand-portal/products", viewBaseParams), count: allProducts.length },
+            { id: "published", label: "Published", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "published" }), count: allProducts.filter((product) => product.status === "published").length },
+            { id: "drafts", label: "Drafts", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { status: "draft" }), count: allProducts.filter((product) => product.status === "draft").length },
+            { id: "attention", label: "Needs attention", href: buildQuickViewHref("/brand-portal/products", viewBaseParams, { attention: "1" }), count: attentionProducts.length, attention: true },
+          ]}
+          archived={{ href: buildQuickViewHref("/brand-portal/products/archived", viewBaseParams), count: archivedCount }}
+        />}
       />
-
-      <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[13px] font-semibold tabular-nums text-[#51473f]">
-          {filteredProducts.length === allProducts.length
-            ? `${allProducts.length} catalog ${allProducts.length === 1 ? "product" : "products"}`
-            : `${filteredProducts.length} of ${allProducts.length} products`}
-        </p>
-        {filteredProducts.length > 0 && <p className="text-[12px] tabular-nums text-[#81746a]">Showing {firstResult}-{lastResult}</p>}
-      </div>
 
       <DashboardPanel className="mt-3 border-[#e3dcd3] bg-[#fffdf9] shadow-[0_10px_30px_rgba(67,45,29,0.04)]">
         {displayProducts.length ? (
@@ -164,11 +154,11 @@ export default async function BrandPortalProductsPage(props: { searchParams: Pro
               <table className="w-full min-w-[960px] text-left text-[13px]">
                 <thead className="border-b border-[#e8e0d7] bg-[#fbf8f4] text-[10.5px] uppercase tracking-[0.08em] text-[#897b70]">
                   <tr>
-                    <th className="px-5 py-3 font-semibold">Product</th>
-                    <th className="px-5 py-3 font-semibold">Category</th>
-                    <th className="px-5 py-3 font-semibold">Price</th>
-                    <th className="px-5 py-3 font-semibold">Inventory</th>
-                    <th className="px-5 py-3 font-semibold">Status</th>
+                    <SortableTableHeader label="Product" href={tableSortHref("/brand-portal/products", params, "product")} active={params.sort?.startsWith("product-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                    <SortableTableHeader label="Category" href={tableSortHref("/brand-portal/products", params, "category")} active={params.sort?.startsWith("category-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                    <SortableTableHeader label="Price" href={tableSortHref("/brand-portal/products", params, "price")} active={params.sort?.startsWith("price-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                    <SortableTableHeader label="Inventory" href={tableSortHref("/brand-portal/products", params, "inventory", "desc")} active={params.sort?.startsWith("inventory-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
+                    <SortableTableHeader label="Status" href={tableSortHref("/brand-portal/products", params, "status")} active={params.sort?.startsWith("status-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} />
                     <th className="px-5 py-3"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>

@@ -1,6 +1,9 @@
 import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -64,12 +67,25 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const discrepancy = params.discrepancy === "open" || params.discrepancy === "resolved" ? params.discrepancy : "";
   const from = params.from && DATE_PATTERN.test(params.from) ? params.from : "";
   const to = params.to && DATE_PATTERN.test(params.to) ? params.to : "";
-  const sort = params.sort === "oldest" || params.sort === "status" ? params.sort : "newest";
+  const sort = ["document-asc", "document-desc", "requested-asc", "requested-desc", "status-asc", "status-desc", "date-asc", "date-desc"].includes(params.sort ?? "")
+    ? params.sort!
+    : params.sort === "oldest"
+      ? "date-asc"
+      : params.sort === "status"
+        ? "status-asc"
+        : "date-desc";
   const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
   const needsReviewCount = allTransfers.filter((transfer) =>
     ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) || hasOpenWarehouseIssue(transfer)
   ).length;
+  const statusCounts = {
+    "": allTransfers.length,
+    requested: allTransfers.filter((transfer) => ["pending", "submitted"].includes(transfer.status)).length,
+    approved: allTransfers.filter((transfer) => transfer.status === "approved").length,
+    action_required: needsReviewCount,
+    received: allTransfers.filter((transfer) => transfer.status === "received").length,
+  };
   const brandOptions = [...new Map(allTransfers.map((transfer) => [transfer.brandSlug, transfer.brandName])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
 
@@ -98,11 +114,14 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
     }
     return true;
   }).sort((a, b) => {
-    if (sort === "oldest") return new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime();
-    if (sort === "status") return WAREHOUSE_STATUS_META[a.status].order - WAREHOUSE_STATUS_META[b.status].order || new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime();
-    const issuePriority = Number(hasOpenWarehouseIssue(b)) - Number(hasOpenWarehouseIssue(a));
-    if (issuePriority) return issuePriority;
-    return new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime();
+    const direction = sort.endsWith("-desc") ? -1 : 1;
+    if (sort.startsWith("document-")) return direction * (a.documentNumber ?? a.id).localeCompare(b.documentNumber ?? b.id);
+    if (sort.startsWith("requested-")) {
+      const units = (row: WarehouseTransferRow) => row.items.reduce((sum, item) => sum + item.requestedQty, 0);
+      return direction * (units(a) - units(b));
+    }
+    if (sort.startsWith("status-")) return direction * (WAREHOUSE_STATUS_META[a.status].order - WAREHOUSE_STATUS_META[b.status].order);
+    return direction * (new Date(a.requestedAt).getTime() - new Date(b.requestedAt).getTime());
   });
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -118,14 +137,20 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
         <p className="mt-2 text-[11.5px] leading-5 text-[#756960]">Review and resolve incoming warehouse stock requests.</p>
       </header>
 
-      <section className="mt-5 overflow-visible rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
-        <WarehouseQueueFilters key={`${q}-${status}-${brand}-${from}-${to}`} q={q} status={status} brand={brand} from={from} to={to} brandOptions={brandOptions} needsReviewCount={needsReviewCount} />
+      <div className="mt-5">
+        <WarehouseQueueFilters key={`${q}-${status}-${brand}-${from}-${to}`} q={q} status={status} brand={brand} from={from} to={to} brandOptions={brandOptions} statusCounts={statusCounts} />
+      </div>
+      <section className="mt-4 overflow-hidden rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
         {visibleTransfers.length === 0 ? (
           <DashboardEmptyState title={status === "action_required" ? "No documents need review" : "No matching documents"} description={status === "action_required" ? "Every submitted warehouse document has been reviewed." : "Clear or adjust the filters to see more warehouse documents."} />
         ) : (
           <>
-            <div className="hidden grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] items-center gap-4 border-b border-[#e4ddd7] bg-[#fcfaf8] px-5 py-3 text-[9px] font-bold uppercase tracking-[0.09em] text-[#756960] lg:grid">
-              <span>Document / brand</span><span>Requested<small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">variants / units</small></span><span>Status</span><span>Dates</span><span />
+            <div className="hidden grid-cols-[minmax(260px,1.3fr)_150px_minmax(190px,.8fr)_230px_20px] items-center gap-4 border-b border-[#e4ddd7] bg-[#fcfaf8] px-5 py-2 text-[9px] font-bold uppercase tracking-[0.09em] text-[#756960] lg:grid">
+              <WarehouseSortHeader label="Document / brand" column="document" sort={sort} href={pageHref(params, { sort: nextSort(sort, "document"), page: undefined })} />
+              <WarehouseSortHeader label="Requested" note="variants / units" column="requested" sort={sort} href={pageHref(params, { sort: nextSort(sort, "requested"), page: undefined })} />
+              <WarehouseSortHeader label="Status" column="status" sort={sort} href={pageHref(params, { sort: nextSort(sort, "status"), page: undefined })} />
+              <WarehouseSortHeader label="Dates" column="date" sort={sort} href={pageHref(params, { sort: nextSort(sort, "date"), page: undefined })} />
+              <span />
             </div>
             <div className="divide-y divide-[#e8e1db]">{visibleTransfers.map((transfer) => <TransferRow key={transfer.id} transfer={transfer} />)}</div>
             <div className="border-t border-[#e8e1db] px-4 py-3 text-[9.5px] text-[#8d8076] sm:px-5">Showing {formatCount(visibleTransfers.length)} of {formatCount(filtered.length)} matching documents</div>
@@ -135,6 +160,18 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
       </section>
     </div>
   );
+}
+
+function nextSort(current: string, column: string) {
+  if (current === `${column}-asc`) return `${column}-desc`;
+  if (current === `${column}-desc`) return `${column}-asc`;
+  return column === "date" || column === "requested" ? `${column}-desc` : `${column}-asc`;
+}
+
+function WarehouseSortHeader({ label, note, column, sort, href }: { label: string; note?: string; column: string; sort: string; href: string }) {
+  const active = sort.startsWith(`${column}-`);
+  const Icon = active ? (sort.endsWith("-asc") ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return <Link href={href} scroll={false} className={`group inline-flex min-h-9 items-center gap-1.5 rounded-lg px-1.5 outline-none transition-colors hover:text-[#A94442] focus-visible:ring-2 focus-visible:ring-[#C85956]/25 ${active ? "text-[#A94442]" : ""}`}><span>{label}{note ? <small className="mt-0.5 block text-[8px] font-medium normal-case tracking-normal text-[#9a8d83]">{note}</small> : null}</span><Icon className="h-3 w-3 flex-none opacity-60 transition-opacity group-hover:opacity-100" aria-hidden="true" /></Link>;
 }
 
 function TransferRow({ transfer }: { transfer: WarehouseTransferRow }) {

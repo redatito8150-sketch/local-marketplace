@@ -6,7 +6,7 @@ import { describeAuditLog } from "@/lib/auditLogDescribe";
 import { formatDateTime } from "@/lib/format";
 import { diffEntitySnapshots } from "@/lib/auditDiff";
 import { getEntityAdminPath } from "@/lib/admin/entityLinks";
-import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import DashboardFilters, { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 
@@ -25,9 +25,11 @@ export default async function AdminAuditLogPage(props: { searchParams: Promise<{
       <DashboardPageHeader eyebrow="Operations" title={`Audit log (${logs.length})`} description="A read-only record of administrative and brand-portal activity, including who acted and what changed." />
       <DashboardFilters action="/admin/audit-log" clearHref="/admin/audit-log" activeCount={activeCount}>
         <DashboardFilterField label="Actor" className="lg:flex-1"><input name="actor" defaultValue={params.actor ?? ""} placeholder="Name or email" className={`${dashboardFilterControl} w-full lg:min-w-[220px]`} /></DashboardFilterField>
-        <DashboardFilterField label="Entity"><select name="entityType" defaultValue={params.entityType ?? ""} className={dashboardFilterControl}><option value="">All entities</option>{Object.entries(ENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
-        <DashboardFilterField label="Action"><select name="action" defaultValue={params.action ?? ""} className={dashboardFilterControl}><option value="">All actions</option>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
-        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" className="sm:col-span-2 lg:min-w-[320px]" />
+        <DateRangePicker defaultFrom={params.from} defaultTo={params.to} popoverAlign="right" compact />
+        <DashboardMoreFilters label="More audit filters" active={Boolean(params.entityType || params.action)}>
+          <DashboardFilterField label="Entity"><select name="entityType" defaultValue={params.entityType ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">All entities</option>{Object.entries(ENTITY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
+          <DashboardFilterField label="Action"><select name="action" defaultValue={params.action ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">All actions</option>{Object.entries(ACTION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
+        </DashboardMoreFilters>
       </DashboardFilters>
       <DashboardPanel className="mt-6">
         {logs.length ? <div className="divide-y divide-slate-100">{logs.map((log) => {

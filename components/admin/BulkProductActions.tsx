@@ -11,6 +11,7 @@ import AdminProductDeletionActions from "@/components/admin/AdminProductDeletion
 import ProductActionDialog from "@/components/products/ProductActionDialog";
 import { ProductStatusBadges } from "@/components/products/ProductStatusBadges";
 import ProductPriceDisplay from "@/components/products/ProductPriceDisplay";
+import SortableTableHeader from "@/components/dashboard/SortableTableHeader";
 
 type BulkResult = { succeeded: string[]; failed: { productId: string; message: string }[] };
 
@@ -66,7 +67,7 @@ function ProductImage({ product, className, priority = false }: { product: Produ
   );
 }
 
-export default function BulkProductActions({ products, totalProducts, clearHref }: { products: ProductRecord[]; totalProducts: number; clearHref: string }) {
+export default function BulkProductActions({ products, totalProducts, clearHref, sort, sortHrefs }: { products: ProductRecord[]; totalProducts: number; clearHref: string; sort?: string; sortHrefs: Record<"product" | "category" | "price" | "inventory" | "status", string> }) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -145,11 +146,11 @@ export default function BulkProductActions({ products, totalProducts, clearHref 
               <thead className="border-b border-[#e8e0d7] bg-[#fbf8f4] text-[10.5px] uppercase tracking-[0.08em] text-[#897b70]">
                 <tr>
                   <th className="w-14 px-4 py-3"><label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl hover:bg-[#f1eae2]"><input type="checkbox" checked={products.length > 0 && selected.size === products.length} onChange={toggleAll} aria-label="Select all products on this page" className="h-4 w-4 accent-mahalyred" /></label></th>
-                  <th className="px-4 py-3 font-semibold">Product</th>
-                  <th className="px-4 py-3 font-semibold">Category</th>
-                  <th className="px-4 py-3 font-semibold">Price</th>
-                  <th className="px-4 py-3 font-semibold">Inventory</th>
-                  <th className="px-4 py-3 font-semibold">Status & visibility</th>
+                  <SortableTableHeader className="px-4" label="Product" href={sortHrefs.product} active={sort?.startsWith("product-")} direction={sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader className="px-4" label="Category" href={sortHrefs.category} active={sort?.startsWith("category-")} direction={sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader className="px-4" label="Price" href={sortHrefs.price} active={sort?.startsWith("price-")} direction={sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader className="px-4" label="Inventory" href={sortHrefs.inventory} active={sort?.startsWith("inventory-")} direction={sort?.endsWith("desc") ? "desc" : "asc"} />
+                  <SortableTableHeader className="px-4" label="Status & visibility" href={sortHrefs.status} active={sort?.startsWith("status-")} direction={sort?.endsWith("desc") ? "desc" : "asc"} />
                   <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>

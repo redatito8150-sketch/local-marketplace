@@ -79,7 +79,7 @@ export default function BrandPerformanceAnalytics({ orders }: { orders: BrandOrd
             <p id="analytics-title" className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#C85956]">Performance analytics</p>
             <p className="mt-1 text-[11px] text-[#918278]">{metric ? `${METRICS.find((item) => item.key === metric)?.label} compared with the previous period` : "All trends · select a metric to focus"}</p>
           </div>
-          <DateRangePicker defaultFrom={from} defaultTo={to} fromName={null} toName={null} maxDate={today} popoverAlign="right" className="w-full sm:w-[390px]" onRangeChange={(range) => { if (range.from && range.to) { setFrom(range.from); setTo(range.to); } setActiveIndex(null); }} />
+          <DateRangePicker defaultFrom={from} defaultTo={to} fromName={null} toName={null} maxDate={today} popoverAlign="right" compact onRangeChange={(range) => { if (range.from && range.to) { setFrom(range.from); setTo(range.to); } setActiveIndex(null); }} />
         </div>
       </div>
 

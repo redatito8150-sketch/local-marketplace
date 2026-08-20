@@ -505,3 +505,17 @@ a.group:focus-visible .brand-partner-badge-icon {
 .rt-size-sm {
   font-size: 0.85em;
 }
+
+/* Match the storefront search treatment across dashboard filters: focus
+   clears the browser's blue ring and settles onto the same quiet, light
+   surface without darkening the control edge; the same pale edge is echoed
+   outside the control so keyboard focus remains visible. */
+[data-dashboard-filters="true"] :is(input:not([type="hidden"]), select, textarea, [data-dashboard-filter-control="true"]):focus,
+[data-dashboard-filters="true"] :is(input:not([type="hidden"]), select, textarea, [data-dashboard-filter-control="true"]):focus-visible {
+  outline: none !important;
+  border-color: #e7e4de !important;
+  background-color: #fff !important;
+  box-shadow: 0 0 0 2px rgba(231, 228, 222, 0.72) !important;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+}

@@ -36,10 +36,9 @@ export default async function ArchivedProductsPage(props: { searchParams: Promis
       <DashboardFilters action="/brand-portal/products/archived" clearHref={`/brand-portal/products/archived${brandParam}`} activeCount={params.q ? 1 : 0}>
         <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Product name, SKU, or ID" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
         {owner.isImpersonating && owner.brandSlug && <input type="hidden" name="brand" value={owner.brandSlug} />}
+        <Link href={`/brand-portal/products${brandParam}`} className="order-[3] inline-flex h-10 items-center gap-1.5 rounded-xl border border-[#e5ddd5] bg-[#fcfaf8] px-3 text-[10.5px] font-bold text-[#75685f] hover:bg-white hover:text-[#C85956]"><ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />Products</Link>
       </DashboardFilters>
-      <div className="mt-3"><Link href={`/brand-portal/products${brandParam}`} className="text-[12.5px] font-semibold text-[#C85956] hover:underline">← Back to products</Link></div>
-
-      <DashboardPanel className="mt-3 border-[#e3dcd3] bg-[#fffdf9]">
+      <DashboardPanel className="mt-4 border-[#e3dcd3] bg-[#fffdf9]">
         {result.rows.length ? <div className="divide-y divide-[#eee7de]">
           {result.rows.map((row) => (
             <div key={row.id} className="flex flex-col gap-4 p-4 lg:flex-row lg:items-start lg:justify-between sm:p-5">

@@ -8,11 +8,13 @@ import TestEmailButton from "@/components/admin/TestEmailButton";
 import TestDiscordButton from "@/components/admin/TestDiscordButton";
 import UserAccessControl from "@/components/admin/UserAccessControl";
 import RolesManager from "@/components/admin/RolesManager";
-import DashboardFilters, { DashboardFilterField, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
+import DashboardFilters, { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
+import DateRangePicker from "@/components/ui/DateRangePicker";
+import SortableTableHeader, { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 const ACCESS_LABELS: Record<string, string> = { customer: "Customer", brand_owner: "Brand Owner", brand_assistant: "Brand Assistant", staff: "Staff", manager: "Manager", admin: "Admin" };
-type UserSearchParams = { q?: string; role?: string; brandAccess?: string; from?: string; sort?: string; tab?: string };
+type UserSearchParams = { q?: string; role?: string; brandAccess?: string; from?: string; to?: string; sort?: string; tab?: string };
 
 export default async function AdminUsersPage(props: { searchParams: Promise<UserSearchParams> }) {
   const params = await props.searchParams;
@@ -57,17 +59,26 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
   }
 
   const query = params.q?.trim().toLowerCase();
+  const linkedBrandFor = (profile: (typeof allProfiles)[number]) => (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByStaffUserId.get(profile.id);
   const profiles = allProfiles.filter((profile) => {
-    const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByStaffUserId.get(profile.id);
+    const linkedBrand = linkedBrandFor(profile);
     if (query && !`${profile.fullName ?? ""} ${profile.email ?? ""} ${linkedBrand?.name ?? ""}`.toLowerCase().includes(query)) return false;
     if (params.role && profile.role !== params.role) return false;
     if (params.brandAccess === "linked" && !linkedBrand) return false;
     if (params.brandAccess === "unlinked" && linkedBrand) return false;
     if (params.from && new Date(profile.createdAt) < new Date(`${params.from}T00:00:00`)) return false;
+    if (params.to && new Date(profile.createdAt) > new Date(`${params.to}T23:59:59.999`)) return false;
     return true;
   });
-  profiles.sort((a, b) => params.sort === "name" ? (a.fullName ?? "").localeCompare(b.fullName ?? "") : params.sort === "oldest" ? new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  const activeCount = [params.q, params.role, params.brandAccess, params.from, params.sort].filter(Boolean).length;
+  profiles.sort((a, b) => {
+    const direction = params.sort?.endsWith("-desc") ? -1 : 1;
+    if (params.sort?.startsWith("user-")) return direction * (a.fullName ?? a.email ?? "").localeCompare(b.fullName ?? b.email ?? "");
+    if (params.sort?.startsWith("joined-")) return direction * (Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    if (params.sort?.startsWith("brand-")) return direction * (linkedBrandFor(a)?.name ?? "").localeCompare(linkedBrandFor(b)?.name ?? "");
+    if (params.sort?.startsWith("access-")) return direction * a.role.localeCompare(b.role);
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  });
+  const activeCount = [params.q, params.role, params.brandAccess, params.from, params.to, params.sort].filter(Boolean).length;
 
   const tabLinkClass = (active: boolean) =>
     `rounded-t-lg px-4 py-2.5 text-[13px] font-semibold transition-colors ${active ? "border-b-2 border-mahalyred text-mahalyred" : "text-slate-500 hover:text-slate-800"}`;
@@ -100,15 +111,16 @@ export default async function AdminUsersPage(props: { searchParams: Promise<User
         <>
           <DashboardFilters action="/admin/users" clearHref="/admin/users" activeCount={activeCount}>
             <DashboardFilterField label="Search" className="lg:flex-1"><input name="q" defaultValue={params.q ?? ""} placeholder="Name, email or brand" className={`${dashboardFilterControl} w-full lg:min-w-[240px]`} /></DashboardFilterField>
-            <DashboardFilterField label="Role"><select name="role" defaultValue={params.role ?? ""} className={dashboardFilterControl}><option value="">All roles</option>{Object.entries(ACCESS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
-            <DashboardFilterField label="Brand link"><select name="brandAccess" defaultValue={params.brandAccess ?? ""} className={dashboardFilterControl}><option value="">Any link</option><option value="linked">Linked to brand</option><option value="unlinked">Not linked</option></select></DashboardFilterField>
-            <DashboardFilterField label="Joined after"><input type="date" name="from" defaultValue={params.from ?? ""} className={dashboardFilterControl} /></DashboardFilterField>
-            <DashboardFilterField label="Sort"><select name="sort" defaultValue={params.sort ?? ""} className={dashboardFilterControl}><option value="">Newest</option><option value="oldest">Oldest</option><option value="name">Name A–Z</option></select></DashboardFilterField>
+            <DateRangePicker defaultFrom={params.from} defaultTo={params.to} compact />
+            <DashboardMoreFilters label="More user filters" active={Boolean(params.role || params.brandAccess)}>
+              <DashboardFilterField label="Role"><select name="role" defaultValue={params.role ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">All roles</option>{Object.entries(ACCESS_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></DashboardFilterField>
+              <DashboardFilterField label="Brand link"><select name="brandAccess" defaultValue={params.brandAccess ?? ""} className={`${dashboardFilterControl} w-full`}><option value="">Any link</option><option value="linked">Linked to brand</option><option value="unlinked">Not linked</option></select></DashboardFilterField>
+            </DashboardMoreFilters>
           </DashboardFilters>
           <DashboardPanel className="mt-6">
-            {profiles.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[13px]"><thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500"><tr><th className="px-5 py-3 font-semibold">User</th><th className="px-5 py-3 font-semibold">Joined</th><th className="px-5 py-3 font-semibold">Brand</th><th className="px-5 py-3 font-semibold">Access</th></tr></thead><tbody className="divide-y divide-slate-100">{profiles.map((profile) => {
+            {profiles.length ? <div className="overflow-x-auto"><table className="w-full min-w-[860px] text-left text-[13px]"><thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500"><tr><SortableTableHeader label="User" href={tableSortHref("/admin/users", params, "user")} active={params.sort?.startsWith("user-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Joined" href={tableSortHref("/admin/users", params, "joined", "desc")} active={!params.sort || params.sort.startsWith("joined-")} direction={!params.sort || params.sort.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Brand" href={tableSortHref("/admin/users", params, "brand")} active={params.sort?.startsWith("brand-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /><SortableTableHeader label="Access" href={tableSortHref("/admin/users", params, "access")} active={params.sort?.startsWith("access-")} direction={params.sort?.endsWith("desc") ? "desc" : "asc"} /></tr></thead><tbody className="divide-y divide-slate-100">{profiles.map((profile) => {
               const isSelf = profile.id === currentAdmin?.id;
-              const linkedBrand = (profile.email ? brandByOwnerEmail.get(profile.email.toLowerCase()) : undefined) ?? brandByStaffUserId.get(profile.id);
+              const linkedBrand = linkedBrandFor(profile);
               const heldRoleIds = roleIdsByUser.get(profile.id) ?? [];
               const heldRoleNames = heldRoleIds.map((id) => rolesByIdMap.get(id)?.name).filter(Boolean) as string[];
               const outranksActor = !isSelf && targetMaxRank(profile.id, profile.role) >= actorMaxRank;

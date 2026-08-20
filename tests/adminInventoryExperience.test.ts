@@ -45,6 +45,10 @@ test("Inventory resolves the exact Variant image and uses Product to Color to Si
   assert.match(data, /from\("product_media"\)/);
   assert.match(data, /buildColorImageLookup\(mediaResult\.data \?\? \[\]\)/);
   assert.match(data, /image: resolveVariantImage\(product\.id, variant, colorImages, product\.image\)/);
+  assert.match(data, /primaryColor: colorOption\?\.primaryColor/);
+  assert.match(page, /<ColorSwatch swatchType=\{variant\.swatchType\}/);
+  assert.match(data, /sizeSortOrder: sizeOption\?\.sortOrder/);
+  assert.match(page, /compareSizeOrderables/);
   assert.match(page, /function groupProductColors/);
   assert.match(page, /function ProductCard/);
   assert.match(page, /function ColorInventoryGroup/);
@@ -52,6 +56,14 @@ test("Inventory resolves the exact Variant image and uses Product to Color to Si
   assert.match(page, /color\.variants\[0\]\?\.image/);
   assert.match(page, /variant\.stockStatus/);
   assert.match(page, /Open a color to inspect its sizes and stock/);
+});
+
+test("expanded Admin inventory sizes distribute every metric across the available table width", () => {
+  const page = read("app/admin/inventory/page.tsx");
+  assert.match(page, /<col style=\{\{ width: "34%" \}\} \/>/);
+  assert.match(page, /<col style=\{\{ width: "23%" \}\} \/>/);
+  assert.match(page, /<th className="px-3 py-2 text-center">Available<\/th>/);
+  assert.match(page, /font-extrabold tabular-nums/);
 });
 
 test("products and colors start collapsed and expose real brand and Variant identity", () => {
@@ -71,11 +83,17 @@ test("catalog controls stay compact and make stock issues easy to scan", () => {
 
   assert.match(page, /Brand, product, color, size or SKU/);
   assert.match(page, /All fulfillment modes/);
-  assert.match(page, /All stock levels/);
+  assert.match(page, /aria-label="Stock filters"/);
   assert.match(page, /All product states/);
   assert.match(page, /Issues only/);
-  assert.match(page, /rounded-full bg-amber-50/);
-  assert.match(page, /text-\[10\.5px\].*Showing/);
+  assert.match(page, /\["healthy", "Healthy", stockCounts\.in_stock, "bg-emerald-500"\]/);
+  assert.match(page, /\["low_stock", "Low stock", stockCounts\.low_stock, "bg-amber-400"\]/);
+  assert.match(page, /<StockBadge status=\{variant\.stockStatus\}/);
+  assert.match(page, /need attention/);
+  assert.match(page, /bg-white/);
+  assert.doesNotMatch(page, /AdminInventoryCatalogTable/);
+  assert.doesNotMatch(page, /Showing \{formatCount\(filtered\.length\)\}/);
+  assert.match(page, /order-\[6\][^>]*>[\s\S]*More inventory filters/);
 });
 
 test("movement ledger is database-paginated and supports an exact Variant", () => {
@@ -98,7 +116,8 @@ test("movement ledger is database-paginated and supports an exact Variant", () =
 test("movement rows present one compact operational story without stacked card fragments", () => {
   const page = read("app/admin/inventory/page.tsx");
 
-  assert.match(page, /Balance &amp; route/);
+  assert.match(page, /label="Balance & route"/);
+  assert.match(page, /SortableTableHeader/);
   assert.match(page, /function MovementBalance/);
   assert.match(page, /function MovementEvent/);
   assert.match(page, /movementAccent\(row\.quantityDelta\)/);
@@ -167,16 +186,23 @@ test("Inventory sidebar branch uses a connected thread treatment in expanded and
 
 test("advanced movement filters live in a compact progressive toolbar", () => {
   const page = read("app/admin/inventory/page.tsx");
+  const autoSubmit = read("components/dashboard/AutoSubmitForm.tsx");
 
+  assert.match(page, /<AutoSubmitForm action="\/admin\/inventory" className="relative">/);
   assert.match(page, /aria-label="Quick movement filters"/);
   assert.match(page, /aria-label="Choose date range"/);
   assert.match(page, /aria-label="More movement filters"/);
-  assert.match(page, /const advancedFilterCount = \[params\.productId, params\.variantId, source, movementType\]\.filter\(Boolean\)\.length/);
+  assert.match(page, /const advancedFilterCount = \[params\.brand, params\.productId, params\.variantId, source, movementType\]\.filter\(Boolean\)\.length/);
   assert.match(page, /xl:max-w-\[330px\]/);
   assert.match(page, /absolute right-0 top-\[calc\(100%\+8px\)\]/);
-  assert.match(page, /rounded-\[18px\] border border-\[#eadfd7\] bg-white p-2\.5/);
+  assert.match(page, /rounded-2xl border border-\[#e7ddd5\] bg-white p-4/);
   assert.match(page, /view === "catalog" \? <DashboardPageHeader/);
-  assert.match(page, /\["receipt_posted", "Receipts"\]/);
+  assert.match(page, /\["receipt_posted", "Receipts", "bg-emerald-500"\]/);
+  assert.match(page, /<Select label="Brand" name="brand"/);
+  assert.doesNotMatch(page, /flex h-\[18px\].*advancedFilterCount/);
+  assert.match(autoSubmit, /\["search", "text", "number"\]\.includes\(target\.type\)/);
+  assert.match(autoSubmit, /form\.requestSubmit\(\)/);
+  assert.doesNotMatch(page, /Apply date range/);
   assert.doesNotMatch(page, /More filters/);
   assert.doesNotMatch(page, /title=\{view === "activity"/);
   assert.doesNotMatch(page, /_140px_140px_120px_120px_auto/);
