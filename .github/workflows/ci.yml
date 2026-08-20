@@ -36,3 +36,21 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  local-dev-admin:
+    name: Rebuild local database and prepare developer Admin
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Replay local schema and verify the developer Admin
+        run: npm run dev:admin:prepare

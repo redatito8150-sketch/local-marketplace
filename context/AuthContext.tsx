@@ -17,6 +17,7 @@ import {
   type PendingMfaChallenge,
 } from "@/lib/supabase/mfaAuth";
 import { isCompleteTotpCode, normalizeTotpCode } from "@/lib/auth/oneTimeCode";
+import { resolveSignInEmail } from "@/lib/auth/localDevAdmin";
 
 interface AuthResult {
   error?: string;
@@ -45,7 +46,7 @@ interface AuthContextValue {
   loading: boolean;
   mfaChallenge: MfaChallenge | null;
   mfaError: string | null;
-  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signIn: (identifier: string, password: string) => Promise<AuthResult>;
   signUp: (
     fullName: string,
     email: string,
@@ -163,8 +164,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (identifier: string, password: string) => {
     setMfaError(null);
+    const email = resolveSignInEmail(identifier, {
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      nodeEnv: process.env.NODE_ENV,
+    });
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: normalizeAuthError("auth.signIn", error).userMessage };
 
