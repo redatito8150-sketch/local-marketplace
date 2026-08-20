@@ -96,6 +96,15 @@ test("admin and Brand Portal product catalogs share the same filter system and s
   assert.match(brand, /label="Status"/);
 });
 
+test("admin Catalog tools closes when clicking outside", () => {
+  const tools = read("components/admin/ProductCatalogTools.tsx");
+
+  assert.match(tools, /detailsRef = useRef<HTMLDetailsElement>/);
+  assert.match(tools, /document\.addEventListener\("pointerdown", closeOnOutsideClick\)/);
+  assert.match(tools, /detailsRef\.current\.open = false/);
+  assert.match(tools, /Archived products/);
+});
+
 test("date filtering uses one compact calendar control and auto-submits the chosen range", () => {
   const dateRange = read("components/brand-portal/DateRangePicker.tsx");
   const warehouse = read("components/admin/warehouse/WarehouseQueueFilters.tsx");
