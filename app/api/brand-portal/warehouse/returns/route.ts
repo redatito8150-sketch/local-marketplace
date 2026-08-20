@@ -16,7 +16,9 @@ type ReturnItemInput = { variantId: string; requestedQty: number; itemNote?: str
 // 'to_brand' (see request_warehouse_return in the migration).
 export async function POST(request: NextRequest) {
   const owner = await requireActiveBrandOwner(request.nextUrl.searchParams.get("brand") ?? undefined);
-  if (!owner?.brandId || owner.isImpersonating) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+  if (!owner?.brandId || owner.accessLevel !== "owner" || owner.isImpersonating) {
+    return NextResponse.json({ error: "Only the brand owner can request stock returns" }, { status: 403 });
+  }
   if (!owner.isMahalyPartner) return NextResponse.json({ error: "This brand isn't a Zakhnook Partner" }, { status: 403 });
   if (!checkRateLimit(`warehouse-return-request:${owner.user.id}`, 20, 10 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
