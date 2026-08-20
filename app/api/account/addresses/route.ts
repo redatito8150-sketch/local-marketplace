@@ -4,6 +4,7 @@ import { getAddressesForUser } from "@/lib/data/addresses";
 import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
 import { getRequestUser } from "@/lib/supabase/requestUser";
+import { checkRateLimit } from "@/lib/rateLimit";
 
 const VALID_LABELS: AddressLabel[] = ["Home", "Work", "Other"];
 
@@ -50,6 +51,13 @@ export async function POST(request: NextRequest) {
   const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  }
+  // Keyed by user id, not IP: these routes already require a session, so the
+  // per-account budget is the meaningful one — it caps how fast a single
+  // compromised/scripted account can churn rows, without penalising several
+  // legitimate users sharing one NAT'd IP.
+  if (!checkRateLimit(`account-address-create:${user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body: AddressInput = await request.json();

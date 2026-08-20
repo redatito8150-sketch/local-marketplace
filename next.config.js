@@ -14,18 +14,37 @@ const siteUrl =
   "";
 const siteHostname = siteUrl ? new URL(siteUrl).hostname : "";
 
-// Deliberately permissive on script/style-src (`unsafe-inline`/`unsafe-eval`)
-// — Next.js's own hydration payload and dev/HMR need them, and a stricter
-// nonce-based policy is a separate, riskier change to get exactly right.
+// `unsafe-inline` stays on script-src: Next.js inlines its own hydration
+// bootstrap, and the nonce-based alternative would force every static/ISR
+// route to render dynamically (the nonce has to differ per response), which
+// would undo the ISR work described in CLAUDE.md. `unsafe-eval`, by
+// contrast, is only ever needed by the dev-mode webpack/HMR runtime — it is
+// dropped in production below, so a would-be XSS payload can no longer
+// reach eval()/new Function() on the live site.
+//
+// This matters more than usual here: the Supabase auth cookie cannot be
+// httpOnly (lib/supabase/client.ts uses @supabase/ssr's createBrowserClient,
+// which reads it from document.cookie), so limiting what injected script can
+// actually execute is the mitigation available for that whole class of bug.
+const isDev = process.env.NODE_ENV !== "production";
+const scriptSrc = [
+  "script-src 'self' 'unsafe-inline'",
+  isDev ? " 'unsafe-eval'" : "",
+  " https://cdn.jsdelivr.net",
+].join("");
+
 // The real value here is locking down which *external* origins can load at
 // all (no more "any domain can inject a script/frame"), not a perfect CSP.
 const CSP = [
   "default-src 'self'",
+  // No plugins/embeds anywhere in this app, so deny outright rather than
+  // letting default-src's 'self' allow same-origin ones.
+  "object-src 'none'",
   // https://cdn.jsdelivr.net is where the Paymob Pixel embedded-checkout
   // widget (npm package `paymob-pixel`) is loaded from at runtime, on
   // demand, only once a customer chooses card payment on /checkout — see
   // lib/payments/paymobPixelLoader.ts. Never used for anything else.
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net",
+  scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   // https://lh3.googleusercontent.com is where Google serves the OAuth

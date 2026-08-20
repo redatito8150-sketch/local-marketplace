@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRequestUser } from "@/lib/supabase/requestUser";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import type { AddressLabel } from "@/types";
@@ -38,6 +39,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  }
+  // Per-account budget, same rationale as the create route.
+  if (!checkRateLimit(`account-address-write:${user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const body: AddressInput = await request.json();
@@ -82,6 +87,9 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
   const user = await getRequestUser(request);
   if (!user) {
     return NextResponse.json({ error: "Not authorized" }, { status: 401 });
+  }
+  if (!checkRateLimit(`account-address-write:${user.id}`, 30, 10 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please slow down" }, { status: 429 });
   }
 
   const { data, error } = await supabaseAdmin

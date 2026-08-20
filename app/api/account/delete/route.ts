@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRecentUserAuthState } from "@/lib/supabase/accountAuth";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import {
@@ -44,6 +45,12 @@ export async function POST(request: NextRequest) {
   }
 
   const user = authState.user;
+  // Deliberately tight: account deletion is irreversible and legitimately
+  // happens at most once, so a burst here is always either a bug or an
+  // attack on an already-hijacked session.
+  if (!checkRateLimit(`account-delete:${user.id}`, 5, 60 * 60 * 1000)) {
+    return NextResponse.json({ error: "Too many requests — please try again later" }, { status: 429 });
+  }
   let cleanupJobs;
   try {
     cleanupJobs = await queueAccountStorageCleanup(user.id);
