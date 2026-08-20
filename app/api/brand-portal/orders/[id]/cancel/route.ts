@@ -13,6 +13,11 @@ const ERRORS: Record<string, string> = {
   BRAND_ORDER_MISMATCH: "This order does not belong to your brand.",
   INVALID_CANCELLATION_REASON: "Please provide a clear reason for cancelling this order.",
   ORDER_CAN_NO_LONGER_BE_CANCELLED: "This order can no longer be cancelled because fulfillment has progressed.",
+  // Audit finding PAY-03 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): cancel_order (which
+  // cancel_brand_order delegates to) now rejects a captured, un-refunded
+  // card order outright — an admin must record the refund first.
+  PAID_ORDER_REQUIRES_REFUND_REVIEW: "This order was paid by card. Ask an admin to record the refund before cancelling it.",
 };
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {

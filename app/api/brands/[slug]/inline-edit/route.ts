@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminUser } from "@/lib/supabase/adminAuth";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
+import { getUserPermissions } from "@/lib/supabase/permissions";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
@@ -34,9 +35,22 @@ function isTextField(field: string): field is TextField {
   return field in TEXT_FIELDS;
 }
 
+// Audit finding AUTH-01 (docs/audits/2026-08-20-production-security-
+// correctness-reliability-audit-en.md): this route sits outside /admin* and
+// /api/admin*, so lib/admin/permissionPolicy.ts's path-based gate never
+// applies to it — requireAdminUser() alone reduces to a bare
+// profiles.is_admin check with no granular permission required, letting any
+// admin-profile account (even one scoped to something narrow like
+// view_analytics) edit an arbitrary brand's public page content. Explicitly
+// require manage_brands here, the same permission requireBrandOwner()'s
+// impersonation path now requires for the same reason.
 async function requireEditor(brandSlug: string) {
   const admin = await requireAdminUser();
-  if (admin) return { userId: admin.id, actorLabel: admin.email ?? admin.id, isAdmin: true };
+  if (admin) {
+    const permissions = await getUserPermissions(admin.id);
+    if (!permissions.has("manage_brands")) return null;
+    return { userId: admin.id, actorLabel: admin.email ?? admin.id, isAdmin: true };
+  }
   const owner = await requireBrandOwner();
   if (owner && owner.brandSlug === brandSlug && owner.accessLevel === "owner") {
     return { userId: owner.user.id, actorLabel: owner.user.email ?? owner.user.id, isAdmin: false };

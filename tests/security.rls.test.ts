@@ -9,12 +9,16 @@ import path from "node:path";
 // codify the manual verification performed during the production-readiness
 // audit (docs/security-audit.md SEC-001/SEC-003/SEC-006): privileged
 // SECURITY DEFINER functions must reject the public anon key, and the
-// products RLS policy must not leak non-published/paused rows. Skipped
-// entirely (not failed) when Supabase credentials aren't available, e.g. a
-// CI environment without .env.local — this suite only ever reads, or
-// attempts writes designed to fail before any row is touched (a
-// nonexistent-but-validly-typed foreign key), so it never mutates real
-// data even if a lockdown regresses.
+// products RLS policy must not leak non-published/paused rows.
+//
+// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
+// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md):
+// this suite creates and deletes real auth users, addresses, and other rows
+// against whichever project .env.local points at (in this repo, that is the
+// real configured Supabase project, not a disposable one) — it must never
+// run just because an ordinary `npm test` found credentials on disk. Skipped
+// entirely (not failed) without both the opt-in and credentials, e.g. a CI
+// environment without .env.local.
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const envPath = path.join(rootDir, ".env.local");
@@ -38,7 +42,8 @@ const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
-const hasCredentials = Boolean(supabaseUrl && anonKey);
+const liveTestsOptedIn = env.RUN_LIVE_RLS === "1";
+const hasCredentials = liveTestsOptedIn && Boolean(supabaseUrl && anonKey);
 const FAKE_UUID = "00000000-0000-0000-0000-000000000099";
 
 test("privileged RPCs reject the public anon key", { skip: !hasCredentials }, async (t) => {

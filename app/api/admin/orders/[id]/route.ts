@@ -16,6 +16,12 @@ const CANCEL_ERROR_MESSAGES: Record<string, string> = {
   CANNOT_CANCEL_SHIPPED: "A shipped order can't be cancelled",
   CANNOT_CANCEL_FULFILLED: "A fulfilled (delivered) order can't be cancelled",
   ORDER_NOT_FOUND: "Order not found",
+  // Audit finding PAY-03 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): cancel_order itself now rejects
+  // a captured, un-refunded card order — record the refund via
+  // /admin/payments first (mark-refunded), which also syncs
+  // orders.payment_status, then cancel.
+  PAID_ORDER_REQUIRES_REFUND_REVIEW: "This order was paid by card. Record the refund in Payments before cancelling it.",
 };
 
 const TRANSITION_ERROR_MESSAGES: Record<string, string> = {

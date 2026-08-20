@@ -24,6 +24,12 @@ import path from "node:path";
 //
 // Skipped (not failed) without credentials, same convention as
 // tests/security.rls.test.ts.
+//
+// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
+// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md)
+// — this suite creates and deletes real auth users and tenant rows against
+// whichever project .env.local points at, and must never run just because
+// an ordinary `npm test` found credentials on disk.
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const envPath = path.join(rootDir, ".env.local");
@@ -46,7 +52,7 @@ const env = loadEnv();
 const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const hasCredentials = Boolean(supabaseUrl && anonKey && serviceRoleKey);
+const hasCredentials = env.RUN_LIVE_RLS === "1" && Boolean(supabaseUrl && anonKey && serviceRoleKey);
 
 interface TestAccount {
   id: string;

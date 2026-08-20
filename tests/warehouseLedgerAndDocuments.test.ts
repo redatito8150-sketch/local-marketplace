@@ -69,12 +69,24 @@ test("apply_warehouse_stock_correction requires a mandatory reason, is idempoten
   assert.ok(ledgerSql.includes("grantexecuteonfunctionpublic.apply_warehouse_stock_correction(uuid,uuid,integer,text,text,text)toservice_role;"));
 });
 
-test("the new admin correction route requires a reason, requires an Idempotency-Key, and is gated by requireWarehouseReceiver()", () => {
+// Audit finding WH-01 (docs/audits/2026-08-20-production-security-
+// correctness-reliability-audit-en.md): the route used to fall back to
+// calling apply_warehouse_stock_correction directly for ANY warehouse
+// receiver whenever a request omitted transferId — no CRN linkage, no
+// source-bucket bound, no independent approval. The legacy fallback branch
+// was removed; every correction now requires a transferId and goes through
+// CRN v2 (request_warehouse_correction_v2 /
+// request_and_post_warehouse_admin_correction). The RPC itself is left in
+// the schema (still callable by service_role for any future migration/
+// import tooling), it is simply no longer reachable from this route.
+test("the admin correction route requires a transferId for every correction, requires an Idempotency-Key, is gated by requireWarehouseReceiver(), and never calls apply_warehouse_stock_correction directly", () => {
   const route = read("app/api/admin/warehouse/corrections/route.ts");
   assert.match(route, /requireWarehouseReceiver\(\)/);
-  assert.match(route, /A reason is required/);
+  assert.match(route, /if \(!body\?\.transferId\)/);
+  assert.match(route, /A warehouse correction must reference a transfer document/);
   assert.match(route, /idempotency-key/i);
-  assert.match(route, /\.rpc\("apply_warehouse_stock_correction"/);
+  assert.doesNotMatch(route, /\.rpc\("apply_warehouse_stock_correction"/);
+  assert.match(route, /\.rpc\("request_warehouse_correction_v2"|\.rpc\("request_and_post_warehouse_admin_correction"/);
 });
 
 // ---------------------------------------------------------------------------

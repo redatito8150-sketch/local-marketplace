@@ -54,6 +54,21 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     return NextResponse.json({ error: "Each transfer item must appear exactly once" }, { status: 400 });
   }
   const usesActualReceiptModel = !isReturn && body.items.some((item) => item.goodQty !== undefined || item.actualVariantId !== undefined || item.unidentifiedQty !== undefined);
+  // Audit finding WH-03 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): usesActualReceiptModel used to be
+  // decided purely by which fields the client happened to send — a crafted
+  // inbound request sending only receivedOkQty/damagedQty/missingQty
+  // silently fell through to the legacy receive_warehouse_document RPC,
+  // which mutates stock without an immutable receipt/receipt-line row, a
+  // required Idempotency-Key, or wrong-Variant support. Returns
+  // (transfer.direction === 'to_brand') are unaffected — the legacy model
+  // remains their intended path.
+  if (!isReturn && !usesActualReceiptModel) {
+    return NextResponse.json(
+      { error: "This receipt must use the current receiving form (actual Variant received, per line)." },
+      { status: 400 }
+    );
+  }
   for (const item of body.items) {
     const quantities = usesActualReceiptModel
       ? [item.goodQty ?? 0, item.damagedQty, item.unidentifiedQty ?? 0]

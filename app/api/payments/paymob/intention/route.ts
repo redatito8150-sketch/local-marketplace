@@ -150,6 +150,19 @@ export async function POST(request: NextRequest) {
               error: "An item in your cart is temporarily unavailable while its brand updates fulfillment. Please try again shortly.",
             };
           }
+          // Audit finding PAY-06 (docs/audits/2026-08-20-production-
+          // security-correctness-reliability-audit-en.md): create_payment_
+          // attempt now atomically reserves the coupon (used_count plus
+          // every other in-flight attempt's reservation) instead of the
+          // stale used_count-only check this route used to do on its own —
+          // this is the real, race-safe rejection.
+          if (error.message?.startsWith("COUPON_LIMIT_REACHED")) {
+            return {
+              ok: false,
+              status: 409,
+              error: "This coupon has just reached its usage limit. Remove it to continue.",
+            };
+          }
           logError("Payment attempt creation failed", error.message);
           return { ok: false, status: 500, error: "We couldn't start card payment right now. Please try again." };
         }

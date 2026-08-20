@@ -9,11 +9,26 @@ jobs:
   verify:
     name: Typecheck, lint, test, build
     runs-on: ubuntu-latest
+    # Audit finding CI-01 (docs/audits/2026-08-20-production-security-
+    # correctness-reliability-audit-en.md): SUPABASE_URL and
+    # SUPABASE_SERVICE_ROLE_KEY used to be declared job-wide, exposing the
+    # database-bypass credential to checkout, Node setup, and `npm ci`
+    # (arbitrary third-party install scripts) before any of this repo's own
+    # code ran. Neither is actually consumed anywhere in this job: the
+    # live-DB test suites (tests/security.rls.test.ts,
+    # tests/crossTenantIsolation.test.ts, tests/avatarLinking.test.ts, and
+    # the *Integration.test.ts files) only ever read a gitignored
+    # .env.local file, never process.env, so they skip in CI regardless —
+    # and RUN_LIVE_RLS is deliberately NOT set here, so they keep skipping
+    # even now that they require that explicit opt-in (audit finding
+    # TEST-01). SUPABASE_URL is only otherwise read by scripts/seed.mjs,
+    # which this job never runs. Only the two NEXT_PUBLIC_* values remain
+    # job-wide: they are the public anon key/URL, meant to be inlined into
+    # client bundles by `npm run build`, so job-wide exposure of exactly
+    # these two is by design, not a leak.
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +46,13 @@ jobs:
       - name: ESLint
         run: npx eslint .
 
-      - name: Test suite (unit + live RLS regression)
+      # Unit + repo-safety tests only. Live-DB coverage (RLS, cross-tenant
+      # isolation, avatar linking) requires .env.local, which does not
+      # exist on this runner, so those suites always report skipped here —
+      # see docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md
+      # (TEST-01) for the plan to run them for real against a disposable
+      # project in a separate, explicitly opted-in job.
+      - name: Test suite (unit + repo-safety; live-DB suites skip without .env.local)
         run: npm test
 
       - name: Production build

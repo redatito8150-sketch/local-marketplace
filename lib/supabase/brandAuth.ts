@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getMfaUserState } from "@/lib/supabase/mfaAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { getUserPermissions } from "@/lib/supabase/permissions";
 
 export type BrandAccessLevel = "owner" | "assistant";
 
@@ -172,6 +173,22 @@ export async function requireBrandOwner(
   }
 
   if (!isAdmin) return null;
+
+  // Audit finding AUTH-01 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): every admin-profile account used
+  // to reach this point regardless of their granular custom-role
+  // permissions (lib/admin/permissionPolicy.ts only ever gated /admin* and
+  // /api/admin* — Brand Portal impersonation was untouched). A staff
+  // account scoped to something narrow like view_analytics could still
+  // impersonate an arbitrary unrelated brand with full owner-level access:
+  // read customer PII, export orders, cancel/advance orders, edit brand
+  // content. Impersonation now requires the same manage_brands permission
+  // the admin brand-management surface itself is gated on — a full-rank
+  // admin (role === "admin") always has it, since getUserPermissions()
+  // grants a full-rank admin every permission; a narrower custom role must
+  // be explicitly granted manage_brands to impersonate at all.
+  const permissions = await getUserPermissions(user.id);
+  if (!permissions.has("manage_brands")) return null;
 
   if (!overrideSlug) {
     return {

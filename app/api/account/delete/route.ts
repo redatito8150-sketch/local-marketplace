@@ -51,6 +51,36 @@ export async function POST(request: NextRequest) {
   if (!checkRateLimit(`account-delete:${user.id}`, 5, 60 * 60 * 1000)) {
     return NextResponse.json({ error: "Too many requests — please try again later" }, { status: 429 });
   }
+
+  // Audit finding PAY-02 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): payment_attempts.user_id is
+  // ON DELETE CASCADE from auth.users. Deleting the account while a card
+  // payment is still in flight (created/pending/processing/paid/
+  // reflecting — not yet fulfilled, failed, expired, or cancelled) would
+  // silently erase the one local record of that payment right before a
+  // Paymob webhook needs it, leaving captured money with no order and no
+  // local trail. Terminal-state attempts (fulfilled, fulfillment_failed,
+  // failed, expired, cancelled) don't block deletion — nothing further can
+  // happen to them.
+  const { data: openAttempts, error: openAttemptsError } = await supabaseAdmin
+    .from("payment_attempts")
+    .select("id")
+    .eq("user_id", user.id)
+    .in("status", ["created", "pending", "processing", "paid", "reflecting"])
+    .limit(1);
+  if (openAttemptsError) {
+    return safeErrorResponse("account.delete.check-payment-attempts", openAttemptsError);
+  }
+  if (openAttempts && openAttempts.length > 0) {
+    return NextResponse.json(
+      {
+        error: "You have a payment in progress. Please wait for it to complete before deleting your account.",
+        code: "PAYMENT_ATTEMPT_IN_PROGRESS",
+      },
+      { status: 409 }
+    );
+  }
+
   let cleanupJobs;
   try {
     cleanupJobs = await queueAccountStorageCleanup(user.id);

@@ -43,7 +43,23 @@ export async function POST(request: NextRequest) {
   const operationKey = parseOrderIdempotencyKey(request.headers.get("idempotency-key"));
   if (!operationKey) return NextResponse.json({ error: "A valid Idempotency-Key header is required" }, { status: 400 });
 
-  if (body?.transferId) {
+  // Audit finding WH-01 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): a legacy `variantId`/`delta`
+  // fallback used to live below this guard, calling
+  // apply_warehouse_stock_correction directly for ANY warehouse receiver
+  // (not just Full Admin) — no transfer/CRN linkage, no source-bucket
+  // bound, no independent approval. It was reachable only by a crafted
+  // request (the only UI component that posts here,
+  // WarehouseCorrectionWorkspace.tsx, always sends transferId), so removing
+  // it changes no legitimate workflow. Every correction now goes through
+  // CRN v2 (request_warehouse_correction_v2 /
+  // request_and_post_warehouse_admin_correction), which is governed,
+  // source-bounded, and independently approved unless the actor is Full
+  // Admin.
+  if (!body?.transferId) {
+    return NextResponse.json({ error: "A warehouse correction must reference a transfer document" }, { status: 400 });
+  }
+  {
     const correctionTypes = new Set(["reclassification", "quantity_adjustment", "missing_recovery", "condition_resolution", "document_amendment", "reversal"]);
     const reasonCodes = new Set(["wrong_variant", "count_error", "duplicate_receipt", "missing_found", "damage_regraded", "return_to_brand", "write_off", "document_error", "other"]);
     const actions = new Set(["reclassify", "adjust_in", "adjust_out", "move_to_hold", "restore_to_sellable", "return_to_brand", "write_off", "accept_discrepancy"]);
@@ -112,38 +128,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(result);
   }
-
-  if (!body?.variantId || typeof body.delta !== "number" || !Number.isInteger(body.delta) || body.delta === 0) {
-    return NextResponse.json({ error: "variantId and a non-zero whole-number delta are required" }, { status: 400 });
-  }
-  if (!body.reason?.trim()) {
-    return NextResponse.json({ error: "A reason is required for a warehouse stock correction" }, { status: 400 });
-  }
-  const delta = body.delta;
-  const reason = body.reason;
-
-  const { data: result, error } = await supabaseAdmin.rpc("apply_warehouse_stock_correction", {
-    p_variant_id: body.variantId,
-    p_actor_id: receiver.id,
-    p_delta: delta,
-    p_reason: reason,
-    p_note: body.note ?? null,
-    p_operation_key: operationKey,
-  } as never);
-  if (error) return safeErrorResponse("admin.warehouse.corrections", error, "Failed to apply the correction", 400);
-
-  const { variant_id: variantId, new_quantity: newQuantity } = result as { variant_id: string; new_quantity: number };
-
-  await logAudit({
-    actorId: receiver.id,
-    actorLabel: receiver.email ?? receiver.id,
-    entityType: "inventory",
-    entityId: variantId,
-    action: "update",
-    after: { "Warehouse correction": `${delta > 0 ? "+" : ""}${delta}`, Reason: reason },
-  });
-
-  if (delta > 0 && newQuantity > 0) await checkAndNotifyRestock([variantId]);
-
-  return NextResponse.json(result);
 }

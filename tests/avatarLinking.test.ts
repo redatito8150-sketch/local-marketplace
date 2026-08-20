@@ -19,6 +19,12 @@ import { resolveAvatarUrl } from "../lib/account/avatar.ts";
 // suite creates is deleted in a `finally` block (cascades to its profile
 // row via `profiles.id references auth.users on delete cascade`), so
 // nothing is left behind in the project.
+//
+// Requires an explicit RUN_LIVE_RLS=1 opt-in (audit finding TEST-01,
+// docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md)
+// — this suite creates and deletes real auth.users rows against whichever
+// project .env.local points at, and must never run just because an
+// ordinary `npm test` found credentials on disk.
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const envPath = path.join(rootDir, ".env.local");
@@ -40,7 +46,7 @@ function loadEnv(): Record<string, string> {
 const env = loadEnv();
 const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const canRun = Boolean(supabaseUrl && serviceRoleKey);
+const canRun = env.RUN_LIVE_RLS === "1" && Boolean(supabaseUrl && serviceRoleKey);
 
 function admin(): SupabaseClient {
   return createClient(supabaseUrl!, serviceRoleKey!, { auth: { persistSession: false } });

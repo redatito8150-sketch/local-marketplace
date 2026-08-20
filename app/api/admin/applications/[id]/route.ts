@@ -5,6 +5,7 @@ import { safeErrorResponse } from "@/lib/apiError";
 import { logAudit } from "@/lib/auditLog";
 import { notifyUser } from "@/lib/notify";
 import { getApplicationForAdmin } from "@/lib/data/admin";
+import { deleteApplicationTransactionally } from "@/lib/admin/applicationDeletion";
 import {
   recordStatusHistory,
   computeReapplicationAllowedAt,
@@ -271,21 +272,22 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ error: "Application not found" }, { status: 404 });
   }
 
-  // Child tables carry a FK on application_id — must go before the parent
-  // row, same ordering used by the brand_applications rows this mirrors.
-  const childTables = [
-    "brand_application_revisions",
-    "brand_application_status_history",
-    "brand_application_documents",
-    "brand_application_information_requests",
-  ];
-  for (const table of childTables) {
-    const { error } = await supabaseAdmin.from(table).delete().eq("application_id", params.id);
-    if (error) return safeErrorResponse("admin.applications.delete", error);
+  // Audit finding APP-01 (docs/audits/2026-08-20-production-security-
+  // correctness-reliability-audit-en.md): every child table, the parent
+  // row, and queueing each document's Storage path for durable cleanup now
+  // happen inside one Postgres transaction, instead of five unguarded
+  // sequential .delete() calls that could leave a partially destroyed
+  // application and always orphaned the private legal documents in
+  // Storage.
+  let result;
+  try {
+    result = await deleteApplicationTransactionally(params.id, staff.user.id, reason);
+  } catch (error) {
+    return safeErrorResponse("admin.applications.delete", { message: error instanceof Error ? error.message : "unknown error" });
   }
-
-  const { error } = await supabaseAdmin.from("brand_applications").delete().eq("id", params.id);
-  if (error) return safeErrorResponse("admin.applications.delete", error);
+  if (!result.ok) {
+    return NextResponse.json({ error: result.message, code: result.code }, { status: result.code === "APPLICATION_NOT_FOUND" ? 404 : 409 });
+  }
 
   await logAudit({
     actorId: staff.user.id,
@@ -294,7 +296,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     entityId: params.id,
     action: "delete",
     before: application,
-    after: { reason },
+    after: { reason, mediaJobsQueued: result.mediaJobsQueued },
   });
 
   return NextResponse.json({ id: params.id, deleted: true });
