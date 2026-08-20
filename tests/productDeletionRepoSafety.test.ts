@@ -53,7 +53,9 @@ test("Archived rows have no Edit action, gate Restore to admin only, and show ev
   assert.match(actions, /eligibility\.immutableReasons/);
   assert.match(actions, /eligibility\.temporaryBlockers/);
   assert.match(actions, /blocker\.resolution/);
-  assert.match(actions, /blockerHref/);
+  assert.match(actions, /getAdminDeletionBlockerDestination/);
+  assert.match(actions, /getBrandDeletionBlockerDestination/);
+  assert.match(actions, /destination\.label/);
 });
 
 test("brand-portal Archived page tells the owner to contact an admin to restore a product", () => {

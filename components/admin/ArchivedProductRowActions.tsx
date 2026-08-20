@@ -4,8 +4,12 @@ import Link from "next/link";
 import { Lock, LockOpen, RotateCcw, ShieldAlert, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import type { ProductDeletionEligibility } from "@/lib/admin/productDeletion";
-import { getAdminDeletionBlockerHref } from "@/lib/admin/productDeletionLinks";
+import type { DeletionBlocker, ProductDeletionEligibility } from "@/lib/admin/productDeletion";
+import { getAdminDeletionBlockerDestination } from "@/lib/admin/productDeletionLinks";
+import {
+  getBrandDeletionBlockerDestination,
+  getBrandDeletionBlockerNotice,
+} from "@/lib/brand-portal/productDeletionLinks";
 import ProductActionDialog from "@/components/products/ProductActionDialog";
 
 export default function ArchivedProductRowActions({
@@ -13,6 +17,7 @@ export default function ArchivedProductRowActions({
   productName,
   eligibility,
   audience,
+  brandParam = "",
   readOnly = false,
   allowRestore = false,
 }: {
@@ -20,6 +25,7 @@ export default function ArchivedProductRowActions({
   productName: string;
   eligibility: ProductDeletionEligibility;
   audience: "admin" | "brand";
+  brandParam?: string;
   readOnly?: boolean;
   allowRestore?: boolean;
 }) {
@@ -171,19 +177,12 @@ export default function ArchivedProductRowActions({
               : "Why this stays Archived"}
           </summary>
           <div className="mt-2 space-y-2 rounded-xl border border-[#e3dcd3] bg-[#fffdf9] p-3">
-            {(eligibility.hasTemporaryBlockers ? eligibility.temporaryBlockers : eligibility.immutableReasons).map((blocker) => {
-              const blockerHref = audience === "admin"
-                ? getAdminDeletionBlockerHref(blocker, productId)
-                : blocker.href;
-              return <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]">
-                <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" aria-hidden="true" />
-                <div>
-                  <p className="font-semibold">{blocker.message}</p>
-                  <p className="text-[#75685f]">{blocker.resolution}</p>
-                  {blockerHref && <Link href={blockerHref} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">Open related area</Link>}
-                </div>
-              </div>;
-            })}
+            {eligibility.hasTemporaryBlockers ? (
+              <ArchivedBlockerGroup title="Temporary Blockers" blockers={eligibility.temporaryBlockers} audience={audience} productId={productId} brandParam={brandParam} />
+            ) : null}
+            {eligibility.immutableReasons.length > 0 ? (
+              <ArchivedBlockerGroup title={eligibility.hasTemporaryBlockers ? "Permanent Business History" : undefined} blockers={eligibility.immutableReasons} audience={audience} productId={productId} brandParam={brandParam} />
+            ) : null}
           </div>
         </details>
       )}
@@ -193,8 +192,8 @@ export default function ArchivedProductRowActions({
           <summary className="cursor-pointer list-none rounded text-[11.5px] font-semibold text-amber-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300">Why Restore is unavailable</summary>
           <div className="mt-2 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
             {eligibility.restoreBlockers.map((blocker) => {
-              const blockerHref = getAdminDeletionBlockerHref(blocker, productId);
-              return <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]"><ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-amber-700" aria-hidden="true" /><div><p className="font-semibold">{blocker.message}</p><p className="text-[#75685f]">{blocker.resolution}</p>{blockerHref ? <Link href={blockerHref} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">Open related area</Link> : null}</div></div>;
+              const destination = getAdminDeletionBlockerDestination(blocker, productId);
+              return <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]"><ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-amber-700" aria-hidden="true" /><div><p className="font-semibold">{blocker.message}</p><p className="text-[#75685f]">{blocker.resolution}</p>{destination ? <Link href={destination.href} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">{destination.label}</Link> : null}</div></div>;
             })}
           </div>
         </details>
@@ -258,6 +257,47 @@ export default function ArchivedProductRowActions({
         </label>
         {restoreError && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] leading-5 text-red-700">{restoreError}</p>}
       </ProductActionDialog>
+    </div>
+  );
+}
+
+function ArchivedBlockerGroup({
+  title,
+  blockers,
+  audience,
+  productId,
+  brandParam,
+}: {
+  title?: string;
+  blockers: DeletionBlocker[];
+  audience: "admin" | "brand";
+  productId: string;
+  brandParam: string;
+}) {
+  return (
+    <div className="space-y-2">
+      {title ? <p className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-[#8a7d73]">{title}</p> : null}
+      {blockers.map((blocker) => {
+        const destination = audience === "admin"
+          ? getAdminDeletionBlockerDestination(blocker, productId)
+          : getBrandDeletionBlockerDestination(blocker, brandParam);
+        const notice = audience === "brand" ? getBrandDeletionBlockerNotice(blocker) : null;
+        return (
+          <div key={blocker.code} className="flex gap-2 text-[11.5px] leading-5 text-[#51473f]">
+            <ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" aria-hidden="true" />
+            <div>
+              <p className="font-semibold">{blocker.message}</p>
+              <p className="text-[#75685f]">{blocker.resolution}</p>
+              {destination ? (
+                <Link href={destination.href} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">
+                  {destination.label}
+                </Link>
+              ) : null}
+              {notice ? <p className="mt-1 font-semibold text-[#75685f]">{notice}</p> : null}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

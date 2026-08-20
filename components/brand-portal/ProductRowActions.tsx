@@ -5,7 +5,10 @@ import { Archive, Pause, Pencil, Play, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { DeletionBlocker, ProductDeletionEligibility } from "@/lib/admin/productDeletion";
-import { getBrandDeletionBlockerHref } from "@/lib/brand-portal/productDeletionLinks";
+import {
+  getBrandDeletionBlockerDestination,
+  getBrandDeletionBlockerNotice,
+} from "@/lib/brand-portal/productDeletionLinks";
 import ProductLifecycleDialog from "@/components/shared/ProductLifecycleDialog";
 import ProductActionDialog from "@/components/products/ProductActionDialog";
 import ProductOverflowMenu from "@/components/products/ProductOverflowMenu";
@@ -139,7 +142,7 @@ export default function ProductRowActions({ productId, name, editHref, status, b
         {error ? <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] leading-5 text-red-700">{error}</p> : null}
       </ProductActionDialog>
 
-      <ProductLifecycleDialog open={lifecycleDialogOpen} onClose={() => setLifecycleDialogOpen(false)} onSuccess={() => router.refresh()} productId={productId} productName={name} apiPath={apiPath} canDeletePermanently={canDeletePermanently} resolveBlockerHref={(blocker) => getBrandDeletionBlockerHref(blocker, brandParam)} restrictedDeleteMessage="Only the brand owner can permanently delete a product." />
+      <ProductLifecycleDialog open={lifecycleDialogOpen} onClose={() => setLifecycleDialogOpen(false)} onSuccess={() => router.refresh()} productId={productId} productName={name} apiPath={apiPath} canDeletePermanently={canDeletePermanently} resolveBlockerDestination={(blocker) => getBrandDeletionBlockerDestination(blocker, brandParam)} resolveBlockerNotice={getBrandDeletionBlockerNotice} restrictedDeleteMessage="Only the brand owner can permanently delete a product." />
     </>
   );
 }

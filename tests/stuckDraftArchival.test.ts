@@ -37,7 +37,7 @@ test("admin Draft deletion preflights eligibility and offers archival with real 
 test("inventory blocker links resolve to a real, product-filtered ledger", () => {
   assert.match(linkResolver, /PRODUCT_HAS_INVENTORY_HISTORY/);
   assert.match(linkResolver, /\/admin\/inventory\?productId=/);
-  assert.match(archivedActions, /getAdminDeletionBlockerHref/);
+  assert.match(archivedActions, /getAdminDeletionBlockerDestination/);
   assert.match(inventoryPage, /getInventoryMovementsForAdmin/);
   assert.match(inventoryPage, /Immutable stock history · newest first/);
 });

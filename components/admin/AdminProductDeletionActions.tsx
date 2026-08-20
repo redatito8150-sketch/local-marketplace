@@ -5,7 +5,7 @@ import { Pause, Pencil, Play, ShieldAlert, Star, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import type { DeletionBlocker, ProductDeletionEligibility } from "@/lib/admin/productDeletion";
-import { getAdminDeletionBlockerHref } from "@/lib/admin/productDeletionLinks";
+import { getAdminDeletionBlockerDestination } from "@/lib/admin/productDeletionLinks";
 import ProductLifecycleDialog from "@/components/shared/ProductLifecycleDialog";
 import type { ProductRecord } from "@/types";
 import ProductActionDialog from "@/components/products/ProductActionDialog";
@@ -170,8 +170,8 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
           <>
             <p className="text-[13px] leading-6 text-slate-600">{isDirtyDraftArchive ? "This Draft is no longer pristine, so permanent deletion would break its business history. Moving it to Archived removes it from the working catalog while preserving the required records." : "The database found no stock or business history. This Draft can be permanently deleted and the action cannot be undone."}</p>
             {isDirtyDraftArchive && blockers.length ? <div className="mt-4 space-y-2 rounded-xl border border-[#eadfd8] bg-[#fffaf7] p-3">{blockers.map((blocker) => {
-              const blockerHref = getAdminDeletionBlockerHref(blocker, product.id);
-              return <div key={blocker.code} className="flex gap-2 text-[12px] leading-5 text-[#51473f]"><ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" aria-hidden="true" /><div><p className="font-semibold">{blocker.message}</p><p className="text-[#75685f]">{blocker.resolution}</p>{blockerHref ? <Link href={blockerHref} className="font-semibold text-[#C85956] hover:underline">Open related area</Link> : null}</div></div>;
+              const destination = getAdminDeletionBlockerDestination(blocker, product.id);
+              return <div key={blocker.code} className="flex gap-2 text-[12px] leading-5 text-[#51473f]"><ShieldAlert className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" aria-hidden="true" /><div><p className="font-semibold">{blocker.message}</p><p className="text-[#75685f]">{blocker.resolution}</p>{destination ? <Link href={destination.href} className="rounded font-semibold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25">{destination.label}</Link> : null}</div></div>;
             })}</div> : null}
             {draftAction === "delete_draft" ? <label className="mt-4 block text-[12px] font-semibold">Type <strong>{product.name}</strong> to confirm<input value={confirmText} onChange={(event) => setConfirmText(event.target.value)} autoComplete="off" className="mt-1.5 h-11 w-full rounded-xl border border-[#ddd6cd] px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25" /></label> : null}
             {isDirtyDraftArchive ? <label className="mt-4 block text-[12px] font-semibold">Archive reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} placeholder="Explain why this Draft must be Archived…" className="mt-1.5 w-full rounded-xl border border-[#ddd6cd] p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mahalyred/25" /></label> : null}
@@ -180,7 +180,7 @@ export default function AdminProductDeletionActions({ product }: { product: Prod
         {error ? <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-[12px] text-red-700">{error}</p> : null}
       </ProductActionDialog>
 
-      <ProductLifecycleDialog open={lifecycleDialogOpen} onClose={() => setLifecycleDialogOpen(false)} onSuccess={() => router.refresh()} productId={product.id} productName={product.name} apiPath={apiPath} canDeletePermanently resolveBlockerHref={(blocker) => getAdminDeletionBlockerHref(blocker, product.id)} restrictedDeleteMessage="Only an authorized admin can permanently delete a product." />
+      <ProductLifecycleDialog open={lifecycleDialogOpen} onClose={() => setLifecycleDialogOpen(false)} onSuccess={() => router.refresh()} productId={product.id} productName={product.name} apiPath={apiPath} canDeletePermanently resolveBlockerDestination={(blocker) => getAdminDeletionBlockerDestination(blocker, product.id)} restrictedDeleteMessage="Only an authorized admin can permanently delete a product." />
     </>
   );
 }
