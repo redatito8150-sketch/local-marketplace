@@ -4,15 +4,13 @@ import { getPaymentAttemptForAdmin } from "@/lib/data/admin";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { PAYMENT_ATTEMPT_STATUS_LABELS, paymentAttemptStatusBadgeClass, ORDER_STATUS_LABELS, orderStatusBadgeClass } from "@/lib/admin/statuses";
 import RefundQueueActions from "@/components/admin/RefundQueueActions";
+import AllocateProviderRefundButton from "@/components/admin/AllocateProviderRefundButton";
 import type { OrderStatus } from "@/types";
 
-// Mirrors record_payment_attempt_refund's own coarse eligibility check
-// (supabase/migrations/20260821000000_production_audit_corrective_pass_2.sql)
-// — the RPC itself is the source of truth for whether a failed bucket
-// actually still needs refunding; this just avoids showing the action when
-// it obviously wouldn't apply.
-function isRefundEligible(status: string, refundedAt: string | null): boolean {
-  return !refundedAt && (status === "fulfilled" || status === "fulfillment_failed");
+// The request RPC remains authoritative. This keeps the page from offering
+// a duplicate request while one is waiting for verified provider evidence.
+function isRefundEligible(status: string, refundedAt: string | null, pendingCount: number): boolean {
+  return !refundedAt && pendingCount === 0 && (status === "fulfilled" || status === "fulfillment_failed");
 }
 
 export default async function AdminPaymentDetailPage(props: { params: Promise<{ id: string }> }) {
@@ -126,13 +124,60 @@ export default async function AdminPaymentDetailPage(props: { params: Promise<{ 
             {attempt.processedAt && <p>Processed: {formatDateTime(attempt.processedAt)}</p>}
           </div>
 
+          {attempt.providerRefunds.length > 0 && (
+            <div className="mt-4 border-t border-stone-150 pt-4">
+              <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Provider refund ledger</p>
+              <div className="mt-2 space-y-2">
+                {attempt.providerRefunds.map((refund) => (
+                  <div key={refund.id} className="rounded-lg bg-stone-50 px-3 py-2 text-[11px] text-ink-soft/70">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-ink">{formatPrice(refund.amountCents / 100, currency)}</span>
+                      <span className={refund.allocatedOrderId && !refund.reversedAt ? "text-emerald-700" : "text-amber-700"}>
+                        {refund.allocatedOrderId && !refund.reversedAt ? "Allocated" : "Needs allocation"}
+                      </span>
+                    </div>
+                    <p className="mt-1">Confirmed {formatDateTime(refund.confirmedAt)}</p>
+                    <p className="font-mono text-[10px]">Paymob: {refund.providerReference}</p>
+                    {refund.allocatedOrderId && (
+                      <Link href={`/admin/orders/${refund.allocatedOrderId}`} className="mt-1 inline-block font-semibold text-mahalyred hover:underline">
+                        Open matched order
+                      </Link>
+                    )}
+                    {!refund.allocatedOrderId && !refund.reversedAt && (
+                      <div className="mt-1 border-t border-stone-150 pt-1">
+                        {attempt.pendingRefundRequests
+                          .filter((pending) => pending.amountCents === refund.amountCents)
+                          .map((pending) => (
+                            <AllocateProviderRefundButton
+                              key={pending.id}
+                              paymentAttemptId={attempt.id}
+                              refundId={refund.id}
+                              requestId={pending.id}
+                              label={
+                                pending.orderNumber
+                                  ? `Allocate to order #${pending.orderNumber}`
+                                  : "Allocate to failed fulfillment"
+                              }
+                            />
+                          ))}
+                        {!attempt.pendingRefundRequests.some((pending) => pending.amountCents === refund.amountCents) && (
+                          <p className="text-[10px] text-amber-700">No exact-value pending request.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {attempt.refundedAt ? (
             <div className="mt-4 rounded-md bg-stone-50 px-3 py-2.5 text-[12px] text-ink-soft/70">
               <p className="font-medium text-ink">Refunded {formatDateTime(attempt.refundedAt)}</p>
               {attempt.refundNote && <p className="mt-0.5">{attempt.refundNote}</p>}
             </div>
           ) : (
-            isRefundEligible(attempt.status, attempt.refundedAt) && (
+            isRefundEligible(attempt.status, attempt.refundedAt, attempt.pendingRefundRequests.length) && (
               <div className="mt-4 border-t border-stone-150 pt-4">
                 <RefundQueueActions paymentAttemptId={attempt.id} />
               </div>

@@ -6,6 +6,7 @@ import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventor
 import { estimateDaysRemaining, suggestedRestockQuantity } from "@/lib/inventory/brandInventoryInsights";
 import type { OptionSwatchType, OrderItemDiscountSource, ProductStatus, ProductVariant, SellingStatus, StockStatus } from "@/types";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
+import { getOrderRefundSummaries } from "@/lib/data/refunds";
 
 // Every query here uses the cookie-aware anon client by default (never
 // supabaseAdmin) so the brand-owner RLS policies actually do the scoping —
@@ -63,6 +64,9 @@ export interface BrandOrder {
   shippingFeeEgp: number;
   paymentMethod: string;
   paymentStatus: string;
+  capturedAmountCents: number;
+  refundedAmountCents: number;
+  refundPendingAmountCents: number;
   // A 'mahaly_pool' order can contain other brands' items too — this
   // brand's own products subtotal/discount below are always summed from
   // ONLY this order's own `items` array (already brand_slug-scoped), never
@@ -149,6 +153,9 @@ export async function getOrdersForBrand(
       shippingFeeEgp: Number(row.orders.shipping_fee_egp),
       paymentMethod: row.orders.payment_method,
       paymentStatus: row.orders.payment_status,
+      capturedAmountCents: 0,
+      refundedAmountCents: 0,
+      refundPendingAmountCents: 0,
       brandProductsSubtotalEgp: 0,
       brandDiscountEgp: 0,
       couponCode: row.orders.coupon_code,
@@ -228,6 +235,16 @@ export async function getOrdersForBrand(
         item.image ?? productCovers.get(item.productId)
       ) || undefined;
     }
+  }
+
+  const refundSummaries = await getOrderRefundSummaries(orders.map((order) => order.id));
+  for (const order of orders) {
+    const summary = refundSummaries.get(order.id);
+    if (!summary) continue;
+    order.capturedAmountCents = summary.capturedAmountCents;
+    order.refundedAmountCents = summary.refundedAmountCents;
+    order.refundPendingAmountCents = summary.pendingAmountCents;
+    order.paymentStatus = summary.paymentStatus;
   }
 
   return orders

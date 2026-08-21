@@ -1565,3 +1565,852 @@ $$;
 
 revoke all on function public.admin_delete_brand_application(uuid, uuid, text) from public, anon, authenticated;
 grant execute on function public.admin_delete_brand_application(uuid, uuid, text) to service_role;
+
+
+-- ============================================================================
+-- FINAL CORRECTIVE SECTION — provider-confirmed refund ledger
+-- ============================================================================
+-- The earlier draft in this still-unapplied migration allowed a staff member
+-- to type an arbitrary provider reference and immediately mark an order as
+-- refunded. That is intentionally replaced here. Staff may only create a
+-- pending request. Confirmed money is created exclusively by the Paymob
+-- exact, separately verified provider ingestion through
+-- record_provider_refund_confirmation(). The ordinary Paymob transaction
+-- callback is not sufficient because its signed amount is the original
+-- transaction amount, not the exact partial-refund amount. Cancellation continues to rely on
+-- orders.payment_status, which only the confirmed-allocation functions below
+-- may change to partially_refunded/refunded.
+
+alter table public.notifications add column if not exists delivery_key text;
+create unique index if not exists notifications_delivery_key_idx
+  on public.notifications(delivery_key)
+  where delivery_key is not null;
+
+drop function if exists public.record_order_refund(uuid, uuid, integer, text, text);
+drop function if exists public.record_payment_attempt_refund(uuid, uuid, integer, text, text);
+drop function if exists public.finalize_payment_attempt_coupon_redemption(uuid);
+drop function if exists private.compute_order_refundable_balance_cents(uuid);
+drop table if exists public.payment_refunds cascade;
+
+create table public.payment_refund_requests (
+  id uuid primary key default gen_random_uuid(),
+  payment_attempt_id uuid not null references public.payment_attempts(id) on delete restrict,
+  order_id uuid references public.orders(id) on delete restrict,
+  target_kind text not null check (target_kind in ('order', 'failed_fulfillment')),
+  amount_cents integer not null check (amount_cents > 0),
+  status text not null default 'pending' check (status in ('pending', 'confirmed', 'cancelled', 'reversed')),
+  -- The financial record survives account deletion. The immutable audit
+  -- log retains the human-readable actor label if this FK is later nulled.
+  requested_by uuid references auth.users(id) on delete set null,
+  note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (
+    (target_kind = 'order' and order_id is not null)
+    or (target_kind = 'failed_fulfillment' and order_id is null)
+  )
+);
+
+create unique index payment_refund_requests_one_pending_order_idx
+  on public.payment_refund_requests(order_id)
+  where status = 'pending' and order_id is not null;
+create unique index payment_refund_requests_one_pending_failed_idx
+  on public.payment_refund_requests(payment_attempt_id, target_kind)
+  where status = 'pending' and target_kind = 'failed_fulfillment';
+create index payment_refund_requests_attempt_idx
+  on public.payment_refund_requests(payment_attempt_id, status);
+
+create table public.payment_refunds (
+  id uuid primary key default gen_random_uuid(),
+  payment_attempt_id uuid not null references public.payment_attempts(id) on delete restrict,
+  amount_cents integer not null check (amount_cents > 0),
+  currency text not null check (currency = 'EGP'),
+  provider_reference text not null unique,
+  provider_event_id text not null unique,
+  confirmed_at timestamptz not null default now()
+);
+create index payment_refunds_attempt_idx on public.payment_refunds(payment_attempt_id, confirmed_at);
+
+create table public.payment_refund_allocations (
+  id uuid primary key default gen_random_uuid(),
+  refund_id uuid not null references public.payment_refunds(id) on delete restrict,
+  request_id uuid not null unique references public.payment_refund_requests(id) on delete restrict,
+  order_id uuid references public.orders(id) on delete restrict,
+  target_kind text not null check (target_kind in ('order', 'failed_fulfillment')),
+  amount_cents integer not null check (amount_cents > 0),
+  allocated_at timestamptz not null default now(),
+  allocated_by uuid references auth.users(id) on delete set null,
+  reversed_at timestamptz,
+  reversed_by uuid references auth.users(id) on delete set null,
+  reversal_reason text,
+  check (
+    (target_kind = 'order' and order_id is not null)
+    or (target_kind = 'failed_fulfillment' and order_id is null)
+  ),
+  check (
+    (reversed_at is null and reversed_by is null and reversal_reason is null)
+    or (reversed_at is not null and nullif(trim(reversal_reason), '') is not null)
+  )
+);
+create index payment_refund_allocations_order_idx
+  on public.payment_refund_allocations(order_id) where reversed_at is null;
+create unique index payment_refund_allocations_one_active_refund_idx
+  on public.payment_refund_allocations(refund_id) where reversed_at is null;
+create index payment_refund_allocations_attempt_target_idx
+  on public.payment_refund_allocations(target_kind) where reversed_at is null;
+
+alter table public.payment_refund_requests enable row level security;
+alter table public.payment_refunds enable row level security;
+alter table public.payment_refund_allocations enable row level security;
+revoke all on public.payment_refund_requests from public, anon, authenticated;
+revoke all on public.payment_refunds from public, anon, authenticated;
+revoke all on public.payment_refund_allocations from public, anon, authenticated;
+grant select on public.payment_refund_requests to service_role;
+grant select on public.payment_refunds to service_role;
+grant select on public.payment_refund_allocations to service_role;
+
+create or replace function private.block_payment_refund_event_mutation()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'PROVIDER_REFUND_EVENTS_ARE_IMMUTABLE';
+end;
+$$;
+
+create trigger payment_refunds_immutable
+before update or delete on public.payment_refunds
+for each row execute function private.block_payment_refund_event_mutation();
+revoke all on function private.block_payment_refund_event_mutation() from public, anon, authenticated;
+
+create or replace function private.recompute_order_refund_status(p_order_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_order record;
+  v_captured integer;
+  v_confirmed integer;
+  v_status text;
+begin
+  select id, payment_attempt_id, payment_method, status into v_order
+  from public.orders where id = p_order_id for update;
+  if v_order.id is null then raise exception 'ORDER_NOT_FOUND'; end if;
+  if v_order.payment_method = 'cash_on_delivery' or v_order.payment_attempt_id is null then
+    raise exception 'ORDER_NOT_CARD_PAID';
+  end if;
+
+  select coalesce(sum(expected_amount_cents), 0)::integer into v_captured
+  from private.payment_attempt_fulfillments
+  where payment_attempt_id = v_order.payment_attempt_id
+    and order_id = p_order_id
+    and status = 'fulfilled';
+  if v_captured <= 0 then raise exception 'ORDER_HAS_NO_CAPTURED_AMOUNT'; end if;
+
+  select coalesce(sum(amount_cents), 0)::integer into v_confirmed
+  from public.payment_refund_allocations
+  where order_id = p_order_id and target_kind = 'order' and reversed_at is null;
+  if v_confirmed > v_captured then raise exception 'CONFIRMED_REFUND_EXCEEDS_CAPTURED_BALANCE'; end if;
+
+  v_status := case
+    when v_confirmed = 0 then 'paid'
+    when v_confirmed < v_captured then 'partially_refunded'
+    else 'refunded'
+  end;
+  update public.orders set payment_status = v_status where id = p_order_id;
+  return jsonb_build_object(
+    'order_id', p_order_id,
+    'captured_amount_cents', v_captured,
+    'refunded_amount_cents', v_confirmed,
+    'payment_status', v_status
+  );
+end;
+$$;
+revoke all on function private.recompute_order_refund_status(uuid) from public, anon, authenticated;
+
+create or replace function private.recompute_failed_fulfillment_refund_status(p_payment_attempt_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_required integer;
+  v_confirmed integer;
+begin
+  perform 1 from public.payment_attempts where id = p_payment_attempt_id for update;
+  if not found then raise exception 'PAYMENT_ATTEMPT_NOT_FOUND'; end if;
+
+  select coalesce(sum(expected_amount_cents), 0)::integer into v_required
+  from private.payment_attempt_fulfillments
+  where payment_attempt_id = p_payment_attempt_id and status = 'failed';
+  if v_required = 0 then
+    select case when status = 'fulfillment_failed' then amount_cents else 0 end into v_required
+    from public.payment_attempts where id = p_payment_attempt_id;
+  end if;
+
+  select coalesce(sum(a.amount_cents), 0)::integer into v_confirmed
+  from public.payment_refund_allocations a
+  join public.payment_refund_requests r on r.id = a.request_id
+  where r.payment_attempt_id = p_payment_attempt_id
+    and a.target_kind = 'failed_fulfillment'
+    and a.reversed_at is null;
+  if v_confirmed > v_required then raise exception 'CONFIRMED_REFUND_EXCEEDS_FAILED_BALANCE'; end if;
+
+  update public.payment_attempts
+  set refunded_at = case when v_required > 0 and v_confirmed >= v_required then now() else null end,
+      refund_note = case when v_required > 0 and v_confirmed >= v_required then 'Provider-confirmed failed-fulfillment refund' else null end,
+      updated_at = now()
+  where id = p_payment_attempt_id;
+  return jsonb_build_object('required_cents', v_required, 'confirmed_cents', v_confirmed);
+end;
+$$;
+revoke all on function private.recompute_failed_fulfillment_refund_status(uuid) from public, anon, authenticated;
+
+create or replace function private.try_match_provider_refund(p_refund_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_refund record;
+  v_request record;
+  v_match_count integer;
+  v_allocation_id uuid;
+  v_matched_request_id uuid;
+  v_matched_order_id uuid;
+begin
+  select * into v_refund from public.payment_refunds where id = p_refund_id for update;
+  if v_refund.id is null then raise exception 'PROVIDER_REFUND_NOT_FOUND'; end if;
+  if exists (
+    select 1 from public.payment_refund_allocations
+    where refund_id = p_refund_id and reversed_at is null
+  ) then
+    select a.id, a.request_id, a.order_id into v_allocation_id, v_matched_request_id, v_matched_order_id
+    from public.payment_refund_allocations a
+    where a.refund_id = p_refund_id and a.reversed_at is null;
+    return jsonb_build_object(
+      'refund_id', p_refund_id, 'allocation_id', v_allocation_id,
+      'matched_request_id', v_matched_request_id, 'matched_order_id', v_matched_order_id,
+      'matched', true, 'replayed', true
+    );
+  end if;
+
+  select count(*)::integer into v_match_count
+  from public.payment_refund_requests
+  where payment_attempt_id = v_refund.payment_attempt_id
+    and status = 'pending'
+    and amount_cents = v_refund.amount_cents;
+  if v_match_count <> 1 then
+    return jsonb_build_object(
+      'refund_id', p_refund_id, 'matched', false,
+      'reason', case when v_match_count = 0 then 'NO_EXACT_PENDING_REQUEST' else 'AMBIGUOUS_PENDING_REQUESTS' end
+    );
+  end if;
+
+  select * into v_request
+  from public.payment_refund_requests
+  where payment_attempt_id = v_refund.payment_attempt_id
+    and status = 'pending'
+    and amount_cents = v_refund.amount_cents
+  for update;
+
+  insert into public.payment_refund_allocations (
+    refund_id, request_id, order_id, target_kind, amount_cents
+  ) values (
+    v_refund.id, v_request.id, v_request.order_id, v_request.target_kind, v_refund.amount_cents
+  ) returning id into v_allocation_id;
+  update public.payment_refund_requests
+  set status = 'confirmed', updated_at = now()
+  where id = v_request.id;
+
+  if v_request.target_kind = 'order' then
+    perform private.recompute_order_refund_status(v_request.order_id);
+  else
+    perform private.recompute_failed_fulfillment_refund_status(v_request.payment_attempt_id);
+  end if;
+
+  return jsonb_build_object(
+    'refund_id', p_refund_id, 'allocation_id', v_allocation_id,
+    'matched_request_id', v_request.id, 'matched_order_id', v_request.order_id,
+    'matched', true, 'replayed', false
+  );
+end;
+$$;
+revoke all on function private.try_match_provider_refund(uuid) from public, anon, authenticated;
+
+create or replace function public.request_order_refund(
+  p_order_id uuid,
+  p_actor_id uuid,
+  p_amount_cents integer,
+  p_note text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_order record;
+  v_captured integer;
+  v_confirmed integer;
+  v_request_id uuid;
+  v_refund_id uuid;
+  v_match jsonb;
+begin
+  if p_actor_id is null then raise exception 'ACTOR_REQUIRED'; end if;
+  if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'INVALID_AMOUNT'; end if;
+
+  select id, payment_attempt_id, payment_method into v_order
+  from public.orders where id = p_order_id for update;
+  if v_order.id is null then raise exception 'ORDER_NOT_FOUND'; end if;
+  if v_order.payment_method = 'cash_on_delivery' or v_order.payment_attempt_id is null then
+    raise exception 'ORDER_NOT_CARD_PAID';
+  end if;
+  perform 1 from public.payment_attempts where id = v_order.payment_attempt_id for update;
+
+  if exists (
+    select 1 from public.payment_refund_requests where order_id = p_order_id and status = 'pending'
+  ) then raise exception 'REFUND_REQUEST_ALREADY_PENDING'; end if;
+
+  select coalesce(sum(expected_amount_cents), 0)::integer into v_captured
+  from private.payment_attempt_fulfillments
+  where payment_attempt_id = v_order.payment_attempt_id
+    and order_id = p_order_id and status = 'fulfilled';
+  if v_captured <= 0 then raise exception 'ORDER_HAS_NO_CAPTURED_AMOUNT'; end if;
+  select coalesce(sum(amount_cents), 0)::integer into v_confirmed
+  from public.payment_refund_allocations
+  where order_id = p_order_id and target_kind = 'order' and reversed_at is null;
+  if v_confirmed + p_amount_cents > v_captured then raise exception 'REFUND_EXCEEDS_CAPTURED_BALANCE'; end if;
+
+  insert into public.payment_refund_requests (
+    payment_attempt_id, order_id, target_kind, amount_cents, requested_by, note
+  ) values (
+    v_order.payment_attempt_id, p_order_id, 'order', p_amount_cents, p_actor_id,
+    nullif(trim(coalesce(p_note, '')), '')
+  ) returning id into v_request_id;
+
+  select id into v_refund_id
+  from public.payment_refunds r
+  where r.payment_attempt_id = v_order.payment_attempt_id
+    and r.amount_cents = p_amount_cents
+    and not exists (
+      select 1 from public.payment_refund_allocations a
+      where a.refund_id = r.id and a.reversed_at is null
+    )
+  order by r.confirmed_at
+  limit 1;
+  if v_refund_id is not null then v_match := private.try_match_provider_refund(v_refund_id); end if;
+
+  return jsonb_build_object(
+    'request_id', v_request_id,
+    'status', case when coalesce((v_match ->> 'matched')::boolean, false) then 'confirmed' else 'pending' end,
+    'matched_refund_id', v_refund_id
+  );
+end;
+$$;
+revoke all on function public.request_order_refund(uuid, uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.request_order_refund(uuid, uuid, integer, text) to service_role;
+
+create or replace function public.request_payment_attempt_refund(
+  p_payment_attempt_id uuid,
+  p_actor_id uuid,
+  p_amount_cents integer,
+  p_note text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_attempt record;
+  v_required integer;
+  v_confirmed integer;
+  v_request_id uuid;
+  v_refund_id uuid;
+  v_match jsonb;
+begin
+  if p_actor_id is null then raise exception 'ACTOR_REQUIRED'; end if;
+  if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'INVALID_AMOUNT'; end if;
+  select * into v_attempt from public.payment_attempts where id = p_payment_attempt_id for update;
+  if v_attempt.id is null then raise exception 'PAYMENT_ATTEMPT_NOT_FOUND'; end if;
+  if exists (
+    select 1 from public.payment_refund_requests
+    where payment_attempt_id = p_payment_attempt_id
+      and target_kind = 'failed_fulfillment' and status = 'pending'
+  ) then raise exception 'REFUND_REQUEST_ALREADY_PENDING'; end if;
+
+  select coalesce(sum(expected_amount_cents), 0)::integer into v_required
+  from private.payment_attempt_fulfillments
+  where payment_attempt_id = p_payment_attempt_id and status = 'failed';
+  if v_required = 0 and v_attempt.status = 'fulfillment_failed' then v_required := v_attempt.amount_cents; end if;
+  if v_required <= 0 then raise exception 'NO_FAILED_BUCKET_TO_REFUND'; end if;
+  select coalesce(sum(a.amount_cents), 0)::integer into v_confirmed
+  from public.payment_refund_allocations a
+  join public.payment_refund_requests r on r.id = a.request_id
+  where r.payment_attempt_id = p_payment_attempt_id
+    and a.target_kind = 'failed_fulfillment' and a.reversed_at is null;
+  if v_confirmed + p_amount_cents > v_required then raise exception 'REFUND_EXCEEDS_CAPTURED_BALANCE'; end if;
+
+  insert into public.payment_refund_requests (
+    payment_attempt_id, order_id, target_kind, amount_cents, requested_by, note
+  ) values (
+    p_payment_attempt_id, null, 'failed_fulfillment', p_amount_cents, p_actor_id,
+    nullif(trim(coalesce(p_note, '')), '')
+  ) returning id into v_request_id;
+
+  select id into v_refund_id
+  from public.payment_refunds r
+  where r.payment_attempt_id = p_payment_attempt_id
+    and r.amount_cents = p_amount_cents
+    and not exists (
+      select 1 from public.payment_refund_allocations a
+      where a.refund_id = r.id and a.reversed_at is null
+    )
+  order by r.confirmed_at
+  limit 1;
+  if v_refund_id is not null then v_match := private.try_match_provider_refund(v_refund_id); end if;
+  return jsonb_build_object(
+    'request_id', v_request_id,
+    'status', case when coalesce((v_match ->> 'matched')::boolean, false) then 'confirmed' else 'pending' end,
+    'matched_refund_id', v_refund_id
+  );
+end;
+$$;
+revoke all on function public.request_payment_attempt_refund(uuid, uuid, integer, text) from public, anon, authenticated;
+grant execute on function public.request_payment_attempt_refund(uuid, uuid, integer, text) to service_role;
+
+create or replace function public.record_provider_refund_confirmation(
+  p_payment_attempt_id uuid,
+  p_provider_reference text,
+  p_provider_event_id text,
+  p_amount_cents integer,
+  p_currency text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_attempt record;
+  v_existing record;
+  v_refund_id uuid;
+  v_confirmed integer;
+  v_match jsonb;
+begin
+  if nullif(trim(coalesce(p_provider_reference, '')), '') is null then raise exception 'PROVIDER_REFERENCE_REQUIRED'; end if;
+  if nullif(trim(coalesce(p_provider_event_id, '')), '') is null then raise exception 'PROVIDER_EVENT_ID_REQUIRED'; end if;
+  if p_amount_cents is null or p_amount_cents <= 0 then raise exception 'INVALID_AMOUNT'; end if;
+  if p_currency <> 'EGP' then raise exception 'REFUND_CURRENCY_MISMATCH'; end if;
+
+  select * into v_attempt from public.payment_attempts where id = p_payment_attempt_id for update;
+  if v_attempt.id is null then raise exception 'PAYMENT_ATTEMPT_NOT_FOUND'; end if;
+  if v_attempt.paid_at is null then raise exception 'PAYMENT_ATTEMPT_NOT_CAPTURED'; end if;
+
+  select * into v_existing from public.payment_refunds
+  where provider_event_id = p_provider_event_id or provider_reference = p_provider_reference;
+  if v_existing.id is not null then
+    if v_existing.payment_attempt_id = p_payment_attempt_id
+       and v_existing.amount_cents = p_amount_cents
+       and v_existing.currency = p_currency then
+      v_match := private.try_match_provider_refund(v_existing.id);
+      return jsonb_build_object(
+        'refund_id', v_existing.id,
+        'matched_request_id', v_match ->> 'matched_request_id',
+        'matched_order_id', v_match ->> 'matched_order_id',
+        'replayed', true
+      );
+    end if;
+    raise exception 'PROVIDER_REFUND_EVENT_CONFLICT';
+  end if;
+
+  select coalesce(sum(amount_cents), 0)::integer into v_confirmed
+  from public.payment_refunds where payment_attempt_id = p_payment_attempt_id;
+  if v_confirmed + p_amount_cents > v_attempt.amount_cents then
+    raise exception 'PROVIDER_REFUND_EXCEEDS_CAPTURED_PAYMENT';
+  end if;
+
+  insert into public.payment_refunds (
+    payment_attempt_id, amount_cents, currency, provider_reference, provider_event_id
+  ) values (
+    p_payment_attempt_id, p_amount_cents, p_currency, trim(p_provider_reference), trim(p_provider_event_id)
+  ) returning id into v_refund_id;
+  v_match := private.try_match_provider_refund(v_refund_id);
+  return jsonb_build_object(
+    'refund_id', v_refund_id,
+    'matched_request_id', v_match ->> 'matched_request_id',
+    'matched_order_id', v_match ->> 'matched_order_id',
+    'replayed', false
+  );
+end;
+$$;
+revoke all on function public.record_provider_refund_confirmation(uuid, text, text, integer, text) from public, anon, authenticated;
+grant execute on function public.record_provider_refund_confirmation(uuid, text, text, integer, text) to service_role;
+
+-- Equal-value sibling requests make automatic matching intentionally stop.
+-- An admin may resolve that ambiguity, but can only allocate an existing
+-- verified provider event to an exact-value pending request from the
+-- same captured payment. This RPC can never create a financial event.
+create or replace function public.allocate_provider_refund(
+  p_refund_id uuid,
+  p_request_id uuid,
+  p_actor_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_refund record;
+  v_request record;
+  v_allocation_id uuid;
+begin
+  if p_actor_id is null then raise exception 'ACTOR_REQUIRED'; end if;
+
+  select * into v_refund
+  from public.payment_refunds
+  where id = p_refund_id
+  for update;
+  if v_refund.id is null then raise exception 'PROVIDER_REFUND_NOT_FOUND'; end if;
+  if exists (
+    select 1 from public.payment_refund_allocations
+    where refund_id = p_refund_id and reversed_at is null
+  ) then
+    raise exception 'PROVIDER_REFUND_ALREADY_ALLOCATED';
+  end if;
+
+  select * into v_request
+  from public.payment_refund_requests
+  where id = p_request_id
+  for update;
+  if v_request.id is null then raise exception 'REFUND_REQUEST_NOT_FOUND'; end if;
+  if v_request.status <> 'pending' then raise exception 'REFUND_REQUEST_NOT_PENDING'; end if;
+  if v_request.payment_attempt_id <> v_refund.payment_attempt_id then
+    raise exception 'REFUND_REQUEST_PAYMENT_MISMATCH';
+  end if;
+  if v_request.amount_cents <> v_refund.amount_cents then
+    raise exception 'REFUND_REQUEST_AMOUNT_MISMATCH';
+  end if;
+
+  insert into public.payment_refund_allocations (
+    refund_id, request_id, order_id, target_kind, amount_cents, allocated_by
+  ) values (
+    v_refund.id, v_request.id, v_request.order_id, v_request.target_kind,
+    v_refund.amount_cents, p_actor_id
+  ) returning id into v_allocation_id;
+
+  update public.payment_refund_requests
+  set status = 'confirmed', updated_at = pg_catalog.now()
+  where id = v_request.id;
+
+  if v_request.target_kind = 'order' then
+    perform private.recompute_order_refund_status(v_request.order_id);
+  else
+    perform private.recompute_failed_fulfillment_refund_status(v_request.payment_attempt_id);
+  end if;
+
+  return pg_catalog.jsonb_build_object(
+    'allocation_id', v_allocation_id,
+    'refund_id', v_refund.id,
+    'request_id', v_request.id,
+    'order_id', v_request.order_id,
+    'target_kind', v_request.target_kind,
+    'amount_cents', v_refund.amount_cents
+  );
+end;
+$$;
+revoke all on function public.allocate_provider_refund(uuid, uuid, uuid) from public, anon, authenticated;
+grant execute on function public.allocate_provider_refund(uuid, uuid, uuid) to service_role;
+
+create or replace function public.reverse_order_refund_allocation(
+  p_order_id uuid,
+  p_allocation_id uuid,
+  p_actor_id uuid,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_allocation record;
+  v_order_status text;
+begin
+  if p_actor_id is null then raise exception 'ACTOR_REQUIRED'; end if;
+  if nullif(trim(coalesce(p_reason, '')), '') is null then raise exception 'REVERSAL_REASON_REQUIRED'; end if;
+  select * into v_allocation from public.payment_refund_allocations where id = p_allocation_id for update;
+  if v_allocation.id is null then raise exception 'REFUND_ALLOCATION_NOT_FOUND'; end if;
+  if v_allocation.reversed_at is not null then raise exception 'REFUND_ALLOCATION_ALREADY_REVERSED'; end if;
+  if v_allocation.target_kind <> 'order' or v_allocation.order_id is null then
+    raise exception 'ORDER_REFUND_ALLOCATION_REQUIRED';
+  end if;
+  if v_allocation.order_id <> p_order_id then raise exception 'REFUND_ALLOCATION_ORDER_MISMATCH'; end if;
+  select status into v_order_status from public.orders where id = v_allocation.order_id for update;
+  if v_order_status = 'cancelled' then raise exception 'CANNOT_REVERSE_AFTER_CANCELLATION'; end if;
+
+  update public.payment_refund_allocations
+  set reversed_at = now(), reversed_by = p_actor_id, reversal_reason = trim(p_reason)
+  where id = p_allocation_id;
+  update public.payment_refund_requests
+  set status = 'reversed', updated_at = now()
+  where id = v_allocation.request_id;
+  perform private.recompute_order_refund_status(v_allocation.order_id);
+  return jsonb_build_object(
+    'allocation_id', p_allocation_id, 'order_id', v_allocation.order_id,
+    'refund_id', v_allocation.refund_id, 'reversed', true
+  );
+end;
+$$;
+revoke all on function public.reverse_order_refund_allocation(uuid, uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.reverse_order_refund_allocation(uuid, uuid, uuid, text) to service_role;
+
+create or replace function public.list_order_refund_summaries(p_order_ids uuid[])
+returns table (
+  order_id uuid,
+  captured_amount_cents integer,
+  refunded_amount_cents integer,
+  pending_amount_cents integer,
+  payment_status text,
+  last_confirmed_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select
+    o.id,
+    coalesce((
+      select sum(f.expected_amount_cents)::integer
+      from private.payment_attempt_fulfillments f
+      where f.order_id = o.id and f.status = 'fulfilled'
+    ), 0),
+    coalesce((
+      select sum(a.amount_cents)::integer
+      from public.payment_refund_allocations a
+      where a.order_id = o.id and a.target_kind = 'order' and a.reversed_at is null
+    ), 0),
+    coalesce((
+      select sum(r.amount_cents)::integer
+      from public.payment_refund_requests r
+      where r.order_id = o.id and r.status = 'pending'
+    ), 0),
+    o.payment_status,
+    (
+      select max(pr.confirmed_at)
+      from public.payment_refund_allocations a
+      join public.payment_refunds pr on pr.id = a.refund_id
+      where a.order_id = o.id and a.reversed_at is null
+    )
+  from public.orders o
+  where o.id = any(p_order_ids);
+$$;
+revoke all on function public.list_order_refund_summaries(uuid[]) from public, anon, authenticated;
+grant execute on function public.list_order_refund_summaries(uuid[]) to service_role;
+
+create or replace function public.list_payment_attempts_needing_refund_review()
+returns table (
+  payment_attempt_id uuid,
+  user_id uuid,
+  status text,
+  amount_cents integer,
+  currency text,
+  is_partial boolean,
+  refund_amount_cents integer,
+  pending_refund_amount_cents integer,
+  refunded_at timestamptz,
+  refund_note text,
+  created_at timestamptz,
+  paid_at timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  with balances as (
+    select
+      pa.*,
+      exists (
+        select 1 from private.payment_attempt_fulfillments f
+        where f.payment_attempt_id = pa.id and f.status = 'fulfilled'
+      ) and exists (
+        select 1 from private.payment_attempt_fulfillments f
+        where f.payment_attempt_id = pa.id and f.status = 'failed'
+      ) as partial,
+      greatest(
+        coalesce((
+          select sum(f.expected_amount_cents)::integer
+          from private.payment_attempt_fulfillments f
+          where f.payment_attempt_id = pa.id and f.status = 'failed'
+        ), case when pa.status = 'fulfillment_failed' then pa.amount_cents else 0 end),
+        0
+      ) as required_cents
+    from public.payment_attempts pa
+  )
+  select
+    b.id,
+    b.user_id,
+    b.status,
+    b.amount_cents,
+    b.currency,
+    b.partial,
+    greatest(b.required_cents - coalesce((
+      select sum(a.amount_cents)::integer
+      from public.payment_refund_allocations a
+      join public.payment_refund_requests r on r.id = a.request_id
+      where r.payment_attempt_id = b.id
+        and a.target_kind = 'failed_fulfillment' and a.reversed_at is null
+    ), 0), 0),
+    coalesce((
+      select sum(r.amount_cents)::integer
+      from public.payment_refund_requests r
+      where r.payment_attempt_id = b.id
+        and r.target_kind = 'failed_fulfillment' and r.status = 'pending'
+    ), 0),
+    b.refunded_at,
+    b.refund_note,
+    b.created_at,
+    b.paid_at
+  from balances b
+  where b.status = 'fulfillment_failed'
+     or (b.status = 'fulfilled' and b.partial)
+  order by b.paid_at desc nulls last, b.created_at desc;
+$$;
+revoke all on function public.list_payment_attempts_needing_refund_review() from public, anon, authenticated;
+grant execute on function public.list_payment_attempts_needing_refund_review() to service_role;
+
+
+-- ============================================================================
+-- FINAL CORRECTIVE SECTION — coupon conversion inside paid fulfillment
+-- ============================================================================
+-- The existing paid-order function already increments coupons.used_count,
+-- but did not write coupon_redemptions. The earlier draft attempted to do
+-- that from the Node webhook after place_paid_order committed, creating a
+-- fatal gap. Move the existing implementation into private and wrap it in
+-- one public database transaction. The transaction-local attempt id lets
+-- the universal coupon guard exclude only the reservation currently being
+-- converted while still counting every competing card reservation against
+-- COD and other card checkouts.
+
+drop trigger if exists coupons_enforce_max_uses_guard on public.coupons;
+
+insert into private.coupon_redemptions (master_order_id, coupon_code, redeemed_at, released_at)
+select
+  o.master_order_id,
+  max(o.coupon_code),
+  min(o.created_at),
+  case when bool_and(o.status = 'cancelled') then now() else null end
+from public.orders o
+where o.coupon_code is not null and o.master_order_id is not null
+group by o.master_order_id
+on conflict (master_order_id) do update set
+  coupon_code = excluded.coupon_code,
+  redeemed_at = least(private.coupon_redemptions.redeemed_at, excluded.redeemed_at),
+  released_at = case
+    when private.coupon_redemptions.released_at is not null then private.coupon_redemptions.released_at
+    else excluded.released_at
+  end;
+
+update public.coupons c
+set used_count = (
+  select count(*)::integer
+  from private.coupon_redemptions r
+  where r.coupon_code = c.code and r.released_at is null
+);
+
+create or replace function private.enforce_coupon_max_uses_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_active_reservations integer;
+  v_conversion_attempt uuid;
+begin
+  if new.used_count <= old.used_count or new.max_uses is null then return new; end if;
+  begin
+    v_conversion_attempt := nullif(pg_catalog.current_setting('private.card_coupon_conversion_attempt', true), '')::uuid;
+  exception when invalid_text_representation then
+    v_conversion_attempt := null;
+  end;
+
+  select count(*)::integer into v_active_reservations
+  from private.coupon_reservations cr
+  join public.payment_attempts pa on pa.id = cr.payment_attempt_id
+  where cr.coupon_code = new.code
+    and pa.status in ('created', 'pending', 'processing', 'paid', 'reflecting')
+    and (v_conversion_attempt is null or cr.payment_attempt_id <> v_conversion_attempt);
+
+  if new.used_count + v_active_reservations > new.max_uses then
+    raise exception 'COUPON_LIMIT_REACHED';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger coupons_enforce_max_uses_guard
+before update of used_count on public.coupons
+for each row execute function private.enforce_coupon_max_uses_guard();
+revoke all on function private.enforce_coupon_max_uses_guard() from public, anon, authenticated;
+
+revoke all on function public.place_paid_order(uuid) from public, anon, authenticated, service_role;
+alter function public.place_paid_order(uuid) set schema private;
+revoke all on function private.place_paid_order(uuid) from public, anon, authenticated, service_role;
+
+create or replace function public.place_paid_order(p_payment_attempt_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_attempt record;
+  v_result jsonb;
+  v_coupon_code text;
+  v_reservation_id uuid;
+  v_master_order_id uuid;
+begin
+  select id, status, coupon_snapshot, master_order_id into v_attempt
+  from public.payment_attempts where id = p_payment_attempt_id for update;
+  if v_attempt.id is null then raise exception 'PAYMENT_ATTEMPT_NOT_FOUND'; end if;
+  v_coupon_code := nullif(v_attempt.coupon_snapshot ->> 'code', '');
+
+  if v_coupon_code is not null and v_attempt.status not in ('fulfilled', 'fulfillment_failed') then
+    select id into v_reservation_id
+    from private.coupon_reservations
+    where payment_attempt_id = p_payment_attempt_id
+    for update;
+    if v_reservation_id is null then raise exception 'COUPON_RESERVATION_MISSING'; end if;
+    perform 1 from public.coupons where code = v_coupon_code for update;
+    if not found then raise exception 'COUPON_NOT_FOUND'; end if;
+    perform pg_catalog.set_config('private.card_coupon_conversion_attempt', p_payment_attempt_id::text, true);
+  end if;
+
+  v_result := private.place_paid_order(p_payment_attempt_id);
+
+  select master_order_id into v_master_order_id
+  from public.payment_attempts where id = p_payment_attempt_id;
+  if v_coupon_code is not null and v_result ->> 'status' = 'fulfilled' then
+    delete from private.coupon_reservations where payment_attempt_id = p_payment_attempt_id;
+    if v_master_order_id is null then raise exception 'COUPON_REDEMPTION_MISSING_MASTER_ORDER'; end if;
+    insert into private.coupon_redemptions (master_order_id, coupon_code)
+    values (v_master_order_id, v_coupon_code)
+    on conflict (master_order_id) do nothing;
+  elsif v_result ->> 'status' = 'fulfillment_failed' then
+    delete from private.coupon_reservations where payment_attempt_id = p_payment_attempt_id;
+  end if;
+
+  return v_result;
+end;
+$$;
+revoke all on function public.place_paid_order(uuid) from public, anon, authenticated;
+grant execute on function public.place_paid_order(uuid) to service_role;

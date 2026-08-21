@@ -6,6 +6,7 @@ import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { calculateVariantReadiness } from "@/lib/inventory/readiness";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
+import { getOrderRefundLedgerForAdmin, getOrderRefundSummaries } from "@/lib/data/refunds";
 import {
   Audience,
   AuditLogRecord,
@@ -552,7 +553,17 @@ export async function getAllOrdersForAdmin(): Promise<OrderRecord[]> {
   if (error) {
     throw new Error(`getAllOrdersForAdmin failed: ${error.message}`);
   }
-  return (data as OrderRow[]).map(toOrderRecord);
+  const orders = (data as OrderRow[]).map(toOrderRecord);
+  const summaries = await getOrderRefundSummaries(orders.map((order) => order.id));
+  for (const order of orders) {
+    const summary = summaries.get(order.id);
+    if (!summary) continue;
+    order.capturedAmountCents = summary.capturedAmountCents;
+    order.refundedAmountCents = summary.refundedAmountCents;
+    order.refundPendingAmountCents = summary.pendingAmountCents;
+    order.paymentStatus = summary.paymentStatus;
+  }
+  return orders;
 }
 
 export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> {
@@ -567,6 +578,18 @@ export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> 
   }
   if (!data) return null;
   const order = toOrderRecord(data as OrderRow);
+  const [summaries, refundHistory] = await Promise.all([
+    getOrderRefundSummaries([order.id]),
+    getOrderRefundLedgerForAdmin(order.id),
+  ]);
+  const summary = summaries.get(order.id);
+  if (summary) {
+    order.capturedAmountCents = summary.capturedAmountCents;
+    order.refundedAmountCents = summary.refundedAmountCents;
+    order.refundPendingAmountCents = summary.pendingAmountCents;
+    order.paymentStatus = summary.paymentStatus;
+  }
+  order.refundHistory = refundHistory;
   if (order.userId) {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -627,6 +650,7 @@ export interface PaymentAttemptRefundReviewItem {
   currency: string;
   isPartial: boolean;
   refundAmountCents: number;
+  pendingRefundAmountCents: number;
   refundedAt: string | null;
   refundNote: string | null;
   createdAt: string;
@@ -655,6 +679,7 @@ export async function getPaymentAttemptsNeedingRefundReview(): Promise<PaymentAt
       currency: string;
       is_partial: boolean;
       refund_amount_cents: number;
+      pending_refund_amount_cents: number;
       refunded_at: string | null;
       refund_note: string | null;
       created_at: string;
@@ -668,6 +693,7 @@ export async function getPaymentAttemptsNeedingRefundReview(): Promise<PaymentAt
     currency: row.currency,
     isPartial: row.is_partial,
     refundAmountCents: row.refund_amount_cents,
+    pendingRefundAmountCents: row.pending_refund_amount_cents,
     refundedAt: row.refunded_at,
     refundNote: row.refund_note,
     createdAt: row.created_at,
@@ -767,6 +793,22 @@ export interface PaymentAttemptDetail extends PaymentAttemptListItem {
   processedAt: string | null;
   siblingOrders: { id: string; orderNumber: string; status: string; brandSlug: string | null }[];
   buckets: PaymentAttemptFulfillmentBucket[];
+  providerRefunds: Array<{
+    id: string;
+    amountCents: number;
+    providerReference: string;
+    confirmedAt: string;
+    allocatedOrderId: string | null;
+    reversedAt: string | null;
+  }>;
+  pendingRefundRequests: Array<{
+    id: string;
+    orderId: string | null;
+    orderNumber: string | null;
+    targetKind: "order" | "failed_fulfillment";
+    amountCents: number;
+    createdAt: string;
+  }>;
 }
 
 // Detail view for /admin/payments/[id] — the full row plus its linked
@@ -800,17 +842,61 @@ export async function getPaymentAttemptForAdmin(id: string): Promise<PaymentAtte
     processed_at: string | null;
   };
 
-  const [{ data: profile }, siblingOrders, bucketsResult] = await Promise.all([
+  const [{ data: profile }, siblingOrders, bucketsResult, refundsResult, requestsResult] = await Promise.all([
     supabaseAdmin.from("profiles").select("email").eq("id", row.user_id).maybeSingle(),
     row.master_order_id
       ? supabaseAdmin.from("orders").select("id, order_number, status, brand_slug").eq("master_order_id", row.master_order_id)
       : Promise.resolve({ data: [] as { id: string; order_number: string; status: string; brand_slug: string | null }[] }),
     supabaseAdmin.rpc("list_payment_attempt_fulfillments_for_admin", { p_payment_attempt_id: id }),
+    supabaseAdmin
+      .from("payment_refunds")
+      .select("id, amount_cents, provider_reference, confirmed_at")
+      .eq("payment_attempt_id", id)
+      .order("confirmed_at", { ascending: false }),
+    supabaseAdmin
+      .from("payment_refund_requests")
+      .select("id, order_id, target_kind, amount_cents, created_at")
+      .eq("payment_attempt_id", id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
   ]);
 
   if (bucketsResult.error) {
     throw new Error(`getPaymentAttemptForAdmin(${id}) buckets failed: ${bucketsResult.error.message}`);
   }
+  if (refundsResult.error) {
+    throw new Error(`getPaymentAttemptForAdmin(${id}) refunds failed: ${refundsResult.error.message}`);
+  }
+  if (requestsResult.error) {
+    throw new Error(`getPaymentAttemptForAdmin(${id}) refund requests failed: ${requestsResult.error.message}`);
+  }
+  const refundRows = (refundsResult.data ?? []) as Array<{
+    id: string;
+    amount_cents: number;
+    provider_reference: string;
+    confirmed_at: string;
+  }>;
+  const { data: refundAllocations, error: allocationsError } = refundRows.length
+    ? await supabaseAdmin
+        .from("payment_refund_allocations")
+        .select("refund_id, order_id, reversed_at, allocated_at")
+        .in("refund_id", refundRows.map((refund) => refund.id))
+        .order("allocated_at", { ascending: false })
+    : { data: [], error: null };
+  if (allocationsError) {
+    throw new Error(`getPaymentAttemptForAdmin(${id}) refund allocations failed: ${allocationsError.message}`);
+  }
+  const allocationByRefund = new Map<string, (typeof refundAllocations extends Array<infer T> ? T : never)>();
+  for (const allocation of refundAllocations ?? []) {
+    const refundId = allocation.refund_id as string;
+    const existing = allocationByRefund.get(refundId);
+    if (!existing || (existing.reversed_at && !allocation.reversed_at)) {
+      allocationByRefund.set(refundId, allocation);
+    }
+  }
+  const orderNumberById = new Map(
+    (siblingOrders.data ?? []).map((order) => [order.id as string, order.order_number as string])
+  );
   const bucketRows = (bucketsResult.data ?? []) as {
     bucket_key: string;
     brand_id: string | null;
@@ -862,6 +948,25 @@ export async function getPaymentAttemptForAdmin(id: string): Promise<PaymentAtte
       expectedAmountCents: b.expected_amount_cents,
       failureReason: b.failure_reason,
       fulfilledAt: b.fulfilled_at,
+    })),
+    providerRefunds: refundRows.map((refund) => {
+      const allocation = allocationByRefund.get(refund.id);
+      return {
+        id: refund.id,
+        amountCents: Number(refund.amount_cents),
+        providerReference: refund.provider_reference,
+        confirmedAt: refund.confirmed_at,
+        allocatedOrderId: (allocation?.order_id as string | null | undefined) ?? null,
+        reversedAt: (allocation?.reversed_at as string | null | undefined) ?? null,
+      };
+    }),
+    pendingRefundRequests: (requestsResult.data ?? []).map((request) => ({
+      id: request.id as string,
+      orderId: (request.order_id as string | null) ?? null,
+      orderNumber: request.order_id ? (orderNumberById.get(request.order_id as string) ?? null) : null,
+      targetKind: request.target_kind as "order" | "failed_fulfillment",
+      amountCents: Number(request.amount_cents),
+      createdAt: request.created_at as string,
     })),
   };
 }

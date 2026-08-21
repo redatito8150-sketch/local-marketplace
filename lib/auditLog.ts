@@ -50,6 +50,9 @@ export type AuditAction =
   | "reorder"
   | "publish"
   | "restore"
+  | "refund_requested"
+  | "refund_confirmed"
+  | "refund_allocation_reversed"
   | "upload_asset"
   | "moderate_review"
   // Brand application workflow (Milestones 5-6)
@@ -122,6 +125,9 @@ const AUDIT_ACTION_COLORS: Record<AuditAction, number> = {
   reorder: DISCORD_COLORS.orange,
   publish: DISCORD_COLORS.green,
   restore: DISCORD_COLORS.orange,
+  refund_requested: DISCORD_COLORS.orange,
+  refund_confirmed: DISCORD_COLORS.green,
+  refund_allocation_reversed: DISCORD_COLORS.red,
   upload_asset: DISCORD_COLORS.green,
   moderate_review: DISCORD_COLORS.orange,
   delete: DISCORD_COLORS.red,
@@ -162,6 +168,9 @@ const AUDIT_ACTION_VERBS: Record<AuditAction, string> = {
   reorder: "sections reordered",
   publish: "published",
   restore: "version restored",
+  refund_requested: "refund confirmation requested",
+  refund_confirmed: "refund confirmed by Paymob",
+  refund_allocation_reversed: "refund allocation reversed",
   upload_asset: "asset uploaded",
   moderate_review: "moderated",
   delete: "deleted",

@@ -22,8 +22,11 @@ test("TEST-01: the three live-DB test suites all require an explicit RUN_LIVE_RL
 
 test("CI-01: the CI workflow no longer exposes SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY job-wide", () => {
   const ci = read(".github/workflows/ci.yml");
-  assert.doesNotMatch(ci, /^\s*SUPABASE_SERVICE_ROLE_KEY:/m);
-  assert.doesNotMatch(ci, /^\s*SUPABASE_URL:/m);
+  const verifyJob = ci.slice(ci.indexOf("  verify:"), ci.indexOf("  live-supabase:"));
+  assert.doesNotMatch(verifyJob, /^\s*SUPABASE_SERVICE_ROLE_KEY:/m);
+  assert.doesNotMatch(verifyJob, /^\s*SUPABASE_URL:/m);
+  assert.match(ci, /live-supabase:[\s\S]*RUN_LIVE_RLS: "1"/);
+  assert.match(ci, /DISPOSABLE_SUPABASE_SERVICE_ROLE_KEY/);
   // The two NEXT_PUBLIC_* values remain — they are the public anon
   // key/URL, meant to be inlined into the client bundle by the build step.
   assert.match(ci, /NEXT_PUBLIC_SUPABASE_URL/);
@@ -128,7 +131,6 @@ test("every new/rewritten function in the corrective migration is service_role-o
   }
   for (const fn of [
     "public.admin_delete_brand_application(uuid, uuid, text)",
-    "public.mark_payment_attempt_refund_recorded(uuid, uuid, text)",
     "public.cancel_order(uuid)",
     "public.create_payment_attempt(uuid, text, uuid, text, integer, text, jsonb, jsonb, jsonb, integer)",
   ]) {

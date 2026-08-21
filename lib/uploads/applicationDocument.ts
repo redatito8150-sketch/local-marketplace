@@ -1,4 +1,4 @@
-import { PDFDocument, PDFName } from "pdf-lib";
+import { PDFDict, PDFDocument, PDFName, PDFStream } from "pdf-lib";
 import {
   prepareSafeImageUpload,
   type PreparedImageUpload,
@@ -7,6 +7,28 @@ import {
 
 const MAX_PDF_PAGES = 60;
 const PDF_EOF_SCAN_BYTES = 2_048;
+const UNSAFE_PDF_DICTIONARY_KEYS = new Set([
+  "AA",
+  "OpenAction",
+  "JavaScript",
+  "JS",
+  "EmbeddedFile",
+  "EmbeddedFiles",
+  "RichMedia",
+  "RichMediaSettings",
+  "SubmitForm",
+  "ImportData",
+]);
+const UNSAFE_PDF_ACTION_NAMES = new Set([
+  "JavaScript",
+  "Launch",
+  "EmbeddedFile",
+  "RichMedia",
+  "SubmitForm",
+  "ImportData",
+  "GoToR",
+  "GoToE",
+]);
 
 export type PreparedApplicationDocument = {
   bytes: Uint8Array;
@@ -45,6 +67,26 @@ function hasCanonicalPdfEnvelope(bytes: Uint8Array): boolean {
   return new TextDecoder("latin1").decode(bytes.slice(tailStart)).includes("%%EOF");
 }
 
+function normalizedPdfName(name: PDFName): string {
+  return name.asString().replace(/^\//, "");
+}
+
+function containsUnsafePdfFeatures(document: PDFDocument): boolean {
+  // Inspect parsed objects rather than raw bytes so compressed object streams
+  // cannot hide an active action from the validation boundary.
+  for (const [, object] of document.context.enumerateIndirectObjects()) {
+    const dictionary = object instanceof PDFStream ? object.dict : object instanceof PDFDict ? object : null;
+    if (!dictionary) continue;
+
+    for (const [key, rawValue] of dictionary.entries()) {
+      if (UNSAFE_PDF_DICTIONARY_KEYS.has(normalizedPdfName(key))) return true;
+      const value = document.context.lookup(rawValue);
+      if (value instanceof PDFName && UNSAFE_PDF_ACTION_NAMES.has(normalizedPdfName(value))) return true;
+    }
+  }
+  return false;
+}
+
 async function rebuildPdf(
   file: File,
   maxBytes: number
@@ -61,6 +103,9 @@ async function rebuildPdf(
       updateMetadata: false,
     });
     if (source.isEncrypted) return { ok: false, error: "Encrypted PDF documents are not supported" };
+    if (containsUnsafePdfFeatures(source)) {
+      return { ok: false, error: "Interactive PDF actions and embedded content are not supported" };
+    }
     const pageCount = source.getPageCount();
     if (!pageCount || pageCount > MAX_PDF_PAGES) {
       return { ok: false, error: `PDF documents must contain between 1 and ${MAX_PDF_PAGES} pages` };
@@ -74,6 +119,7 @@ async function rebuildPdf(
     const pages = await safe.copyPages(source, Array.from({ length: pageCount }, (_, index) => index));
     for (const page of pages) {
       page.node.delete(PDFName.of("Annots"));
+      page.node.delete(PDFName.of("AA"));
       safe.addPage(page);
     }
     safe.setCreator("Mahaly secure document processor");

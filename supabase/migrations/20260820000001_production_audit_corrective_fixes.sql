@@ -621,74 +621,11 @@ alter table public.payment_attempts
   add constraint payment_attempts_user_id_fkey
   foreign key (user_id) references auth.users(id) on delete set null;
 
--- ----------------------------------------------------------------------------
--- PAY-09 (part 1) — Manual refund recording never updated orders.payment_status.
---
--- mark_payment_attempt_refund_recorded only ever touched payment_attempts
--- (refunded_at/refund_note/refunded_by). Every order created from that
--- attempt kept payment_status = 'paid' forever, so
--- lib/orders/paymentPresentation.ts and every Admin/customer/brand reader
--- of orders.payment_status kept showing "Paid" after a real refund — and,
--- combined with the PAY-03 fix below, would have permanently blocked
--- cancelling an order that had, in fact, already been refunded. This does
--- not create a new refund obligation/amount schema (that is a larger
--- change the finding itself flags as needing sandbox verification before
--- going live) — it closes the specific, narrower gap of the two records
--- disagreeing about whether a refund happened at all.
--- ----------------------------------------------------------------------------
-
-create or replace function public.mark_payment_attempt_refund_recorded(
-  p_payment_attempt_id uuid,
-  p_actor_id uuid,
-  p_note text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_attempt record;
-  v_updated_orders integer := 0;
-begin
-  select * into v_attempt from public.payment_attempts where id = p_payment_attempt_id for update;
-  if not found then
-    raise exception 'PAYMENT_ATTEMPT_NOT_FOUND';
-  end if;
-
-  if v_attempt.refunded_at is not null then
-    raise exception 'ALREADY_MARKED_REFUNDED';
-  end if;
-
-  if v_attempt.status not in ('fulfillment_failed', 'fulfilled') then
-    raise exception 'PAYMENT_ATTEMPT_NOT_REFUND_ELIGIBLE: status is %', v_attempt.status;
-  end if;
-
-  update public.payment_attempts
-  set refunded_at = now(),
-      refund_note = p_note,
-      refunded_by = p_actor_id,
-      updated_at = now()
-  where id = p_payment_attempt_id;
-
-  -- Keep every order this attempt paid for in agreement with the attempt
-  -- itself. A cancelled order's payment_status is left alone — cancelling
-  -- doesn't erase the payment history of what was, until refunded, a real
-  -- paid order.
-  update public.orders
-  set payment_status = 'refunded'
-  where master_order_id = v_attempt.master_order_id
-    and payment_status = 'paid';
-  get diagnostics v_updated_orders = row_count;
-
-  return jsonb_build_object(
-    'payment_attempt_id', p_payment_attempt_id, 'refunded_at', now(), 'ordersUpdated', v_updated_orders
-  );
-end;
-$$;
-
-revoke all on function public.mark_payment_attempt_refund_recorded(uuid, uuid, text) from public, anon, authenticated;
-grant execute on function public.mark_payment_attempt_refund_recorded(uuid, uuid, text) to service_role;
+-- PAY-09 is completed only by the provider-confirmed ledger in the next
+-- migration. Deliberately do not install the former manual
+-- mark_payment_attempt_refund_recorded RPC here: staff-entered text must
+-- never change payment state or unlock cancellation, even temporarily
+-- between unapplied audit migrations.
 
 -- ----------------------------------------------------------------------------
 -- PAY-03 — Paid card cancellation has no refund obligation.

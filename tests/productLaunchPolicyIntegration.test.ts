@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Real, executable behavioral tests for the product-launch-policy /
 // opening-stock redesign (supabase/migrations/
@@ -13,39 +11,20 @@ import { randomUUID } from "node:crypto";
 // Supabase project, rather than asserting on SQL source text (that static
 // coverage lives in tests/productLaunchPolicyMigration.test.ts).
 //
-// Same env-credential-skip convention as tests/fulfillmentIntegration.test.ts:
-// fully skipped (not failed) when Supabase credentials aren't configured,
+// Uses the shared live-test gate: fully skipped unless RUN_LIVE_RLS is set,
+// the exact disposable project ref is allowlisted, and credentials are configured,
 // and additionally skipped if the credentialed project does NOT yet have
 // this branch's migration applied (probed via a cheap read of
-// products.launch_policy). This repo's .env.local points at the real
-// Supabase project, and this branch's migration is deliberately never
-// applied there (per this task's own "never apply migrations" instruction)
-// — so this suite is expected to report all-skipped in this environment.
+// products.launch_policy). The suite is expected to report all-skipped in
+// an ordinary local/CI run.
 // It exists to run for real once pointed at a staging/local Postgres that
 // has run the migration above.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-
-function loadEnv(): Record<string, string> {
-  if (!existsSync(envPath)) return {};
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const hasCredentials = Boolean(supabaseUrl && serviceRoleKey);
-const integrationTestsEnabled = env.RUN_PRODUCT_LAUNCH_POLICY_INTEGRATION === "1";
+const liveConfig = resolveLiveSupabaseTestConfig();
+const supabaseUrl = liveConfig?.supabaseUrl;
+const serviceRoleKey = liveConfig?.serviceRoleKey;
+const hasCredentials = Boolean(liveConfig && serviceRoleKey);
+const integrationTestsEnabled = process.env.RUN_PRODUCT_LAUNCH_POLICY_INTEGRATION === "1";
 
 let admin: SupabaseClient | null = null;
 let schemaReady = false;

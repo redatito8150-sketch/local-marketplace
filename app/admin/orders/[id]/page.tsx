@@ -7,6 +7,7 @@ import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
 import CancelMasterOrderButton from "@/components/admin/CancelMasterOrderButton";
 import RecordOrderRefundAction from "@/components/admin/RecordOrderRefundAction";
+import ReverseRefundAllocationButton from "@/components/admin/ReverseRefundAllocationButton";
 import type { OrderStatus } from "@/types";
 
 export default async function AdminOrderDetailPage(
@@ -247,12 +248,48 @@ export default async function AdminOrderDetailPage(
                 Paymob payment attempt: {order.paymentAttemptId.slice(0, 8)}…
               </p>
             )}
+            {order.capturedAmountCents != null && order.capturedAmountCents > 0 && (
+              <div className="mt-3 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-[11.5px]">
+                <p>Captured: {formatPrice(order.capturedAmountCents / 100, "EGP")}</p>
+                <p>Confirmed refunded: {formatPrice((order.refundedAmountCents ?? 0) / 100, "EGP")}</p>
+                {(order.refundPendingAmountCents ?? 0) > 0 && (
+                  <p className="text-amber-700">
+                    Awaiting Paymob: {formatPrice((order.refundPendingAmountCents ?? 0) / 100, "EGP")}
+                  </p>
+                )}
+              </div>
+            )}
             {order.paymentMethod === "card" && order.paymentStatus !== "unpaid" && (
               <div className="mt-3 border-t border-stone-150 pt-3">
                 <RecordOrderRefundAction
                   orderId={order.id}
                   paymentStatus={order.paymentStatus}
+                  pendingAmountCents={order.refundPendingAmountCents ?? 0}
                 />
+              </div>
+            )}
+            {(order.refundHistory ?? []).length > 0 && (
+              <div className="mt-3 border-t border-stone-150 pt-3">
+                <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Refund history</p>
+                <div className="mt-2 space-y-2">
+                  {(order.refundHistory ?? []).map((entry) => (
+                    <div key={entry.id} className="rounded-lg border border-stone-150 bg-white px-3 py-2 text-[11px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-ink">{formatPrice(entry.amountCents / 100, "EGP")}</span>
+                        <span className={entry.status === "confirmed" ? "text-emerald-700" : entry.status === "reversed" ? "text-red-700" : "text-amber-700"}>
+                          {entry.status === "confirmed" ? "Provider confirmed" : entry.status === "reversed" ? "Allocation reversed" : "Awaiting provider"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-ink-soft/50">Requested {formatDateTime(entry.requestedAt)}</p>
+                      {entry.confirmedAt && <p className="text-ink-soft/50">Confirmed {formatDateTime(entry.confirmedAt)}</p>}
+                      {entry.providerReference && <p className="font-mono text-[10px] text-ink-soft/50">Paymob: {entry.providerReference}</p>}
+                      {entry.note && <p className="mt-1 text-ink-soft/70">{entry.note}</p>}
+                      {entry.status === "confirmed" && order.status !== "cancelled" && (
+                        <ReverseRefundAllocationButton orderId={order.id} allocationId={entry.id} />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

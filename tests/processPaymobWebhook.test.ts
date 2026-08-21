@@ -118,6 +118,25 @@ test("a pending transaction is acknowledged without transitioning any state (pro
   );
 });
 
+test("is_refunded is observed but never interpreted as an exact financial event", async () => {
+  const { deps, calls } = makeDeps();
+  const outcome = await processPaymobWebhook(txn({ is_refunded: true, success: true, amount_cents: 25000, id: 991 }), deps);
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) {
+    assert.equal(outcome.action, "refund_status_observed");
+    if (outcome.action === "refund_status_observed") assert.equal(outcome.providerEventId, "991");
+  }
+  assert.deepEqual(calls.map((call) => call.fn), ["find"]);
+});
+
+test("a refunded status remains non-financial regardless of the callback success flag", async () => {
+  const { deps, calls } = makeDeps();
+  const outcome = await processPaymobWebhook(txn({ is_refunded: true, success: false }), deps);
+  assert.equal(outcome.ok, true);
+  if (outcome.ok) assert.equal(outcome.action, "refund_status_observed");
+  assert.deepEqual(calls.map((call) => call.fn), ["find"]);
+});
+
 test("a transaction with no matching payment_attempts row is rejected with 404, no writes attempted", async () => {
   const { deps, calls } = makeDeps({
     findPaymentAttemptIdByProviderOrderId: async (providerOrderId) => {

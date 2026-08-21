@@ -71,6 +71,17 @@ export default function OrderCard({
         </div>
       </div>
 
+      {((order.refundedAmountCents ?? 0) > 0 || (order.refundPendingAmountCents ?? 0) > 0) && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-xl bg-stone-50 px-3 py-2 text-[11.5px] text-[var(--account-text-muted)]">
+          {(order.refundedAmountCents ?? 0) > 0 && (
+            <span>Confirmed refund: {formatPrice((order.refundedAmountCents ?? 0) / 100, "EGP")}</span>
+          )}
+          {(order.refundPendingAmountCents ?? 0) > 0 && (
+            <span>Awaiting Paymob confirmation: {formatPrice((order.refundPendingAmountCents ?? 0) / 100, "EGP")}</span>
+          )}
+        </div>
+      )}
+
       {showTimeline && (
         <div className="mt-4 flex items-center">
           {TIMELINE_STEPS.map((step, i) => (

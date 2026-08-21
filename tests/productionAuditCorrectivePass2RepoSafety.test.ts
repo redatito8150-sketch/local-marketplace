@@ -16,32 +16,34 @@ const migration = read("supabase/migrations/20260821000000_production_audit_corr
 // still require a disposable Supabase project and were written but not
 // executed.
 
-test("Section 1: payment_refunds is a real ledger — exact amount, provider-reference idempotency, partial/full distinction, per-order allocation", () => {
-  assert.match(migration, /create table if not exists public\.payment_refunds/);
+test("Section 1: provider events, staff requests and order allocations are separate durable ledgers", () => {
+  assert.match(migration, /create table public\.payment_refund_requests/);
+  assert.match(migration, /create table public\.payment_refunds/);
+  assert.match(migration, /create table public\.payment_refund_allocations/);
   assert.match(migration, /amount_cents integer not null check \(amount_cents > 0\)/);
-  assert.match(migration, /provider_reference text not null check \(btrim\(provider_reference\) <> ''\)/);
-  assert.match(migration, /refund_type text not null check \(refund_type in \('partial', 'full'\)\)/);
-  assert.match(migration, /unique \(provider_reference\)/);
+  assert.match(migration, /provider_reference text not null unique/);
+  assert.match(migration, /provider_event_id text not null unique/);
   assert.match(migration, /order_id uuid references public\.orders\(id\)/);
+  assert.match(migration, /payment_refunds_immutable/);
+  assert.match(migration, /payment_refund_allocations_one_active_refund_idx[\s\S]*where reversed_at is null/);
+  const allocator = migration.slice(migration.lastIndexOf("create or replace function public.allocate_provider_refund"));
+  const allocatorBody = allocator.slice(0, allocator.indexOf("$$;"));
+  assert.match(allocatorBody, /v_request\.payment_attempt_id <> v_refund\.payment_attempt_id/);
+  assert.match(allocatorBody, /v_request\.amount_cents <> v_refund\.amount_cents/);
+  assert.match(allocatorBody, /PROVIDER_REFUND_ALREADY_ALLOCATED/);
+  assert.match(allocatorBody, /refund_id = p_refund_id and reversed_at is null/);
 });
 
-test("Section 1: record_order_refund never exceeds the order's own captured amount and never touches sibling orders", () => {
-  const fn = migration.slice(migration.indexOf("create or replace function public.record_order_refund"));
+test("Section 1: a staff request never updates payment status; only a provider-confirmed allocation can do that", () => {
+  const fn = migration.slice(migration.lastIndexOf("create or replace function public.request_order_refund"));
   const fnBody = fn.slice(0, fn.indexOf("$$;"));
   assert.match(fnBody, /REFUND_EXCEEDS_CAPTURED_BALANCE/);
-  assert.match(fnBody, /f\.order_id = p_order_id and f\.status = 'fulfilled'/);
-  assert.match(fnBody, /update public\.orders\s*\n\s*set payment_status = case when v_refund_type = 'full' then 'refunded' else 'partially_refunded' end\s*\n\s*where id = p_order_id;/);
-  // Never a bare "where master_order_id = ..." update touching every
-  // sibling order — the exact defect corrective pass 2 was rejected over.
-  assert.doesNotMatch(fnBody, /where master_order_id/);
-});
-
-test("Section 1: record_payment_attempt_refund is scoped to failed-bucket-only money and can never set an order's payment_status", () => {
-  const fn = migration.slice(migration.indexOf("create or replace function public.record_payment_attempt_refund"));
-  const fnBody = fn.slice(0, fn.indexOf("$$;"));
-  assert.match(fnBody, /NO_FAILED_BUCKET_TO_REFUND/);
   assert.doesNotMatch(fnBody, /update public\.orders/);
-  assert.match(migration, /drop function if exists public\.mark_payment_attempt_refund_recorded\(uuid, uuid, text\);/);
+  const providerFn = migration.slice(migration.lastIndexOf("create or replace function public.record_provider_refund_confirmation"));
+  const providerBody = providerFn.slice(0, providerFn.indexOf("$$;"));
+  assert.match(providerBody, /provider_event_id/);
+  assert.match(providerBody, /private\.try_match_provider_refund/);
+  assert.match(migration, /private\.recompute_order_refund_status/);
 });
 
 test("Section 1: cancel_order blocks both 'paid' and 'partially_refunded' card orders, only 'refunded' unblocks cancellation", () => {
@@ -51,19 +53,30 @@ test("Section 1: cancel_order blocks both 'paid' and 'partially_refunded' card o
   assert.match(fnBody, /PAID_ORDER_REQUIRES_REFUND_REVIEW/);
 });
 
-test("Section 1: the admin order-refund route and UI require an exact amount and a provider reference, no optional-note-only path", () => {
+test("Section 1: admin routes create pending requests and cannot submit provider confirmation fields", () => {
   const route = read("app/api/admin/orders/[id]/refund/route.ts");
-  assert.match(route, /record_order_refund/);
-  assert.match(route, /providerReference/);
-  assert.doesNotMatch(route, /providerReference\?\.trim\(\) \|\| ""/); // not silently optional
+  assert.match(route, /request_order_refund/);
+  assert.doesNotMatch(route, /providerReference/);
   const component = read("components/admin/RecordOrderRefundAction.tsx");
-  assert.match(component, /canSubmit = Number\.isFinite\(amountCents\) && amountCents > 0 && reference\.trim\(\)\.length > 0/);
+  assert.match(component, /waiting for Paymob confirmation/);
 
   const attemptRoute = read("app/api/admin/payments/[id]/mark-refunded/route.ts");
-  assert.match(attemptRoute, /record_payment_attempt_refund/);
-  assert.doesNotMatch(attemptRoute, /\.rpc\("mark_payment_attempt_refund_recorded"/);
+  assert.match(attemptRoute, /request_payment_attempt_refund/);
+  assert.doesNotMatch(attemptRoute, /providerReference/);
   const attemptComponent = read("components/admin/RefundQueueActions.tsx");
-  assert.match(attemptComponent, /canSubmit = Number\.isFinite\(amountCents\) && amountCents > 0 && reference\.trim\(\)\.length > 0/);
+  assert.match(attemptComponent, /verified provider reconciliation/);
+  const webhook = read("app/api/payments/paymob/webhook/route.ts");
+  assert.doesNotMatch(webhook, /record_provider_refund_confirmation/);
+  assert.match(webhook, /signed callback does not authenticate the exact refunded amount/);
+});
+
+test("Section 1: replayed refund-state callbacks cannot duplicate Admin or Discord notifications", () => {
+  const webhookRoute = read("app/api/payments/paymob/webhook/route.ts");
+  const notifySource = read("lib/notify.ts");
+  assert.match(migration, /alter table public\.notifications add column if not exists delivery_key text/);
+  assert.match(migration, /create unique index if not exists notifications_delivery_key_idx/);
+  assert.match(webhookRoute, /deliveryKey: `paymob-refund-state-observed:\$\{outcome\.providerEventId\}`/);
+  assert.match(notifySource, /error\.code === "23505" && options\?\.deliveryKey/);
 });
 
 test("Section 2: Brand Portal impersonation maps operations to specific permissions for limited staff, while a full-rank admin keeps unrestricted access", () => {
@@ -138,18 +151,22 @@ test("Section 4: cancel_order's restock sets the archived-stock exemption before
   assert.ok(flagIndex > -1 && updateIndex > -1 && flagIndex < updateIndex, "the exemption flag must be set before the restock UPDATE");
 });
 
-test("Section 5: coupon usage is backfilled and enforced by one universal trigger covering both COD and card, plus card's own missing redemption", () => {
+test("Section 5: card coupon conversion is inside the place_paid_order database transaction", () => {
   assert.match(migration, /insert into private\.coupon_reservations \(coupon_code, payment_attempt_id\)\s*\n\s*select nullif\(pa\.coupon_snapshot ->> 'code', ''\), pa\.id/);
   assert.match(migration, /on conflict \(payment_attempt_id\) do nothing;/);
 
-  const triggerFn = migration.slice(migration.indexOf("create or replace function private.enforce_coupon_max_uses_guard"));
+  const triggerFn = migration.slice(migration.lastIndexOf("create or replace function private.enforce_coupon_max_uses_guard"));
   const triggerBody = triggerFn.slice(0, triggerFn.indexOf("$$;"));
   assert.match(triggerBody, /new\.used_count \+ v_active_reservations > new\.max_uses/);
   assert.match(migration, /before update of used_count on public\.coupons/);
 
-  assert.match(migration, /create or replace function public\.finalize_payment_attempt_coupon_redemption/);
+  const wrapper = migration.slice(migration.lastIndexOf("create or replace function public.place_paid_order"));
+  const wrapperBody = wrapper.slice(0, wrapper.indexOf("$$;"));
+  assert.match(wrapperBody, /private\.place_paid_order\(p_payment_attempt_id\)/);
+  assert.match(wrapperBody, /delete from private\.coupon_reservations/);
+  assert.match(wrapperBody, /insert into private\.coupon_redemptions/);
   const webhookRoute = read("app/api/payments/paymob/webhook/route.ts");
-  assert.match(webhookRoute, /finalize_payment_attempt_coupon_redemption/);
+  assert.doesNotMatch(webhookRoute, /finalize_payment_attempt_coupon_redemption/);
   const codRoute = read("app/api/orders/route.ts");
   assert.match(codRoute, /COUPON_LIMIT_REACHED/);
 });
@@ -198,18 +215,22 @@ test("every new/rewritten function in the corrective-pass-2 migration has a pinn
     assert.match(def, /set search_path = ''/, `missing pinned search_path:\n${def.slice(0, 120)}`);
   }
   for (const fn of [
-    "public.record_order_refund(uuid, uuid, integer, text, text)",
-    "public.record_payment_attempt_refund(uuid, uuid, integer, text, text)",
+    "public.request_order_refund(uuid, uuid, integer, text)",
+    "public.request_payment_attempt_refund(uuid, uuid, integer, text)",
+    "public.record_provider_refund_confirmation(uuid, text, text, integer, text)",
+    "public.allocate_provider_refund(uuid, uuid, uuid)",
+    "public.reverse_order_refund_allocation(uuid, uuid, uuid, text)",
+    "public.list_order_refund_summaries(uuid[])",
     "public.list_payment_attempts_needing_refund_review()",
     "public.cancel_order(uuid)",
     "public.lock_account_for_deletion(uuid)",
     "public.unlock_account_for_deletion(uuid)",
     "public.redact_deleted_account_payment_snapshots(uuid)",
     "public.create_payment_attempt(uuid, text, uuid, text, integer, text, jsonb, jsonb, jsonb, integer)",
-    "public.finalize_payment_attempt_coupon_redemption(uuid)",
+    "public.place_paid_order(uuid)",
     "public.admin_delete_brand_application(uuid, uuid, text)",
   ]) {
-    const escaped = fn.replace(/[.()]/g, "\\$&");
+    const escaped = fn.replace(/[.()[\]]/g, "\\$&");
     assert.match(migration, new RegExp(`revoke all on function ${escaped} from`), `${fn} missing REVOKE`);
     assert.match(migration, new RegExp(`grant execute on function ${escaped} to service_role`), `${fn} missing service_role GRANT`);
   }

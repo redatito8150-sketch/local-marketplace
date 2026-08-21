@@ -8,6 +8,7 @@ function order(overrides: Partial<BrandOrder> = {}): BrandOrder {
     id: "o1", orderNumber: "LC-1", status: "fulfilled", shippingName: "A", shippingCity: "Cairo",
     shippingGovernorate: "Cairo", createdAt: "2026-08-12T22:30:00.000Z", history: [], isOverdue: false,
     fulfillmentType: "brand_direct", shippingFeeEgp: 50, paymentMethod: "card", paymentStatus: "paid",
+    capturedAmountCents: 100_00, refundedAmountCents: 0, refundPendingAmountCents: 0,
     brandProductsSubtotalEgp: 1000, brandDiscountEgp: 100, couponCode: null, masterOrderNumber: null,
     items: [{ id: "i1", productId: "p1", variantId: "v1", name: "Top", size: "M", price: 500, currency: "EGP", quantity: 2, originalUnitPrice: null, discountPercentSnapshot: null, discountSource: null, itemCouponDiscountEgp: 100 }],
     ...overrides,

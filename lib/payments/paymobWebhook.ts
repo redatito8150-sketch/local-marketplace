@@ -1,20 +1,15 @@
 // Paymob "Transaction Processed" webhook — HMAC verification.
 //
-// IMPORTANT — verification status: official Paymob documentation
-// (docs.paymob.com/docs/hmac-calculation, developers.paymob.com/paymob-docs/
-// developers/webhook-callbacks-and-hmac) could not be fetched directly in
-// this environment — every route redirects to a JS-rendered docs app that
-// returns an empty shell to automated fetching, and the direct developers.
-// paymob.com host returns 403. The field list, order, and algorithm below
-// are corroborated by multiple independent sources instead: Paymob's own
-// Pakistan/Oman/KSA regional doc mirrors (same docs platform, same
-// content), which agree with each other verbatim, and the list is
-// internally self-consistent (it is exactly the 20 field names/paths in
-// alphabetical order, matching the documented "sort keys lexicographically"
-// rule). This has NOT been verified against a real Paymob sandbox webhook
-// payload — that is the single highest-priority thing to check before this
-// goes anywhere near a live integration. See the Phase 3 report for the
-// full list of sources checked.
+// Verification status: Paymob's official webhook/HMAC documentation confirms
+// the field list, concatenation order, and the `hmac` query parameter used
+// below. A real Paymob sandbox payload is still required before production
+// activation of any new callback behavior.
+//
+// IMPORTANT — `amount_cents` on this callback is the original transaction
+// amount. `is_refunded` is only a transaction-state flag; it does not prove
+// the exact amount of a partial refund. Consequently this parser may report
+// that Paymob observed a refund state, but callers must not book a refund,
+// unlock cancellation, or change stock from this callback alone.
 //
 // The 20 fields, in the exact order Paymob's docs specify (this order is
 // load-bearing — HMAC is order-sensitive):

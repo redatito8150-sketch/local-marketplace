@@ -7,9 +7,8 @@ import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 // Admin visibility for card payments that were captured (money in) but
 // couldn't be fully turned into an order — a total failure
 // (fulfillment_failed) or a partial one (fulfilled, but at least one
-// vendor shipment failed). No refund is ever issued automatically from
-// here — see RefundQueueActions — this page only ever records that a
-// human has handled it outside this system, once, per attempt.
+// vendor shipment failed). Staff can request the exact amount here, but
+// only an authenticated Paymob callback can confirm that money moved.
 export default async function RefundQueuePage() {
   const items = await getPaymentAttemptsNeedingRefundReview();
   const pending = items.filter((item) => !item.refundedAt);
@@ -21,7 +20,7 @@ export default async function RefundQueuePage() {
       <DashboardPageHeader
         eyebrow="Card payments"
         title={`Refund review (${pending.length})`}
-        description="Card payments that were captured but couldn't be fully fulfilled — full failures need a full refund, partial ones need a refund for just the unfulfilled portion. Marking one here records that it was handled; it does not call Paymob or move any money."
+        description="Card payments that were captured but couldn't be fully fulfilled. A request stays pending until Paymob confirms the exact refund through its signed callback."
       />
 
       <DashboardPanel className="mt-6" title="Needs review">
@@ -59,7 +58,11 @@ export default async function RefundQueuePage() {
                       {formatPrice(item.refundAmountCents / 100, item.currency === "EGP" ? "EGP" : "USD")}
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <RefundQueueActions paymentAttemptId={item.paymentAttemptId} />
+                      {item.pendingRefundAmountCents > 0 ? (
+                        <span className="text-[11px] font-semibold text-amber-700">Awaiting Paymob confirmation</span>
+                      ) : (
+                        <RefundQueueActions paymentAttemptId={item.paymentAttemptId} />
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -69,13 +72,13 @@ export default async function RefundQueuePage() {
         ) : (
           <DashboardEmptyState
             title="Nothing needs review"
-            description="Every captured card payment either fulfilled cleanly or has already been marked as refunded."
+            description="Every captured card payment either fulfilled cleanly or has a provider-confirmed refund."
           />
         )}
       </DashboardPanel>
 
       {resolved.length > 0 && (
-        <DashboardPanel className="mt-6" title="Already marked refunded">
+        <DashboardPanel className="mt-6" title="Provider-confirmed refunds">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[860px] text-left text-[13px]">
               <thead className="border-b border-slate-200 bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-500">

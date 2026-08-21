@@ -26,17 +26,10 @@ import path from "node:path";
 // see a loud configuration error, not a quietly-skipped suite that looks
 // like a pass.
 //
-// HARD_DENY_PROJECT_REFS is empty by default: this repository's real
-// production Supabase project ref is not committed anywhere (see
-// .env.local.example, which only ever ships a placeholder), so there is
-// nothing this file can safely hardcode. The project owner MUST populate
-// this array with their real production project ref(s) (and any other
-// project ref that must never be mutated by a test run) for this specific
-// backstop to do anything — see the final corrective-pass report for the
-// exact reminder. Until populated, the allowlist-only, deny-by-default
-// check above is the sole protection, which is why it is required
-// unconditionally rather than treated as optional defense in depth.
-const HARD_DENY_PROJECT_REFS: readonly string[] = [];
+// Supabase project refs are public host identifiers, not credentials. Keep
+// production hard-denied in committed code so it remains blocked even if a
+// developer accidentally copies it into RUN_LIVE_RLS_ALLOWED_PROJECT_REF.
+const HARD_DENY_PROJECT_REFS: readonly string[] = ["kdrrzrboibwyxzrfwsgu"];
 
 export interface LiveSupabaseTestConfig {
   supabaseUrl: string;

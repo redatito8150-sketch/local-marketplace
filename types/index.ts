@@ -636,6 +636,18 @@ export interface OrderStatusHistoryEntry {
   createdAt: string;
 }
 
+export interface OrderRefundEntry {
+  id: string;
+  requestId: string | null;
+  amountCents: number;
+  status: "pending" | "confirmed" | "reversed";
+  requestedAt: string;
+  confirmedAt?: string;
+  reversedAt?: string;
+  providerReference?: string;
+  note?: string;
+}
+
 export interface OrderRecord {
   id: string;
   orderNumber: string;
@@ -683,6 +695,13 @@ export interface OrderRecord {
   // covers less than the order's full captured amount.
   paymentStatus: "unpaid" | "paid" | "partially_refunded" | "refunded";
   paymentAttemptId?: string;
+  // Confirmed money is derived only from HMAC-authenticated Paymob refund
+  // callbacks. A staff-created request remains pending and never changes
+  // paymentStatus or unlocks cancellation on its own.
+  capturedAmountCents?: number;
+  refundedAmountCents?: number;
+  refundPendingAmountCents?: number;
+  refundHistory?: OrderRefundEntry[];
 }
 
 // ── Admin (raw `coupons` row shape) ─────────────────────────────────────────

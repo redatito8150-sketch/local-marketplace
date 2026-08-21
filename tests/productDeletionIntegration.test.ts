@@ -1,31 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-function loadEnv() {
-  if (!existsSync(envPath)) return {} as Record<string, string>;
-  return Object.fromEntries(readFileSync(envPath, "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#") && line.includes("=")).map((line) => {
-    const index = line.indexOf("=");
-    return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
-  }));
-}
-
-const env = loadEnv();
-const url = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const key = env.SUPABASE_SERVICE_ROLE_KEY;
+const liveConfig = resolveLiveSupabaseTestConfig();
+const url = liveConfig?.supabaseUrl;
+const key = liveConfig?.serviceRoleKey;
 let admin: SupabaseClient | null = url && key ? createClient(url, key) : null;
 let schemaReady = false;
 if (admin) {
   const { error } = await admin.from("product_deletion_history").select("id").limit(1);
   schemaReady = !error;
 }
-const runLive = env.RUN_PRODUCT_DELETION_INTEGRATION === "1" && Boolean(admin) && schemaReady;
+const runLive = process.env.RUN_PRODUCT_DELETION_INTEGRATION === "1" && Boolean(admin) && schemaReady;
 
 async function createBrand() {
   const slug = `test-archive-${randomUUID()}`;

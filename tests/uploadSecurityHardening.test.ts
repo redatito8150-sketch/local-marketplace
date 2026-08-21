@@ -97,10 +97,9 @@ test("decodes and re-encodes every image format allowed by the public media buck
   }
 });
 
-test("rebuilds Brand Application PDFs without document actions, annotations or trailing payloads", async () => {
+test("rebuilds Brand Application PDFs without annotations or trailing payloads", async () => {
   const source = await PDFDocument.create();
   const page = source.addPage([300, 300]);
-  source.catalog.set(PDFName.of("OpenAction"), PDFString.of("javascript:alert(1)"));
   page.node.set(PDFName.of("Annots"), source.context.obj([]));
   const sourceBytes = await source.save({ useObjectStreams: false });
   const payload = new TextEncoder().encode("<?php echo 'payload'; ?>");
@@ -118,6 +117,33 @@ test("rebuilds Brand Application PDFs without document actions, annotations or t
   const rebuilt = await PDFDocument.load(result.upload.bytes);
   assert.equal(rebuilt.catalog.has(PDFName.of("OpenAction")), false);
   assert.equal(rebuilt.getPages()[0].node.has(PDFName.of("Annots")), false);
+  assert.equal(rebuilt.getPages()[0].node.has(PDFName.of("AA")), false);
+});
+
+test("rejects document OpenAction and page AA JavaScript before pdf-lib can copy them", async () => {
+  const documentAction = await PDFDocument.create();
+  documentAction.addPage([300, 300]);
+  documentAction.catalog.set(PDFName.of("OpenAction"), PDFString.of("javascript:alert(1)"));
+  const documentActionBytes = await documentAction.save({ useObjectStreams: true });
+  const documentActionResult = await prepareSafeApplicationDocument(
+    new File([asArrayBuffer(documentActionBytes)], "open-action.pdf", { type: "application/pdf" }),
+    10 * 1024 * 1024
+  );
+  assert.equal(documentActionResult.ok, false);
+
+  const pageAction = await PDFDocument.create();
+  const page = pageAction.addPage([300, 300]);
+  const action = pageAction.context.obj({
+    S: PDFName.of("JavaScript"),
+    JS: PDFString.of("app.alert('page action')"),
+  });
+  page.node.set(PDFName.of("AA"), pageAction.context.obj({ O: action }));
+  const pageActionBytes = await pageAction.save({ useObjectStreams: true });
+  const pageActionResult = await prepareSafeApplicationDocument(
+    new File([asArrayBuffer(pageActionBytes)], "page-action.pdf", { type: "application/pdf" }),
+    10 * 1024 * 1024
+  );
+  assert.equal(pageActionResult.ok, false);
 });
 
 test("rejects fake PDFs and removes misleading extensions and bidi controls from display names", async () => {

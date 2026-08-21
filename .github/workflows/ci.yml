@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_live_supabase:
+        description: "Run destructive integration tests against the configured disposable Supabase project"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   verify:
@@ -15,13 +22,11 @@ jobs:
     # database-bypass credential to checkout, Node setup, and `npm ci`
     # (arbitrary third-party install scripts) before any of this repo's own
     # code ran. Neither is actually consumed anywhere in this job: the
-    # live-DB test suites (tests/security.rls.test.ts,
-    # tests/crossTenantIsolation.test.ts, tests/avatarLinking.test.ts, and
-    # the *Integration.test.ts files) only ever read a gitignored
-    # .env.local file, never process.env, so they skip in CI regardless —
-    # and RUN_LIVE_RLS is deliberately NOT set here, so they keep skipping
-    # even now that they require that explicit opt-in (audit finding
-    # TEST-01). SUPABASE_URL is only otherwise read by scripts/seed.mjs,
+    # live-DB suites now use the shared, fail-closed loader and require an
+    # explicit RUN_LIVE_RLS opt-in plus an exact disposable-project
+    # allowlist. RUN_LIVE_RLS is deliberately NOT set in this ordinary
+    # verification job, so production-capable credentials are neither
+    # exposed nor used here. SUPABASE_URL is only otherwise read by scripts/seed.mjs,
     # which this job never runs. Only the two NEXT_PUBLIC_* values remain
     # job-wide: they are the public anon key/URL, meant to be inlined into
     # client bundles by `npm run build`, so job-wide exposure of exactly
@@ -47,13 +52,65 @@ jobs:
         run: npx eslint .
 
       # Unit + repo-safety tests only. Live-DB coverage (RLS, cross-tenant
-      # isolation, avatar linking) requires .env.local, which does not
-      # exist on this runner, so those suites always report skipped here —
+      # isolation, avatar linking, and integration behavior) requires an
+      # explicit disposable-project opt-in, so those suites skip here —
       # see docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md
       # (TEST-01) for the plan to run them for real against a disposable
       # project in a separate, explicitly opted-in job.
-      - name: Test suite (unit + repo-safety; live-DB suites skip without .env.local)
+      - name: Test suite (unit + repo-safety; live-DB suites require explicit opt-in)
         run: npm test
 
       - name: Production build
         run: npm run build
+
+  live-supabase:
+    name: Disposable Supabase integration tests
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_live_supabase }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Require a fully configured disposable target
+        env:
+          TARGET_REF: ${{ vars.DISPOSABLE_SUPABASE_PROJECT_REF }}
+          TARGET_URL: ${{ secrets.DISPOSABLE_SUPABASE_URL }}
+          TARGET_ANON: ${{ secrets.DISPOSABLE_SUPABASE_ANON_KEY }}
+          TARGET_SERVICE: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          test -n "$TARGET_REF"
+          test -n "$TARGET_URL"
+          test -n "$TARGET_ANON"
+          test -n "$TARGET_SERVICE"
+      - name: Run live integration suites (a skip is a failure)
+        env:
+          RUN_LIVE_RLS: "1"
+          RUN_LIVE_RLS_ALLOWED_PROJECT_REF: ${{ vars.DISPOSABLE_SUPABASE_PROJECT_REF }}
+          RUN_PRODUCTION_AUDIT_PASS2_INTEGRATION: "1"
+          RUN_FULFILLMENT_INTEGRATION: "1"
+          RUN_PRODUCT_DELETION_INTEGRATION: "1"
+          RUN_PRODUCT_LAUNCH_POLICY_INTEGRATION: "1"
+          SUPABASE_URL: ${{ secrets.DISPOSABLE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.DISPOSABLE_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.DISPOSABLE_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.DISPOSABLE_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap \
+            tests/security.rls.test.ts \
+            tests/avatarLinking.test.ts \
+            tests/crossTenantIsolation.test.ts \
+            tests/fulfillmentIntegration.test.ts \
+            tests/productDeletionDeleteFirst.test.ts \
+            tests/productDeletionIntegration.test.ts \
+            tests/productLaunchPolicyIntegration.test.ts \
+            tests/productionAuditCorrectivePass2Integration.test.ts \
+            | tee live-supabase.tap
+          if grep -q '# SKIP' live-supabase.tap; then
+            echo 'At least one required live Supabase test skipped; failing the job.' >&2
+            exit 1
+          fi

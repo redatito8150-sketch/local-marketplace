@@ -1,25 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Real, executable integration/concurrency tests for the fulfillment-mode
 // corrective fixes (items 1, 2, 3, 12 of the corrective pass) — these
 // actually create rows and call the real RPCs against a live, migrated
 // Supabase project, rather than asserting on SQL source text.
 //
-// Same env-credential-skip convention as tests/security.rls.test.ts: fully
-// skipped (not failed) when Supabase credentials aren't configured. This
+// Uses the shared live-test gate: fully skipped unless RUN_LIVE_RLS is set,
+// the exact disposable project ref is allowlisted, and credentials are
+// configured. This
 // suite additionally skips if the credentialed project does NOT yet have
 // this branch's migrations applied (probed via a cheap read of
-// brands.fulfillment_mode) — critical in THIS repo's setup, since
-// .env.local here points at the real Supabase project and these
-// migrations are deliberately never applied to it (see this branch's own
-// "do not apply migrations to production" instruction). That means this
-// suite is expected to report all-skipped in this environment; it exists
+// brands.fulfillment_mode). That means this suite is expected to report
+// all-skipped in an ordinary local/CI run; it exists
 // to run for real once pointed at a staging/local Postgres that has run
 // supabase/migrations/20260814000001..20260814000006.
 //
@@ -27,31 +23,15 @@ import { randomUUID } from "node:crypto";
 // throwaway brand (never touching any real brand/product), and every test
 // cleans up its own rows in a `finally` block.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-
-function loadEnv(): Record<string, string> {
-  if (!existsSync(envPath)) return {};
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const i = line.indexOf("=");
-        return [line.slice(0, i).trim(), line.slice(i + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const supabaseUrl = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
-const hasCredentials = Boolean(supabaseUrl && serviceRoleKey);
+const liveConfig = resolveLiveSupabaseTestConfig();
+const supabaseUrl = liveConfig?.supabaseUrl;
+const serviceRoleKey = liveConfig?.serviceRoleKey;
+const anonKey = liveConfig?.anonKey;
+const hasCredentials = Boolean(liveConfig && serviceRoleKey);
 // Never infer that a real credentialed project is disposable just because
 // its schema is current. Live write tests require an explicit opt-in and are
 // intended for an isolated Supabase branch/local database only.
-const integrationTestsEnabled = env.RUN_FULFILLMENT_INTEGRATION === "1";
+const integrationTestsEnabled = process.env.RUN_FULFILLMENT_INTEGRATION === "1";
 
 let admin: SupabaseClient | null = null;
 let schemaReady = false;
@@ -325,7 +305,6 @@ test("item 11: activation before effective_date is rejected", { skip: !runLive }
 // ---------------------------------------------------------------------------
 
 test("second pass / anon access: a direct anon-key query against public.products cannot see an unlaunched zakhnook_fulfilled product's row", { skip: !runLive }, async (t) => {
-  const anonKey = env.SUPABASE_ANON_KEY ?? env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   await t.test("RLS on products itself excludes the row for the anon role", { skip: !anonKey }, async () => {
     const brand = await createThrowawayBrand("zakhnook_fulfilled");
     try {

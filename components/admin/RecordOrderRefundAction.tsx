@@ -6,29 +6,36 @@ import { fetchWithAppError } from "@/lib/errors/client";
 import InlineError from "@/components/shared/InlineError";
 import type { AppError } from "@/types";
 
-// Corrective pass 2, Section 1 (docs/audits/2026-08-20-production-security-
-// correctness-reliability-audit-en.md): replaces the old "mark refunded"
-// note-only flow for a specific card order. Amount and provider reference
-// are both required — the server (record_order_refund) is the actual
-// source of truth for whether this exceeds what's refundable, this is
-// just matching input shape to what it needs.
+// This action creates a pending operational request only. It never marks
+// money as refunded and can never unlock cancellation. The order changes
+// only after verified provider reconciliation supplies an exact confirmed
+// amount and the database matches it to this request.
 export default function RecordOrderRefundAction({
   orderId,
   paymentStatus,
+  pendingAmountCents,
 }: {
   orderId: string;
   paymentStatus: "unpaid" | "paid" | "partially_refunded" | "refunded";
+  pendingAmountCents: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
-  const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
   if (paymentStatus === "refunded") {
     return <p className="text-[12px] font-medium text-ink-soft/60">Fully refunded.</p>;
+  }
+
+  if (pendingAmountCents > 0) {
+    return (
+      <p className="text-[12px] font-medium text-amber-700">
+        Refund requested — waiting for Paymob confirmation.
+      </p>
+    );
   }
 
   if (!open) {
@@ -38,13 +45,13 @@ export default function RecordOrderRefundAction({
         onClick={() => setOpen(true)}
         className="rounded-full border border-slate-200 px-3 py-1.5 text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50"
       >
-        {paymentStatus === "partially_refunded" ? "Record another refund" : "Record refund"}
+        {paymentStatus === "partially_refunded" ? "Request another refund" : "Request refund"}
       </button>
     );
   }
 
   const amountCents = Math.round(Number(amount) * 100);
-  const canSubmit = Number.isFinite(amountCents) && amountCents > 0 && reference.trim().length > 0;
+  const canSubmit = Number.isFinite(amountCents) && amountCents > 0;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -53,7 +60,7 @@ export default function RecordOrderRefundAction({
     const result = await fetchWithAppError(`/api/admin/orders/${orderId}/refund`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountCents, providerReference: reference.trim(), note: note.trim() || undefined }),
+      body: JSON.stringify({ amountCents, note: note.trim() || undefined }),
     });
     setSaving(false);
     if (!result.ok) {
@@ -75,16 +82,6 @@ export default function RecordOrderRefundAction({
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder="0.00"
-          className="mt-1 w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] outline-none focus:border-slate-400"
-        />
-      </label>
-      <label className="text-[11px] font-semibold text-ink-soft/70">
-        Paymob refund reference
-        <input
-          type="text"
-          value={reference}
-          onChange={(e) => setReference(e.target.value)}
-          placeholder="Required — from Paymob's dashboard"
           className="mt-1 w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] outline-none focus:border-slate-400"
         />
       </label>
@@ -112,7 +109,7 @@ export default function RecordOrderRefundAction({
           disabled={saving || !canSubmit}
           className="rounded-full bg-mahalyred px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Confirm refund"}
+          {saving ? "Saving…" : "Request refund"}
         </button>
       </div>
     </div>

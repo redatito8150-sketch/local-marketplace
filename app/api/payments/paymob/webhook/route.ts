@@ -20,9 +20,9 @@ import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 // HMAC verification happens FIRST, before touching the database in any
 // way — an invalid signature is rejected outright. See
 // lib/payments/paymobWebhook.ts's module comment for the exact field
-// list/algorithm used and its verification status (corroborated from
-// multiple doc mirrors, not confirmed against a live sandbox payload yet
-// — the top item to verify before this goes near production).
+// list/algorithm used. The implementation is checked against Paymob's
+// official documentation; a real sandbox callback remains mandatory before
+// activating new provider behavior in production.
 export async function POST(request: NextRequest) {
   // Coarse noise/flood guard only — HMAC verification below is what
   // actually protects payment integrity and runs regardless. This just
@@ -126,19 +126,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: outcome.reason }, { status: outcome.status });
     }
 
-    // Corrective pass 2, Section 5: card checkout never used to finalize its
-    // own coupon usage anywhere — coupons.used_count was only ever
-    // incremented by place_order() (Cash on Delivery); a fulfilled card
-    // order silently never counted against max_uses at all. Idempotent
-    // (checks its own reservation/redemption state), safe to call on every
-    // delivery including replays.
-    if (outcome.action === "paid_and_fulfilled" && outcome.result.status === "fulfilled") {
-      const { error: redemptionError } = await supabaseAdmin.rpc("finalize_payment_attempt_coupon_redemption", {
-        p_payment_attempt_id: outcome.paymentAttemptId,
-      });
-      if (redemptionError) {
-        logError("Paymob webhook: coupon redemption finalization failed", redemptionError.message);
-      }
+    // Coupon reservation conversion now runs inside place_paid_order's own
+    // database transaction. There is deliberately no best-effort follow-up
+    // RPC here: an order and its coupon redemption either commit together
+    // or the webhook returns 500 and Paymob retries the idempotent flow.
+
+    if (outcome.action === "refund_status_observed") {
+      await notify(
+        "payment_refund_requested",
+        "Paymob reports a refunded transaction",
+        "The signed callback does not authenticate the exact refunded amount. Reconcile it through a verified provider source; no order or stock state changed.",
+        {
+          relatedEntityType: "payment_attempt",
+          relatedEntityId: outcome.paymentAttemptId,
+          deliveryKey: `paymob-refund-state-observed:${outcome.providerEventId}`,
+        }
+      );
     }
 
     if (outcome.action === "paid_and_fulfilled" && outcome.result.status === "fulfillment_failed") {

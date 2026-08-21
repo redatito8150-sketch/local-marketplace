@@ -8,6 +8,13 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   card: "Card (Paymob)",
 };
 
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  unpaid: "Unpaid",
+  paid: "Paid",
+  partially_refunded: "Partially refunded",
+  refunded: "Refunded",
+};
+
 // "This brand's portion" — every number here is derived only from this
 // order's own `items` array, which lib/data/brandPortal.ts's
 // getOrdersForBrand() has already scoped to this brand's own rows (via the
@@ -60,8 +67,14 @@ export default function BrandOrderPricingSummary({ order }: { order: BrandOrder 
         <Row label="Payment method" value={PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod} />
         <Row
           label="Payment status"
-          value={order.paymentStatus === "paid" ? "Paid" : ORDER_STATUS_LABELS[order.paymentStatus as OrderStatus] ?? order.paymentStatus}
+          value={PAYMENT_STATUS_LABELS[order.paymentStatus] ?? ORDER_STATUS_LABELS[order.paymentStatus as OrderStatus] ?? order.paymentStatus}
         />
+        {order.refundedAmountCents > 0 && (
+          <Row label="Confirmed refund" value={formatPrice(order.refundedAmountCents / 100, "EGP")} />
+        )}
+        {order.refundPendingAmountCents > 0 && (
+          <Row label="Awaiting Paymob confirmation" value={formatPrice(order.refundPendingAmountCents / 100, "EGP")} muted />
+        )}
       </dl>
     </div>
   );

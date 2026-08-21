@@ -9,6 +9,9 @@ export type NotificationType =
   | "order_cancelled"
   | "order_preparing"
   | "order_ready_for_pickup"
+  | "payment_refund_requested"
+  | "payment_refund_confirmed"
+  | "payment_refund_allocation_reversed"
   | "product_created"
   | "product_updated"
   | "product_published"
@@ -42,6 +45,9 @@ const NOTIFICATION_TYPE_COLORS: Record<NotificationType, number> = {
   order_created: DISCORD_COLORS.green,
   order_preparing: DISCORD_COLORS.orange,
   order_ready_for_pickup: DISCORD_COLORS.orange,
+  payment_refund_requested: DISCORD_COLORS.orange,
+  payment_refund_confirmed: DISCORD_COLORS.green,
+  payment_refund_allocation_reversed: DISCORD_COLORS.red,
   product_created: DISCORD_COLORS.green,
   product_published: DISCORD_COLORS.green,
   product_restored: DISCORD_COLORS.green,
@@ -88,6 +94,9 @@ export interface NotifyOptions {
   entityIdLabel?: string;
   meta?: { label: string; value: string }[];
   detailLabel?: string;
+  // Optional stable event key. Replayed webhooks/jobs become a successful
+  // no-op in both the Admin inbox and Discord mirror.
+  deliveryKey?: string;
 }
 
 // Notifications are supplementary to the real write path they're attached
@@ -110,8 +119,10 @@ export async function notify(
     related_entity_id: hasEntityRef ? options!.relatedEntityId : null,
     audit_log_id: options?.auditLogId ?? null,
     resolution: "n/a",
+    delivery_key: options?.deliveryKey ?? null,
   });
   if (error) {
+    if (error.code === "23505" && options?.deliveryKey) return;
     logError(`notify(${type}) failed`, error.message);
   }
 

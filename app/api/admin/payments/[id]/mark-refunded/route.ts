@@ -2,15 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireStaffRole } from "@/lib/supabase/adminAuth";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logError } from "@/lib/errorLog";
+import { logAudit } from "@/lib/auditLog";
+import { notify } from "@/lib/notify";
 
-// Corrective pass 2, Section 1 (docs/audits/2026-08-20-production-security-
-// correctness-reliability-audit-en.md): replaces the old note-only
-// mark_payment_attempt_refund_recorded flow. This route now only ever
-// covers a captured attempt with a FAILED bucket that never became an
-// order at all (record_payment_attempt_refund rejects anything else) — a
-// specific paid order's own refund is recorded through the dedicated
-// per-order admin order route instead. Requires an exact amount and a
-// real Paymob provider reference; never calls Paymob's Refund API itself.
+// Creates a pending refund request for captured money that never became an
+// order. It cannot confirm a refund; only an exact event from a separately
+// verified provider source can match and confirm the request.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const staff = await requireStaffRole("admin");
   if (!staff) {
@@ -23,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: "Invalid payment attempt id" }, { status: 400 });
   }
 
-  let body: { amountCents?: unknown; providerReference?: unknown; note?: unknown };
+  let body: { amountCents?: unknown; note?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -34,17 +31,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
     return NextResponse.json({ error: "Enter the exact refunded amount in piasters (whole EGP cents)." }, { status: 400 });
   }
-  const providerReference = typeof body.providerReference === "string" ? body.providerReference.trim() : "";
-  if (!providerReference) {
-    return NextResponse.json({ error: "A provider (Paymob) refund reference is required." }, { status: 400 });
-  }
   const note = typeof body.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null;
 
-  const { data, error } = await supabaseAdmin.rpc("record_payment_attempt_refund", {
+  const { data, error } = await supabaseAdmin.rpc("request_payment_attempt_refund", {
     p_payment_attempt_id: id,
     p_actor_id: staff.user.id,
     p_amount_cents: amountCents,
-    p_provider_reference: providerReference,
     p_note: note,
   });
 
@@ -54,14 +46,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       PAYMENT_ATTEMPT_NOT_FOUND: "Payment attempt not found.",
       NO_FAILED_BUCKET_TO_REFUND: "This attempt has no failed, unrefunded bucket — record the refund against the specific order instead.",
       REFUND_EXCEEDS_CAPTURED_BALANCE: "That amount is more than what's still refundable for this attempt.",
-      REFUND_REFERENCE_ALREADY_USED: "This provider reference was already used for a different refund.",
+      REFUND_REQUEST_ALREADY_PENDING: "This payment already has a refund waiting for verified provider confirmation.",
       ACTOR_REQUIRED: "Could not identify the acting admin.",
       INVALID_AMOUNT: "Enter a valid refund amount.",
-      PROVIDER_REFERENCE_REQUIRED: "A provider (Paymob) refund reference is required.",
     };
-    if (!MESSAGES[code]) logError("record_payment_attempt_refund failed", error.message);
-    return NextResponse.json({ error: MESSAGES[code] ?? "Couldn't record the refund. Please try again." }, { status: 400 });
+    if (!MESSAGES[code]) logError("request_payment_attempt_refund failed", error.message);
+    return NextResponse.json({ error: MESSAGES[code] ?? "Couldn't request the refund. Please try again." }, { status: 400 });
   }
+
+  await logAudit({
+    actorId: staff.user.id,
+    actorLabel: staff.user.email ?? staff.user.id,
+    entityType: "payment_attempt",
+    entityId: id,
+    action: "refund_requested",
+    after: { amountCents, status: "pending_provider_confirmation" },
+  });
+  await notify("payment_refund_requested", "Refund confirmation requested", `Payment attempt ${id}`, {
+    relatedEntityType: "payment_attempt",
+    relatedEntityId: id,
+    actorLabel: staff.user.email ?? staff.user.id,
+    meta: [{ label: "Amount", value: `${(amountCents / 100).toFixed(2)} EGP` }],
+  });
 
   return NextResponse.json(data);
 }

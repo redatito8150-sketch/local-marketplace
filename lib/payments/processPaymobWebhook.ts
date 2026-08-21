@@ -56,6 +56,7 @@ export interface ProcessWebhookDeps {
 export type ProcessWebhookOutcome =
   | { ok: true; action: "paid_and_fulfilled"; paymentAttemptId: string; result: PlacePaidOrderResult }
   | { ok: true; action: "declined"; paymentAttemptId: string; result: MarkDeclinedResult }
+  | { ok: true; action: "refund_status_observed"; paymentAttemptId: string; providerEventId: string }
   | { ok: true; action: "pending_acknowledged" }
   | { ok: false; status: number; reason: string };
 
@@ -83,6 +84,16 @@ export async function processPaymobWebhook(
   // no wired RPC to call yet.
   if (txn.pending) {
     return { ok: true, action: "pending_acknowledged" };
+  }
+
+  // `is_refunded` is HMAC-covered, but Paymob documents `amount_cents` as
+  // the ORIGINAL transaction amount and exposes the actual cumulative
+  // refund separately as `refunded_amount_cents`. That latter field is not
+  // part of the documented transaction HMAC string. Treating this callback
+  // as an exact refund event could therefore turn a partial refund into a
+  // full one. Observe it for operations, but never write financial state.
+  if (txn.is_refunded) {
+    return { ok: true, action: "refund_status_observed", paymentAttemptId, providerEventId };
   }
 
   if (txn.success) {

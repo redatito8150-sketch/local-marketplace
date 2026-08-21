@@ -231,15 +231,19 @@ test("webhook route sends the admin notify() and a customer confirmation email o
   assert.match(route, /import \{ orderConfirmationEmail \} from "@\/lib\/email\/templates\/orderConfirmation";/);
   assert.match(route, /import \{ getOrderForAdmin \} from "@\/lib\/data\/admin";/);
 
-  const notifyIndex = route.indexOf("await notify(");
+  const paidFulfillmentGuardIndex = route.indexOf('outcome.action === "paid_and_fulfilled"');
+  assert.ok(paidFulfillmentGuardIndex !== -1, "expected the paid-fulfillment notification guard");
+  const paidNotificationBlock = route.slice(paidFulfillmentGuardIndex);
+  const relativeNotifyIndex = paidNotificationBlock.indexOf("await notify(");
+  const notifyIndex = paidFulfillmentGuardIndex + relativeNotifyIndex;
   const sendEmailIndex = route.indexOf("await sendEmail(");
-  assert.ok(notifyIndex !== -1, "expected an await notify(...) call");
+  assert.ok(relativeNotifyIndex !== -1, "expected an await notify(...) call inside the paid-fulfillment block");
   assert.ok(sendEmailIndex !== -1 && sendEmailIndex > notifyIndex, "sendEmail() must come after notify()");
 
   // Both the outer (action + !replayed + masterOrderId) and inner
   // (groupOrders.length > 0) guards must appear somewhere before notify()
   // is ever called.
-  const preceding = route.slice(0, notifyIndex);
+  const preceding = route.slice(paidFulfillmentGuardIndex, notifyIndex);
   assert.match(preceding, /outcome\.action === "paid_and_fulfilled"[\s\S]*!outcome\.result\.replayed[\s\S]*outcome\.result\.masterOrderId/);
   assert.match(preceding, /groupOrders && groupOrders\.length > 0/);
 

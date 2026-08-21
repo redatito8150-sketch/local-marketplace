@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { OrderRecord } from "@/types";
 import type { User } from "@supabase/supabase-js";
+import { getOrderRefundSummaries } from "@/lib/data/refunds";
 
 export async function claimGuestOrdersForVerifiedUser(user: User): Promise<number> {
   if (!user.email || !user.email_confirmed_at) return 0;
@@ -122,7 +123,17 @@ export async function getOrdersForUser(userId: string): Promise<OrderRecord[]> {
   if (error) {
     throw new Error(`getOrdersForUser(${userId}) failed: ${error.message}`);
   }
-  return (data as OrderRow[]).map(toOrderRecord);
+  const orders = (data as OrderRow[]).map(toOrderRecord);
+  const summaries = await getOrderRefundSummaries(orders.map((order) => order.id));
+  for (const order of orders) {
+    const summary = summaries.get(order.id);
+    if (!summary) continue;
+    order.capturedAmountCents = summary.capturedAmountCents;
+    order.refundedAmountCents = summary.refundedAmountCents;
+    order.refundPendingAmountCents = summary.pendingAmountCents;
+    order.paymentStatus = summary.paymentStatus;
+  }
+  return orders;
 }
 
 export interface OrderStats {

@@ -86,6 +86,21 @@ test("resolveLiveSupabaseTestConfig throws when the allowlisted ref does not mat
   );
 });
 
+test("the production project is rejected even when somebody explicitly allowlists it", () => {
+  withEnv(
+    {
+      RUN_LIVE_RLS: "1",
+      SUPABASE_URL: "https://kdrrzrboibwyxzrfwsgu.supabase.co",
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
+      SUPABASE_SERVICE_ROLE_KEY: "service-key",
+      RUN_LIVE_RLS_ALLOWED_PROJECT_REF: "kdrrzrboibwyxzrfwsgu",
+    },
+    () => {
+      assert.throws(() => resolveLiveSupabaseTestConfig(), /hard denylist/);
+    }
+  );
+});
+
 test("resolveLiveSupabaseTestConfig throws on an unrecognizable SUPABASE_URL host instead of silently skipping", () => {
   withEnv(
     {

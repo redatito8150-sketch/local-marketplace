@@ -7,17 +7,13 @@ import InlineError from "@/components/shared/InlineError";
 import type { AppError } from "@/types";
 
 // Corrective pass 2, Section 1 (docs/audits/2026-08-20-production-security-
-// correctness-reliability-audit-en.md): records that an admin has handled
-// the refund for this attempt's FAILED bucket money (never a fulfilled
-// order's own refund — that goes through RecordOrderRefundAction instead)
-// outside this system. No Paymob Refund API call happens anywhere in this
-// flow. Amount and provider reference are both required — an optional
-// note alone can no longer record anything.
+// Requests a refund for captured money that never became an order. The
+// request remains pending until verified provider reconciliation confirms
+// the exact amount; this component never marks money refunded.
 export default function RefundQueueActions({ paymentAttemptId }: { paymentAttemptId: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
-  const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
@@ -29,13 +25,13 @@ export default function RefundQueueActions({ paymentAttemptId }: { paymentAttemp
         onClick={() => setOpen(true)}
         className="rounded-full border border-slate-200 px-3 py-1.5 text-[11.5px] font-semibold text-slate-700 hover:bg-slate-50"
       >
-        Record refund
+        Request refund
       </button>
     );
   }
 
   const amountCents = Math.round(Number(amount) * 100);
-  const canSubmit = Number.isFinite(amountCents) && amountCents > 0 && reference.trim().length > 0;
+  const canSubmit = Number.isFinite(amountCents) && amountCents > 0;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -44,7 +40,7 @@ export default function RefundQueueActions({ paymentAttemptId }: { paymentAttemp
     const result = await fetchWithAppError(`/api/admin/payments/${paymentAttemptId}/mark-refunded`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amountCents, providerReference: reference.trim(), note: note.trim() || undefined }),
+      body: JSON.stringify({ amountCents, note: note.trim() || undefined }),
     });
     setSaving(false);
     if (!result.ok) {
@@ -64,13 +60,6 @@ export default function RefundQueueActions({ paymentAttemptId }: { paymentAttemp
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
         placeholder="Refund amount (EGP)"
-        className="w-56 rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] outline-none focus:border-slate-400"
-      />
-      <input
-        type="text"
-        value={reference}
-        onChange={(e) => setReference(e.target.value)}
-        placeholder="Paymob refund reference (required)"
         className="w-56 rounded-md border border-slate-200 px-2.5 py-1.5 text-[12px] outline-none focus:border-slate-400"
       />
       <input
@@ -95,7 +84,7 @@ export default function RefundQueueActions({ paymentAttemptId }: { paymentAttemp
           disabled={saving || !canSubmit}
           className="rounded-full bg-mahalyred px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:opacity-60"
         >
-          {saving ? "Saving…" : "Confirm"}
+          {saving ? "Saving…" : "Request"}
         </button>
       </div>
     </div>

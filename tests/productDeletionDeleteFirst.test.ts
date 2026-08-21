@@ -1,10 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { resolveLiveSupabaseTestConfig } from "./helpers/liveSupabaseTestConfig.ts";
 
 // Live integration tests for the delete-first lifecycle (supabase/migrations/
 // 20260819120000_paused_status_and_delete_first_lifecycle.sql). Follows the
@@ -18,25 +16,9 @@ import { randomUUID } from "node:crypto";
 // reported as unverified-until-migrated in the final report, not claimed as
 // passing.
 
-const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const envPath = path.join(rootDir, ".env.local");
-function loadEnv() {
-  if (!existsSync(envPath)) return {} as Record<string, string>;
-  return Object.fromEntries(
-    readFileSync(envPath, "utf8")
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#") && line.includes("="))
-      .map((line) => {
-        const index = line.indexOf("=");
-        return [line.slice(0, index).trim(), line.slice(index + 1).trim()];
-      })
-  );
-}
-
-const env = loadEnv();
-const url = env.SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL;
-const key = env.SUPABASE_SERVICE_ROLE_KEY;
+const liveConfig = resolveLiveSupabaseTestConfig();
+const url = liveConfig?.supabaseUrl;
+const key = liveConfig?.serviceRoleKey;
 const admin: SupabaseClient | null = url && key ? createClient(url, key) : null;
 
 let schemaReady = false;
@@ -52,7 +34,7 @@ if (admin) {
   });
   schemaReady = !error || !/could not find function|does not exist/i.test(error.message);
 }
-const runLive = env.RUN_PRODUCT_DELETION_INTEGRATION === "1" && Boolean(admin) && schemaReady;
+const runLive = process.env.RUN_PRODUCT_DELETION_INTEGRATION === "1" && Boolean(admin) && schemaReady;
 
 async function createBrand() {
   const slug = `test-dfl-${randomUUID()}`;
@@ -533,8 +515,8 @@ test("a raw update out of Archived is rejected by the trigger even for the servi
 // ---------------------------------------------------------------------------
 // 24. RLS / service-role-only access
 // ---------------------------------------------------------------------------
-test("every new lifecycle RPC rejects the anon key", { skip: !runLive || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY }, async () => {
-  const anon = createClient(url!, env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+test("every new lifecycle RPC rejects the anon key", { skip: !runLive || !liveConfig?.anonKey }, async () => {
+  const anon = createClient(url!, liveConfig!.anonKey);
   for (const [fn, args] of [
     ["pause_product", { p_product_id: "x", p_brand_id: null, p_actor_id: null }],
     ["resume_product", { p_product_id: "x", p_brand_id: null, p_actor_id: null }],
