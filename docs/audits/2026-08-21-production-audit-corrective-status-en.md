@@ -1,20 +1,33 @@
 # Production Audit Corrective Status
 
-**Status date:** 2026-08-21  
-**Working branch:** `codex/production-audit-final-corrective`  
-**Database status:** no migration in this corrective work was applied to any database  
-**Delivery status:** local only; not pushed, merged, or deployed
+**Status date:** 2026-08-21
+
+**Working branch:** `codex/production-audit-final-corrective`
+
+**Database status:** the user reports that both corrective migrations were applied to the production Supabase project in the required order. A read-only structural verification returned `true` for all eight refund tables/functions/removal checks.
+
+**Delivery status:** the application changes passed local static and repository tests and were authorized by the user for delivery to `main`; GitHub/Vercel remain the source of truth for the final remote deployment state.
 
 This is the handoff document for Codex, Claude, and future reviewers. It records what the two corrective migrations and the application changes actually close, what was verified, and what remains a production blocker. It must be read together with the original 2026-08-20 audit backlog.
 
 ## Decision
 
-The corrective code is statically consistent and fails closed in the highest-risk refund path, but it is **not approved for production SQL or deployment yet**.
+The corrective code is statically consistent and fails closed in the highest-risk refund path. The user chose to apply the production SQL and authorized application delivery after the structural checks passed. This does **not** convert the skipped disposable-project tests into runtime proof and does **not** close the remaining audit backlog.
 
-Two runtime gates remain mandatory:
+Two runtime gaps remain recorded:
 
-1. Apply the migrations to a disposable Supabase project and run the live RLS, concurrency, accounting, and rollback suite there.
-2. Integrate and sandbox-verify a Paymob source that authenticates the exact refunded amount. The ordinary signed transaction callback is not sufficient for this purpose.
+1. The live RLS, concurrency, accounting, and rollback suite has not been run against a disposable Supabase project. It must never be pointed at production.
+2. A Paymob source that authenticates the exact refunded amount still needs to be integrated and sandbox-verified. The ordinary signed transaction callback is not sufficient for this purpose.
+
+## Operational purpose
+
+The refund work separates three facts that must never be conflated:
+
+1. A staff member may **request** a refund for an exact amount. This creates a pending request only; it does not claim that money moved and does not restock an order.
+2. A trusted provider ingestion path must record an immutable **provider-confirmed refund event** for an exact captured payment and amount.
+3. The system may then **allocate** that provider event to a matching pending request. Ambiguous equal-value matches stop for explicit Admin review instead of guessing.
+
+Only a fully confirmed refund may unlock paid-card cancellation and restocking. Partial confirmation remains `partially_refunded`; an unconfirmed request remains safely pending. The current ordinary Paymob callback is observation-only, so the system intentionally cannot complete provider confirmation until the exact-amount integration exists.
 
 ## Corrective work completed
 
@@ -78,21 +91,21 @@ Two runtime gates remain mandatory:
 
 - TypeScript: clean.
 - ESLint: clean after the final PDF hardening and tests.
-- Full repository tests: `1148` total, `1079` passed, `0` failed, `69` skipped.
+- Full repository tests after rebasing onto current `main`: `1151` total, `1082` passed, `0` failed, `69` skipped.
 - The skipped tests are live/database-gated; they were not counted as runtime proof.
 - Corrective repository-safety and upload-security tests: clean.
 - `git diff --check`: clean.
 
 The production build compiled and completed TypeScript/page-data collection setup, then stopped while prerendering `/new-arrivals` because this isolated worktree has no usable Supabase data source. Dummy credentials were used only to prove compilation; no production credential was borrowed. The existing legal-content validator also reports 16 unresolved legal placeholders, but does not currently block builds.
 
-## Required migration order
+## Applied migration order
 
-If and only if the runtime blockers above are cleared, apply in this exact order:
+The user reports that these were applied to production successfully in this exact order:
 
 1. `supabase/migrations/20260820000001_production_audit_corrective_fixes.sql`
 2. `supabase/migrations/20260821000000_production_audit_corrective_pass_2.sql`
 
-Then run the live integration suite against the migrated disposable project before any production SQL.
+Do not re-run them merely because an SQL editor tab was closed or its unsaved text was discarded. The post-application read-only check confirmed that all three refund tables, the request/allocation/reversal functions, and removal of the unsafe legacy function are present as intended.
 
 ## Original audit items still not closed by this corrective scope
 
@@ -111,5 +124,5 @@ The following original backlog IDs still require separate implementation or runt
 - Do not treat a staff-entered reference, screenshot, note, or the transaction callback's `is_refunded` flag as exact refund proof.
 - Do not point live write tests at production.
 - Do not apply either migration out of order.
-- Do not merge or deploy application code that depends on the migrations before the disposable-database suite passes.
+- Do not treat successful structural SQL checks or application deployment as a substitute for the disposable-database runtime suite.
 - Do not claim skipped tests as passed runtime coverage.

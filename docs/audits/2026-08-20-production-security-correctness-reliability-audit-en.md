@@ -1,10 +1,14 @@
 # Production Security, Correctness, and Reliability Audit
 
-**Audit date:** 2026-08-20  
-**Audit status:** Findings and corrective plan only; no fixes were implemented as part of this audit.  
-**Reviewed branch:** `codex/product-deletion-corrective-pass`  
-**Reviewed commit:** `1d60f205804b334e7e7acaa84db1847e75b101b5`  
-**Upstream state at audit time:** `0` ahead / `0` behind  
+**Audit date:** 2026-08-20
+
+**Audit status:** Findings and corrective plan only; no fixes were implemented as part of this audit.
+
+**Reviewed branch:** `codex/product-deletion-corrective-pass`
+
+**Reviewed commit:** `1d60f205804b334e7e7acaa84db1847e75b101b5`
+
+**Upstream state at audit time:** `0` ahead / `0` behind
 **Decision:** **Unsafe for production**
 
 > This document is the canonical corrective backlog produced by the 2026-08-20 read-only audit.
@@ -1086,5 +1090,4 @@ When corrective work resumes:
    application code.
 7. Update this document per finding with `Open`, `In progress`, `Fixed`, `Verified in Staging`, and
    `Verified in Production` states. Never mark a finding fixed based only on a code diff.
-
 
