@@ -2216,6 +2216,10 @@ $$;
 revoke all on function public.list_order_refund_summaries(uuid[]) from public, anon, authenticated;
 grant execute on function public.list_order_refund_summaries(uuid[]) to service_role;
 
+-- The final ledger adds pending_refund_amount_cents to the OUT row type.
+-- PostgreSQL cannot change a RETURNS TABLE shape with CREATE OR REPLACE,
+-- so remove the earlier signature explicitly inside this same migration.
+drop function if exists public.list_payment_attempts_needing_refund_review();
 create or replace function public.list_payment_attempts_needing_refund_review()
 returns table (
   payment_attempt_id uuid,

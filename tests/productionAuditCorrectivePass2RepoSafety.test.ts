@@ -79,6 +79,17 @@ test("Section 1: replayed refund-state callbacks cannot duplicate Admin or Disco
   assert.match(notifySource, /error\.code === "23505" && options\?\.deliveryKey/);
 });
 
+test("Section 1: the refund-review row type is dropped before the final OUT-column expansion", () => {
+  const finalDefinition = migration.slice(
+    migration.indexOf("-- The final ledger adds pending_refund_amount_cents")
+  );
+  assert.match(
+    finalDefinition,
+    /drop function if exists public\.list_payment_attempts_needing_refund_review\(\);\s*create or replace function public\.list_payment_attempts_needing_refund_review\(\)/
+  );
+  assert.match(finalDefinition, /pending_refund_amount_cents integer/);
+});
+
 test("Section 2: Brand Portal impersonation maps operations to specific permissions for limited staff, while a full-rank admin keeps unrestricted access", () => {
   const policy = read("lib/admin/brandPortalPermissionPolicy.ts");
   assert.match(policy, /permission: "manage_orders"/);
