@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
   await notify(
     "warehouse_transfer_requested",
     `Local Warehouse return requested: ${owner.brandName ?? owner.brandSlug ?? ""}`,
-    body.note ?? "",
+    [`The requested units moved from sellable stock to Return hold at Zakhnook.`, body.note].filter(Boolean).join("\n\n"),
     {
       relatedEntityType: "warehouse_transfer",
       relatedEntityId: transferId as string,

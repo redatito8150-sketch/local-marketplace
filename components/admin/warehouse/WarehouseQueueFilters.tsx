@@ -6,12 +6,13 @@ import { Search } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 
-type StatusFilter = "" | "requested" | "approved" | "action_required" | "received";
+type StatusFilter = "" | "requested" | "approved" | "in_transit" | "action_required" | "received";
 
 const STATUS_FILTERS: Array<{ value: StatusFilter; label: string; tone: string }> = [
   { value: "", label: "All", tone: "bg-[#C85956]" },
   { value: "requested", label: "Requested", tone: "bg-amber-400" },
-  { value: "approved", label: "Awaiting arrival", tone: "bg-[#a9bbc5]" },
+  { value: "approved", label: "Preparing / awaiting", tone: "bg-[#a9bbc5]" },
+  { value: "in_transit", label: "In transit", tone: "bg-sky-500" },
   { value: "action_required", label: "Needs review", tone: "bg-red-500" },
   { value: "received", label: "Received", tone: "bg-emerald-500" },
 ];

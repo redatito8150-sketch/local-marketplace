@@ -6,11 +6,14 @@ import test from "node:test";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-test("partner stock actions live together in Inventory and create warehouse documents without changing live stock early", () => {
+test("partner stock actions sit in the Variant stock table header and create warehouse documents without changing live stock early", () => {
   const inventory = read("components/brand-portal/InventoryManager.tsx");
   assert.match(inventory, />Add stock</);
   assert.match(inventory, />Return stock</);
-  assert.match(inventory, /aria-label="Inventory stock actions"/);
+  assert.match(inventory, /Variant stock[\s\S]*aria-label="Inventory stock actions"/);
+  assert.match(inventory, /\{canRequestRestock && <div aria-label="Inventory stock actions"/);
+  assert.doesNotMatch(inventory, /<section aria-label="Inventory stock actions"/);
+  assert.doesNotMatch(inventory, />Stock actions</);
   assert.match(inventory, /<ReturnRequestDrawer/);
   assert.match(inventory, /\/api\/brand-portal\/warehouse\/transfers/);
   assert.match(inventory, /"Idempotency-Key": restockOperationKey\.current/);
@@ -95,6 +98,41 @@ test("Brand Portal groups Inventory, Stock Transfers, and Variant movements in t
   assert.match(warehouse, />Stock Transfers<\/h1>/);
 });
 
+test("Brand Portal Variant movements mirrors Admin ledger clarity without exposing Admin-only controls", () => {
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  const data = read("lib/data/brandPortal.ts");
+  const ordersPage = read("app/brand-portal/orders/page.tsx");
+  const ordersWorkspace = read("components/brand-portal/BrandOrdersWorkspace.tsx");
+
+  assert.match(inventory, /inventoryMovementLabel, inventorySourceLabel, movementTone/);
+  assert.match(inventory, /aria-label="Movement direction"/);
+  for (const label of ["Stock in", "Stock out", "No change"]) assert.match(inventory, new RegExp(label));
+  assert.match(inventory, />Movement ledger</);
+  assert.match(inventory, /<MovementVariant variant=\{variant\} movement=\{movement\}/);
+  assert.match(inventory, /<MovementBalance movement=\{movement\}/);
+  assert.match(inventory, /<MovementEvent movement=\{movement\}/);
+  assert.match(inventory, /movementAccent\(movement\.quantityDelta\)/);
+  assert.match(inventory, /type="date" value=\{activityFrom\}/);
+  assert.match(inventory, /type="date" value=\{activityTo\}/);
+  assert.match(inventory, /<MovementReference movement=\{movement\}/);
+  assert.match(inventory, /<MovementRecorded movement=\{movement\}/);
+  assert.match(inventory, /movement\.reference\.label/);
+  assert.match(inventory, /movement\.actor\.displayName/);
+  assert.match(data, /created_by, source, source_operation_key, related_entity_type, related_entity_id/);
+  assert.match(data, /href: `\/brand-portal\/warehouse\/\$\{document\.id\}`/);
+  assert.match(data, /href: `\/brand-portal\/orders\?order=\$\{encodeURIComponent/);
+  assert.match(data, /\.eq\("brand_id", brandId\)/);
+  assert.match(data, /\.eq\("order_items\.brand_slug", movementBrand\?\.slug/);
+  assert.match(data, /isStaff[\s\S]*?"Zakhnook Staff Team"/);
+  assert.match(data, /accessLevel === "owner"[\s\S]*?"Brand owner"/);
+  assert.match(data, /accessLevel === "assistant"[\s\S]*?"Brand assistant"/);
+  assert.match(inventory, /impersonatingBrandSlug[\s\S]*?brand=\$\{encodeURIComponent/);
+  assert.match(ordersPage, /params\.order \? allOrders\.find\(\(order\) => order\.id === params\.order\)/);
+  assert.match(ordersWorkspace, /useState<BrandOrder \| null>\(initialSelectedOrder\)/);
+  assert.doesNotMatch(inventory, /All brands|Admin correction|Historical migration/);
+  assert.doesNotMatch(data, /href: `\/admin\/(?:warehouse|orders)/);
+});
+
 test("large inventories render in bounded pages — Inventory pagination happens in Postgres and the return drawer paginates product groups", () => {
   const page = read("app/brand-portal/stock/page.tsx");
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
@@ -143,7 +181,10 @@ test("Return stock requires a side-by-side summary confirmation before submissio
   assert.match(warehouse, /confirmationGroups\.map/);
   assert.match(warehouse, /\{color\.label\} · \{size\}/);
   assert.match(warehouse, /\{requestedQty\} \{requestedQty === 1 \? "unit" : "units"\}/);
-  assert.match(warehouse, /Stock is not deducted until the warehouse processes it/);
+  assert.match(warehouse, /immediately removes these units from available stock/);
+  assert.match(warehouse, /Return hold at Zakhnook/);
+  assert.match(warehouse, /allSelectedQuantitiesValid/);
+  assert.match(warehouse, /Add a quantity for every selected Variant/);
   assert.match(warehouse, /onClick=\{submitReturn\}[\s\S]*Confirm return/);
   assert.doesNotMatch(warehouse, /onClick=\{submitReturn\}[\s\S]*Submit return request/);
 });
@@ -192,7 +233,7 @@ test("partner stock action role matrix keeps Owner enabled, Assistant hidden, an
   const returnRoute = read("app/api/brand-portal/warehouse/returns/route.ts");
 
   assert.match(inventory, /const canRequestRestock = !readOnly && isMahalyPartner && accessLevel === "owner"/);
-  assert.match(inventory, /\{canRequestRestock && <section aria-label="Inventory stock actions"/);
+  assert.match(inventory, /\{canRequestRestock && <div aria-label="Inventory stock actions"/);
   assert.match(stockPage, /owner\.accessLevel === "owner" && !owner\.isImpersonating/);
   assert.match(returnRoute, /owner\.accessLevel !== "owner" \|\| owner\.isImpersonating/);
 });

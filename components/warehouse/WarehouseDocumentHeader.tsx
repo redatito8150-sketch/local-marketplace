@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import type { WarehouseTransferRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
 import { BrandMark, TonePill } from "@/components/admin/inventory/shared";
-import { WAREHOUSE_STATUS_META, warehouseDocumentLabel } from "@/components/admin/warehouse/warehouseUi";
+import { warehouseDocumentLabel, warehouseStatusMeta } from "@/components/admin/warehouse/warehouseUi";
 
 export default function WarehouseDocumentHeader({
   transfer,
@@ -17,7 +17,7 @@ export default function WarehouseDocumentHeader({
   backLabel: string;
   actions?: ReactNode;
 }) {
-  const statusMeta = WAREHOUSE_STATUS_META[transfer.status];
+  const statusMeta = warehouseStatusMeta(transfer.status, transfer.direction);
   const documentNumber = transfer.documentNumber ?? `Legacy · ${transfer.id.slice(0, 8).toUpperCase()}`;
   const corrected = transfer.status === "received" && transfer.reconciliationStatus === "corrected";
 

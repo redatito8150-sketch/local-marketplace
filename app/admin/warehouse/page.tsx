@@ -17,9 +17,10 @@ import WarehouseQueueFilters from "@/components/admin/warehouse/WarehouseQueueFi
 import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
 import {
   ACTION_REQUIRED_WAREHOUSE_STATUSES,
-  OPEN_WAREHOUSE_STATUSES,
   WAREHOUSE_STATUS_META,
+  hasPendingBrandDeliveryNoteReview,
   warehouseDocumentLabel,
+  warehouseStatusMeta,
 } from "@/components/admin/warehouse/warehouseUi";
 import { formatDateTime } from "@/lib/format";
 
@@ -77,12 +78,15 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
   const requestedPage = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
 
   const needsReviewCount = allTransfers.filter((transfer) =>
-    ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) || hasOpenWarehouseIssue(transfer)
+    ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status)
+      || hasOpenWarehouseIssue(transfer)
+      || hasPendingBrandDeliveryNoteReview(transfer)
   ).length;
   const statusCounts = {
     "": allTransfers.length,
     requested: allTransfers.filter((transfer) => ["pending", "submitted"].includes(transfer.status)).length,
     approved: allTransfers.filter((transfer) => transfer.status === "approved").length,
+    in_transit: allTransfers.filter((transfer) => transfer.status === "in_transit").length,
     action_required: needsReviewCount,
     received: allTransfers.filter((transfer) => transfer.status === "received").length,
   };
@@ -91,7 +95,8 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
 
   const filtered = allTransfers.filter((transfer) => {
     const hasOpenDiscrepancy = hasOpenWarehouseIssue(transfer);
-    if (status === "action_required" && !ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) && !hasOpenDiscrepancy) return false;
+    const hasPendingBrandNote = hasPendingBrandDeliveryNoteReview(transfer);
+    if (status === "action_required" && !ACTION_REQUIRED_WAREHOUSE_STATUSES.has(transfer.status) && !hasOpenDiscrepancy && !hasPendingBrandNote) return false;
     if (status === "requested" && !["pending", "submitted"].includes(transfer.status)) return false;
     if (isWarehouseStatus(status) && transfer.status !== status) return false;
     if (direction && transfer.direction !== direction) return false;
@@ -108,6 +113,7 @@ export default async function AdminWarehousePage(props: { searchParams: Promise<
         transfer.brandName,
         transfer.status,
         warehouseDocumentLabel(transfer.direction),
+        transfer.receivingNote ?? "",
         ...transfer.items.flatMap((item) => [item.productName, item.optionLabel, item.sku]),
       ].join(" ").toLocaleLowerCase("en-US");
       if (!searchable.includes(normalizedQuery)) return false;
@@ -175,9 +181,10 @@ function WarehouseSortHeader({ label, note, column, sort, href }: { label: strin
 }
 
 function TransferRow({ transfer }: { transfer: WarehouseTransferRow }) {
-  const meta = WAREHOUSE_STATUS_META[transfer.status];
+  const meta = warehouseStatusMeta(transfer.status, transfer.direction);
   const totalRequested = transfer.items.reduce((sum, item) => sum + item.requestedQty, 0);
-  const needsReview = hasOpenWarehouseIssue(transfer);
+  const pendingBrandNote = hasPendingBrandDeliveryNoteReview(transfer);
+  const needsReview = hasOpenWarehouseIssue(transfer) || pendingBrandNote;
   const documentNumber = transfer.documentNumber ?? `Legacy · ${transfer.id.slice(0, 8).toUpperCase()}`;
   const tone = needsReview ? "red" : meta.tone;
   const StatusIcon = needsReview ? AlertTriangle : meta.icon;
@@ -193,6 +200,8 @@ function TransferRow({ transfer }: { transfer: WarehouseTransferRow }) {
         <span className={`inline-flex items-center gap-1.5 text-[10.5px] font-extrabold ${statusClass}`}><StatusIcon aria-hidden="true" className="h-3.5 w-3.5" />{statusLabel}</span>
         {transfer.status === "received" && transfer.reconciliationStatus === "corrected" ? (
           <span className="pl-5 text-[8.5px] font-bold tracking-[0.02em] text-[#7b6f66]">Corrected</span>
+        ) : pendingBrandNote ? (
+          <span className="pl-5 text-[8.5px] font-bold tracking-[0.02em] text-red-600">Brand note</span>
         ) : null}
       </div>
       <div><p className="text-[10.5px] font-semibold text-[#4f453e]"><span className="font-extrabold">Created</span> {formatDateTime(transfer.requestedAt)}</p><p className="mt-1 text-[9.5px] text-[#8d8076]">Updated {formatDateTime(transfer.updatedAt)}</p></div>

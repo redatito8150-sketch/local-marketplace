@@ -15,12 +15,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   const { data: transfer } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status")
+    .select("id, brand_id, status, direction")
     .eq("id", params.id)
     .maybeSingle();
   if (!transfer) return NextResponse.json({ error: "Transfer not found" }, { status: 404 });
   if (!["pending", "submitted", "approved", "in_transit"].includes(transfer.status)) {
     return NextResponse.json({ error: "This document cannot be rejected in its current stage" }, { status: 400 });
+  }
+  if (transfer.direction === "to_brand" && transfer.status === "in_transit") {
+    return NextResponse.json({ error: "A return cannot be rejected after it has been dispatched" }, { status: 400 });
   }
 
   const body = await request.json().catch(() => ({})) as { note?: string };
@@ -51,7 +54,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     });
     await notify(
       "warehouse_transfer_rejected",
-      `Local Warehouse transfer rejected: ${brand?.name ?? ""}`,
+      `Local Warehouse ${transfer.direction === "to_brand" ? "return" : "transfer"} rejected: ${brand?.name ?? ""}`,
       body.note ?? "",
       { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id, actorLabel: receiver.email ?? receiver.id }
     );
@@ -59,7 +62,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       await notifyUser(
         brand.owner_user_id,
         "warehouse_transfer_rejected",
-        "Your Local Warehouse transfer request was rejected",
+        `Your Local Warehouse ${transfer.direction === "to_brand" ? "return" : "transfer"} request was rejected`,
         body.note ?? "",
         { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
       );

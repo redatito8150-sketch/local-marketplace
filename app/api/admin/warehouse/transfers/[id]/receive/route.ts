@@ -26,7 +26,8 @@ type ReceiveDocumentResult = {
   remaining_unreconciled: number;
 };
 
-const RECEIVABLE_STATUSES = new Set(["approved", "in_transit", "partially_received"]);
+const INBOUND_RECEIVABLE_STATUSES = new Set(["approved", "in_transit", "partially_received"]);
+const RETURN_RECEIVABLE_STATUSES = new Set(["in_transit", "partially_received"]);
 
 // Zakhnook's own warehouse staff (or an admin) confirming a physical
 // delivery against its transfer request — every line must be fully
@@ -44,8 +45,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     .eq("id", params.id)
     .maybeSingle();
   if (!transfer) return NextResponse.json({ error: "Transfer not found" }, { status: 404 });
-  if (!RECEIVABLE_STATUSES.has(transfer.status)) return NextResponse.json({ error: "This document cannot receive stock in its current stage" }, { status: 400 });
   const isReturn = transfer.direction === "to_brand";
+  if (isReturn) {
+    return NextResponse.json(
+      { error: "Only the Brand Owner can confirm delivery of a dispatched Stock Return Note" },
+      { status: 403 },
+    );
+  }
+  const receivableStatuses = isReturn ? RETURN_RECEIVABLE_STATUSES : INBOUND_RECEIVABLE_STATUSES;
+  if (!receivableStatuses.has(transfer.status)) return NextResponse.json({ error: isReturn ? "Dispatch this return before confirming delivery" : "This document cannot receive stock in its current stage" }, { status: 400 });
 
   const body = await request.json().catch(() => null) as { items?: ReceiveItemInput[]; note?: string } | null;
   if (!body?.items?.length) return NextResponse.json({ error: "Reconcile at least one item" }, { status: 400 });
@@ -178,7 +186,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       entityId: params.id,
       action: "approve",
       after: {
-        [isReturn ? "Stock returned to brand" : "Stock received"]: changeSummary || undefined,
+        [isReturn ? "Return delivery confirmed" : "Stock received"]: changeSummary || undefined,
         Discrepancies: discrepancySummary || undefined,
         Note: body.note || undefined,
       },
@@ -189,8 +197,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const partial = documentResult.status === "partially_received";
     await notify(
       "warehouse_transfer_received",
-      `Local Warehouse ${isReturn ? "return" : "transfer"} ${partial ? "partially received" : "confirmed"}: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
-      body.note ?? "",
+      `Local Warehouse ${isReturn ? "return" : "transfer"} ${partial ? "partially confirmed" : "confirmed"}: ${brand?.name ?? ""}${hasDiscrepancy ? " (with discrepancies)" : ""}`,
+      [isReturn ? (partial ? "Confirmed units moved from in-transit stock into brand stock." : "Delivered units moved from in-transit stock into brand stock.") : "", body.note].filter(Boolean).join("\n\n"),
       {
         relatedEntityType: "warehouse_transfer",
         relatedEntityId: params.id,
@@ -203,11 +211,11 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         brand.owner_user_id,
         "warehouse_transfer_received",
         partial
-          ? `Zakhnook partially received your ${isReturn ? "return" : "restock"} document`
+          ? `Zakhnook partially confirmed your ${isReturn ? "return delivery" : "restock document"}`
           : isReturn
             ? (hasDiscrepancy ? "Your return was confirmed — with some discrepancies" : "Your return was confirmed in full")
             : (hasDiscrepancy ? "Your transfer was received — with some discrepancies" : "Your transfer was received in full"),
-        body.note ?? "",
+        [isReturn ? (partial ? "The confirmed units are now in your brand stock; the remaining units stay in transit." : "The delivered units are now recorded in your brand stock.") : "", body.note].filter(Boolean).join("\n\n"),
         { relatedEntityType: "warehouse_transfer", relatedEntityId: params.id }
       );
     }

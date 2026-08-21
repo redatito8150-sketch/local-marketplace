@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { CheckCircle2, Circle, Clock3 } from "lucide-react";
 import type { WarehouseActorIdentity, WarehouseReceiptVariantOption, WarehouseTransferRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
-import { WAREHOUSE_STATUS_META } from "@/components/admin/warehouse/warehouseUi";
+import { warehouseStatusMeta } from "@/components/admin/warehouse/warehouseUi";
 import WarehouseActorLabel from "@/components/warehouse/WarehouseActorLabel";
 
 type AuditEntry = {
@@ -25,6 +25,7 @@ function objectKeys(value: unknown): string[] {
 
 function auditTitle(log: AuditEntry): string {
   const keys = objectKeys(log.afterValue);
+  const values = log.afterValue && typeof log.afterValue === "object" ? Object.values(log.afterValue as Record<string, unknown>).map(String) : [];
   if (keys.some((key) => key.toLowerCase().includes("cancel"))) return "Request cancelled";
   if (keys.some((key) => key.toLowerCase().includes("stock received"))) return "Receipt recorded";
   if (keys.some((key) => key.toLowerCase().includes("stock returned"))) return "Return recorded";
@@ -32,6 +33,7 @@ function auditTitle(log: AuditEntry): string {
   if (keys.some((key) => key.toLowerCase().includes("note"))) return "Document note updated";
   if (log.action.toLowerCase().includes("reject")) return "Request rejected";
   if (log.action.toLowerCase().includes("cancel")) return "Request cancelled";
+  if (values.some((value) => value.toLowerCase().includes("in transit to brand"))) return "Dispatched to brand";
   return "Document updated";
 }
 
@@ -75,7 +77,8 @@ export default function WarehouseDocumentHistory({
   const approvalLog = logs.find((log) => log.action.toLowerCase().includes("approv") && objectKeys(log.afterValue).some((key) => key.toLowerCase() === "status"));
   const finalAction = transfer.status === "received" || transfer.status === "partially_received" ? "receiv" : transfer.status === "rejected" ? "reject" : transfer.status === "cancelled" ? "cancel" : null;
   const finalLog = finalAction ? logs.find((log) => log.action.toLowerCase().includes(finalAction) || objectKeys(log.afterValue).some((key) => key.toLowerCase().includes(finalAction))) : undefined;
-  const claimedLogIds = new Set([createLog?.id, approvalLog?.id, finalLog?.id].filter((id): id is string => Boolean(id)));
+  const brandDeliveryNoteReviewLog = logs.find((log) => objectKeys(log.afterValue).some((key) => key.toLowerCase().includes("brand delivery note review")));
+  const claimedLogIds = new Set([createLog?.id, approvalLog?.id, finalLog?.id, brandDeliveryNoteReviewLog?.id].filter((id): id is string => Boolean(id)));
   const requestedActor = transfer.requestedByActor ?? actorFromAudit(createLog);
   const activity: DocumentActivityEntry[] = [{
     id: "requested",
@@ -87,10 +90,19 @@ export default function WarehouseDocumentHistory({
   if (transfer.approvedAt) {
     activity.push({
       id: "accepted",
-      label: "Request accepted",
+      label: transfer.direction === "to_brand" ? "Preparing return" : "Request accepted",
       timestamp: transfer.approvedAt,
       detail: <>Accepted by <ActorLabel actor={transfer.approvedByActor ?? actorFromAudit(approvalLog)} canReveal={canRevealActorIdentity} /> · no stock movement</>,
     });
+  }
+
+  const dispatchLog = transfer.direction === "to_brand" ? logs.find((log) => {
+    const values = log.afterValue && typeof log.afterValue === "object" ? Object.values(log.afterValue as Record<string, unknown>).map(String) : [];
+    return values.some((value) => value.toLowerCase().includes("in transit to brand"));
+  }) : undefined;
+  if (dispatchLog) {
+    claimedLogIds.add(dispatchLog.id);
+    activity.push({ id: "dispatched", label: "In transit to brand", timestamp: dispatchLog.createdAt, detail: <>Dispatched by <ActorLabel actor={actorFromAudit(dispatchLog)} canReveal={canRevealActorIdentity} /> · no sellable change</> });
   }
 
   for (const log of logs) {
@@ -99,8 +111,17 @@ export default function WarehouseDocumentHistory({
   }
 
   if (transfer.decidedAt) {
-    const outcomeLabel = transfer.status === "received" ? "Received" : transfer.status === "partially_received" ? "Partially received" : WAREHOUSE_STATUS_META[transfer.status].label;
+    const outcomeLabel = warehouseStatusMeta(transfer.status, transfer.direction).label;
     activity.push({ id: "decision", label: outcomeLabel, timestamp: transfer.decidedAt, detail: <>{outcomeLabel} by <ActorLabel actor={transfer.decidedByActor ?? actorFromAudit(finalLog)} canReveal={canRevealActorIdentity} /></> });
+  }
+
+  if (transfer.brandDeliveryNoteReviewedAt) {
+    activity.push({
+      id: "brand-delivery-note-reviewed",
+      label: "Brand note follow-up completed",
+      timestamp: transfer.brandDeliveryNoteReviewedAt,
+      detail: <>Marked done by <ActorLabel actor={transfer.brandDeliveryNoteReviewedByActor ?? actorFromAudit(brandDeliveryNoteReviewLog)} canReveal={canRevealActorIdentity} /> · note retained</>,
+    });
   }
 
   for (const correction of transfer.corrections) {

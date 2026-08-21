@@ -15,6 +15,7 @@ import {
 
 type OrderParams = {
   brand?: string;
+  order?: string;
   q?: string;
   queue?: string;
   from?: string;
@@ -35,6 +36,7 @@ export default async function BrandPortalOrdersPage(props: { searchParams: Promi
   }
 
   const allOrders = await getOrdersForBrand(owner.brandSlug, owner.isImpersonating);
+  const initialSelectedOrder = params.order ? allOrders.find((order) => order.id === params.order) ?? null : null;
   const queue = normalizeBrandOrderQueue(params.queue);
   const counts: Record<BrandOrderQueue, number> = {
     all: allOrders.length,
@@ -60,6 +62,7 @@ export default async function BrandPortalOrdersPage(props: { searchParams: Promi
       />
       <BrandOrdersWorkspace
         orders={orders}
+        initialSelectedOrder={initialSelectedOrder}
         counts={counts}
         brandSlug={owner.brandSlug}
         params={{

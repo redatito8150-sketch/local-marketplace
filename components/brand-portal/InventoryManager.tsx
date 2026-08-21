@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowRight, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ClipboardList, Download, ExternalLink, PackagePlus, RotateCcw, Search, UserRound, X } from "lucide-react";
 import type { BrandVariant, InventoryMovement } from "@/lib/data/brandPortal";
 import { INVENTORY_REASONS, type InventoryAdjustmentType } from "@/lib/inventory/adjustmentValidation";
 import { formatDateTime } from "@/lib/format";
@@ -12,9 +13,11 @@ import ColorSwatch from "@/components/admin/ColorSwatch";
 import { compareSizeOrderables } from "@/lib/inventory/sizeOrder";
 import { ReturnRequestDrawer } from "@/components/brand-portal/warehouse/WarehouseExperience";
 import type { WarehouseVariantRow } from "@/lib/data/warehouse";
+import { inventoryMovementLabel, inventorySourceLabel, movementTone } from "@/lib/inventory/movementPresentation";
 
 type InventoryView = "inventory" | "activity";
 type LocalSort = `${string}-asc` | `${string}-desc`;
+type ActivityDirection = "all" | "in" | "out" | "neutral";
 
 const fieldClass = "mt-1.5 h-10 w-full rounded-xl border border-[#e4d9d1] bg-white px-3 text-[12px] text-[#4d433c] outline-none focus-visible:border-[#C85956]/50 focus-visible:ring-4 focus-visible:ring-[#C85956]/8";
 
@@ -40,24 +43,78 @@ function statusMeta(status: BrandVariant["stockStatus"]) {
   return { label: "Healthy", badge: "bg-emerald-50 text-emerald-700", dot: "bg-emerald-500" };
 }
 
-function sourceLabel(source: string) {
-  const labels: Record<string, string> = {
-    order: "Customer order",
-    order_cancellation: "Cancelled order",
-    brand_portal: "Brand adjustment",
-    product_editor: "Product setup",
-    warehouse_transfer: "Warehouse transfer",
-  };
-  return labels[source] ?? source.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
 function activityCsv(history: InventoryMovement[], variants: Map<string, BrandVariant>) {
   const escape = (value: string | number) => `"${String(value).replaceAll('"', '""')}"`;
   const rows = history.map((movement) => {
     const variant = variants.get(movement.variantId);
-    return [movement.createdAt, variant?.productName ?? "Archived product", variant?.sku ?? movement.variantId, movement.quantityDelta, movement.previousQuantity, movement.newQuantity, movement.reason, movement.note ?? "", sourceLabel(movement.source)].map(escape).join(",");
+    return [movement.createdAt, movement.actor ? `${movement.actor.displayName} · ${movement.actor.roleLabel}` : "System", variant?.productName ?? "Archived product", variant?.sku ?? movement.variantId, movement.quantityDelta, movement.previousQuantity, movement.newQuantity, movement.reason, movement.note ?? "", inventorySourceLabel(movement.source), movement.reference?.label ?? ""].map(escape).join(",");
   });
-  return [`Date,Product,SKU,Movement,Before,After,Reason,Note,Source`, ...rows].join("\r\n");
+  return [`Date,Updated by,Product,SKU,Movement,Before,After,Reason,Note,Source,Document or order`, ...rows].join("\r\n");
+}
+
+function movementAccent(delta: number): string {
+  const tone = movementTone(delta);
+  if (tone === "in") return "border-l-emerald-500";
+  if (tone === "out") return "border-l-red-500";
+  return "border-l-amber-500";
+}
+
+function MovementDelta({ movement }: { movement: InventoryMovement }) {
+  const tone = movementTone(movement.quantityDelta);
+  const style = tone === "in" ? "bg-emerald-50 text-emerald-800" : tone === "out" ? "bg-red-50 text-red-800" : "bg-amber-50 text-amber-800";
+  return <span className={`inline-flex min-w-9 justify-center rounded-full px-2 py-1 text-[10.5px] font-extrabold tabular-nums ${style}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span>;
+}
+
+function MovementBalance({ movement, showDelta = true }: { movement: InventoryMovement; showDelta?: boolean }) {
+  return <div className="min-w-0"><div className="flex flex-wrap items-center gap-2" aria-label={`Stock changed from ${movement.previousQuantity} to ${movement.newQuantity}`}><span className="text-[11.5px] font-semibold tabular-nums text-[#756960]">{movement.previousQuantity}</span><ArrowRight aria-hidden="true" className="h-3.5 w-3.5 text-[#b1a49b]" /><strong className="text-[15px] font-extrabold tabular-nums text-[#302924]">{movement.newQuantity}</strong>{showDelta ? <MovementDelta movement={movement} /> : null}</div><p className={`mt-1.5 text-[9.5px] font-semibold ${movement.quantityDelta === 0 ? "text-amber-800" : "text-[#81746b]"}`}>{movement.quantityDelta === 0 ? "No sellable change" : "Sellable balance"}</p></div>;
+}
+
+function MovementVariant({ variant, movement }: { variant?: BrandVariant; movement: InventoryMovement }) {
+  const productName = variant?.productName ?? "Archived product";
+  const variantLabel = variant ? [variant.color, variant.size].filter(Boolean).join(" / ") || "Default Variant" : "Variant unavailable";
+  return <div className="flex min-w-0 items-center gap-3"><VariantImage image={variant?.image ?? ""} alt={`${productName} · ${variantLabel}`} /><div className="min-w-0"><p className="truncate text-[11.5px] font-extrabold text-[#302924]">{productName} · {variantLabel}</p><code className="mt-1 block truncate text-[8.5px] text-[#91837a]">{variant?.sku ?? movement.variantId}</code></div></div>;
+}
+
+function conciseMovementReason(movement: InventoryMovement): string | null {
+  const normalize = (value: string) => value.toLocaleLowerCase("en-US").replace(/[^a-z0-9]+/g, " ").trim();
+  const reason = movement.reason.trim();
+  if (!reason || normalize(reason) === normalize(inventoryMovementLabel(movement.movementType))) return null;
+  return reason;
+}
+
+function MovementEvent({ movement }: { movement: InventoryMovement }) {
+  const reason = conciseMovementReason(movement);
+  return <div className="min-w-0"><p className="text-[11.5px] font-extrabold leading-5 text-[#302924]">{inventoryMovementLabel(movement.movementType)}</p>{reason ? <p className="mt-0.5 line-clamp-2 text-[10.5px] font-medium leading-4 text-[#665a52]">{reason}</p> : null}{movement.note ? <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[#8b7d73]">{movement.note}</p> : null}</div>;
+}
+
+function movementReferenceHref(reference: NonNullable<InventoryMovement["reference"]>, impersonatingBrandSlug?: string): string {
+  if (!impersonatingBrandSlug) return reference.href;
+  const separator = reference.href.includes("?") ? "&" : "?";
+  return `${reference.href}${separator}brand=${encodeURIComponent(impersonatingBrandSlug)}`;
+}
+
+function MovementReference({ movement, impersonatingBrandSlug }: { movement: InventoryMovement; impersonatingBrandSlug?: string }) {
+  return (
+    <div className="min-w-0 text-[10px] leading-4">
+      {movement.reference ? (
+        <Link href={movementReferenceHref(movement.reference, impersonatingBrandSlug)} className="inline-flex items-center gap-1 font-extrabold text-[#C85956] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25">
+          {movement.reference.label}<ExternalLink aria-hidden="true" className="h-3 w-3" />
+        </Link>
+      ) : <span className="font-bold text-[#51473f]">{inventorySourceLabel(movement.source)}</span>}
+      {movement.reference ? <p className="mt-1 text-[#756960]">{inventorySourceLabel(movement.source)}</p> : null}
+    </div>
+  );
+}
+
+function MovementRecorded({ movement }: { movement: InventoryMovement }) {
+  return (
+    <div className="min-w-0 text-right">
+      <p className="whitespace-nowrap text-[10.5px] font-medium tabular-nums text-[#665a52]">{formatDateTime(movement.createdAt)}</p>
+      <p className="mt-1.5 inline-flex max-w-full items-center justify-end gap-1 text-[10px] text-[#8b7d73]">
+        <UserRound aria-hidden="true" className="h-3 w-3 flex-none" /><span className="truncate">{movement.actor ? `${movement.actor.displayName} · ${movement.actor.roleLabel}` : "System"}</span>
+      </p>
+    </div>
+  );
 }
 
 function VariantImage({ image, alt }: { image: string; alt: string }) {
@@ -297,6 +354,9 @@ export default function InventoryManager({ variants, returnVariants, activityVar
   const restockOperationKey = useRef<string | null>(null);
   const [activityQuery, setActivityQuery] = useState("");
   const [activitySource, setActivitySource] = useState("");
+  const [activityDirection, setActivityDirection] = useState<ActivityDirection>("all");
+  const [activityFrom, setActivityFrom] = useState("");
+  const [activityTo, setActivityTo] = useState("");
   const [activitySort, setActivitySort] = useState<LocalSort>("date-desc");
   const operationKey = useRef<string | null>(null);
   const variantById = useMemo(() => new Map(activityVariants.map((variant) => [variant.variantId, variant])), [activityVariants]);
@@ -471,8 +531,13 @@ export default function InventoryManager({ variants, returnVariants, activityVar
   const filteredHistory = history.filter((movement) => {
     const variant = variantById.get(movement.variantId);
     const query = activityQuery.trim().toLocaleLowerCase();
-    if (query && !`${variant?.productName ?? ""} ${variant?.sku ?? movement.variantId} ${movement.reason} ${movement.note ?? ""}`.toLocaleLowerCase().includes(query)) return false;
-    return !activitySource || movement.source === activitySource;
+    if (query && !`${variant?.productName ?? ""} ${variant?.sku ?? movement.variantId} ${movement.reason} ${movement.note ?? ""} ${movement.reference?.label ?? ""} ${movement.actor?.displayName ?? ""}`.toLocaleLowerCase().includes(query)) return false;
+    if (activitySource && movement.source !== activitySource) return false;
+    if (activityDirection !== "all" && movementTone(movement.quantityDelta) !== activityDirection) return false;
+    const recordedAt = Date.parse(movement.createdAt);
+    if (activityFrom && recordedAt < new Date(`${activityFrom}T00:00:00`).getTime()) return false;
+    if (activityTo && recordedAt > new Date(`${activityTo}T23:59:59.999`).getTime()) return false;
+    return true;
   }).sort((first, second) => {
     const direction = activitySort.endsWith("-desc") ? -1 : 1;
     const firstVariant = variantById.get(first.variantId);
@@ -485,6 +550,13 @@ export default function InventoryManager({ variants, returnVariants, activityVar
     return direction * (Date.parse(first.createdAt) - Date.parse(second.createdAt));
   });
   const activitySources = [...new Set(history.map((movement) => movement.source))].sort();
+  const directionFilters: Array<{ value: ActivityDirection; label: string; tone: string; count: number }> = [
+    { value: "all", label: "All", tone: "bg-[#C85956]", count: history.length },
+    { value: "in", label: "Stock in", tone: "bg-emerald-500", count: history.filter((movement) => movement.quantityDelta > 0).length },
+    { value: "out", label: "Stock out", tone: "bg-red-500", count: history.filter((movement) => movement.quantityDelta < 0).length },
+    { value: "neutral", label: "No change", tone: "bg-amber-500", count: history.filter((movement) => movement.quantityDelta === 0).length },
+  ];
+  const activityFiltersActive = Boolean(activityQuery || activitySource || activityDirection !== "all" || activityFrom || activityTo);
 
   function downloadActivity() {
     const blob = new Blob([`\uFEFF${activityCsv(filteredHistory, variantById)}`], { type: "text/csv;charset=utf-8" });
@@ -498,22 +570,26 @@ export default function InventoryManager({ variants, returnVariants, activityVar
 
   if (view === "activity") {
     return <>
-      <div data-dashboard-filters="true" className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <label className="order-[1] min-w-0 sm:w-[320px]"><span className="sr-only">Search inventory activity</span><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} autoComplete="off" placeholder="Search product, SKU or reason…" className={`${fieldClass} mt-0`} /></label>
-          <button type="button" onClick={downloadActivity} className="order-[3] inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#e3d8d0] px-3 text-[11px] font-bold text-[#5d5148] transition-colors hover:border-[#C85956]/30 hover:text-[#C85956]"><Download aria-hidden="true" className="h-3.5 w-3.5" />Export CSV</button>
-          <DashboardMoreFilters label="More activity filters" active={Boolean(activitySource)}>
-            <DashboardFilterField label="Source"><select value={activitySource} onChange={(event) => setActivitySource(event.target.value)} className={`${dashboardFilterControl} w-full`}><option value="">All sources</option>{activitySources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}</select></DashboardFilterField>
+      <div data-dashboard-filters="true" className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
+          <label className="relative min-w-0 lg:w-[320px] lg:flex-none"><span className="sr-only">Search inventory activity</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d9086]" /><input value={activityQuery} onChange={(event) => setActivityQuery(event.target.value)} autoComplete="off" placeholder="Product, color, size, SKU or reason…" className={`${fieldClass} mt-0 w-full pl-9`} /></label>
+          <nav aria-label="Movement direction" className="flex h-10 min-w-0 overflow-x-auto rounded-xl border border-[#e7ddd5] bg-white">{directionFilters.map((filter) => { const active = activityDirection === filter.value; return <button key={filter.value} type="button" aria-pressed={active} onClick={() => setActivityDirection(filter.value)} className={`inline-flex h-full flex-none items-center gap-1.5 border-r border-[#eee7e1] px-3 text-[10.5px] font-bold transition-colors last:border-r-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 ${active ? "bg-[#f6e5e3] text-[#A94442]" : "text-[#6f635a] hover:bg-[#fcfaf8] hover:text-[#A94442]"}`}><span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${filter.tone}`} />{filter.label}<span className="tabular-nums text-[9px] opacity-65">{filter.count}</span></button>; })}</nav>
+          <DashboardMoreFilters label="More activity filters" active={Boolean(activitySource || activityFrom || activityTo)}>
+            <DashboardFilterField label="Source"><select value={activitySource} onChange={(event) => setActivitySource(event.target.value)} className={`${dashboardFilterControl} w-full`}><option value="">All sources</option>{activitySources.map((source) => <option key={source} value={source}>{inventorySourceLabel(source)}</option>)}</select></DashboardFilterField>
+            <DashboardFilterField label="From"><span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">From</span><input type="date" value={activityFrom} onChange={(event) => setActivityFrom(event.target.value)} className={`${dashboardFilterControl} w-full`} /></DashboardFilterField>
+            <DashboardFilterField label="To"><span className="mb-1 text-[9px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">To</span><input type="date" value={activityTo} onChange={(event) => setActivityTo(event.target.value)} className={`${dashboardFilterControl} w-full`} /></DashboardFilterField>
           </DashboardMoreFilters>
+          {activityFiltersActive ? <button type="button" onClick={() => { setActivityQuery(""); setActivitySource(""); setActivityDirection("all"); setActivityFrom(""); setActivityTo(""); }} className="inline-flex h-10 items-center justify-center px-2.5 text-[10.5px] font-bold text-[#756960] transition-colors hover:text-[#C85956]">Clear</button> : null}
       </div>
     <section className="mt-4 overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
+      <div className="flex flex-col gap-3 border-b border-[#eee7e1] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="text-[13px] font-extrabold tracking-[-0.01em] text-[#302924]">Movement ledger</h2><span className="inline-flex min-w-6 items-center justify-center rounded-full bg-[#f1e9e3] px-2 py-1 text-[9px] font-extrabold tabular-nums text-[#675b53]">{filteredHistory.length}</span></div><p className="mt-1 text-[9.5px] text-[#8d8076]">Every stock change, newest first · showing {filteredHistory.length} of {history.length} recent movements</p></div><button type="button" onClick={downloadActivity} disabled={!filteredHistory.length} className="inline-flex h-9 flex-none items-center justify-center gap-2 rounded-xl border border-[#e3d8d0] bg-white px-3 text-[10.5px] font-bold text-[#5d5148] transition-colors hover:border-[#C85956]/30 hover:text-[#C85956] disabled:cursor-not-allowed disabled:opacity-40"><Download aria-hidden="true" className="h-3.5 w-3.5" />Export CSV</button></div>
       {filteredHistory.length ? <>
-        <div className="hidden overflow-x-auto md:block"><table className="w-full min-w-[820px] text-left text-[12px]"><thead className="border-b border-[#eee7e1] bg-[#fcfaf8] text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]"><tr><InventorySortHeader field="variant" label="Variant" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} className="px-5 py-3" /><InventorySortHeader field="change" label="Change" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} /><InventorySortHeader field="balance" label="Before / after" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} /><InventorySortHeader field="reason" label="Reason" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="source" label="Source" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="date" label="Date" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} className="pr-5 text-right" /></tr></thead><tbody className="divide-y divide-[#f0e9e3]">{filteredHistory.map((movement) => {
+        <div className="hidden overflow-x-auto md:block"><table aria-label="Filtered Variant movements, newest first" className="w-full min-w-[900px] table-fixed text-left text-[11.5px]"><colgroup><col className="w-[27%]" /><col className="w-[21%]" /><col className="w-[27%]" /><col className="w-[12%]" /><col className="w-[13%]" /></colgroup><thead className="border-b border-[#e8dfd8] bg-[#f7f3ef] text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#675b53]"><tr><InventorySortHeader field="variant" label="Variant" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} className="px-5 py-3" /><InventorySortHeader field="balance" label="Balance" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} /><InventorySortHeader field="reason" label="Event" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="source" label="Source" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field))} /><InventorySortHeader field="date" label="Recorded" sort={activitySort} onSort={(field) => setActivitySort((current) => toggleLocalSort(current, field, "desc"))} className="pr-5 text-right" /></tr></thead><tbody className="divide-y divide-[#f0e9e3]">{filteredHistory.map((movement) => {
           const variant = variantById.get(movement.variantId);
-          return <tr key={movement.id} className="hover:bg-[#fdfbf9]"><td className="px-5 py-3.5"><p className="font-bold text-[#403730]">{variant?.productName ?? "Archived product"}</p><code className="mt-1 block text-[9.5px] text-[#8d8076]">{variant?.sku ?? movement.variantId}</code></td><td><span className={`font-extrabold tabular-nums ${movement.quantityDelta < 0 ? "text-red-700" : movement.quantityDelta > 0 ? "text-emerald-700" : "text-[#756960]"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span></td><td className="font-bold tabular-nums text-[#51473f]">{movement.previousQuantity} → {movement.newQuantity}</td><td className="max-w-[250px] pr-4"><p className="font-semibold text-[#51473f]">{movement.reason}</p>{movement.note && <p className="mt-1 truncate text-[10px] text-[#8d8076]">{movement.note}</p>}</td><td><span className="rounded-md bg-[#f3eee9] px-2 py-1 text-[9.5px] font-bold text-[#756960]">{sourceLabel(movement.source)}</span></td><td className="pr-5 text-right text-[10px] text-[#8d8076]">{formatDateTime(movement.createdAt)}</td></tr>;
+          return <tr key={movement.id} className="transition-colors hover:bg-[#fcfaf8]"><td className={`border-l-[3px] px-5 py-4 ${movementAccent(movement.quantityDelta)}`}><MovementVariant variant={variant} movement={movement} /></td><td className="pr-4"><MovementBalance movement={movement} /></td><td className="max-w-[310px] pr-4"><MovementEvent movement={movement} /></td><td className="pr-4"><MovementReference movement={movement} impersonatingBrandSlug={readOnly ? brandSlug : undefined} /></td><td className="pr-5 text-right"><MovementRecorded movement={movement} /></td></tr>;
         })}</tbody></table></div>
         <div className="divide-y divide-[#eee7e1] md:hidden">{filteredHistory.map((movement) => {
           const variant = variantById.get(movement.variantId);
-          return <article key={movement.id} className="px-4 py-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[12px] font-bold text-[#403730]">{variant?.productName ?? "Archived product"}</p><code className="mt-1 block truncate text-[9px] text-[#8d8076]">{variant?.sku ?? movement.variantId}</code></div><span className={`text-[13px] font-extrabold tabular-nums ${movement.quantityDelta < 0 ? "text-red-700" : movement.quantityDelta > 0 ? "text-emerald-700" : "text-[#756960]"}`}>{movement.quantityDelta > 0 ? "+" : ""}{movement.quantityDelta}</span></div><div className="mt-3 flex items-center justify-between gap-3 text-[10px]"><p className="font-semibold text-[#51473f]">{movement.reason}</p><p className="tabular-nums text-[#8d8076]">{movement.previousQuantity} → {movement.newQuantity}</p></div><div className="mt-2 flex items-center justify-between gap-3 text-[9.5px] text-[#94867c]"><span>{sourceLabel(movement.source)}</span><span>{formatDateTime(movement.createdAt)}</span></div></article>;
+          return <article key={movement.id} aria-label={`${variant?.sku ?? movement.variantId} movement`} className={`border-l-[3px] px-4 py-5 ${movementAccent(movement.quantityDelta)}`}><div className="flex items-start justify-between gap-3"><MovementVariant variant={variant} movement={movement} /><MovementDelta movement={movement} /></div><div className="mt-4 grid gap-4 rounded-xl bg-[#faf8f6] p-3 sm:grid-cols-2"><MovementBalance movement={movement} showDelta={false} /><MovementEvent movement={movement} /></div><div className="mt-3 flex flex-col gap-3 border-t border-[#f0e9e3] pt-3 text-[10.5px] sm:flex-row sm:items-end sm:justify-between"><MovementReference movement={movement} impersonatingBrandSlug={readOnly ? brandSlug : undefined} /><MovementRecorded movement={movement} /></div></article>;
         })}</div>
       </> : <div className="px-5 py-14 text-center"><RotateCcw aria-hidden="true" className="mx-auto h-6 w-6 text-[#b8aaa0]" /><p className="mt-3 text-[12px] font-bold text-[#403730]">No matching activity</p><p className="mt-1 text-[10.5px] text-[#8d8076]">Clear the search or choose another source.</p></div>}
     </section>
@@ -522,13 +598,6 @@ export default function InventoryManager({ variants, returnVariants, activityVar
 
   return <div className="space-y-3">
     {readOnly && <section className="rounded-2xl border border-[#e5ddd6] bg-[#f6f2ee] px-4 py-3 text-[10.5px] text-[#756960]">Admin preview is read-only. Switch back to your own brand account to adjust inventory.</section>}
-    {canRequestRestock && <section aria-label="Inventory stock actions" className="flex flex-col gap-3 rounded-2xl border border-[#e4d9d1] bg-[#fcfaf8] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div><p className="text-[11.5px] font-extrabold text-[#302924]">Stock actions</p><p className="mt-1 text-[9.5px] leading-4 text-[#81746b]">Send new units to Zakhnook, or request available units back to your brand.</p></div>
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" aria-pressed={addingStock} onClick={startAddingStock} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[10.5px] font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15 ${addingStock ? "bg-[#A94442] text-white" : "bg-[#C85956] text-white hover:bg-[#b84e4b]"}`}><PackagePlus aria-hidden="true" className="h-3.5 w-3.5" />Add stock</button>
-        <button type="button" onClick={() => { clearSelection(); setReturnOpen(true); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#d9cec6] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] transition hover:border-[#C85956]/35 hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15"><ArrowDownToLine aria-hidden="true" className="h-3.5 w-3.5" />Return stock</button>
-      </div>
-    </section>}
     {addingStock && canRequestRestock && selectedRows.length === 0 ? <section role="status" className="flex items-center justify-between gap-3 rounded-2xl border border-[#ead7d4] bg-[#fff8f7] px-4 py-3"><p className="text-[10.5px] font-semibold text-[#6f5b55]">Select the Variants you want to send to Zakhnook, then continue from the selection tray.</p><button type="button" onClick={clearSelection} className="h-8 flex-none rounded-lg px-2 text-[10px] font-bold text-[#8d8076] hover:bg-white hover:text-[#C85956]">Cancel</button></section> : null}
     <div aria-live="polite">{success && <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-[11px] font-bold text-emerald-800"><Check aria-hidden="true" className="h-4 w-4" />{success}</div>}</div>
 
@@ -557,7 +626,13 @@ export default function InventoryManager({ variants, returnVariants, activityVar
     </section>}
 
     <section className="overflow-hidden rounded-[20px] border border-[#eadfd7] bg-white shadow-[0_10px_34px_rgba(72,50,36,.04)]">
-      <div className="flex items-center justify-between border-b border-[#eee7e1] px-4 py-3.5 sm:px-5"><div><p className="text-[11.5px] font-extrabold text-[#302924]">Variant stock</p><p className="mt-1 text-[10px] text-[#8d8076]">{totalMatching ?? variants.length} matching {(totalMatching ?? variants.length) === 1 ? "variant" : "variants"}</p></div>{variants.some((variant) => variant.suggestedRestock > 0) && <p className="hidden text-[9.5px] font-bold text-[#C85956] sm:block">Restock suggestions use 30-day sales + your alert buffer</p>}</div>
+      <div className="flex flex-col gap-3 border-b border-[#eee7e1] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div><p className="text-[11.5px] font-extrabold text-[#302924]">Variant stock</p><p className="mt-1 text-[10px] text-[#8d8076]">{totalMatching ?? variants.length} matching {(totalMatching ?? variants.length) === 1 ? "variant" : "variants"}</p></div>
+        {canRequestRestock && <div aria-label="Inventory stock actions" className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <button type="button" aria-pressed={addingStock} onClick={startAddingStock} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[10.5px] font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15 ${addingStock ? "bg-[#A94442] text-white" : "bg-[#C85956] text-white hover:bg-[#b84e4b]"}`}><PackagePlus aria-hidden="true" className="h-3.5 w-3.5" />Add stock</button>
+          <button type="button" onClick={() => { clearSelection(); setReturnOpen(true); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#d9cec6] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] transition hover:border-[#C85956]/35 hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15"><ArrowDownToLine aria-hidden="true" className="h-3.5 w-3.5" />Return stock</button>
+        </div>}
+      </div>
       <VariantStockHierarchy
         variants={variants}
         selected={selected}

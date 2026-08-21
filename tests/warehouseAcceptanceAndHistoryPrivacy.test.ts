@@ -6,15 +6,15 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 const compact = (value: string) => value.replace(/--[^\r\n]*/g, " ").replace(/\s+/g, " ").toLowerCase();
 
 test("brand cancellation is atomic, ownership-scoped, requested-only and service-role-only", () => {
-  const migration = read("supabase/migrations/20260818195105_warehouse_request_acceptance_gate.sql");
+  const migration = read("supabase/migrations/20260821214406_warehouse_return_hold_lifecycle.sql");
   const sql = compact(migration);
   const fn = migration.match(/create or replace function public\.cancel_own_requested_warehouse_document\([\s\S]*?\n\$\$;/i)?.[0] ?? "";
 
   assert.match(fn, /where id = p_transfer_id\s*\n\s*for update;/);
-  assert.match(fn, /v_transfer\.brand_id <> p_brand_id or v_transfer\.direction <> 'to_local'/);
+  assert.match(fn, /v_transfer\.brand_id <> p_brand_id/);
   assert.match(fn, /if v_transfer\.status <> 'pending' then/);
   assert.match(fn, /WAREHOUSE_DOCUMENT_CANCELLATION_LOCKED/);
-  assert.doesNotMatch(fn, /product_variants|inventory_movements/);
+  assert.match(fn, /private\.release_reserved_outbound_stock/);
   assert.ok(sql.includes("revoke all on function public.cancel_own_requested_warehouse_document(uuid, uuid, uuid, text) from public, anon, authenticated;"));
   assert.ok(sql.includes("grant execute on function public.cancel_own_requested_warehouse_document(uuid, uuid, uuid, text) to service_role;"));
 });
@@ -37,7 +37,10 @@ test("the database and receive route both require acceptance before physical rec
   assert.match(receiveRoute, /new Set\(\["approved", "in_transit", "partially_received"\]\)/);
   assert.doesNotMatch(receiveRoute, /new Set\(\["pending", "submitted"/);
   assert.match(adminPage, /AcceptWarehouseRequestButton/);
-  assert.match(adminPage, /The brand has already chosen the expected arrival/);
+  assert.match(adminPage, /expectedArrivalAt=\{transfer\.expectedArrivalAt\}/);
+  assert.match(adminPage, /const receivable = !isReturn/);
+  assert.match(adminPage, /ReturnDispatchForm/);
+  assert.doesNotMatch(adminPage, /DispatchWarehouseReturnButton/);
   assert.doesNotMatch(approveRoute, /request\.json|p_expected_arrival_at/);
   assert.doesNotMatch(actions, /type="datetime-local"/);
   assert.match(actions, /Expected arrival chosen by brand/);

@@ -114,7 +114,7 @@ test("admin UX records actual Variants and never edits a closed receipt in place
 
   assert.match(receive, /Document lines/);
   assert.doesNotMatch(receive, /Expected vs actual/);
-  assert.match(receive, /Review receipt ·/);
+  assert.match(receive, /Review \{isReturn \? "return" : "receipt"\} ·/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Unidentified SKU — hold for mapping/);
   assert.match(receive, /Idempotency-Key/);
