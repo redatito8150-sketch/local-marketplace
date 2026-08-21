@@ -4,11 +4,6 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "dev:admin": "node scripts/start-local-dev-admin.mjs",
-    "dev:admin:prepare": "node scripts/start-local-dev-admin.mjs --prepare-only",
-    "dev:admin:seed": "node scripts/ensure-local-dev-admin.mjs",
-    "supabase:start": "node scripts/local-supabase.mjs start",
-    "supabase:stop": "node scripts/local-supabase.mjs stop",
     "build": "node scripts/validate-legal-content.mjs && next build",
     "start": "next start",
     "lint": "eslint .",

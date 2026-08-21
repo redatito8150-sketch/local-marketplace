@@ -6,7 +6,6 @@ out
 *.log
 
 supabase/.temp/
-.local-supabase/
 .vercel
 
 # JetBrains IDE workspace state (e.g. apps/mobile/.idea/workspace.xml was

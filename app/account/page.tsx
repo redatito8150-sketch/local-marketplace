@@ -14,7 +14,6 @@ import AuthPageSkeleton from "@/components/auth/AuthPageSkeleton";
 import TotpCodeInput from "@/components/auth/TotpCodeInput";
 import { decidePostAuthDestination, getAccountEntryReturnPath } from "@/lib/auth/postAuthDestination";
 import { isCompleteTotpCode } from "@/lib/auth/oneTimeCode";
-import { isLocalDevAdminEnabled } from "@/lib/auth/localDevAdmin";
 
 const inputClass =
   "w-full rounded-2xl border border-[#d9cfc4] bg-white/75 py-3.5 pl-11 pr-4 text-[14px] text-ink outline-none transition focus:border-mahalyred/50 focus:bg-white focus:ring-4 focus:ring-mahalyred/5";
@@ -59,10 +58,6 @@ function AccountPageContent() {
   const [error, setError] = useState("");
   const [confirmationMessage, setConfirmationMessage] = useState("");
   const [mfaCode, setMfaCode] = useState("");
-  const localDevAdminEnabled = isLocalDevAdminEnabled(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NODE_ENV
-  );
 
   useEffect(() => {
     if (!user || loading || mfaChallenge || mfaError || !profile) return;
@@ -195,7 +190,7 @@ function AccountPageContent() {
 
             <form onSubmit={handleSubmit} className="space-y-3">
               {mode === "create" && <div className="relative"><User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35" /><input type="text" placeholder="Full name" required value={fullName} onChange={(event) => setFullName(event.target.value)} className={inputClass} /></div>}
-              <div className="relative"><Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35" /><input type={mode === "sign-in" && localDevAdminEnabled ? "text" : "email"} inputMode={mode === "sign-in" && localDevAdminEnabled ? "text" : "email"} autoComplete={mode === "sign-in" ? "username" : "email"} placeholder={mode === "sign-in" && localDevAdminEnabled ? "Email address or Admin" : "Email address"} required value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} /></div>
+              <div className="relative"><Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35" /><input type="email" placeholder="Email address" required value={email} onChange={(event) => setEmail(event.target.value)} className={inputClass} /></div>
               {mode === "create" && <div className="relative"><Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/35" /><input type="tel" placeholder="Phone number" required value={phone} onChange={(event) => setPhone(event.target.value)} className={inputClass} /></div>}
               <PasswordInput icon={Lock} placeholder="Password" required minLength={6} autoComplete={mode === "create" ? "new-password" : "current-password"} value={password} onChange={setPassword} inputClassName={passwordClass} />
               {mode === "create" && <PasswordInput icon={Lock} placeholder="Confirm password" required minLength={6} autoComplete="new-password" value={confirmPassword} onChange={setConfirmPassword} inputClassName={passwordClass} />}
