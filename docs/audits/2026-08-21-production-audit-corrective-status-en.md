@@ -4,9 +4,9 @@
 
 **Working branch:** `codex/production-audit-final-corrective`
 
-**Database status:** the user reports that both corrective migrations were applied to the production Supabase project in the required order. A read-only structural verification returned `true` for all eight refund tables/functions/removal checks.
+**Database status:** the user reports that both corrective migrations were applied to the production Supabase project in the required order. A read-only structural verification returned `true` for all eight refund tables/functions/removal checks. Because manual SQL Editor execution bypassed migration tracking, version `20260821000000` was subsequently added to `supabase_migrations.schema_migrations` only after the same structural guard passed; no business table, data, or function was rewritten during that history repair.
 
-**Delivery status:** the application changes passed local static and repository tests and were authorized by the user for delivery to `main`; GitHub/Vercel remain the source of truth for the final remote deployment state.
+**Delivery status:** the application changes were delivered to `main`. GitHub CI passed TypeScript, ESLint, the repository suite, and the production build at `b75a52e`; Vercel reported the production deployment completed successfully. GitHub/Vercel remain the source of truth for the final remote deployment state.
 
 This is the handoff document for Codex, Claude, and future reviewers. It records what the two corrective migrations and the application changes actually close, what was verified, and what remains a production blocker. It must be read together with the original 2026-08-20 audit backlog.
 
@@ -98,6 +98,8 @@ Only a fully confirmed refund may unlock paid-card cancellation and restocking. 
 
 The production build compiled and completed TypeScript/page-data collection setup, then stopped while prerendering `/new-arrivals` because this isolated worktree has no usable Supabase data source. Dummy credentials were used only to prove compilation; no production credential was borrowed. The existing legal-content validator also reports 16 unresolved legal placeholders, but does not currently block builds.
 
+After delivery, ordinary GitHub CI initially failed the product-page build because the hardened workflow correctly withheld `SUPABASE_SERVICE_ROLE_KEY` while the viewer-specific product page was still being prerendered. The page is now explicitly request-rendered: viewer review state, review eligibility, authentication, and back-in-stock subscriptions stay request-correct, and the privileged review read runs only on the trusted application server. The subsequent full GitHub production build passed without exposing the service-role credential to the ordinary CI job.
+
 ## Applied migration order
 
 The user reports that these were applied to production successfully in this exact order:
@@ -105,7 +107,7 @@ The user reports that these were applied to production successfully in this exac
 1. `supabase/migrations/20260820000001_production_audit_corrective_fixes.sql`
 2. `supabase/migrations/20260821000000_production_audit_corrective_pass_2.sql`
 
-Do not re-run them merely because an SQL editor tab was closed or its unsaved text was discarded. The post-application read-only check confirmed that all three refund tables, the request/allocation/reversal functions, and removal of the unsafe legacy function are present as intended.
+Do not re-run them merely because an SQL editor tab was closed or its unsaved text was discarded. The post-application read-only check confirmed that all three refund tables, the request/allocation/reversal functions, and removal of the unsafe legacy function are present as intended. Supabase migration history now contains both versions; the history-only repair for `20260821000000` was needed because SQL Editor execution does not create a migration-history row.
 
 ## Original audit items still not closed by this corrective scope
 
