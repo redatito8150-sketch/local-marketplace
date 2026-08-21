@@ -8,26 +8,16 @@ import ProductReviews from "@/components/product/ProductReviews";
 import RelatedProducts from "@/components/product/RelatedProducts";
 import RecentlyViewedTracker from "@/components/product/RecentlyViewedTracker";
 import { getProductById, getActiveProductsByIds } from "@/lib/data/products";
-import { supabase } from "@/lib/supabase/client";
 import { getEligibleOrderItems, getPublicReviews } from "@/lib/reviews/data";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { publishDateLiveFilter } from "@/lib/newArrivals";
 import { getSubscribedVariantIds } from "@/lib/backInStock";
 
-export const revalidate = 60;
-
-export async function generateStaticParams() {
-  // Not the real visibility gate (getProductById below is — this only
-  // controls which pages Next bothers pre-rendering at build time), but a
-  // scheduled-for-the-future product would otherwise get a static path
-  // built and then immediately 404 on every visit until its date arrives.
-  const { data } = await supabase
-    .from("products")
-    .select("id")
-    .eq("status", "published")
-    .or(publishDateLiveFilter());
-  return (data ?? []).map((row) => ({ id: row.id as string }));
-}
+// This page is viewer-specific: review helpful state, review eligibility,
+// back-in-stock subscriptions, and authentication all depend on request
+// cookies. Rendering it at request time also keeps the service-role key out
+// of ordinary CI builds; privileged review assembly runs only on the trusted
+// application server, where that key is configured.
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;

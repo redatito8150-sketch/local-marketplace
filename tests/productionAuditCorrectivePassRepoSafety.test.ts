@@ -9,10 +9,10 @@ const migration = read("supabase/migrations/20260820000001_production_audit_corr
 // production security/correctness/reliability audit
 // (docs/audits/2026-08-20-production-security-correctness-reliability-audit-en.md).
 // Live-DB behavior (the actual RLS/trigger/RPC effects) is not exercised
-// here — none of this migration has been applied to any database, per this
-// task's explicit instruction not to. These tests assert the fix is
-// present in the source, matching the convention every other
-// *RepoSafety.test.ts file in this suite already uses.
+// here. These tests assert the fix is present in the source, matching the
+// convention every other *RepoSafety.test.ts file in this suite already
+// uses. Production application state is documented separately in the
+// corrective-status handoff.
 
 test("TEST-01: the three live-DB test suites all require an explicit RUN_LIVE_RLS=1 opt-in, not just credential presence", () => {
   for (const file of ["tests/security.rls.test.ts", "tests/avatarLinking.test.ts", "tests/crossTenantIsolation.test.ts"]) {
@@ -31,6 +31,13 @@ test("CI-01: the CI workflow no longer exposes SUPABASE_URL or SUPABASE_SERVICE_
   // key/URL, meant to be inlined into the client bundle by the build step.
   assert.match(ci, /NEXT_PUBLIC_SUPABASE_URL/);
   assert.match(ci, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+});
+
+test("CI-01: the viewer-specific product page renders at request time without requiring service_role during the ordinary CI build", () => {
+  const productPage = read("app/product/[id]/page.tsx");
+  assert.match(productPage, /export const dynamic = "force-dynamic";/);
+  assert.doesNotMatch(productPage, /generateStaticParams/);
+  assert.doesNotMatch(productPage, /@\/lib\/supabase\/client/);
 });
 
 test("AUTH-01: Brand Portal impersonation and the public brand inline-edit route both require manage_brands, not just is_admin", () => {
