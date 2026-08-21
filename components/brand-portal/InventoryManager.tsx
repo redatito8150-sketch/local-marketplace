@@ -3,13 +3,15 @@
 import Image from "next/image";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, ClipboardList, Download, PackagePlus, RotateCcw, X } from "lucide-react";
 import type { BrandVariant, InventoryMovement } from "@/lib/data/brandPortal";
 import { INVENTORY_REASONS, type InventoryAdjustmentType } from "@/lib/inventory/adjustmentValidation";
 import { formatDateTime } from "@/lib/format";
 import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
 import ColorSwatch from "@/components/admin/ColorSwatch";
 import { compareSizeOrderables } from "@/lib/inventory/sizeOrder";
+import { ReturnRequestDrawer } from "@/components/brand-portal/warehouse/WarehouseExperience";
+import type { WarehouseVariantRow } from "@/lib/data/warehouse";
 
 type InventoryView = "inventory" | "activity";
 type LocalSort = `${string}-asc` | `${string}-desc`;
@@ -254,11 +256,14 @@ function GroupStatus({ summary, className = "" }: { summary: ReturnType<typeof s
   return <td className={`text-center ${className}`}>{summary.issueCount ? <span className="text-[9.5px] font-bold text-[#C85956]">{summary.issueCount} need restock</span> : <span className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[9.5px] font-bold ${summary.status.badge}`}><span className={`h-1.5 w-1.5 rounded-full ${summary.status.dot}`} />Healthy</span>}</td>;
 }
 
-export default function InventoryManager({ variants, activityVariants, history, brandSlug, isMahalyPartner, accessLevel, readOnly, view, totalMatching }: {
+export default function InventoryManager({ variants, returnVariants, activityVariants, history, brandSlug, isMahalyPartner, accessLevel, readOnly, view, totalMatching }: {
   // The current page's variants only (server-paginated — see
   // lib/data/brandPortal.ts's getInventoryPageForBrand) when view is
   // "inventory"; ignored when view is "activity".
   variants: BrandVariant[];
+  // Full active Zakhnook-held catalog used only by the return drawer. The
+  // main Inventory table remains server-paginated through `variants`.
+  returnVariants: WarehouseVariantRow[];
   // A brand's full active catalog, fetched ONLY when view is "activity" —
   // used solely to label each of the (at most 100) recent movement rows
   // with a product name/SKU. Empty on an "inventory" view; never used for
@@ -283,6 +288,8 @@ export default function InventoryManager({ variants, activityVariants, history, 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [addingStock, setAddingStock] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [restockQuantities, setRestockQuantities] = useState<Record<string, number>>({});
   const [restockNote, setRestockNote] = useState("");
   const [restockExpectedArrival, setRestockExpectedArrival] = useState("");
@@ -297,7 +304,7 @@ export default function InventoryManager({ variants, activityVariants, history, 
   const selectedRows = useMemo(() => selected.map((id) => selectableVariantById.get(id)).filter(Boolean) as BrandVariant[], [selected, selectableVariantById]);
   const canAdjustStock = !readOnly && !isMahalyPartner;
   const canRequestRestock = !readOnly && isMahalyPartner && accessLevel === "owner";
-  const canSelect = canAdjustStock || canRequestRestock;
+  const canSelect = canAdjustStock || (canRequestRestock && addingStock);
   const resultingQuantity = (current: number) => type === "add" ? current + amount : type === "remove" ? current - amount : amount;
   const availableReasons = INVENTORY_REASONS.filter((item) => {
     if (type === "add") return !["Damaged Items", "Lost Items"].includes(item);
@@ -394,6 +401,14 @@ export default function InventoryManager({ variants, activityVariants, history, 
     setRestockNote("");
     setRestockExpectedArrival("");
     setMinimumRestockArrival("");
+    setAddingStock(false);
+  }
+
+  function startAddingStock() {
+    setReturnOpen(false);
+    setAddingStock(true);
+    setSuccess("");
+    setError("");
   }
 
   function openRestockRequest() {
@@ -507,10 +522,18 @@ export default function InventoryManager({ variants, activityVariants, history, 
 
   return <div className="space-y-3">
     {readOnly && <section className="rounded-2xl border border-[#e5ddd6] bg-[#f6f2ee] px-4 py-3 text-[10.5px] text-[#756960]">Admin preview is read-only. Switch back to your own brand account to adjust inventory.</section>}
+    {canRequestRestock && <section aria-label="Inventory stock actions" className="flex flex-col gap-3 rounded-2xl border border-[#e4d9d1] bg-[#fcfaf8] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div><p className="text-[11.5px] font-extrabold text-[#302924]">Stock actions</p><p className="mt-1 text-[9.5px] leading-4 text-[#81746b]">Send new units to Zakhnook, or request available units back to your brand.</p></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" aria-pressed={addingStock} onClick={startAddingStock} className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-[10.5px] font-bold transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15 ${addingStock ? "bg-[#A94442] text-white" : "bg-[#C85956] text-white hover:bg-[#b84e4b]"}`}><PackagePlus aria-hidden="true" className="h-3.5 w-3.5" />Add stock</button>
+        <button type="button" onClick={() => { clearSelection(); setReturnOpen(true); }} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[#d9cec6] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] transition hover:border-[#C85956]/35 hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15"><ArrowDownToLine aria-hidden="true" className="h-3.5 w-3.5" />Return stock</button>
+      </div>
+    </section>}
+    {addingStock && canRequestRestock && selectedRows.length === 0 ? <section role="status" className="flex items-center justify-between gap-3 rounded-2xl border border-[#ead7d4] bg-[#fff8f7] px-4 py-3"><p className="text-[10.5px] font-semibold text-[#6f5b55]">Select the Variants you want to send to Zakhnook, then continue from the selection tray.</p><button type="button" onClick={clearSelection} className="h-8 flex-none rounded-lg px-2 text-[10px] font-bold text-[#8d8076] hover:bg-white hover:text-[#C85956]">Cancel</button></section> : null}
     <div aria-live="polite">{success && <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-[11px] font-bold text-emerald-800"><Check aria-hidden="true" className="h-4 w-4" />{success}</div>}</div>
 
     {selectedRows.length > 0 && canRequestRestock && <section className="sticky top-3 z-20 overflow-hidden rounded-2xl border border-[#d9cec6] bg-[#fffdfb]/95 shadow-[0_16px_45px_rgba(72,50,36,.13)] backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#C85956] px-2 text-[11px] font-extrabold tabular-nums text-white">{selectedRows.length}</span><div><p className="text-[11.5px] font-bold text-[#403730]">{selectedRows.length === 1 ? "Variant selected" : "Variants selected"}</p><p className="text-[9.5px] text-[#8d8076]">Create one replenishment request for this selection.</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={clearSelection} className="h-9 px-2 text-[10.5px] font-bold text-[#8d8076] hover:text-[#403730]">Clear</button><button type="button" onClick={openRestockRequest} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15">{adjustmentOpen ? "Close" : "Request restock"}</button></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"><div className="flex items-center gap-3"><span className="flex h-8 min-w-8 items-center justify-center rounded-lg bg-[#C85956] px-2 text-[11px] font-extrabold tabular-nums text-white">{selectedRows.length}</span><div><p className="text-[11.5px] font-bold text-[#403730]">{selectedRows.length === 1 ? "Variant selected" : "Variants selected"}</p><p className="text-[9.5px] text-[#8d8076]">Create one replenishment request for this selection.</p></div></div><div className="flex items-center gap-2"><button type="button" onClick={clearSelection} className="h-9 px-2 text-[10.5px] font-bold text-[#8d8076] hover:text-[#403730]">Clear</button><button type="button" onClick={openRestockRequest} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition-colors hover:bg-[#b84e4b] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/15">{adjustmentOpen ? "Close" : "Continue"}</button></div></div>
       <SelectedVariantChips variants={selectedRows} onRemove={removeSelectedVariant} />
       {adjustmentOpen && <div className="border-t border-[#e8dfd8] bg-[#fcfaf8] p-4">
         {!confirming ? <><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{selectedRows.map((row) => <label key={row.variantId} className="rounded-xl border border-[#e7ddd5] bg-white p-3"><span className="flex min-w-0 items-start gap-3"><VariantImage image={row.image} alt={`${row.productName}${row.color ? ` in ${row.color}` : ""}`} /><span className="min-w-0 flex-1"><span className="flex min-w-0 items-start justify-between gap-3"><span className="min-w-0"><span className="block truncate text-[11px] font-bold text-[#403730]">{row.productName}</span><span className="mt-1 block truncate text-[9px] text-[#81746b]">{row.color || "No color"} · {row.size || "One size"}</span><code className="mt-1 block truncate text-[8.5px] text-[#94867c]">{row.sku}</code></span><span className="flex-none text-right text-[9px] font-bold tabular-nums text-[#8d8076]">{row.quantity} available<br />{row.incomingQuantity} incoming</span></span></span></span><span className="mt-3 flex items-center gap-2"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Send</span><input aria-label={`Restock quantity for ${row.sku}`} type="number" inputMode="numeric" min={1} step={1} value={restockQuantities[row.variantId] ?? ""} onChange={(event) => setRestockQuantities((current) => ({ ...current, [row.variantId]: Math.max(0, Math.trunc(Number(event.target.value) || 0)) }))} className={`${fieldClass} mt-0 ml-auto w-24 tabular-nums`} /></span></label>)}</div><div className="mt-3 grid gap-3 sm:grid-cols-[minmax(220px,.8fr)_minmax(0,1fr)_auto] sm:items-end"><label><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Expected arrival</span><input type="datetime-local" value={restockExpectedArrival} min={minimumRestockArrival} onChange={(event) => setRestockExpectedArrival(event.target.value)} className={fieldClass} /></label><label className="min-w-0"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#8d8076]">Note <span className="font-medium normal-case tracking-normal">(optional)</span></span><input value={restockNote} onChange={(event) => setRestockNote(event.target.value)} autoComplete="off" placeholder="Packaging or delivery notes…" className={fieldClass} /></label><button type="button" onClick={reviewRestockRequest} className="h-10 rounded-xl bg-[#242424] px-4 text-[10.5px] font-bold text-white hover:bg-[#3a332e]">Review request</button></div></> : <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex gap-3"><ClipboardList aria-hidden="true" className="mt-0.5 h-5 w-5 flex-none text-[#C85956]" /><div><p className="text-[12px] font-bold text-[#403730]">Submit {selectedRows.reduce((sum, row) => sum + (restockQuantities[row.variantId] ?? 0), 0)} incoming units across {selectedRows.length} {selectedRows.length === 1 ? "variant" : "variants"}</p><p className="mt-1 text-[10px] text-[#81746b]">Expected arrival: <strong className="text-[#51473f]">{new Date(restockExpectedArrival).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</strong>. Available stock will not change until Zakhnook receives and checks these units.</p></div></div><div className="flex gap-2"><button type="button" onClick={() => setConfirming(false)} disabled={busy} className="h-9 rounded-xl border border-[#ddd2ca] bg-white px-4 text-[10.5px] font-bold text-[#5d5148] hover:bg-[#f8f4f0]">Back</button><button type="button" onClick={submitRestockRequest} disabled={busy} className="h-9 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-50">{busy ? "Submitting…" : "Submit request"}</button></div></div>}
@@ -544,5 +567,6 @@ export default function InventoryManager({ variants, activityVariants, history, 
         onToggleVariants={toggleVariants}
       />
     </section>
+    <ReturnRequestDrawer open={returnOpen} onClose={() => setReturnOpen(false)} onSubmitted={() => setSuccess("Return request submitted for warehouse review.")} variants={returnVariants} brandParam={brandSlug} />
   </div>;
 }

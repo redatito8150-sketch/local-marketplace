@@ -6,9 +6,12 @@ import test from "node:test";
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
-test("partner restock starts in Inventory and creates a warehouse document without changing live stock", () => {
+test("partner stock actions live together in Inventory and create warehouse documents without changing live stock early", () => {
   const inventory = read("components/brand-portal/InventoryManager.tsx");
-  assert.match(inventory, /Request restock/);
+  assert.match(inventory, />Add stock</);
+  assert.match(inventory, />Return stock</);
+  assert.match(inventory, /aria-label="Inventory stock actions"/);
+  assert.match(inventory, /<ReturnRequestDrawer/);
   assert.match(inventory, /\/api\/brand-portal\/warehouse\/transfers/);
   assert.match(inventory, /"Idempotency-Key": restockOperationKey\.current/);
   assert.match(inventory, /type="datetime-local"/);
@@ -115,10 +118,59 @@ test("large inventories render in bounded pages — Inventory pagination happens
   assert.match(warehouse, /function buildReturnGroups/);
 });
 
-test("Warehouse is one document workspace and stock return is a focused drawer action", () => {
+test("Return stock shows only the Product cover at group level and a color swatch beside each Size", () => {
   const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+  const data = read("lib/data/warehouse.ts");
+
+  assert.match(warehouse, /<Image src=\{product\.productImage\} alt=\{product\.productName\}/);
+  assert.match(warehouse, /<ColorSwatch swatchType=\{variant\.swatchType\}/);
+  assert.match(warehouse, /\{size\}<\/span>/);
+  assert.match(warehouse, /product\.colors\.reduce[\s\S]*Variants · \{product\.colors\.length\}/);
+  assert.doesNotMatch(warehouse, /<Image src=\{variant\./);
+  assert.match(data, /products!inner\(id, name, image, brand_id\)/);
+  assert.match(data, /option_values\(label, swatch_type, primary_color, secondary_color, option_types\(name\)\)/);
+  assert.match(data, /colorLabel: color\?\.label \?\? null/);
+  assert.match(data, /sizeLabel: size\?\.label \?\? null/);
+});
+
+test("Return stock requires a side-by-side summary confirmation before submission", () => {
+  const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+
+  assert.match(warehouse, /const \[confirming, setConfirming\] = useState\(false\)/);
+  assert.match(warehouse, />Review return</);
+  assert.match(warehouse, /Confirm stock return/);
+  assert.match(warehouse, /Review every Variant and quantity/);
+  assert.match(warehouse, /confirmationGroups\.map/);
+  assert.match(warehouse, /\{color\.label\} · \{size\}/);
+  assert.match(warehouse, /\{requestedQty\} \{requestedQty === 1 \? "unit" : "units"\}/);
+  assert.match(warehouse, /Stock is not deducted until the warehouse processes it/);
+  assert.match(warehouse, /onClick=\{submitReturn\}[\s\S]*Confirm return/);
+  assert.doesNotMatch(warehouse, /onClick=\{submitReturn\}[\s\S]*Submit return request/);
+});
+
+test("Return stock uses checkbox selection for all results and for each complete Product", () => {
+  const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+
+  assert.match(warehouse, /function BulkSelectionCheckbox/);
+  assert.match(warehouse, /inputRef\.current\.indeterminate = indeterminate/);
+  assert.match(warehouse, /const selectableVariantIds = useMemo/);
+  assert.match(warehouse, /const allResultsSelected = selectableVariantIds\.length > 0/);
+  assert.match(warehouse, /label=\{allResultsSelected \? "Clear all products in search results" : "Select all products in search results"\}/);
+  assert.match(warehouse, /const productVariantIds = groupVariantIds\(product\)/);
+  assert.match(warehouse, /`Select all Variants for \$\{product\.productName\}`/);
+  assert.match(warehouse, /toggleVariants\(productVariantIds, checked\)/);
+  assert.doesNotMatch(warehouse, /`Select all \(\$\{selectableVariantIds\.length\}\)`/);
+});
+
+test("Warehouse is document-only while Inventory owns the focused stock return action", () => {
+  const warehouse = read("components/brand-portal/warehouse/WarehouseExperience.tsx");
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  const warehousePage = read("app/brand-portal/warehouse/page.tsx");
+  const warehouseWorkspace = warehouse.slice(warehouse.indexOf("export default function WarehouseExperience"));
   assert.match(warehouse, /Track stock transfers, returns and recorded warehouse corrections for your brand/);
-  assert.match(warehouse, /Request stock return/);
+  assert.doesNotMatch(warehouseWorkspace, /Request stock return|ReturnRequestDrawer|setReturnOpen/);
+  assert.doesNotMatch(warehousePage, /getBrandWarehouseVariants|variants=\{variants\}/);
+  assert.match(inventory, /<ReturnRequestDrawer/);
   assert.match(warehouse, /Search document, product or SKU/);
   assert.match(warehouse, /Requested date range/);
   assert.match(warehouse, /Stock transfer note|warehouseDocumentLabel/);
@@ -126,11 +178,23 @@ test("Warehouse is one document workspace and stock return is a focused drawer a
   assert.doesNotMatch(warehouse, /Warehouse summary/);
   assert.doesNotMatch(warehouse, /All brands/);
   assert.match(warehouse, /role="dialog"/);
-  assert.match(warehouse, /variant\.optionLabel\.split\(" \/ "\)/);
+  assert.match(warehouse, /variant\.colorLabel \|\| "Default"/);
+  assert.match(warehouse, /variant\.sizeLabel \|\| "One size"/);
   assert.match(warehouse, /product\.colors\.entries\(\)/);
   assert.doesNotMatch(warehouse, /WorkspaceView|Warehouse views|view === "requests"|view === "history"/);
   assert.doesNotMatch(warehouse, /Held by your brand/);
   assert.doesNotMatch(warehouse, /Confirm held quantities/);
+});
+
+test("partner stock action role matrix keeps Owner enabled, Assistant hidden, and admin impersonation read-only", () => {
+  const inventory = read("components/brand-portal/InventoryManager.tsx");
+  const stockPage = read("app/brand-portal/stock/page.tsx");
+  const returnRoute = read("app/api/brand-portal/warehouse/returns/route.ts");
+
+  assert.match(inventory, /const canRequestRestock = !readOnly && isMahalyPartner && accessLevel === "owner"/);
+  assert.match(inventory, /\{canRequestRestock && <section aria-label="Inventory stock actions"/);
+  assert.match(stockPage, /owner\.accessLevel === "owner" && !owner\.isImpersonating/);
+  assert.match(returnRoute, /owner\.accessLevel !== "owner" \|\| owner\.isImpersonating/);
 });
 
 test("Warehouse understands every document lifecycle status", () => {

@@ -9,6 +9,7 @@ import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import { DashboardEmptyState, DashboardPageHeader } from "@/components/dashboard/DashboardUI";
 import InventoryManager from "@/components/brand-portal/InventoryManager";
 import AutoSubmitForm from "@/components/dashboard/AutoSubmitForm";
+import { getBrandWarehouseVariants } from "@/lib/data/warehouse";
 
 type StockParams = {
   brand?: string; q?: string; level?: string; sort?: string; product?: string; view?: string;
@@ -47,7 +48,7 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
   // Inventory. getVariantsForBrand (the brand's ENTIRE active catalog) is
   // only fetched when the Activity tab is actually open, to label each
   // movement row with a product name/SKU — never on an Inventory view.
-  const [history, inventoryResult, activityLabelVariants] = await Promise.all([
+  const [history, inventoryResult, activityLabelVariants, returnVariants] = await Promise.all([
     getInventoryHistoryForBrand(owner.brandId!, owner.isImpersonating),
     view === "inventory"
       ? getInventoryPageForBrand(owner.brandId!, {
@@ -60,6 +61,9 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
         })
       : Promise.resolve(null),
     view === "activity" ? getVariantsForBrand(owner.brandSlug, owner.isImpersonating) : Promise.resolve([]),
+    view === "inventory" && owner.isMahalyPartner && owner.accessLevel === "owner" && !owner.isImpersonating
+      ? getBrandWarehouseVariants(owner.brandId!)
+      : Promise.resolve([]),
   ]);
 
   const variants = inventoryResult?.variants ?? [];
@@ -132,7 +136,7 @@ export default async function BrandPortalStockPage(props: { searchParams: Promis
       </>}
 
       <div className="mt-4">
-        {view === "inventory" && !variants.length ? <DashboardEmptyState title="No matching inventory" description={activeFilterCount ? "Try another stock level or clear the current search." : "Product variants will appear here after catalog setup."} /> : <InventoryManager variants={variants} activityVariants={activityLabelVariants} history={history} brandSlug={owner.brandSlug} isMahalyPartner={owner.isMahalyPartner} accessLevel={owner.accessLevel} readOnly={owner.isImpersonating} view={view} totalMatching={summary?.matchingResultCount} />}
+        {view === "inventory" && !variants.length ? <DashboardEmptyState title="No matching inventory" description={activeFilterCount ? "Try another stock level or clear the current search." : "Product variants will appear here after catalog setup."} /> : <InventoryManager variants={variants} returnVariants={returnVariants} activityVariants={activityLabelVariants} history={history} brandSlug={owner.brandSlug} isMahalyPartner={owner.isMahalyPartner} accessLevel={owner.accessLevel} readOnly={owner.isImpersonating} view={view} totalMatching={summary?.matchingResultCount} />}
       </div>
       {view === "inventory" && (previousHref || nextHref) && <nav aria-label="Inventory pages" className="mt-4 flex items-center justify-between rounded-2xl border border-[#eadfd7] bg-white px-4 py-3">
         <p className="text-[10.5px] text-[#8d8076]"><strong className="tabular-nums text-[#51473f]">{variants.length}</strong> {variants.length === 1 ? "variant" : "variants"} shown of <strong className="tabular-nums text-[#51473f]">{summary?.matchingResultCount ?? variants.length}</strong> matching, grouped by product</p>

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
+import type { OptionSwatchType } from "@/types";
 
 export type WarehouseTransferStatus =
   | "draft"
@@ -28,8 +29,14 @@ export interface WarehouseVariantRow {
   variantId: string;
   productId: string;
   productName: string;
+  productImage: string | null;
   sku: string;
   optionLabel: string; // e.g. "Red / M" — joined option value labels, empty for a single-default variant
+  colorLabel: string | null;
+  sizeLabel: string | null;
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
   quantity: number; // live, storefront-visible stock
   brandStockQuantity: number; // legacy/internal transition balance; not editable in the partner portal
   pendingRequestedQty: number; // incoming quantity tied to nonterminal replenishment documents
@@ -172,7 +179,7 @@ function joinOptionLabel(values: { label: string }[] | null | undefined): string
 export async function getBrandWarehouseVariants(brandId: string): Promise<WarehouseVariantRow[]> {
   const { data: variantRows, error } = await supabaseAdmin
     .from("product_variants")
-    .select("id, product_id, sku, quantity, brand_stock_quantity, products!inner(id, name, brand_id)")
+    .select("id, product_id, sku, quantity, brand_stock_quantity, products!inner(id, name, image, brand_id)")
     .eq("products.brand_id", brandId)
     .eq("is_archived", false)
     .order("created_at", { ascending: true });
@@ -185,7 +192,7 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
   const [{ data: valueRows }, { data: pendingRows }] = await Promise.all([
     supabaseAdmin
       .from("product_variant_values")
-      .select("variant_id, option_values(label)")
+      .select("variant_id, option_values(label, swatch_type, primary_color, secondary_color, option_types(name))")
       .in("variant_id", variantIds),
     supabaseAdmin
       .from("warehouse_transfer_items")
@@ -195,10 +202,17 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
       .is("received_ok_qty", null),
   ]);
 
-  const labelsByVariant = new Map<string, { label: string }[]>();
+  type WarehouseOptionValue = {
+    label: string;
+    swatch_type: string | null;
+    primary_color: string | null;
+    secondary_color: string | null;
+    option_types: { name: string } | null;
+  };
+  const labelsByVariant = new Map<string, WarehouseOptionValue[]>();
   for (const row of valueRows ?? []) {
     const list = labelsByVariant.get(row.variant_id as string) ?? [];
-    const value = row.option_values as unknown as { label: string } | null;
+    const value = row.option_values as unknown as WarehouseOptionValue | null;
     if (value) list.push(value);
     labelsByVariant.set(row.variant_id as string, list);
   }
@@ -219,13 +233,22 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
   }
 
   return variants.map((v) => {
-    const product = v.products as unknown as { id: string; name: string };
+    const product = v.products as unknown as { id: string; name: string; image: string | null };
+    const optionValues = labelsByVariant.get(v.id as string) ?? [];
+    const color = optionValues.find((value) => value.option_types?.name.toLocaleLowerCase() === "color");
+    const size = optionValues.find((value) => value.option_types?.name.toLocaleLowerCase() === "size");
     return {
       variantId: v.id as string,
       productId: product.id,
       productName: product.name,
+      productImage: product.image,
       sku: v.sku as string,
-      optionLabel: joinOptionLabel(labelsByVariant.get(v.id as string)),
+      optionLabel: joinOptionLabel(optionValues),
+      colorLabel: color?.label ?? null,
+      sizeLabel: size?.label ?? null,
+      swatchType: (color?.swatch_type as OptionSwatchType | null) ?? undefined,
+      primaryColor: color?.primary_color ?? undefined,
+      secondaryColor: color?.secondary_color ?? undefined,
       quantity: v.quantity as number,
       brandStockQuantity: v.brand_stock_quantity as number,
       pendingRequestedQty: pendingByVariant.get(v.id as string) ?? 0,

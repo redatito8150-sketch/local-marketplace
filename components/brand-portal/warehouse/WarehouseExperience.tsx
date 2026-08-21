@@ -1,9 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpDown, Check, ChevronDown, ChevronRight, Loader2, RotateCcw, Search, X } from "lucide-react";
 import DateRangePicker from "@/components/ui/DateRangePicker";
 import { DashboardEmptyState } from "@/components/dashboard/DashboardUI";
 import { DashboardFilterField, DashboardMoreFilters, dashboardFilterControl } from "@/components/dashboard/DashboardFilters";
@@ -11,11 +12,12 @@ import { BrandMark, formatCount } from "@/components/admin/inventory/shared";
 import { OPEN_WAREHOUSE_STATUSES, WAREHOUSE_STATUS_META, warehouseDocumentLabel } from "@/components/admin/warehouse/warehouseUi";
 import type { WarehouseTransferRow, WarehouseVariantRow } from "@/lib/data/warehouse";
 import { formatDateTime } from "@/lib/format";
+import ColorSwatch from "@/components/admin/ColorSwatch";
 
 type DocumentFilter = "all" | "requested" | "awaiting_arrival" | "action_required" | "received";
 type DirectionFilter = "all" | WarehouseTransferRow["direction"];
 type ReturnColorGroup = { label: string; variants: Array<{ variant: WarehouseVariantRow; size: string }> };
-type ReturnProductGroup = { productId: string; productName: string; colors: ReturnColorGroup[] };
+type ReturnProductGroup = { productId: string; productName: string; productImage: string | null; colors: ReturnColorGroup[] };
 
 const DOCUMENT_PAGE_SIZE = 12;
 const RETURN_PRODUCT_PAGE_SIZE = 8;
@@ -106,21 +108,32 @@ function DocumentList({ transfers, brandParam }: { transfers: WarehouseTransferR
 }
 
 function buildReturnGroups(variants: WarehouseVariantRow[], query: string): ReturnProductGroup[] {
-  const products = new Map<string, { productName: string; colors: Map<string, Array<{ variant: WarehouseVariantRow; size: string }>> }>();
+  const products = new Map<string, { productName: string; productImage: string | null; colors: Map<string, Array<{ variant: WarehouseVariantRow; size: string }>> }>();
   for (const variant of variants) {
     if (Math.max(0, variant.quantity - variant.pendingReturnQty) <= 0) continue;
-    if (query && !`${variant.productName} ${variant.optionLabel} ${variant.sku}`.toLocaleLowerCase().includes(query)) continue;
-    const [color = "Default", ...sizeParts] = variant.optionLabel.split(" / ");
-    const product = products.get(variant.productId) ?? { productName: variant.productName, colors: new Map() };
-    const colorVariants = product.colors.get(color || "Default") ?? [];
-    colorVariants.push({ variant, size: sizeParts.join(" / ") || "One size" });
-    product.colors.set(color || "Default", colorVariants);
+    const color = variant.colorLabel || "Default";
+    const product = products.get(variant.productId) ?? { productName: variant.productName, productImage: variant.productImage, colors: new Map() };
+    const colorVariants = product.colors.get(color) ?? [];
+    colorVariants.push({ variant, size: variant.sizeLabel || "One size" });
+    product.colors.set(color, colorVariants);
     products.set(variant.productId, product);
   }
-  return [...products.entries()].map(([productId, product]) => ({ productId, productName: product.productName, colors: [...product.colors.entries()].map(([label, colorVariants]) => ({ label, variants: colorVariants })) }));
+  return [...products.entries()]
+    .map(([productId, product]) => ({ productId, productName: product.productName, productImage: product.productImage, colors: [...product.colors.entries()].map(([label, colorVariants]) => ({ label, variants: colorVariants })) }))
+    .filter((product) => !query || `${product.productName} ${product.colors.flatMap((color) => color.variants.map(({ variant, size }) => `${color.label} ${size} ${variant.optionLabel} ${variant.sku}`)).join(" ")}`.toLocaleLowerCase().includes(query));
 }
 
-function ReturnRequestDrawer({ open, onClose, onSubmitted, variants, brandParam }: { open: boolean; onClose: () => void; onSubmitted: () => void; variants: WarehouseVariantRow[]; brandParam?: string }) {
+function groupVariantIds(product: ReturnProductGroup): string[] {
+  return product.colors.flatMap((color) => color.variants.map(({ variant }) => variant.variantId));
+}
+
+function BulkSelectionCheckbox({ checked, indeterminate, label, onChange, className = "" }: { checked: boolean; indeterminate: boolean; label: string; onChange: (checked: boolean) => void; className?: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (inputRef.current) inputRef.current.indeterminate = indeterminate; }, [indeterminate]);
+  return <label title={label} className={`flex h-10 w-10 flex-none cursor-pointer items-center justify-center rounded-xl bg-white ring-1 ring-inset ring-[#e1d8d0] transition hover:bg-[#f7f2ed] ${className}`}><input ref={inputRef} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} aria-label={label} className="h-4 w-4 accent-[#C85956]" /></label>;
+}
+
+export function ReturnRequestDrawer({ open, onClose, onSubmitted, variants, brandParam }: { open: boolean; onClose: () => void; onSubmitted: () => void; variants: WarehouseVariantRow[]; brandParam?: string }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
@@ -128,69 +141,96 @@ function ReturnRequestDrawer({ open, onClose, onSubmitted, variants, brandParam 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [note, setNote] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const returnOperationKey = useRef(crypto.randomUUID());
   const groups = useMemo(() => buildReturnGroups(variants, deferredQuery), [deferredQuery, variants]);
+  const selectableVariantIds = useMemo(() => groups.flatMap(groupVariantIds), [groups]);
+  const allResultsSelected = selectableVariantIds.length > 0 && selectableVariantIds.every((variantId) => selected.has(variantId));
+  const someResultsSelected = selectableVariantIds.some((variantId) => selected.has(variantId));
   const safePage = Math.min(page, Math.max(1, Math.ceil(groups.length / RETURN_PRODUCT_PAGE_SIZE)));
   const visibleGroups = groups.slice((safePage - 1) * RETURN_PRODUCT_PAGE_SIZE, safePage * RETURN_PRODUCT_PAGE_SIZE);
-  const selectedUnits = [...selected].reduce((sum, id) => sum + (quantities[id] ?? 0), 0);
+  const returnItems = useMemo(() => [...selected].map((variantId) => ({ variantId, requestedQty: quantities[variantId] ?? 0 })).filter((item) => item.requestedQty > 0), [quantities, selected]);
+  const selectedUnits = returnItems.reduce((sum, item) => sum + item.requestedQty, 0);
+  const confirmationGroups = useMemo(() => buildReturnGroups(variants, "").map((product) => ({
+    ...product,
+    colors: product.colors.map((color) => ({
+      ...color,
+      variants: color.variants.filter(({ variant }) => returnItems.some((item) => item.variantId === variant.variantId)),
+    })).filter((color) => color.variants.length > 0),
+  })).filter((product) => product.colors.length > 0), [returnItems, variants]);
 
   useEffect(() => {
     if (!open) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) { setError(""); onClose(); } };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !busy) { setError(""); if (confirming) setConfirming(false); else onClose(); } };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [busy, onClose, open]);
+  }, [busy, confirming, onClose, open]);
 
   function toggleVariant(id: string, checked: boolean) {
     setSelected((current) => { const next = new Set(current); if (checked) next.add(id); else next.delete(id); return next; });
   }
 
+  function toggleVariants(variantIds: string[], checked: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const variantId of variantIds) if (checked) next.add(variantId); else next.delete(variantId);
+      return next;
+    });
+  }
+
   function closeDrawer() {
     if (busy) return;
     setError("");
+    setConfirming(false);
     onClose();
   }
 
   async function submitReturn() {
-    const items = [...selected].map((variantId) => ({ variantId, requestedQty: quantities[variantId] ?? 0 })).filter((item) => item.requestedQty > 0);
-    if (!items.length) return setError("Enter a positive quantity for at least one selected Variant.");
+    if (!returnItems.length) { setConfirming(false); return setError("Enter a positive quantity for at least one selected Variant."); }
     setBusy(true); setError("");
     try {
-      const response = await fetch(withBrand("/api/brand-portal/warehouse/returns", brandParam), { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": returnOperationKey.current }, body: JSON.stringify({ items, note: note.trim() || undefined }) });
+      const response = await fetch(withBrand("/api/brand-portal/warehouse/returns", brandParam), { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": returnOperationKey.current }, body: JSON.stringify({ items: returnItems, note: note.trim() || undefined }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "We couldn't submit this return request.");
-      setSelected(new Set()); setQuantities({}); setNote(""); setQuery(""); returnOperationKey.current = crypto.randomUUID(); onSubmitted(); onClose(); router.refresh();
+      setSelected(new Set()); setQuantities({}); setNote(""); setQuery(""); setConfirming(false); returnOperationKey.current = crypto.randomUUID(); onSubmitted(); onClose(); router.refresh();
     } catch (requestError) { setError(requestError instanceof Error ? requestError.message : "We couldn't submit this return request."); }
     finally { setBusy(false); }
   }
 
   if (!open) return null;
-  return <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby="return-request-title">
+  return <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-labelledby={confirming ? "return-confirmation-title" : "return-request-title"}>
     <button type="button" aria-label="Close return request" onClick={closeDrawer} className="absolute inset-0 bg-[#2b2521]/25 backdrop-blur-[2px]" />
-    <aside className="relative flex h-full w-full max-w-2xl flex-col bg-[#f6f2ed] shadow-[-20px_0_60px_rgba(61,43,31,.16)]">
-      <header className="flex items-start gap-4 border-b border-[#ded5cd] px-5 py-5 sm:px-6"><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-[#eadfda] text-[#C85956]"><ArrowDownToLine className="h-[18px] w-[18px]" /></span><div className="min-w-0 flex-1"><h2 id="return-request-title" className="text-[17px] font-extrabold tracking-[-0.025em] text-[#302924]">Request stock return</h2><p className="mt-1 max-w-lg text-[10.5px] leading-5 text-[#786b62]">Choose sellable units held at Zakhnook. Submitting creates one return document for warehouse review.</p></div><button type="button" onClick={closeDrawer} disabled={busy} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-xl text-[#756960] transition hover:bg-[#e9e1da] active:scale-[0.96] disabled:opacity-40"><X className="h-4 w-4" /></button></header>
-      <div className="border-b border-[#ded5cd] px-5 py-3 sm:px-6"><label className="relative block"><span className="sr-only">Search return inventory</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d9086]" /><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} autoComplete="off" placeholder="Search product, color, size or SKU…" className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-[11px] text-[#403730] outline-none ring-1 ring-[#e6ddd6] transition focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label></div>
+    {confirming ? <aside className="absolute inset-y-0 right-0 z-20 flex h-full w-full max-w-md flex-col bg-[#fffdfb] shadow-[-20px_0_60px_rgba(61,43,31,.2)] lg:relative lg:right-auto">
+      <header className="flex items-start gap-4 border-b border-[#ded5cd] px-5 py-5 sm:px-6"><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><Check className="h-[18px] w-[18px]" /></span><div className="min-w-0 flex-1"><h2 id="return-confirmation-title" className="text-[17px] font-extrabold tracking-[-0.025em] text-[#302924]">Confirm stock return</h2><p className="mt-1 text-[10.5px] leading-5 text-[#786b62]">Review every Variant and quantity before sending this request to Zakhnook.</p></div><button type="button" onClick={() => { setError(""); setConfirming(false); }} disabled={busy} aria-label="Back to return selection" className="flex h-9 w-9 items-center justify-center rounded-xl text-[#756960] transition hover:bg-[#f1ebe6] active:scale-[0.96] disabled:opacity-40"><X className="h-4 w-4" /></button></header>
+      <div className="border-b border-[#e7dfd8] bg-[#f8f3ef] px-5 py-4 sm:px-6"><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-white px-3 py-3"><p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-[#91837a]">Variants</p><p className="mt-1 text-[18px] font-extrabold tabular-nums text-[#302924]">{returnItems.length}</p></div><div className="rounded-xl bg-white px-3 py-3"><p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-[#91837a]">Total units</p><p className="mt-1 text-[18px] font-extrabold tabular-nums text-[#302924]">{selectedUnits}</p></div></div></div>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
         {error ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[10.5px] font-semibold text-red-800">{error}</p> : null}
-        {visibleGroups.length ? <div className="space-y-2">{visibleGroups.map((product) => <details key={product.productId} className="group overflow-hidden rounded-2xl bg-white" open={deferredQuery ? true : undefined}><summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden"><span className="min-w-0 flex-1"><span className="block truncate text-[11.5px] font-extrabold text-[#403730]">{product.productName}</span><span className="mt-0.5 block text-[9px] text-[#91837a]">{product.colors.reduce((sum, color) => sum + color.variants.length, 0)} Variants · {product.colors.length} colors</span></span><ChevronDown className="h-3.5 w-3.5 text-[#9b8e84] transition-transform group-open:rotate-180" /></summary><div className="border-t border-[#eee7e1] px-3 py-3">{product.colors.map((color) => <section key={color.label} className="mb-3 last:mb-0"><p className="mb-1.5 px-1 text-[9px] font-bold text-[#756960]">{color.label}</p><div className="space-y-1">{color.variants.map(({ variant, size }) => { const checked = selected.has(variant.variantId); const max = Math.max(0, variant.quantity - variant.pendingReturnQty); return <label key={variant.variantId} className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-3 py-2.5 transition ${checked ? "bg-[#f7ebe8]" : "bg-[#faf7f4] hover:bg-[#f4efea]"}`}><input type="checkbox" checked={checked} onChange={(event) => toggleVariant(variant.variantId, event.target.checked)} className="h-4 w-4 accent-[#C85956]" /><span className="min-w-0"><span className="block truncate text-[10.5px] font-bold text-[#51473f]">{size}</span><code className="mt-0.5 block truncate text-[8.5px] text-[#91837a]">{variant.sku}</code></span><span className="text-right"><span className="block text-[12px] font-extrabold tabular-nums text-[#403730]">{max}</span><span className="block text-[8px] text-[#9a8d83]">available</span></span><input aria-label={`Return quantity for ${variant.sku}`} type="number" inputMode="numeric" min={1} max={max} step={1} disabled={!checked} value={quantities[variant.variantId] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(max, Math.trunc(Number(event.target.value) || 0))) }))} className="h-9 w-20 rounded-lg bg-white px-2 text-center text-[10.5px] font-bold tabular-nums outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30 disabled:bg-[#eee9e4]" placeholder="Qty" /></label>; })}</div></section>)}</div></details>)}</div> : <DashboardEmptyState title="No returnable stock found" description={deferredQuery ? "Try another product, color, size or SKU." : "Only sellable units currently held at Zakhnook can be returned."} />}
+        <div className="space-y-3">{confirmationGroups.map((product) => <section key={product.productId} className="overflow-hidden rounded-2xl border border-[#ebe3dc] bg-white"><div className="flex items-center gap-3 border-b border-[#eee7e1] px-3 py-3"><span className="relative h-12 w-10 flex-none overflow-hidden rounded-lg bg-[#f1eae4]">{product.productImage ? <Image src={product.productImage} alt={product.productName} fill sizes="40px" className="object-cover" /> : null}</span><span className="min-w-0 flex-1"><span className="block truncate text-[11px] font-extrabold text-[#403730]">{product.productName}</span><span className="mt-0.5 block text-[8.5px] text-[#91837a]">{product.colors.reduce((sum, color) => sum + color.variants.length, 0)} selected Variants</span></span></div><div className="divide-y divide-[#f0eae5]">{product.colors.flatMap((color) => color.variants.map(({ variant, size }) => { const requestedQty = quantities[variant.variantId] ?? 0; return <div key={variant.variantId} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-3"><div className="min-w-0"><span className="flex items-center gap-2"><ColorSwatch swatchType={variant.swatchType} primaryColor={variant.primaryColor} secondaryColor={variant.secondaryColor} size={14} /><span className="truncate text-[10px] font-bold text-[#51473f]">{color.label} · {size}</span></span><code className="mt-1 block truncate pl-[22px] text-[8px] text-[#91837a]">{variant.sku}</code></div><span className="rounded-lg bg-[#f5eeea] px-2.5 py-1.5 text-[10px] font-extrabold tabular-nums text-[#9e4845]">{requestedQty} {requestedQty === 1 ? "unit" : "units"}</span></div>; }))}</div></section>)}</div>
+        {note.trim() ? <div className="mt-4 rounded-xl bg-[#f7f2ed] px-4 py-3"><p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-[#91837a]">Return note</p><p className="mt-1.5 text-[10px] leading-5 text-[#51473f]">{note.trim()}</p></div> : null}
+      </div>
+      <footer className="border-t border-[#ded5cd] bg-[#f3ede8] px-5 py-4 sm:px-6"><div className="mb-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[9.5px] leading-4 text-amber-900"><strong>Please confirm:</strong> this creates a return request for warehouse review. Stock is not deducted until the warehouse processes it.</div><div className="flex items-center justify-between gap-3"><button type="button" onClick={() => { setError(""); setConfirming(false); }} disabled={busy} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl px-3 text-[10.5px] font-bold text-[#675b52] transition hover:bg-white active:scale-[0.98] disabled:opacity-40"><ArrowLeft className="h-3.5 w-3.5" />Back to edit</button><button type="button" onClick={submitReturn} disabled={busy || !returnItems.length} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40">{busy ? <><Loader2 aria-hidden="true" className="mr-2 h-3.5 w-3.5 animate-spin" />Submitting…</> : "Confirm return"}</button></div></footer>
+    </aside> : null}
+    <aside className="relative flex h-full w-full max-w-2xl flex-col bg-[#f6f2ed] shadow-[-20px_0_60px_rgba(61,43,31,.16)]">
+      <header className="flex items-start gap-4 border-b border-[#ded5cd] px-5 py-5 sm:px-6"><span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-[#eadfda] text-[#C85956]"><ArrowDownToLine className="h-[18px] w-[18px]" /></span><div className="min-w-0 flex-1"><h2 id="return-request-title" className="text-[17px] font-extrabold tracking-[-0.025em] text-[#302924]">Request stock return</h2><p className="mt-1 max-w-lg text-[10.5px] leading-5 text-[#786b62]">Choose sellable units held at Zakhnook. Submitting creates one return document for warehouse review.</p></div><button type="button" onClick={closeDrawer} disabled={busy} aria-label="Close" className="flex h-9 w-9 items-center justify-center rounded-xl text-[#756960] transition hover:bg-[#e9e1da] active:scale-[0.96] disabled:opacity-40"><X className="h-4 w-4" /></button></header>
+      <div className="flex items-center gap-2 border-b border-[#ded5cd] px-5 py-3 sm:px-6"><BulkSelectionCheckbox checked={allResultsSelected} indeterminate={someResultsSelected && !allResultsSelected} label={allResultsSelected ? "Clear all products in search results" : "Select all products in search results"} onChange={(checked) => toggleVariants(selectableVariantIds, checked)} className={!selectableVariantIds.length ? "pointer-events-none opacity-40" : ""} /><label className="relative min-w-0 flex-1"><span className="sr-only">Search return inventory</span><Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9d9086]" /><input autoFocus value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} autoComplete="off" placeholder="Search product, color, size or SKU…" className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-[11px] text-[#403730] outline-none ring-1 ring-[#e6ddd6] transition focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label></div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
+        {error ? <p role="alert" className="mb-3 rounded-xl bg-red-50 px-4 py-3 text-[10.5px] font-semibold text-red-800">{error}</p> : null}
+        {visibleGroups.length ? <div className="space-y-2">{visibleGroups.map((product) => { const productVariantIds = groupVariantIds(product); const productSelectedCount = productVariantIds.filter((variantId) => selected.has(variantId)).length; const productSelected = productSelectedCount === productVariantIds.length; return <div key={product.productId} className="flex items-start gap-3 rounded-2xl bg-white p-3"><BulkSelectionCheckbox checked={productSelected} indeterminate={productSelectedCount > 0 && !productSelected} label={productSelected ? `Clear ${product.productName}` : `Select all Variants for ${product.productName}`} onChange={(checked) => toggleVariants(productVariantIds, checked)} className="mt-2" /><details className="group min-w-0 flex-1" open={deferredQuery ? true : undefined}><summary className="flex cursor-pointer list-none items-center gap-3 rounded-xl px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/25 [&::-webkit-details-marker]:hidden"><span className="relative h-14 w-12 flex-none overflow-hidden rounded-xl bg-[#f1eae4]">{product.productImage ? <Image src={product.productImage} alt={product.productName} fill sizes="48px" className="object-cover" /> : <span className="flex h-full items-center justify-center text-[8px] font-bold uppercase tracking-[0.06em] text-[#a29489]">No image</span>}</span><span className="min-w-0 flex-1"><span className="block truncate text-[11.5px] font-extrabold text-[#403730]">{product.productName}</span><span className="mt-1 block text-[9px] font-medium text-[#91837a]">{productVariantIds.length} Variants · {product.colors.length} {product.colors.length === 1 ? "color" : "colors"}</span></span><ChevronDown className="h-3.5 w-3.5 text-[#9b8e84] transition-transform group-open:rotate-180" /></summary><div className="mt-3 border-t border-[#eee7e1] px-1 pt-3">{product.colors.map((color) => <section key={color.label} className="mb-3 last:mb-0"><p className="mb-1.5 px-1 text-[9px] font-bold text-[#756960]">{color.label}</p><div className="space-y-1">{color.variants.map(({ variant, size }) => { const checked = selected.has(variant.variantId); const max = Math.max(0, variant.quantity - variant.pendingReturnQty); return <label key={variant.variantId} className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-3 rounded-xl px-3 py-2.5 transition ${checked ? "bg-[#f7ebe8]" : "bg-[#faf7f4] hover:bg-[#f4efea]"}`}><input type="checkbox" checked={checked} onChange={(event) => toggleVariant(variant.variantId, event.target.checked)} className="h-4 w-4 accent-[#C85956]" /><span className="min-w-0"><span className="flex items-center gap-2" title={variant.colorLabel ?? color.label}><ColorSwatch swatchType={variant.swatchType} primaryColor={variant.primaryColor} secondaryColor={variant.secondaryColor} size={14} /><span className="truncate text-[10.5px] font-bold text-[#51473f]">{size}</span></span><code className="mt-1 block truncate text-[8.5px] text-[#91837a]">{variant.sku}</code></span><span className="text-right"><span className="block text-[12px] font-extrabold tabular-nums text-[#403730]">{max}</span><span className="block text-[8px] text-[#9a8d83]">available</span></span><input aria-label={`Return quantity for ${variant.sku}`} type="number" inputMode="numeric" min={1} max={max} step={1} disabled={!checked} value={quantities[variant.variantId] ?? ""} onChange={(event) => setQuantities((current) => ({ ...current, [variant.variantId]: Math.max(0, Math.min(max, Math.trunc(Number(event.target.value) || 0))) }))} className="h-9 w-20 rounded-lg bg-white px-2 text-center text-[10.5px] font-bold tabular-nums outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30 disabled:bg-[#eee9e4]" placeholder="Qty" /></label>; })}</div></section>)}</div></details></div>; })}</div> : <DashboardEmptyState title="No returnable stock found" description={deferredQuery ? "Try another product, color, size or SKU." : "Only sellable units currently held at Zakhnook can be returned."} />}
         <Pager page={safePage} count={groups.length} pageSize={RETURN_PRODUCT_PAGE_SIZE} onPage={setPage} />
       </div>
-      <footer className="border-t border-[#ded5cd] bg-[#eee7e0] px-5 py-4 sm:px-6"><label className="block"><span className="text-[9px] font-bold text-[#756960]">Return note <span className="font-normal text-[#9a8d83]">(optional)</span></span><input value={note} onChange={(event) => setNote(event.target.value)} autoComplete="off" placeholder="Reason or pickup preference…" className="mt-1.5 h-10 w-full rounded-xl bg-white px-3 text-[10.5px] outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label><div className="mt-3 flex items-center justify-between gap-3"><p className="text-[9.5px] text-[#756960]"><strong className="tabular-nums text-[#403730]">{selected.size}</strong> Variants · <strong className="tabular-nums text-[#403730]">{selectedUnits}</strong> units</p><button type="button" onClick={submitReturn} disabled={busy || selectedUnits <= 0} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40">{busy ? <><Loader2 aria-hidden="true" className="mr-2 h-3.5 w-3.5 animate-spin" />Submitting…</> : "Submit return request"}</button></div></footer>
+      <footer className="border-t border-[#ded5cd] bg-[#eee7e0] px-5 py-4 sm:px-6"><label className="block"><span className="text-[9px] font-bold text-[#756960]">Return note <span className="font-normal text-[#9a8d83]">(optional)</span></span><input value={note} onChange={(event) => setNote(event.target.value)} autoComplete="off" placeholder="Reason or pickup preference…" className="mt-1.5 h-10 w-full rounded-xl bg-white px-3 text-[10.5px] outline-none ring-1 ring-[#e1d8d0] focus-visible:ring-2 focus-visible:ring-[#C85956]/30" /></label><div className="mt-3 flex items-center justify-between gap-3"><p className="text-[9.5px] text-[#756960]"><strong className="tabular-nums text-[#403730]">{returnItems.length}</strong> Variants · <strong className="tabular-nums text-[#403730]">{selectedUnits}</strong> units</p><button type="button" onClick={() => { setError(""); setConfirming(true); }} disabled={busy || !returnItems.length} className="inline-flex h-10 items-center justify-center rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40">Review return</button></div></footer>
     </aside>
   </div>;
 }
 
-export default function WarehouseExperience({ variants, transfers, brandParam, readOnly = false }: { variants: WarehouseVariantRow[]; transfers: WarehouseTransferRow[]; brandParam?: string; readOnly?: boolean }) {
+export default function WarehouseExperience({ transfers, brandParam, readOnly = false }: { transfers: WarehouseTransferRow[]; brandParam?: string; readOnly?: boolean }) {
   const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("all");
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
   const [documentQuery, setDocumentQuery] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [message, setMessage] = useState("");
-  const closeReturn = useCallback(() => setReturnOpen(false), []);
   const deferredDocumentQuery = useDeferredValue(documentQuery.trim().toLocaleLowerCase());
   const issueCount = transfers.filter(hasOpenDocumentIssue).length;
   const filteredTransfers = useMemo(() => transfers
@@ -227,7 +267,7 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
           <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2"><h1 className="text-[25px] font-extrabold tracking-[-0.035em] text-[#242424]">Stock Transfers</h1><span className="text-[11px] font-semibold text-[#81746b]">{formatCount(transfers.length)} documents</span></div>
           <p className="mt-2 max-w-2xl text-[11.5px] leading-5 text-[#756960]">Track stock transfers, returns and recorded warehouse corrections for your brand.</p>
         </div>
-        {!readOnly ? <button type="button" onClick={() => setReturnOpen(true)} className="inline-flex h-10 flex-none items-center justify-center gap-2 rounded-xl bg-[#C85956] px-4 text-[10.5px] font-bold text-white transition hover:bg-[#b84e4b] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#C85956]/20"><ArrowDownToLine className="h-3.5 w-3.5" />Request stock return</button> : <span className="inline-flex h-9 items-center rounded-xl bg-[#f2ede8] px-3 text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span>}
+        {readOnly ? <span className="inline-flex h-9 items-center rounded-xl bg-[#f2ede8] px-3 text-[9.5px] font-semibold text-[#81746b]">Admin view · read only</span> : null}
       </div>
     </header>
 
@@ -245,9 +285,7 @@ export default function WarehouseExperience({ variants, transfers, brandParam, r
       </div>
     </div>
     <section className="mt-4 overflow-hidden rounded-[20px] border border-[#e6ded7] bg-white shadow-[0_10px_32px_rgba(72,50,36,.045)]">
-      {message ? <div role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-3 text-[10px] font-semibold text-emerald-800 sm:px-5">{message}</div> : null}
       <DocumentList transfers={filteredTransfers} brandParam={brandParam} />
     </section>
-    <ReturnRequestDrawer open={returnOpen} onClose={closeReturn} onSubmitted={() => setMessage("Return request submitted for warehouse review.")} variants={variants} brandParam={brandParam} />
   </div>;
 }
