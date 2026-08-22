@@ -207,3 +207,18 @@ test("Brand delivery confirmation is retry-safe and supports compatible open leg
   assert.doesNotMatch(dispatchRoute, /complete every received, damaged and missing/);
   assert.match(brandPage, /\["in_transit", "partially_received"\]\.includes\(transfer\.status\)/);
 });
+
+test("the production reconciliation migration restores the final return compatibility contract", () => {
+  const migration = read("supabase/migrations/20260822150334_reconcile_warehouse_return_migration_drift.sql");
+  const confirm = migration.match(/create or replace function public\.confirm_warehouse_return_received[\s\S]*?\n\$\$;/i)?.[0] ?? "";
+
+  assert.match(migration, /set dispatched_qty = wti\.requested_qty/);
+  assert.match(migration, /wt\.status in \('in_transit', 'partially_received'\)/);
+  assert.match(confirm, /v_transfer\.brand_id <> p_brand_id/);
+  assert.match(confirm, /v_transfer\.status = 'received'[\s\S]*?'replayed', true/);
+  assert.match(confirm, /v_transfer\.status not in \('in_transit', 'partially_received'\)/);
+  assert.match(confirm, /count\(\*\) filter \(where wti\.received_ok_qty is null\)/);
+  assert.match(confirm, /EVERY_RETURN_LINE_MUST_BE_DISPATCHED/);
+  assert.match(migration, /revoke all on function public\.confirm_warehouse_return_received\(uuid, uuid, uuid, text\)[\s\S]*?from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function public\.confirm_warehouse_return_received\(uuid, uuid, uuid, text\)[\s\S]*?to service_role/);
+});
