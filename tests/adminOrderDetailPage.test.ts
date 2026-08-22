@@ -41,9 +41,18 @@ test("the redesigned workspace keeps payment method, status, attempt, refund, an
   assert.match(orderDetailPage, /ReverseRefundAllocationButton/);
 });
 
-test("the detail workspace keeps product images and combines lifecycle with admin history", () => {
+test("the detail workspace keeps product images and builds a deduplicated, actor-aware activity feed", () => {
   assert.match(orderDetailPage, /<OrderItemThumbnail/);
   assert.match(orderDetailPage, /Lifecycle and admin history/);
-  assert.match(orderDetailPage, /\.\.\.auditLogs\.map/);
+  assert.match(orderDetailPage, /buildAdminOrderActivity\(order, auditLogs\)/);
+  assert.match(orderDetailPage, /entry\.actorRole/);
   assert.match(orderDetailPage, /InternalNotesField/);
+});
+
+test("the detail workspace exposes purchase context, action reasons and optimistic shipment tracking", () => {
+  assert.match(orderDetailPage, /Purchase overview/);
+  assert.match(orderDetailPage, /purchase\.shipments\.map/);
+  assert.match(orderDetailPage, /attentionReasons/);
+  assert.match(orderDetailPage, /ShipmentTrackingForm/);
+  assert.match(orderDetailPage, /updatedAt=\{order\.updatedAt\}/);
 });

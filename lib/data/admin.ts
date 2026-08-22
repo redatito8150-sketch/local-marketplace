@@ -6,6 +6,14 @@ import { resolveTaxonomyPath } from "@/lib/data/taxonomy";
 import { calculateVariantReadiness } from "@/lib/inventory/readiness";
 import { calculateStockStatus, effectiveLowStockThreshold } from "@/lib/inventory/stockStatus";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
+import {
+  groupAdminOrders,
+  normalizeAdminOrderFilters,
+  normalizeAdminOrderQueue,
+  type AdminOrderFilters,
+  type AdminOrderQueue,
+  type AdminPurchaseGroup,
+} from "@/lib/orders/adminOrderFilters";
 import { getOrderRefundLedgerForAdmin, getOrderRefundSummaries } from "@/lib/data/refunds";
 import {
   Audience,
@@ -476,16 +484,20 @@ interface OrderRow {
   coupon_code: string | null;
   discount_amount_egp: number;
   created_at: string;
+  updated_at: string;
   master_order_id: string;
   master_orders: { master_order_number: string } | null;
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
+  carrier_name: string | null;
+  tracking_number: string | null;
+  expected_delivery_at: string | null;
   payment_method: OrderRecord["paymentMethod"];
   payment_status: OrderRecord["paymentStatus"];
   payment_attempt_id: string | null;
   order_items: OrderItemRow[];
-  order_status_history?: { id: string; status: OrderStatus; note: string | null; created_at: string }[];
+  order_status_history?: { id: string; status: OrderStatus; note: string | null; created_by: string | null; created_at: string }[];
 }
 
 function toOrderRecord(row: OrderRow): OrderRecord {
@@ -514,6 +526,10 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     couponCode: row.coupon_code ?? undefined,
     discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
+    carrierName: row.carrier_name ?? undefined,
+    trackingNumber: row.tracking_number ?? undefined,
+    expectedDeliveryAt: row.expected_delivery_at ?? undefined,
     items: (row.order_items ?? []).map((item) => ({
       id: item.id,
       productId: item.product_id,
@@ -534,12 +550,45 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     statusHistory: (row.order_status_history ?? [])
       .slice()
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((h) => ({ id: h.id, status: h.status, note: h.note ?? undefined, createdAt: h.created_at })),
+      .map((h) => ({ id: h.id, status: h.status, note: h.note ?? undefined, actorId: h.created_by ?? undefined, createdAt: h.created_at })),
   };
 }
 
 const ADMIN_ORDER_SELECT =
-  "*, master_orders(master_order_number), order_items(*), order_status_history(id, status, note, created_at)";
+  "*, master_orders(master_order_number), order_items(*), order_status_history(id, status, note, created_by, created_at)";
+
+async function attachOrderFinancialSummaries(orders: OrderRecord[]) {
+  const summaries = await getOrderRefundSummaries(orders.map((order) => order.id));
+  for (const order of orders) {
+    const summary = summaries.get(order.id);
+    if (!summary) continue;
+    order.capturedAmountCents = summary.capturedAmountCents;
+    order.refundedAmountCents = summary.refundedAmountCents;
+    order.refundPendingAmountCents = summary.pendingAmountCents;
+    order.paymentStatus = summary.paymentStatus;
+  }
+}
+
+async function attachOrderHistoryActors(orders: OrderRecord[]) {
+  const actorIds = [...new Set(orders.flatMap((order) => order.statusHistory ?? []).map((entry) => entry.actorId).filter((id): id is string => Boolean(id)))];
+  if (!actorIds.length) return;
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, email, role, is_admin")
+    .in("id", actorIds);
+  if (error) throw new Error(`order history actors failed: ${error.message}`);
+  const actors = new Map((data ?? []).map((profile) => [profile.id as string, profile]));
+  for (const entry of orders.flatMap((order) => order.statusHistory ?? [])) {
+    if (!entry.actorId) continue;
+    const actor = actors.get(entry.actorId);
+    if (!actor) continue;
+    entry.actorName = (actor.full_name as string | null) ?? undefined;
+    entry.actorEmail = (actor.email as string | null) ?? undefined;
+    entry.actorRoleLabel = actor.is_admin
+      ? actor.role === "admin" ? "Admin" : actor.role === "manager" ? "Manager" : "Staff"
+      : actor.role === "brand_owner" ? "Brand owner" : actor.role === "brand_assistant" ? "Brand assistant" : "Account user";
+  }
+}
 
 // Orders have no public/admin RLS read policy, so admin reads go through
 // the service-role client directly — these functions are only ever called
@@ -554,16 +603,114 @@ export async function getAllOrdersForAdmin(): Promise<OrderRecord[]> {
     throw new Error(`getAllOrdersForAdmin failed: ${error.message}`);
   }
   const orders = (data as OrderRow[]).map(toOrderRecord);
-  const summaries = await getOrderRefundSummaries(orders.map((order) => order.id));
-  for (const order of orders) {
-    const summary = summaries.get(order.id);
-    if (!summary) continue;
-    order.capturedAmountCents = summary.capturedAmountCents;
-    order.refundedAmountCents = summary.refundedAmountCents;
-    order.refundPendingAmountCents = summary.pendingAmountCents;
-    order.paymentStatus = summary.paymentStatus;
-  }
+  await attachOrderFinancialSummaries(orders);
   return orders;
+}
+
+export interface AdminOrderPurchasePage {
+  groups: AdminPurchaseGroup[];
+  counts: Record<AdminOrderQueue, number>;
+  brands: string[];
+  page: number;
+  totalPages: number;
+  totalPurchases: number;
+}
+
+type AdminPurchasePageRow = {
+  master_order_id: string;
+  latest_order_at: string;
+  total_count: number | string;
+};
+
+export async function getAdminOrderPurchasePage(
+  filters: AdminOrderFilters,
+  requestedPage: number,
+  pageSize: number
+): Promise<AdminOrderPurchasePage> {
+  filters = normalizeAdminOrderFilters(filters);
+  const page = Number.isFinite(requestedPage) ? Math.max(1, Math.trunc(requestedPage)) : 1;
+  const safePageSize = Number.isFinite(pageSize) ? Math.min(100, Math.max(1, Math.trunc(pageSize))) : 12;
+  const queue = normalizeAdminOrderQueue(filters.queue);
+  const pageArgs = (offset: number) => ({
+    p_q: filters.q?.trim() || null,
+    p_queue: queue,
+    p_status: filters.status?.trim() || null,
+    p_brand: filters.brand?.trim() || null,
+    p_from: filters.from || null,
+    p_to: filters.to || null,
+    p_offset: offset,
+    p_limit: safePageSize,
+  });
+  const [{ data: initialRows, error: pageError }, { data: countRow, error: countError }, { data: brandRows, error: brandError }] = await Promise.all([
+    supabaseAdmin.rpc("list_admin_order_purchase_page", pageArgs((page - 1) * safePageSize)),
+    supabaseAdmin.rpc("get_admin_order_purchase_queue_counts").maybeSingle(),
+    supabaseAdmin.rpc("list_admin_order_filter_brands"),
+  ]);
+  if (pageError) throw new Error(`list_admin_order_purchase_page failed: ${pageError.message}`);
+  if (countError) throw new Error(`get_admin_order_purchase_queue_counts failed: ${countError.message}`);
+  if (brandError) throw new Error(`admin order brands failed: ${brandError.message}`);
+
+  let rows = (initialRows ?? []) as AdminPurchasePageRow[];
+  let resolvedPage = page;
+  if (!rows.length && page > 1) {
+    const { data, error } = await supabaseAdmin.rpc("list_admin_order_purchase_page", pageArgs(0));
+    if (error) throw new Error(`list_admin_order_purchase_page fallback failed: ${error.message}`);
+    rows = (data ?? []) as AdminPurchasePageRow[];
+    resolvedPage = 1;
+  }
+  const totalPurchases = Number(rows[0]?.total_count ?? 0);
+  const ids = rows.map((row) => row.master_order_id);
+  let groups: AdminPurchaseGroup[] = [];
+  if (ids.length) {
+    const { data, error } = await supabaseAdmin
+      .from("orders")
+      .select(ADMIN_ORDER_SELECT)
+      .in("master_order_id", ids);
+    if (error) throw new Error(`admin order purchase page rows failed: ${error.message}`);
+    const orders = (data as OrderRow[]).map(toOrderRecord);
+    await attachOrderFinancialSummaries(orders);
+    const position = new Map(ids.map((id, index) => [id, index]));
+    groups = groupAdminOrders(orders).sort((a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0));
+  }
+  const countsSource = (countRow ?? {}) as Record<string, number | string | null>;
+  const counts: Record<AdminOrderQueue, number> = {
+    all: Number(countsSource.all_count ?? 0),
+    attention: Number(countsSource.attention_count ?? 0),
+    active: Number(countsSource.active_count ?? 0),
+    fulfilled: Number(countsSource.fulfilled_count ?? 0),
+    cancelled: Number(countsSource.cancelled_count ?? 0),
+  };
+  return {
+    groups,
+    counts,
+    brands: ((brandRows ?? []) as Array<{ brand: string | null }>).map((row) => row.brand).filter((brand): brand is string => Boolean(brand)),
+    page: resolvedPage,
+    totalPages: Math.max(1, Math.ceil(totalPurchases / safePageSize)),
+    totalPurchases,
+  };
+}
+
+export async function getAdminPurchaseForAdmin(masterOrderId: string): Promise<AdminPurchaseGroup | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select(ADMIN_ORDER_SELECT)
+    .eq("master_order_id", masterOrderId)
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`getAdminPurchaseForAdmin(${masterOrderId}) failed: ${error.message}`);
+  if (!data?.length) return null;
+  const orders = (data as OrderRow[]).map(toOrderRecord);
+  await Promise.all([attachOrderFinancialSummaries(orders), attachOrderHistoryActors(orders)]);
+  return groupAdminOrders(orders)[0] ?? null;
+}
+
+export async function getAdminPurchaseForAdminByOrderId(orderId: string): Promise<AdminPurchaseGroup | null> {
+  const { data, error } = await supabaseAdmin
+    .from("orders")
+    .select("master_order_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (error) throw new Error(`getAdminPurchaseForAdminByOrderId(${orderId}) failed: ${error.message}`);
+  return data?.master_order_id ? getAdminPurchaseForAdmin(data.master_order_id as string) : null;
 }
 
 export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> {
@@ -590,6 +737,7 @@ export async function getOrderForAdmin(id: string): Promise<OrderRecord | null> 
     order.paymentStatus = summary.paymentStatus;
   }
   order.refundHistory = refundHistory;
+  await attachOrderHistoryActors([order]);
   if (order.userId) {
     const { data: profile } = await supabaseAdmin
       .from("profiles")

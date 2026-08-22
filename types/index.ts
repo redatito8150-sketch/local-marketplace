@@ -633,6 +633,10 @@ export interface OrderStatusHistoryEntry {
   id: string;
   status: OrderStatus;
   note?: string;
+  actorId?: string;
+  actorName?: string;
+  actorEmail?: string;
+  actorRoleLabel?: string;
   createdAt: string;
 }
 
@@ -668,6 +672,7 @@ export interface OrderRecord {
   couponCode?: string;
   discountAmountEgp: number;
   createdAt: string;
+  updatedAt?: string;
   items: OrderItemRecord[];
   // Multi-brand/partner-fulfillment splitting — see
   // supabase/migrations/20260807000001_brand_partner_fulfillment_and_order_splitting.sql
@@ -681,6 +686,9 @@ export interface OrderRecord {
   fulfillmentType: OrderFulfillmentType;
   brandSlug?: string;
   shippingFeeEgp: number;
+  carrierName?: string;
+  trackingNumber?: string;
+  expectedDeliveryAt?: string;
   statusHistory?: OrderStatusHistoryEntry[];
   // Present on every order (COD included — paymentMethod is always
   // 'cash_on_delivery' there), but paymentAttemptId is only ever set for

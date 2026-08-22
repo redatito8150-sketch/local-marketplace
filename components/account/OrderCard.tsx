@@ -1,5 +1,5 @@
-import { Check } from "lucide-react";
-import { formatDateOnly, formatPrice, formatSize } from "@/lib/format";
+import { Check, Truck } from "lucide-react";
+import { formatDateOnly, formatDateTime, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_BADGE_CLASSES } from "@/lib/account/orderStatusLabels";
 import type { OrderRecord, OrderStatus } from "@/types";
 import CancelOrderButton from "@/components/account/CancelOrderButton";
@@ -79,6 +79,22 @@ export default function OrderCard({
           {(order.refundPendingAmountCents ?? 0) > 0 && (
             <span>Awaiting Paymob confirmation: {formatPrice((order.refundPendingAmountCents ?? 0) / 100, "EGP")}</span>
           )}
+        </div>
+      )}
+
+      {(order.carrierName || order.trackingNumber || order.expectedDeliveryAt) && (
+        <div className="mt-3 flex items-start gap-3 rounded-xl border border-[var(--account-border)] bg-stone-50/70 px-3 py-3">
+          <Truck aria-hidden="true" className="mt-0.5 h-4 w-4 flex-none text-[var(--account-accent)]" />
+          <div className="min-w-0 text-[11.5px] text-[var(--account-text-muted)]">
+            <p className="font-semibold text-[var(--account-text)]">Delivery details</p>
+            <p className="mt-1 break-words leading-5">
+              {order.carrierName && <span>{order.carrierName}</span>}
+              {order.carrierName && order.trackingNumber && <span> · </span>}
+              {order.trackingNumber && <span>Tracking {order.trackingNumber}</span>}
+              {(order.carrierName || order.trackingNumber) && order.expectedDeliveryAt && <br />}
+              {order.expectedDeliveryAt && <span>Expected {formatDateTime(order.expectedDeliveryAt)}</span>}
+            </p>
+          </div>
         </div>
       )}
 

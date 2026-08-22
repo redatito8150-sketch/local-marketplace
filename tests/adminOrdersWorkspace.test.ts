@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { adminOrderNeedsAction, filterAdminOrders, groupAdminOrders } from "../lib/orders/adminOrderFilters.ts";
+import { adminOrderNeedsAction, filterAdminOrders, getAdminOrderAttentionReasons, groupAdminOrders, normalizeAdminOrderFilters } from "../lib/orders/adminOrderFilters.ts";
 import type { OrderRecord } from "../types/index.ts";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -27,12 +27,36 @@ test("admin search covers purchase, customer, product, brand, color and size", (
   }
 });
 
+test("admin filter input is bounded and invalid URL dates/statuses cannot reach Postgres", () => {
+  assert.deepEqual(normalizeAdminOrderFilters({ status: "not-a-status", from: "2026-99-99", queue: "wrong" }), {
+    q: undefined,
+    queue: "all",
+    status: undefined,
+    brand: undefined,
+    from: undefined,
+    to: undefined,
+  });
+  const normalized = normalizeAdminOrderFilters({ q: `  ${"x".repeat(200)}  `, brand: ` ${"b".repeat(150)} `, from: "2026-08-22", to: "2026-08-20" });
+  assert.equal(normalized.q?.length, 160);
+  assert.equal(normalized.brand?.length, 120);
+  assert.equal(normalized.from, "2026-08-20");
+  assert.equal(normalized.to, "2026-08-22");
+});
+
 test("Needs action is operational and payment-aware", () => {
   assert.equal(adminOrderNeedsAction(order()), false);
   assert.equal(adminOrderNeedsAction(order({ fulfillmentType: "mahaly_pool" })), true);
   assert.equal(adminOrderNeedsAction(order({ status: "preparing", paymentMethod: "card", paymentStatus: "unpaid" })), true);
   assert.equal(adminOrderNeedsAction(order({ status: "preparing", paymentMethod: "card", paymentStatus: "paid" })), false);
   assert.equal(adminOrderNeedsAction(order({ status: "fulfilled", paymentMethod: "card", paymentStatus: "paid", refundPendingAmountCents: 1000 })), true);
+  assert.deepEqual(
+    getAdminOrderAttentionReasons(order({ status: "shipped", trackingNumber: undefined })).map((reason) => reason.code),
+    ["tracking_missing", "zakhnook_handoff"]
+  );
+  assert.equal(
+    getAdminOrderAttentionReasons(order({ expectedDeliveryAt: "2026-08-20T10:00:00.000Z" }), new Date("2026-08-22T10:00:00.000Z"))[0]?.code,
+    "delivery_overdue"
+  );
 });
 
 test("sibling shipments are grouped into one purchase without losing totals or items", () => {
@@ -41,9 +65,11 @@ test("sibling shipments are grouped into one purchase without losing totals or i
   assert.equal(groups[0].shipments.length, 2);
   assert.equal(groups[0].items.length, 2);
   assert.equal(groups[0].subtotalEgp, 1350);
+  assert.equal(groups[0].progress.total, 2);
+  assert.equal(groups[0].progress.percent, 10);
 });
 
-test("Admin and Brand order queues share filters, product previews and URL-addressable drawers", () => {
+test("Admin uses database pagination and purchase previews while Brand Portal remains untouched for the later parity pass", () => {
   const admin = read("components/admin/AdminOrdersWorkspace.tsx");
   const brand = read("components/brand-portal/BrandOrdersWorkspace.tsx");
   const adminPage = read("app/admin/orders/page.tsx");
@@ -58,7 +84,8 @@ test("Admin and Brand order queues share filters, product previews and URL-addre
   }
   assert.match(admin, /OrderItemThumbnail/);
   assert.match(brand, /OrderImage/);
-  assert.match(adminPage, /params\.order \? allOrders\.find/);
+  assert.match(adminPage, /getAdminOrderPurchasePage/);
+  assert.match(adminPage, /getAdminPurchaseForAdminByOrderId/);
   assert.match(brandPage, /params\.order \? allOrders\.find/);
   assert.match(brandPage, /const PAGE_SIZE = 10/);
   assert.doesNotMatch(brand, /All brands/);

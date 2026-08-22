@@ -10,6 +10,13 @@ import { orderShippedEmail } from "@/lib/email/templates/orderShipped";
 import { getOrderForAdmin } from "@/lib/data/admin";
 import { safeErrorResponse } from "@/lib/apiError";
 import { logError } from "@/lib/errorLog";
+import { z } from "zod";
+
+const shipmentTrackingSchema = z.object({
+  carrierName: z.string().trim().min(1).max(120).nullable(),
+  trackingNumber: z.string().trim().min(1).max(160).nullable(),
+  expectedDeliveryAt: z.string().datetime().nullable(),
+});
 
 const CANCEL_ERROR_MESSAGES: Record<string, string> = {
   ALREADY_CANCELLED: "This order is already cancelled",
@@ -39,6 +46,78 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   }
 
   const body = await request.json();
+
+  if (body.tracking && typeof body.tracking === "object") {
+    const parsed = shipmentTrackingSchema.safeParse(body.tracking);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Enter valid carrier, tracking and expected-delivery details" }, { status: 400 });
+    }
+    const { data: existingTracking, error: readError } = await supabaseAdmin
+      .from("orders")
+      .select("order_number, user_id, carrier_name, tracking_number, expected_delivery_at, updated_at")
+      .eq("id", params.id)
+      .maybeSingle();
+    if (readError) return safeErrorResponse("admin.orders.tracking.read", readError, "Failed to load shipping details");
+    if (!existingTracking) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+
+    const nextTracking = {
+      carrier_name: parsed.data.carrierName,
+      tracking_number: parsed.data.trackingNumber,
+      expected_delivery_at: parsed.data.expectedDeliveryAt,
+    };
+    const trackingUnchanged =
+      (existingTracking.carrier_name ?? null) === parsed.data.carrierName
+      && (existingTracking.tracking_number ?? null) === parsed.data.trackingNumber
+      && (existingTracking.expected_delivery_at ?? null) === parsed.data.expectedDeliveryAt;
+    if (trackingUnchanged) {
+      return NextResponse.json({ id: params.id, tracking: parsed.data, updatedAt: existingTracking.updated_at, unchanged: true });
+    }
+    if (typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt !== existingTracking.updated_at) {
+      return NextResponse.json({ error: "This shipment changed in another session. Refresh before saving shipping details." }, { status: 409 });
+    }
+
+    const { data: updatedTracking, error: updateError } = await supabaseAdmin
+      .from("orders")
+      .update(nextTracking)
+      .eq("id", params.id)
+      .eq("updated_at", existingTracking.updated_at)
+      .select("updated_at")
+      .maybeSingle();
+    if (updateError) return safeErrorResponse("admin.orders.tracking.save", updateError, "Failed to save shipping details");
+    if (!updatedTracking) {
+      return NextResponse.json({ error: "This shipment changed in another session. Refresh before saving shipping details." }, { status: 409 });
+    }
+
+    await logAudit({
+      actorId: admin.id,
+      actorLabel: admin.email ?? admin.id,
+      entityType: "order",
+      entityId: params.id,
+      action: "shipment_tracking_update",
+      before: {
+        carrierName: existingTracking.carrier_name,
+        trackingNumber: existingTracking.tracking_number,
+        expectedDeliveryAt: existingTracking.expected_delivery_at,
+      },
+      after: {
+        carrierName: parsed.data.carrierName,
+        trackingNumber: parsed.data.trackingNumber,
+        expectedDeliveryAt: parsed.data.expectedDeliveryAt,
+      },
+    });
+    if (existingTracking.user_id) {
+      const detail = parsed.data.trackingNumber
+        ? `${parsed.data.carrierName || "Carrier"} · ${parsed.data.trackingNumber}`
+        : parsed.data.expectedDeliveryAt
+          ? `Expected delivery: ${new Intl.DateTimeFormat("en-EG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" }).format(new Date(parsed.data.expectedDeliveryAt))}`
+          : "Open your order to see the latest delivery details.";
+      await notifyUser(existingTracking.user_id, "order_tracking_updated", `Shipping updated for #${existingTracking.order_number}`, detail, {
+        relatedEntityType: "order",
+        relatedEntityId: params.id,
+      });
+    }
+    return NextResponse.json({ id: params.id, tracking: parsed.data, updatedAt: updatedTracking.updated_at });
+  }
 
   // Internal notes are a separate, admin-only field — never touches status,
   // never triggers a notification/email, unlike every other field here.

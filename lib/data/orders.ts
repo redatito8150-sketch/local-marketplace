@@ -31,11 +31,15 @@ interface OrderRow {
   subtotal_egp: number;
   discount_amount_egp: number;
   created_at: string;
+  updated_at: string | null;
   master_order_id: string;
   master_orders: { master_order_number: string } | null;
   fulfillment_type: OrderRecord["fulfillmentType"];
   brand_slug: string | null;
   shipping_fee_egp: number;
+  carrier_name: string | null;
+  tracking_number: string | null;
+  expected_delivery_at: string | null;
   payment_method: OrderRecord["paymentMethod"];
   payment_status: OrderRecord["paymentStatus"];
   payment_attempt_id: string | null;
@@ -74,11 +78,15 @@ function toOrderRecord(row: OrderRow): OrderRecord {
     subtotalEgp: Number(row.subtotal_egp),
     discountAmountEgp: Number(row.discount_amount_egp),
     createdAt: row.created_at,
+    updatedAt: row.updated_at ?? row.created_at,
     masterOrderId: row.master_order_id,
     masterOrderNumber: row.master_orders?.master_order_number ?? "",
     fulfillmentType: row.fulfillment_type,
     brandSlug: row.brand_slug ?? undefined,
     shippingFeeEgp: Number(row.shipping_fee_egp),
+    carrierName: row.carrier_name ?? undefined,
+    trackingNumber: row.tracking_number ?? undefined,
+    expectedDeliveryAt: row.expected_delivery_at ?? undefined,
     paymentMethod: row.payment_method,
     paymentStatus: row.payment_status,
     paymentAttemptId: row.payment_attempt_id ?? undefined,

@@ -168,7 +168,8 @@ test("the customer account order grouping and the admin order list search both k
 
   const adminOrdersPage = read("app/admin/orders/page.tsx");
   const adminOrderFilters = read("lib/orders/adminOrderFilters.ts");
-  assert.match(adminOrdersPage, /groupAdminOrders\(allOrders\)/);
+  assert.match(adminOrdersPage, /getAdminOrderPurchasePage/);
+  assert.match(read("lib/data/admin.ts"), /groups = groupAdminOrders\(orders\)/);
   assert.match(adminOrderFilters, /masterOrderId \|\| order\.id/);
   assert.match(adminOrderFilters, /masterOrderNumber \|\| order\.orderNumber/);
 });
