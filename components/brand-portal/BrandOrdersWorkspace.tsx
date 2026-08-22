@@ -63,8 +63,9 @@ function OrderImage({ item, size = "md" }: { item: BrandOrder["items"][number]; 
   );
 }
 
-export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params, page, totalPages, totalOrders }: {
+export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, counts, brandSlug, params, page, totalPages, totalOrders }: {
   orders: BrandOrder[];
+  initialSelectedOrder: BrandOrder | null;
   counts: Record<Queue, number>;
   brandSlug: string;
   params: Params;
@@ -72,7 +73,7 @@ export default function BrandOrdersWorkspace({ orders, counts, brandSlug, params
   totalPages: number;
   totalOrders: number;
 }) {
-  const [selected, setSelected] = useState<BrandOrder | null>(null);
+  const [selected, setSelected] = useState<BrandOrder | null>(initialSelectedOrder);
   const activeQueue = (QUEUES.some((queue) => queue.key === params.queue) ? params.queue : "all") as Queue;
   const selectedPayment = selected ? getOrderPaymentPresentation(selected) : null;
 

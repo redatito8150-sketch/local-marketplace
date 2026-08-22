@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { requireBrandOwner } from "@/lib/supabase/brandAuth";
-import { getBrandWarehouseVariants, getBrandWarehouseTransfers } from "@/lib/data/warehouse";
+import { getBrandWarehouseTransfers } from "@/lib/data/warehouse";
 import { DashboardPageHeader, DashboardEmptyState } from "@/components/dashboard/DashboardUI";
 import AdminViewingBanner from "@/components/brand-portal/AdminViewingBanner";
 import WarehouseExperience from "@/components/brand-portal/warehouse/WarehouseExperience";
@@ -32,17 +32,13 @@ export default async function BrandPortalWarehousePage(props: { searchParams: Pr
     );
   }
 
-  const [variants, transfers] = await Promise.all([
-    getBrandWarehouseVariants(owner.brandId),
-    getBrandWarehouseTransfers(owner.brandId),
-  ]);
+  const transfers = await getBrandWarehouseTransfers(owner.brandId);
 
   return (
     <div>
       {owner.isImpersonating && <AdminViewingBanner brandName={owner.brandName!} />}
       <div className={owner.isImpersonating ? "mt-5" : ""}>
         <WarehouseExperience
-          variants={variants}
           transfers={transfers}
           brandParam={owner.isImpersonating ? owner.brandSlug ?? undefined : undefined}
           readOnly={owner.isImpersonating}

@@ -45,6 +45,8 @@ type Props = {
   receivable: boolean;
   showLedger: boolean;
   isReturn?: boolean;
+  previewOnly?: boolean;
+  showDispatchedQuantity?: boolean;
 };
 
 function physicalTotal(row: Row): number {
@@ -76,7 +78,7 @@ function initialRow(item: WarehouseTransferItemRow): Row {
   };
 }
 
-export default function TransferReceiveForm({ transferId, items, variantOptions, brandSlug, receiptItemIds, receivable, showLedger, isReturn = false }: Props) {
+export default function TransferReceiveForm({ transferId, items, variantOptions, brandSlug, receiptItemIds, receivable, showLedger, isReturn = false, previewOnly = false, showDispatchedQuantity = false }: Props) {
   const router = useRouter();
   const operationKey = useRef(crypto.randomUUID());
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -254,11 +256,11 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[#ddd4cc] px-5 py-4">
         <div>
           <p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document lines</p>
-          <h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">Every Variant and its reconciliation result</h2>
+          <h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">{previewOnly ? showDispatchedQuantity ? "Variants dispatched to brand" : isReturn ? "Variants requested for return" : "Variants requested for delivery" : "Every Variant and its reconciliation result"}</h2>
         </div>
         <div className="text-right">
-          <p className="text-[11px] font-extrabold text-[#403730]">{formatCount(items.length)} variants · {formatCount(totalRequested)} units</p>
-          <p className="mt-0.5 text-[9.5px] text-[#8d8076]">{formatCount(totalAccepted)} accepted so far</p>
+          <p className="text-[11px] font-extrabold text-[#403730]">{formatCount(items.length)} {items.length === 1 ? "variant" : "variants"} · {formatCount(totalRequested)} {totalRequested === 1 ? "unit" : "units"}</p>
+          <p className="mt-0.5 text-[9.5px] text-[#8d8076]">{previewOnly ? "Read-only Document lines" : `${formatCount(totalAccepted)} accepted so far`}</p>
         </div>
       </header>
 
@@ -287,14 +289,15 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
 
                 <div className="flex flex-wrap items-end gap-2 xl:justify-end">
                   <StaticQuantity label="Requested" value={item.requestedQty} />
-                  {editable ? <EditableQuantity label={isReturn ? "Returned" : "Received"} value={receivedQuantity(row)} active={active} onChange={(value) => updateQuantity(item, "received", value)} /> : <StaticQuantity label={isReturn ? "Returned" : "Received"} value={item.receivedOkQty ?? 0} />}
-                  {editable ? <EditableQuantity label="Damaged" value={damaged} active={active} warning={damaged > 0} onChange={(value) => updateQuantity(item, "damaged", value)} /> : <StaticQuantity label="Damaged" value={damaged} />}
-                  {editable ? <EditableQuantity label="Missing" value={missing} active={active} warning={missing > 0} onChange={(value) => updateQuantity(item, "missing", value)} /> : <StaticQuantity label="Missing" value={missing} />}
+                  {previewOnly && showDispatchedQuantity ? <StaticQuantity label="Returned" value={item.dispatchedQty ?? 0} /> : null}
+                  {previewOnly ? null : editable ? <EditableQuantity label={isReturn ? "Returned" : "Received"} value={receivedQuantity(row)} active={active} onChange={(value) => updateQuantity(item, "received", value)} /> : <StaticQuantity label={isReturn ? "Returned" : "Received"} value={item.receivedOkQty ?? 0} />}
+                  {previewOnly ? null : editable ? <EditableQuantity label="Damaged" value={damaged} active={active} warning={damaged > 0} onChange={(value) => updateQuantity(item, "damaged", value)} /> : <StaticQuantity label="Damaged" value={damaged} />}
+                  {previewOnly ? null : editable ? <EditableQuantity label="Missing" value={missing} active={active} warning={missing > 0} onChange={(value) => updateQuantity(item, "missing", value)} /> : <StaticQuantity label="Missing" value={missing} />}
 
-                  {editable ? (
+                  {previewOnly ? null : editable ? (
                     <button type="button" onClick={() => toggleIssue(item.id)} className={`inline-flex h-10 items-center gap-1.5 rounded-xl px-3 text-[9.5px] font-bold transition ${issueDetected ? "bg-amber-50 text-amber-900" : "bg-[#e2dcd4] text-[#62564d] hover:bg-[#d8d0c8]"}`} aria-expanded={issueOpen}>
                       {issueDetected ? <AlertTriangle className="h-3.5 w-3.5" /> : <CircleAlert className="h-3.5 w-3.5" />}
-                      {issueDetected ? "Receipt issue" : "Different Variant or note"}
+                      {issueDetected ? (isReturn ? "Return issue" : "Receipt issue") : (isReturn ? "Damage, shortage or note" : "Different Variant or note")}
                       <ChevronDown className={`h-3 w-3 transition-transform ${issueOpen ? "rotate-180" : ""}`} />
                     </button>
                   ) : discrepancy === 0 ? <TonePill label="Reconciled" tone="emerald" icon={CheckCircle2} /> : unresolved ? <TonePill label={receivedThroughV2.has(item.id) ? "Open discrepancy" : "Legacy quarantine"} tone="amber" icon={AlertTriangle} /> : <TonePill label={item.quarantineResolution ? titleCase(item.quarantineResolution) : "Resolved"} tone="neutral" icon={CheckCircle2} />}
@@ -352,15 +355,15 @@ export default function TransferReceiveForm({ transferId, items, variantOptions,
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {selected.size ? <button type="button" onClick={clearChanges} className="inline-flex h-10 items-center gap-1.5 px-2 text-[10px] font-bold text-[#756960] hover:text-[#C85956]"><RotateCcw className="h-3.5 w-3.5" />Clear changes</button> : null}
-              <button type="button" onClick={beginReview} disabled={!valid} className="inline-flex h-11 items-center rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white hover:bg-[#b84e4b] disabled:cursor-not-allowed disabled:opacity-40"><ShieldCheck className="mr-2 h-4 w-4" />Review receipt · {formatCount(selected.size)} {selected.size === 1 ? "variant" : "variants"}</button>
+              <button type="button" onClick={beginReview} disabled={!valid} className="inline-flex h-11 items-center rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white hover:bg-[#b84e4b] disabled:cursor-not-allowed disabled:opacity-40"><ShieldCheck className="mr-2 h-4 w-4" />Review {isReturn ? "return" : "receipt"} · {formatCount(selected.size)} {selected.size === 1 ? "variant" : "variants"}</button>
             </div>
           </div>
 
           {reviewing ? (
             <div className="mt-4 rounded-2xl bg-[#f8f4f0] p-4 ring-1 ring-[#ded4cb]">
-              <div className="flex items-start gap-3"><span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-amber-50 text-amber-800"><ShieldCheck className="h-4 w-4" /></span><div><h3 className="text-[13px] font-extrabold text-[#302924]">Final receipt review</h3><p className="mt-1 text-[10.5px] leading-5 text-[#756960]">Only {formatCount(totals.good)} good units will enter sellable stock. Damage, shortages, excess and substitutions stay traceable.</p></div></div>
-              <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-[#eee7e1] p-3 text-center sm:grid-cols-6"><ReviewMetric label="Requested" value={totals.requested} /><ReviewMetric label="Sellable" value={totals.good} /><ReviewMetric label="Damaged" value={totals.damaged} /><ReviewMetric label="Missing" value={totals.missing} /><ReviewMetric label="Excess" value={totals.excess} /><ReviewMetric label="Unidentified" value={totals.unidentified} /></div>
-              <label className="mt-3 block"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#756960]">Receipt note <span className="font-medium normal-case tracking-normal">(optional, visible to the brand)</span></span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Condition, delivery reference or handover note…" rows={2} className={`${CONTROL} mt-1.5 h-auto w-full bg-white py-2.5`} /></label>
+              <div className="flex items-start gap-3"><span className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-amber-50 text-amber-800"><ShieldCheck className="h-4 w-4" /></span><div><h3 className="text-[13px] font-extrabold text-[#302924]">Final {isReturn ? "return" : "receipt"} review</h3><p className="mt-1 text-[10.5px] leading-5 text-[#756960]">{isReturn ? `${formatCount(totals.good)} received units will move from in-transit stock into brand stock. Only this confirmation changes the document to Returned to brand; damage and shortages remain traceable.` : `Only ${formatCount(totals.good)} good units will enter sellable stock. Damage, shortages, excess and substitutions stay traceable.`}</p></div></div>
+              <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-[#eee7e1] p-3 text-center sm:grid-cols-6"><ReviewMetric label="Requested" value={totals.requested} /><ReviewMetric label={isReturn ? "Brand stock" : "Sellable"} value={totals.good} /><ReviewMetric label="Damaged" value={totals.damaged} /><ReviewMetric label="Missing" value={totals.missing} /><ReviewMetric label="Excess" value={totals.excess} /><ReviewMetric label="Unidentified" value={totals.unidentified} /></div>
+              <label className="mt-3 block"><span className="text-[9.5px] font-bold uppercase tracking-[0.08em] text-[#756960]">Receipt note <span className="font-medium normal-case tracking-normal">(optional, visible in history)</span></span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Condition, delivery reference or handover note…" rows={2} className={`${CONTROL} mt-1.5 h-auto w-full bg-white py-2.5`} /></label>
               <div className="mt-3 flex flex-wrap gap-2"><button type="button" onClick={submit} disabled={submitting} className="inline-flex h-11 items-center rounded-xl bg-[#C85956] px-5 text-[12px] font-bold text-white hover:bg-[#b84e4b] disabled:opacity-60">{submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}{submitting ? "Confirming…" : isReturn ? "Confirm return" : "Post physical receipt"}</button><button type="button" onClick={() => setReviewing(false)} disabled={submitting} className="h-11 rounded-xl px-4 text-[11px] font-bold text-[#62564d] hover:bg-[#ece5df]">Back to edit</button></div>
             </div>
           ) : null}

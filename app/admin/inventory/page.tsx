@@ -21,7 +21,7 @@ import {
   INVENTORY_MOVEMENT_GROUPS,
   INVENTORY_MOVEMENT_OPTIONS,
   INVENTORY_SOURCE_OPTIONS,
-  inventoryLocationLabel,
+  inventoryMovementRouteLabels,
   inventoryMovementLabel,
   inventorySourceLabel,
   movementTone,
@@ -588,8 +588,7 @@ function MovementBalance({ row, showDelta = true }: { row: MovementRow; showDelt
 }
 
 function MovementRoute({ row }: { row: MovementRow }) {
-  const fromLabel = inventoryLocationLabel(row.fromLocation);
-  const toLabel = inventoryLocationLabel(row.toLocation);
+  const { from: fromLabel, to: toLabel } = inventoryMovementRouteLabels(row.movementType, row.fromLocation, row.toLocation);
   return (
     <div className="mt-2 min-w-0">
       {fromLabel || toLabel ? (

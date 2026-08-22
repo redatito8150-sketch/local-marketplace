@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type {
   WarehouseTransferItemRow,
+  WarehouseTransferRow,
   WarehouseTransferStatus,
 } from "@/lib/data/warehouse";
 
@@ -44,6 +45,21 @@ export const WAREHOUSE_STATUS_META: Record<
   cancelled: { label: "Cancelled", shortLabel: "Cancelled", tone: "neutral", icon: XCircle, order: 5 },
 };
 
+export function warehouseStatusMeta(
+  status: WarehouseTransferStatus,
+  direction: "to_local" | "to_brand",
+): (typeof WAREHOUSE_STATUS_META)[WarehouseTransferStatus] {
+  const base = WAREHOUSE_STATUS_META[status];
+  if (direction !== "to_brand") return base;
+  if (status === "pending" || status === "submitted") return { ...base, label: "Return requested", shortLabel: "Return requested" };
+  if (status === "approved") return { ...base, label: "Preparing return", shortLabel: "Preparing return" };
+  if (status === "in_transit") return { ...base, label: "In transit to brand", shortLabel: "In transit" };
+  if (status === "receiving") return { ...base, label: "Confirming return", shortLabel: "Confirming" };
+  if (status === "partially_received") return { ...base, label: "Return partially confirmed", shortLabel: "Partially confirmed" };
+  if (status === "received") return { ...base, label: "Returned to brand", shortLabel: "Returned" };
+  return base;
+}
+
 export function warehouseToneClass(tone: WarehouseTone): string {
   if (tone === "amber") return "bg-amber-50 text-amber-800";
   if (tone === "emerald") return "bg-emerald-50 text-emerald-800";
@@ -59,6 +75,15 @@ export function discrepancyUnits(item: WarehouseTransferItemRow): number {
 
 export function hasUnresolvedQuarantine(item: WarehouseTransferItemRow): boolean {
   return discrepancyUnits(item) > 0 && !item.quarantineResolvedAt;
+}
+
+export function hasPendingBrandDeliveryNoteReview(
+  transfer: Pick<WarehouseTransferRow, "direction" | "status" | "receivingNote" | "brandDeliveryNoteReviewedAt">,
+): boolean {
+  return transfer.direction === "to_brand"
+    && transfer.status === "received"
+    && Boolean(transfer.receivingNote?.trim())
+    && !transfer.brandDeliveryNoteReviewedAt;
 }
 
 export function warehouseDocumentLabel(direction: "to_local" | "to_brand"): string {

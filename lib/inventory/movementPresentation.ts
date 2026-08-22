@@ -28,7 +28,9 @@ export const INVENTORY_MOVEMENT_GROUPS: readonly { label: string; options: reado
       ["warehouse_receipt_actual", "Receipt posted"],
       ["warehouse_transfer_received", "Transfer received"],
       ["warehouse_transfer_shipped", "Transfer shipped"],
-      ["warehouse_return_reserved", "Return reserved"],
+      ["warehouse_return_reserved", "Return hold created"],
+      ["warehouse_return_dispatched", "Return dispatched"],
+      ["warehouse_return_completed", "Return delivered"],
       ["warehouse_return_released", "Return released"],
       ["warehouse_quarantine_hold", "Moved to hold"],
       ["warehouse_quarantine_release", "Released from hold"],
@@ -64,6 +66,8 @@ const LOCATION_LABELS: Record<string, string> = {
   in_transit_to_zakhnook: "In transit",
   zakhnook_available: "Sellable at Zakhnook",
   zakhnook_quarantine: "Warehouse hold",
+  zakhnook_return_hold: "Return hold at Zakhnook",
+  in_transit_to_brand: "In transit to brand",
   returned_to_brand: "Returned to brand",
   sold_or_removed: "Sold or removed",
 };
@@ -79,6 +83,26 @@ export function inventoryMovementLabel(value: string): string {
 export function inventoryLocationLabel(value: string | null): string | null {
   if (!value) return null;
   return LOCATION_LABELS[value] ?? sentenceCase(value);
+}
+
+export function inventoryMovementRouteLabels(
+  movementType: string,
+  fromLocation: string | null,
+  toLocation: string | null,
+): { from: string | null; to: string | null } {
+  // Historical reserved-return rows are immutable. Present their original
+  // premature `returned_to_brand` destination using the canonical hold
+  // meaning without rewriting or falsifying the stored ledger.
+  if (movementType === "warehouse_return_reserved") {
+    return { from: inventoryLocationLabel(fromLocation), to: "Return hold at Zakhnook" };
+  }
+  if (movementType === "warehouse_return_released") {
+    return { from: "Return hold at Zakhnook", to: inventoryLocationLabel(toLocation) };
+  }
+  return {
+    from: inventoryLocationLabel(fromLocation),
+    to: inventoryLocationLabel(toLocation),
+  };
 }
 
 export function sentenceCase(value: string): string {

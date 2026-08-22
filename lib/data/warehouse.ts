@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { buildColorImageLookup, resolveVariantImage } from "@/lib/orders/variantImage";
+import type { OptionSwatchType } from "@/types";
 
 export type WarehouseTransferStatus =
   | "draft"
@@ -28,8 +29,14 @@ export interface WarehouseVariantRow {
   variantId: string;
   productId: string;
   productName: string;
+  productImage: string | null;
   sku: string;
   optionLabel: string; // e.g. "Red / M" — joined option value labels, empty for a single-default variant
+  colorLabel: string | null;
+  sizeLabel: string | null;
+  swatchType?: OptionSwatchType;
+  primaryColor?: string;
+  secondaryColor?: string;
   quantity: number; // live, storefront-visible stock
   brandStockQuantity: number; // legacy/internal transition balance; not editable in the partner portal
   pendingRequestedQty: number; // incoming quantity tied to nonterminal replenishment documents
@@ -44,6 +51,7 @@ export interface WarehouseTransferItemRow {
   sku: string;
   optionLabel: string;
   requestedQty: number;
+  dispatchedQty: number | null;
   receivedOkQty: number | null;
   damagedQty: number | null;
   missingQty: number | null;
@@ -149,6 +157,8 @@ export interface WarehouseTransferRow {
   decidedAt: string | null;
   decidedByEmail: string | null;
   receivingNote: string | null;
+  brandDeliveryNoteReviewedAt: string | null;
+  brandDeliveryNoteReviewedByActor: WarehouseActorIdentity | null;
   approvedAt: string | null;
   approvedByEmail: string | null;
   expectedArrivalAt: string | null;
@@ -172,7 +182,7 @@ function joinOptionLabel(values: { label: string }[] | null | undefined): string
 export async function getBrandWarehouseVariants(brandId: string): Promise<WarehouseVariantRow[]> {
   const { data: variantRows, error } = await supabaseAdmin
     .from("product_variants")
-    .select("id, product_id, sku, quantity, brand_stock_quantity, products!inner(id, name, brand_id)")
+    .select("id, product_id, sku, quantity, brand_stock_quantity, products!inner(id, name, image, brand_id)")
     .eq("products.brand_id", brandId)
     .eq("is_archived", false)
     .order("created_at", { ascending: true });
@@ -185,7 +195,7 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
   const [{ data: valueRows }, { data: pendingRows }] = await Promise.all([
     supabaseAdmin
       .from("product_variant_values")
-      .select("variant_id, option_values(label)")
+      .select("variant_id, option_values(label, swatch_type, primary_color, secondary_color, option_types(name))")
       .in("variant_id", variantIds),
     supabaseAdmin
       .from("warehouse_transfer_items")
@@ -195,10 +205,17 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
       .is("received_ok_qty", null),
   ]);
 
-  const labelsByVariant = new Map<string, { label: string }[]>();
+  type WarehouseOptionValue = {
+    label: string;
+    swatch_type: string | null;
+    primary_color: string | null;
+    secondary_color: string | null;
+    option_types: { name: string } | null;
+  };
+  const labelsByVariant = new Map<string, WarehouseOptionValue[]>();
   for (const row of valueRows ?? []) {
     const list = labelsByVariant.get(row.variant_id as string) ?? [];
-    const value = row.option_values as unknown as { label: string } | null;
+    const value = row.option_values as unknown as WarehouseOptionValue | null;
     if (value) list.push(value);
     labelsByVariant.set(row.variant_id as string, list);
   }
@@ -219,13 +236,22 @@ export async function getBrandWarehouseVariants(brandId: string): Promise<Wareho
   }
 
   return variants.map((v) => {
-    const product = v.products as unknown as { id: string; name: string };
+    const product = v.products as unknown as { id: string; name: string; image: string | null };
+    const optionValues = labelsByVariant.get(v.id as string) ?? [];
+    const color = optionValues.find((value) => value.option_types?.name.toLocaleLowerCase() === "color");
+    const size = optionValues.find((value) => value.option_types?.name.toLocaleLowerCase() === "size");
     return {
       variantId: v.id as string,
       productId: product.id,
       productName: product.name,
+      productImage: product.image,
       sku: v.sku as string,
-      optionLabel: joinOptionLabel(labelsByVariant.get(v.id as string)),
+      optionLabel: joinOptionLabel(optionValues),
+      colorLabel: color?.label ?? null,
+      sizeLabel: size?.label ?? null,
+      swatchType: (color?.swatch_type as OptionSwatchType | null) ?? undefined,
+      primaryColor: color?.primary_color ?? undefined,
+      secondaryColor: color?.secondary_color ?? undefined,
       quantity: v.quantity as number,
       brandStockQuantity: v.brand_stock_quantity as number,
       pendingRequestedQty: pendingByVariant.get(v.id as string) ?? 0,
@@ -240,7 +266,7 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
 
   const { data: itemRows } = await supabaseAdmin
     .from("warehouse_transfer_items")
-    .select("id, transfer_id, variant_id, requested_qty, received_ok_qty, damaged_qty, missing_qty, unit_cost, item_note, returned_qty, quarantine_resolved_at, quarantine_resolution, product_variants(sku, product_id, products(name, image))")
+    .select("id, transfer_id, variant_id, requested_qty, dispatched_qty, received_ok_qty, damaged_qty, missing_qty, unit_cost, item_note, returned_qty, quarantine_resolved_at, quarantine_resolution, product_variants(sku, product_id, products(name, image))")
     .in("transfer_id", transfers.map((t) => t.id));
 
   const variantIds = (itemRows ?? []).map((row) => row.variant_id as string);
@@ -293,6 +319,7 @@ async function attachItems(transfers: { id: string }[]): Promise<Map<string, War
       sku: variant?.sku ?? "",
       optionLabel: joinOptionLabel(optionValues),
       requestedQty: row.requested_qty as number,
+      dispatchedQty: row.dispatched_qty as number | null,
       receivedOkQty: row.received_ok_qty as number | null,
       damagedQty: row.damaged_qty as number | null,
       missingQty: row.missing_qty as number | null,
@@ -372,7 +399,7 @@ function resolveWarehouseReconciliationStatus(
 export async function getBrandWarehouseTransfers(brandId: string): Promise<WarehouseTransferRow[]> {
   const { data: transferRows, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, brand_delivery_note_reviewed_at, brand_delivery_note_reviewed_by, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .eq("brand_id", brandId)
     .order("requested_at", { ascending: false });
   if (error) throw new Error(`getBrandWarehouseTransfers(${brandId}) failed: ${error.message}`);
@@ -399,6 +426,8 @@ export async function getBrandWarehouseTransfers(brandId: string): Promise<Wareh
     decidedAt: t.decided_at as string | null,
     decidedByEmail: null,
     receivingNote: t.receiving_note as string | null,
+    brandDeliveryNoteReviewedAt: t.brand_delivery_note_reviewed_at as string | null,
+    brandDeliveryNoteReviewedByActor: null,
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     expectedArrivalAt: null,
@@ -607,7 +636,7 @@ export async function getWarehouseReceiptVariantOptions(brandId: string): Promis
 export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus): Promise<WarehouseTransferRow[]> {
   let query = supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, brand_delivery_note_reviewed_at, brand_delivery_note_reviewed_by, updated_at, brands(name, slug, logo_image), warehouse_receipts(id)")
     .order("requested_at", { ascending: false });
   if (status) query = query.eq("status", status);
   const { data: transferRows, error } = await query;
@@ -637,6 +666,8 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
     decidedAt: t.decided_at as string | null,
     decidedByEmail: null,
     receivingNote: t.receiving_note as string | null,
+    brandDeliveryNoteReviewedAt: t.brand_delivery_note_reviewed_at as string | null,
+    brandDeliveryNoteReviewedByActor: null,
     approvedAt: t.approved_at as string | null,
     approvedByEmail: null,
     expectedArrivalAt: null,
@@ -654,7 +685,7 @@ export async function getAllWarehouseTransfers(status?: WarehouseTransferStatus)
 export async function getWarehouseTransferById(id: string): Promise<WarehouseTransferRow | null> {
   const { data: t, error } = await supabaseAdmin
     .from("warehouse_transfers")
-    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, updated_at, brands(name, slug, logo_image)")
+    .select("id, brand_id, status, direction, document_number, document_type, has_discrepancy, reconciliation_status, requested_at, requested_by, brand_note, approved_at, approved_by, decided_at, decided_by, receiving_note, brand_delivery_note_reviewed_at, brand_delivery_note_reviewed_by, updated_at, brands(name, slug, logo_image)")
     .eq("id", id)
     .maybeSingle();
   if (error) throw new Error(`getWarehouseTransferById(${id}) failed: ${error.message}`);
@@ -664,10 +695,11 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
     attachItems([t]),
     getWarehouseDocumentHistory(id, t.brand_id as string),
   ]);
-  const [requestedByActor, approvedByActor, decidedByActor, expectedArrivalAt] = await Promise.all([
+  const [requestedByActor, approvedByActor, decidedByActor, brandDeliveryNoteReviewedByActor, expectedArrivalAt] = await Promise.all([
     actorIdentityFor(t.requested_by as string | null, t.brand_id as string),
     actorIdentityFor(t.approved_by as string | null, t.brand_id as string),
     actorIdentityFor(t.decided_by as string | null, t.brand_id as string),
+    actorIdentityFor(t.brand_delivery_note_reviewed_by as string | null, t.brand_id as string),
     expectedArrivalForTransfer(id),
   ]);
   return {
@@ -692,6 +724,8 @@ export async function getWarehouseTransferById(id: string): Promise<WarehouseTra
     decidedAt: t.decided_at as string | null,
     decidedByEmail: decidedByActor?.email ?? null,
     receivingNote: t.receiving_note as string | null,
+    brandDeliveryNoteReviewedAt: t.brand_delivery_note_reviewed_at as string | null,
+    brandDeliveryNoteReviewedByActor,
     approvedAt: t.approved_at as string | null,
     approvedByEmail: approvedByActor?.email ?? null,
     expectedArrivalAt,

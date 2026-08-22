@@ -29,7 +29,8 @@ test("Stock requests is a compact searchable queue with quick statuses, date and
   assert.doesNotMatch(filters, />Apply</);
   assert.match(filters, /All brands/);
   assert.match(filters, /value: "requested", label: "Requested", tone:/);
-  assert.match(filters, /value: "approved", label: "Awaiting arrival", tone:/);
+  assert.match(filters, /value: "approved", label: "Preparing \/ awaiting", tone:/);
+  assert.match(filters, /value: "in_transit", label: "In transit", tone:/);
   assert.match(filters, /value: "action_required", label: "Needs review", tone:/);
   assert.match(filters, /statusCounts\[filter\.value\]/);
   assert.match(filters, /value: "received", label: "Received", tone:/);
@@ -56,7 +57,8 @@ test("Stock requests is a compact searchable queue with quick statuses, date and
   assert.match(page, /transfer\.documentNumber/);
   assert.match(page, /text-\[12px\][^>]*>\{documentNumber\}<\/p><p[^>]*text-\[10px\][^>]*>\{transfer\.brandName\}<\/p>/);
   assert.match(page, /BrandMark/);
-  assert.match(page, /ACTION_REQUIRED_WAREHOUSE_STATUSES\.has\(transfer\.status\) && !hasOpenDiscrepancy/);
+  assert.match(page, /ACTION_REQUIRED_WAREHOUSE_STATUSES\.has\(transfer\.status\)/);
+  assert.match(page, /hasPendingBrandDeliveryNoteReview/);
   assert.match(page, /transfer\.reconciliationStatus === "open_discrepancy"/);
   assert.match(page, /transfer\.status === "received" && transfer\.reconciliationStatus === "corrected"/);
   assert.match(page, />Corrected<\/span>/);
@@ -83,7 +85,8 @@ test("warehouse details show one combined document history, printing, partial re
   assert.doesNotMatch(history, /label: "Review"/);
   assert.doesNotMatch(history, /label: "Approved"/);
   assert.doesNotMatch(history, /label: "In transit"/);
-  assert.match(history, /transfer\.status === "received" \? "Received"/);
+  assert.match(history, /warehouseStatusMeta\(transfer\.status, transfer\.direction\)\.label/);
+  assert.match(history, /label: "In transit to brand"/);
   assert.match(history, /activity\.sort/);
   assert.doesNotMatch(page, /AdminWorkspaceNav/);
   assert.match(page, /<WarehouseDocumentHeader[^>]*backLabel="All requests"/);
@@ -92,6 +95,7 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(documentHeader, />Corrected<\/span>/);
   assert.match(documentHeader, /Expected arrival/);
   assert.doesNotMatch(page, />Open brand</);
+  assert.doesNotMatch(page, /View brand portal/);
   assert.match(page, /getAuditLogsForEntity\("warehouse_transfer"/);
   assert.match(page, /PrintWarehouseDocumentButton/);
   assert.match(page, /WarehouseReceiptHistory/);
@@ -103,21 +107,29 @@ test("warehouse details show one combined document history, printing, partial re
   assert.match(receive, /border border-\[#e6ded7\] bg-white/);
   assert.match(read("components/admin/warehouse/WarehouseCorrectionWorkspace.tsx"), /border border-\[#e6ded7\] bg-white/);
   assert.match(receive, /Every Variant and its reconciliation result/);
-  assert.match(receive, /formatCount\(items\.length\).*variants.*formatCount\(totalRequested\).*units/);
+  assert.match(receive, /formatCount\(items\.length\).*items\.length === 1 \? "variant" : "variants".*formatCount\(totalRequested\).*totalRequested === 1 \? "unit" : "units"/);
   assert.match(receive, /formatCount\(totalAccepted\).*accepted so far/);
   assert.doesNotMatch(receive, /Expected vs actual/);
   assert.doesNotMatch(receive, /Record what physically arrived/);
   assert.match(receive, /EditableQuantity label=\{isReturn \? "Returned" : "Received"\}/);
   assert.match(receive, /EditableQuantity label="Damaged"/);
   assert.match(receive, /EditableQuantity label="Missing"/);
-  assert.match(receive, /Review receipt ·/);
+  assert.match(receive, /Review \{isReturn \? "return" : "receipt"\} ·/);
   assert.match(receive, /issueOpen/);
   assert.match(receive, /Actually received Variant/);
   assert.match(receive, /Substitution/);
   assert.match(page, /transfer\.status === "received"[\s\S]*?<WarehouseCorrectionWorkspace/);
   assert.match(page, /showLedger=\{\["partially_received", "rejected"\]\.includes\(transfer\.status\)\}/);
+  assert.match(page, /\["pending", "submitted"\]\.includes\(transfer\.status\)[\s\S]*?<TransferReceiveForm[\s\S]*?isReturn=\{isReturn\}[\s\S]*?previewOnly/);
+  assert.match(page, /These units left available stock when the request was submitted/);
+  assert.match(page, /ReturnDispatchForm/);
+  assert.doesNotMatch(page, /DispatchWarehouseReturnButton/);
+  assert.match(page, /Preparing return at Zakhnook/);
+  assert.match(receive, /previewOnly \? showDispatchedQuantity \? "Variants dispatched to brand" : isReturn \? "Variants requested for return" : "Variants requested for delivery"/);
+  assert.match(receive, /previewOnly \? "Read-only Document lines"/);
   assert.match(receive, /\{showLedger \? <Link[\s\S]*?>Ledger<\/Link> : null\}/);
-  assert.match(receive, /Final receipt review/);
+  assert.match(receive, /Final \{isReturn \? "return" : "receipt"\} review/);
+  assert.match(receive, /label=\{isReturn \? "Brand stock" : "Sellable"\}/);
   assert.match(receive, /Idempotency-Key/);
   assert.match(receive, /new Set\(\)/);
   assert.match(resolution, /Idempotency-Key/);
@@ -131,8 +143,10 @@ test("warehouse details show one combined document history, printing, partial re
 
 test("partial receiving API accepts only unreconciled submitted lines and uses the canonical document RPC", () => {
   const route = read("app/api/admin/warehouse/transfers/[id]/receive/route.ts");
-  assert.match(route, /RECEIVABLE_STATUSES/);
+  assert.match(route, /INBOUND_RECEIVABLE_STATUSES/);
+  assert.match(route, /RETURN_RECEIVABLE_STATUSES/);
   assert.match(route, /"approved", "in_transit", "partially_received"/);
+  assert.match(route, /"in_transit", "partially_received"/);
   assert.doesNotMatch(route, /"pending", "submitted", "approved"/);
   assert.match(route, /\.in\("id", submittedIds\)/);
   assert.match(route, /item\.received_ok_qty == null/);

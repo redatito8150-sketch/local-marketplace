@@ -315,24 +315,158 @@ export interface InventoryMovement {
   reason: string;
   note?: string;
   source: string;
+  actor: {
+    id: string;
+    displayName: string;
+    roleLabel: string;
+  } | null;
+  reference: {
+    id: string;
+    type: "warehouse_document" | "warehouse_receipt" | "warehouse_correction" | "order";
+    label: string;
+    href: string;
+  } | null;
   createdAt: string;
+}
+
+const INVENTORY_MOVEMENT_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function orderIdFromBrandMovement(source: string, sourceOperationKey: string): string | null {
+  if (source !== "order" && source !== "order_cancellation") return null;
+  const candidate = sourceOperationKey.split(":")[1];
+  return candidate && INVENTORY_MOVEMENT_UUID_PATTERN.test(candidate) ? candidate : null;
+}
+
+function brandMovementActorRoleLabel(profileRole: string | null, isStaff: boolean, accessLevel?: string | null): string {
+  if (isStaff) return "Zakhnook staff";
+  if (accessLevel === "owner" || profileRole === "brand_owner") return "Brand owner";
+  if (accessLevel === "assistant" || profileRole === "brand_assistant") return "Brand assistant";
+  return "Brand member";
 }
 
 export async function getInventoryHistoryForBrand(brandId: string, impersonating = false): Promise<InventoryMovement[]> {
   const supabase = impersonating ? supabaseAdmin : await createSupabaseServerClient();
   const { data, error } = await supabase
     .from("inventory_movements")
-    .select("id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, source, created_at")
+    .select("id, variant_id, previous_quantity, quantity_delta, new_quantity, movement_type, reason, note, created_by, source, source_operation_key, related_entity_type, related_entity_id, created_at")
     .eq("brand_id", brandId)
     .order("created_at", { ascending: false })
     .limit(100);
   if (error) throw new Error(`getInventoryHistoryForBrand failed: ${error.message}`);
-  return (data ?? []).map((row) => ({
-    id: row.id, variantId: row.variant_id, previousQuantity: row.previous_quantity,
-    quantityDelta: row.quantity_delta, newQuantity: row.new_quantity,
-    movementType: row.movement_type, reason: row.reason, note: row.note ?? undefined,
-    source: row.source, createdAt: row.created_at,
-  }));
+
+  const movementRows = data ?? [];
+  const actorIds = [...new Set(movementRows.map((row) => row.created_by).filter((id): id is string => typeof id === "string"))];
+  const warehouseDocumentIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_document" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const warehouseReceiptIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_receipt" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const warehouseCorrectionIds = [...new Set(movementRows.filter((row) => row.related_entity_type === "warehouse_correction" && row.related_entity_id).map((row) => row.related_entity_id as string))];
+  const orderIds = [...new Set(movementRows.flatMap((row) => {
+    if (row.related_entity_type === "order" && row.related_entity_id) return [row.related_entity_id as string];
+    const parsed = orderIdFromBrandMovement(row.source as string, row.source_operation_key as string);
+    return parsed ? [parsed] : [];
+  }))];
+
+  const { data: movementBrand, error: movementBrandError } = orderIds.length
+    ? await supabaseAdmin.from("brands").select("slug").eq("id", brandId).maybeSingle()
+    : { data: null, error: null };
+  if (movementBrandError) throw new Error(`getInventoryHistoryForBrand brand scope failed: ${movementBrandError.message}`);
+
+  const [profilesResult, membershipsResult, documentsResult, receiptsResult, correctionsResult, ordersResult] = await Promise.all([
+    actorIds.length
+      ? supabaseAdmin.from("profiles").select("id, full_name, email, is_admin, role").in("id", actorIds)
+      : Promise.resolve({ data: [], error: null }),
+    actorIds.length
+      ? supabaseAdmin.from("brand_staff").select("user_id, access_level").eq("brand_id", brandId).in("user_id", actorIds)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseDocumentIds.length
+      ? supabaseAdmin.from("warehouse_transfers").select("id, document_number").in("id", warehouseDocumentIds).eq("brand_id", brandId)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseReceiptIds.length
+      ? supabaseAdmin.from("warehouse_receipts").select("id, receipt_number, transfer_id, warehouse_transfers!inner(brand_id)").in("id", warehouseReceiptIds).eq("warehouse_transfers.brand_id", brandId)
+      : Promise.resolve({ data: [], error: null }),
+    warehouseCorrectionIds.length
+      ? supabaseAdmin.from("warehouse_corrections").select("id, correction_number, transfer_id, warehouse_transfers!inner(brand_id)").in("id", warehouseCorrectionIds).eq("warehouse_transfers.brand_id", brandId)
+      : Promise.resolve({ data: [], error: null }),
+    orderIds.length
+      ? supabaseAdmin.from("orders").select("id, order_number, order_items!inner(brand_slug)").in("id", orderIds).eq("order_items.brand_slug", movementBrand?.slug ?? "")
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (profilesResult.error) throw new Error(`getInventoryHistoryForBrand actors failed: ${profilesResult.error.message}`);
+  if (membershipsResult.error) throw new Error(`getInventoryHistoryForBrand memberships failed: ${membershipsResult.error.message}`);
+  if (documentsResult.error) throw new Error(`getInventoryHistoryForBrand warehouse documents failed: ${documentsResult.error.message}`);
+  if (receiptsResult.error) throw new Error(`getInventoryHistoryForBrand receipts failed: ${receiptsResult.error.message}`);
+  if (correctionsResult.error) throw new Error(`getInventoryHistoryForBrand corrections failed: ${correctionsResult.error.message}`);
+  if (ordersResult.error) throw new Error(`getInventoryHistoryForBrand orders failed: ${ordersResult.error.message}`);
+
+  const profiles = new Map((profilesResult.data ?? []).map((profile) => [profile.id as string, profile]));
+  const accessByActorId = new Map((membershipsResult.data ?? []).map((membership) => [membership.user_id as string, membership.access_level as string]));
+  const references = new Map<string, InventoryMovement["reference"]>();
+
+  for (const document of documentsResult.data ?? []) {
+    references.set(`warehouse_document:${document.id}`, {
+      id: document.id as string,
+      type: "warehouse_document",
+      label: (document.document_number as string | null) ?? `Warehouse document ${String(document.id).slice(0, 8)}`,
+      href: `/brand-portal/warehouse/${document.id}`,
+    });
+  }
+  for (const receipt of receiptsResult.data ?? []) {
+    references.set(`warehouse_receipt:${receipt.id}`, {
+      id: receipt.id as string,
+      type: "warehouse_receipt",
+      label: receipt.receipt_number as string,
+      href: `/brand-portal/warehouse/${receipt.transfer_id}`,
+    });
+  }
+  for (const correction of correctionsResult.data ?? []) {
+    references.set(`warehouse_correction:${correction.id}`, {
+      id: correction.id as string,
+      type: "warehouse_correction",
+      label: correction.correction_number as string,
+      href: `/brand-portal/warehouse/${correction.transfer_id}`,
+    });
+  }
+  for (const order of ordersResult.data ?? []) {
+    references.set(`order:${order.id}`, {
+      id: order.id as string,
+      type: "order",
+      label: order.order_number as string,
+      href: `/brand-portal/orders?order=${encodeURIComponent(order.id as string)}`,
+    });
+  }
+
+  return movementRows.map((row) => {
+    const actorProfile = typeof row.created_by === "string" ? profiles.get(row.created_by) : null;
+    const isStaff = Boolean(actorProfile?.is_admin);
+    const actor = actorProfile ? {
+      id: actorProfile.id as string,
+      displayName: isStaff
+        ? "Zakhnook Staff Team"
+        : (actorProfile.full_name as string | null)?.trim() || (actorProfile.email as string | null)?.split("@")[0] || "Team member",
+      roleLabel: brandMovementActorRoleLabel(actorProfile.role as string | null, isStaff, accessByActorId.get(actorProfile.id as string)),
+    } : null;
+    const parsedOrderId = orderIdFromBrandMovement(row.source as string, row.source_operation_key as string);
+    const relatedEntityType = (row.related_entity_type as string | null) ?? (parsedOrderId ? "order" : null);
+    const relatedEntityId = (row.related_entity_id as string | null) ?? parsedOrderId;
+    const reference = relatedEntityType && relatedEntityId
+      ? references.get(`${relatedEntityType}:${relatedEntityId}`) ?? null
+      : null;
+
+    return {
+      id: row.id,
+      variantId: row.variant_id,
+      previousQuantity: row.previous_quantity,
+      quantityDelta: row.quantity_delta,
+      newQuantity: row.new_quantity,
+      movementType: row.movement_type,
+      reason: row.reason,
+      note: row.note ?? undefined,
+      source: row.source,
+      actor,
+      reference,
+      createdAt: row.created_at,
+    };
+  });
 }
 
 interface BrandVariantRow {

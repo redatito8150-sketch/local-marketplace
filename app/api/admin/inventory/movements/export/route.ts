@@ -8,7 +8,7 @@ import {
 import {
   INVENTORY_MOVEMENT_OPTIONS,
   INVENTORY_SOURCE_OPTIONS,
-  inventoryLocationLabel,
+  inventoryMovementRouteLabels,
   inventoryMovementLabel,
   inventorySourceLabel,
 } from "@/lib/inventory/movementPresentation";
@@ -57,7 +57,9 @@ export async function GET(request: NextRequest) {
     page += 1;
   } while (rows.length < total && rows.length < MAX_EXPORT_ROWS);
 
-  const csvRows = rows.slice(0, MAX_EXPORT_ROWS).map((row) => ({
+  const csvRows = rows.slice(0, MAX_EXPORT_ROWS).map((row) => {
+    const route = inventoryMovementRouteLabels(row.movementType, row.fromLocation, row.toLocation);
+    return ({
     recordedAt: row.createdAt,
     brand: row.brandName,
     product: row.productName,
@@ -67,8 +69,8 @@ export async function GET(request: NextRequest) {
     quantityDelta: row.quantityDelta,
     previousQuantity: row.previousQuantity,
     newQuantity: row.newQuantity,
-    fromLocation: inventoryLocationLabel(row.fromLocation) ?? "",
-    toLocation: inventoryLocationLabel(row.toLocation) ?? "",
+    fromLocation: route.from ?? "",
+    toLocation: route.to ?? "",
     reason: row.reason,
     note: row.note ?? "",
     source: inventorySourceLabel(row.source),
@@ -77,7 +79,8 @@ export async function GET(request: NextRequest) {
     actorRole: row.actor?.roleLabel ?? "System",
     actorEmail: row.actor?.email ?? "",
     dataQuality: row.hasTestOrLegacyNote ? "Test or legacy note" : "Operational",
-  }));
+    });
+  });
 
   const csv = toCsv(csvRows, [
     { key: "recordedAt", label: "Recorded At" },

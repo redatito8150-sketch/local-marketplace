@@ -132,6 +132,7 @@ export default function WarehouseCorrectionWorkspace({
   receipts,
   brandSlug,
   readOnly = false,
+  isReturn = false,
 }: {
   transferId: string;
   items: WarehouseTransferItemRow[];
@@ -140,6 +141,7 @@ export default function WarehouseCorrectionWorkspace({
   receipts: WarehouseReceiptRow[];
   brandSlug: string;
   readOnly?: boolean;
+  isReturn?: boolean;
 }) {
   const router = useRouter();
   const operationKey = useRef(crypto.randomUUID());
@@ -174,9 +176,11 @@ export default function WarehouseCorrectionWorkspace({
   const variantLabel = useMemo(() => new Map([...variantById.values()].map((variant) => [variant.variantId, `${variant.productName}${variant.optionLabel ? ` — ${variant.optionLabel}` : ""} · ${variant.sku}`])), [variantById]);
   const activeCorrections = useMemo(() => corrections.filter((correction) => correction.status === "posted" || correction.status === "pending_approval"), [corrections]);
   const totalRequested = items.reduce((sum, item) => sum + item.requestedQty, 0);
-  const totalAccepted = receiptLines.length
-    ? receiptLines.reduce((sum, line) => sum + line.actualGoodQty, 0)
-    : items.reduce((sum, item) => sum + (item.receivedOkQty ?? 0), 0);
+  const totalAccepted = isReturn
+    ? items.reduce((sum, item) => sum + (item.dispatchedQty ?? item.receivedOkQty ?? 0), 0)
+    : receiptLines.length
+      ? receiptLines.reduce((sum, line) => sum + line.actualGoodQty, 0)
+      : items.reduce((sum, item) => sum + (item.receivedOkQty ?? 0), 0);
 
   function usedReceiptSource(lineId: string, bucket: WarehouseCorrectionLineRow["sourceBucket"]): number {
     const persisted = activeCorrections.reduce((sum, correction) => sum + correction.lines
@@ -460,8 +464,8 @@ export default function WarehouseCorrectionWorkspace({
   return (
     <section className="overflow-hidden rounded-[22px] border border-[#e6ded7] bg-white shadow-[0_10px_30px_rgba(72,50,36,.045)]">
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-[#ddd4cc] px-5 py-4">
-        <div><p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document lines</p><h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">Every Variant and its recorded receipt</h2></div>
-        <div className="text-right"><p className="text-[11px] font-extrabold text-[#403730]">{formatCount(items.length)} variants · {formatCount(totalRequested)} units</p><p className="mt-0.5 text-[9.5px] text-[#8d8076]">{formatCount(totalAccepted)} accepted</p></div>
+        <div><p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#C85956]">Document lines</p><h2 className="mt-1 text-[15px] font-extrabold text-[#302924]">{isReturn ? "Every Variant and its recorded return" : "Every Variant and its recorded receipt"}</h2></div>
+        <div className="text-right"><p className="text-[11px] font-extrabold text-[#403730]">{formatCount(items.length)} variants · {formatCount(totalRequested)} units</p><p className="mt-0.5 text-[9.5px] text-[#8d8076]">{formatCount(totalAccepted)} {isReturn ? "returned" : "accepted"}</p></div>
       </header>
 
       {error ? <div role="alert" className="mx-5 mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-[11px] font-semibold text-red-800"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div> : null}
@@ -498,7 +502,7 @@ export default function WarehouseCorrectionWorkspace({
                 <div className="min-w-0 flex-1"><VariantIdentity image={item.productImage} productName={item.productName} label={`${item.productName}${item.optionLabel ? ` — ${item.optionLabel}` : ""}`} sku={item.sku} />{recordedVariantDiffers || receiptLine?.unidentifiedSku ? <p className="mt-1.5 w-fit rounded-lg bg-violet-50 px-2 py-1 text-[8.5px] font-bold text-violet-800">Recorded receipt: {recordedVariantLabel}</p> : null}{readOnly && readOnlyIssueSummary.length ? <p className="mt-1.5 w-fit rounded-lg bg-amber-50 px-2 py-1 text-[8.5px] font-bold text-amber-900">Receipt issue · {readOnlyIssueSummary.join(" · ")}</p> : null}</div>
                 <div className="flex flex-wrap items-end gap-2 xl:justify-end">
                   <StaticMetric label="Requested" value={item.requestedQty} />
-                  <StaticMetric label="Received" value={receiptLine?.actualGoodQty ?? item.receivedOkQty ?? 0} />
+                  <StaticMetric label={isReturn ? "Returned" : "Received"} value={isReturn ? item.dispatchedQty ?? item.receivedOkQty ?? 0 : receiptLine?.actualGoodQty ?? item.receivedOkQty ?? 0} />
                   <StaticMetric label="Damaged" value={damagedQuantity} warning={damagedQuantity > 0} />
                   <StaticMetric label="Missing" value={missingQuantity} warning={missingQuantity > 0} />
                   {!readOnly ? <button type="button" onClick={() => editingItemId === item.id ? setEditingItemId(null) : startIssue(item)} className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#f8f4f0] px-3 text-[9.5px] font-bold text-[#62564d] transition hover:bg-[#f4dfdc] hover:text-[#9f3f3d]"><CircleAlert className="h-3.5 w-3.5" />Report issue<ChevronDown className={`h-3 w-3 transition-transform ${editingItemId === item.id ? "rotate-180" : ""}`} /></button> : null}
