@@ -6,7 +6,6 @@ import DashboardFilters, { DashboardFilterField, DashboardMoreFilters, dashboard
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import { normalizeReference, normalizeSearchText } from "@/lib/search/normalize";
 import DateRangePicker from "@/components/ui/DateRangePicker";
-import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 import SortableTableHeader, { tableSortHref } from "@/components/dashboard/SortableTableHeader";
 
 type PaymentSearchParams = { q?: string; status?: string; from?: string; to?: string; sort?: string; page?: string };
@@ -59,7 +58,6 @@ export default async function AdminPaymentsPage(props: { searchParams: Promise<P
 
   return (
     <div>
-      <AdminWorkspaceNav workspace="commerce" activeHref="/admin/payments" />
       <DashboardPageHeader
         eyebrow="Commerce"
         title={`Payments (${filtered.length})`}

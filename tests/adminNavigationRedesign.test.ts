@@ -17,7 +17,7 @@ test("admin navigation keeps the daily workflow short and groups operational rou
   }
   assert.match(sidebar, /hideWhenPermission: "manage_brands"/);
   assert.match(sidebar, /hideWhenPermission: "manage_page_studio"/);
-  assert.doesNotMatch(sidebar, /label: "Payments"/);
+  assert.match(sidebar, /label: "Orders"[\s\S]*?children: \[[\s\S]*?label: "Payments"[\s\S]*?label: "Refund review"/);
   assert.doesNotMatch(sidebar, /label: "Low Stock"/);
   assert.doesNotMatch(sidebar, /label: "Warehouse"/);
 });
@@ -83,11 +83,8 @@ test("workspace tabs connect commerce, brands, and storefront without bypassing 
   assert.doesNotMatch(nav, /inventory:/);
 });
 
-test("each workspace landing page renders its local navigation", () => {
+test("commerce destinations use the connected sidebar branch while other workspaces keep local navigation", () => {
   const pages = [
-    ["app/admin/orders/page.tsx", "commerce", "/admin/orders"],
-    ["app/admin/payments/page.tsx", "commerce", "/admin/payments"],
-    ["app/admin/payments/refund-queue/page.tsx", "commerce", "/admin/payments/refund-queue"],
     ["app/admin/brands/page.tsx", "brands", "/admin/brands"],
     ["app/admin/applications/page.tsx", "brands", "/admin/applications"],
     ["app/admin/products/review/page.tsx", "brands", "/admin/products/review"],
@@ -97,6 +94,10 @@ test("each workspace landing page renders its local navigation", () => {
 
   for (const [page, workspace, activeHref] of pages) {
     assert.match(read(page), new RegExp(`AdminWorkspaceNav workspace="${workspace}" activeHref="${activeHref.replaceAll("/", "\\/")}"`));
+  }
+
+  for (const page of ["app/admin/orders/page.tsx", "app/admin/payments/page.tsx", "app/admin/payments/refund-queue/page.tsx"]) {
+    assert.doesNotMatch(read(page), /AdminWorkspaceNav/);
   }
 
   const inventoryPage = read("app/admin/inventory/page.tsx");

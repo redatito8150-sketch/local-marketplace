@@ -128,7 +128,9 @@ test("Brand Portal Variant movements mirrors Admin ledger clarity without exposi
   assert.match(data, /accessLevel === "assistant"[\s\S]*?"Brand assistant"/);
   assert.match(inventory, /impersonatingBrandSlug[\s\S]*?brand=\$\{encodeURIComponent/);
   assert.match(ordersPage, /params\.order \? allOrders\.find\(\(order\) => order\.id === params\.order\)/);
-  assert.match(ordersWorkspace, /useState<BrandOrder \| null>\(initialSelectedOrder\)/);
+  assert.match(ordersWorkspace, /const selected = initialSelectedOrder/);
+  assert.match(ordersWorkspace, /router\.replace\(hrefFor\(\{ order: order\.id \}\)/);
+  assert.match(ordersWorkspace, /router\.replace\(hrefFor\(\{ order: undefined \}\)/);
   assert.doesNotMatch(inventory, /All brands|Admin correction|Historical migration/);
   assert.doesNotMatch(data, /href: `\/admin\/(?:warehouse|orders)/);
 });

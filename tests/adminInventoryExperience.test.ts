@@ -169,17 +169,17 @@ test("movement ledger can group by source document and export the filtered audit
   assert.match(exportRoute, /text\/csv/);
 });
 
-test("Inventory sidebar branch uses a connected thread treatment in expanded and collapsed navigation", () => {
+test("operational sidebar branches use a connected thread treatment in expanded and collapsed navigation", () => {
   const sidebar = read("components/admin/AdminSidebar.tsx");
 
-  assert.match(sidebar, /function InventoryBranch/);
-  assert.match(sidebar, /aria-label="Inventory destinations"/);
+  assert.match(sidebar, /function NavigationBranch/);
+  assert.match(sidebar, /aria-label=\{`\$\{item\.label\} destinations`\}/);
   assert.match(sidebar, /aria-expanded=\{open\}/);
-  assert.match(sidebar, /Collapse Inventory destinations/);
-  assert.match(sidebar, /Expand Inventory destinations/);
+  assert.match(sidebar, /`Collapse \$\{item\.label\} destinations`/);
+  assert.match(sidebar, /`Expand \$\{item\.label\} destinations`/);
   assert.match(sidebar, /bg-\[var\(--admin-border\)\]/);
   assert.match(sidebar, /absolute -left-7 top-1\/2 h-px w-5/);
-  assert.match(sidebar, /searchParams\.get\("view"\) === "activity"/);
+  assert.match(sidebar, /expected\.entries\(\).*searchParams\.get\(key\) === value/);
   assert.match(sidebar, /child\.badge \? counts\[child\.badge\]/);
   assert.match(sidebar, /branchItems\.map/);
 });

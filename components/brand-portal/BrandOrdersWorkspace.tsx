@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Banknote, Check, ChevronLeft, ChevronRight, Clock3, CreditCard, Download, PackageCheck, Printer, RotateCcw, Search, Truck, X } from "lucide-react";
 import BrandOrderStatusControl from "@/components/brand-portal/BrandOrderStatusControl";
 import DateRangePicker from "@/components/ui/DateRangePicker";
@@ -15,7 +16,7 @@ import { normalizeOrderStatus } from "@/lib/orders/lifecycle";
 import AutoSubmitForm from "@/components/dashboard/AutoSubmitForm";
 
 type Queue = "all" | "attention" | "active" | "fulfilled" | "cancelled";
-type Params = { brand?: string; q?: string; queue?: string; from?: string; to?: string; sort?: string };
+type Params = { brand?: string; order?: string; q?: string; queue?: string; from?: string; to?: string; sort?: string };
 
 const QUEUES: Array<{ key: Queue; label: string; tone: string }> = [
   { key: "all", label: "All orders", tone: "bg-[#C85956]" },
@@ -73,17 +74,11 @@ export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, cou
   totalPages: number;
   totalOrders: number;
 }) {
-  const [selected, setSelected] = useState<BrandOrder | null>(initialSelectedOrder);
+  const router = useRouter();
+  const selected = initialSelectedOrder;
+  const drawerRef = useRef<HTMLElement>(null);
   const activeQueue = (QUEUES.some((queue) => queue.key === params.queue) ? params.queue : "all") as Queue;
   const selectedPayment = selected ? getOrderPaymentPresentation(selected) : null;
-
-  useEffect(() => {
-    if (!selected) return;
-    const close = (event: KeyboardEvent) => event.key === "Escape" && setSelected(null);
-    window.addEventListener("keydown", close);
-    document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", close); document.body.style.overflow = ""; };
-  }, [selected]);
 
   const baseParams = useMemo(() => {
     const next = new URLSearchParams();
@@ -101,6 +96,35 @@ export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, cou
     for (const [key, value] of Object.entries(changes)) value == null || value === "" ? next.delete(key) : next.set(key, String(value));
     return `/brand-portal/orders${next.size ? `?${next}` : ""}`;
   };
+  const openOrder = (order: BrandOrder) => {
+    router.replace(hrefFor({ order: order.id }), { scroll: false });
+  };
+  const closeOrder = () => {
+    router.replace(hrefFor({ order: undefined }), { scroll: false });
+  };
+
+  useEffect(() => {
+    if (!selected) return;
+    const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = "hidden";
+    const focusable = () => [...(drawerRef.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input, select, textarea") ?? [])];
+    focusable()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { closeOrder(); return; }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.body.style.overflow = previousOverflow; document.removeEventListener("keydown", onKeyDown); previousFocus?.focus(); };
+    // hrefFor intentionally follows the active filter snapshot for this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
   const exportParams = new URLSearchParams(baseParams);
   if (activeQueue !== "all") exportParams.set("queue", activeQueue);
   const exportHref = `/api/brand-portal/orders/export${exportParams.size ? `?${exportParams}` : ""}`;
@@ -135,7 +159,7 @@ export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, cou
         {orders.length ? <div className="divide-y divide-[#eee7e1]">{orders.map((order) => {
           const visibleItems = order.items.slice(0, 2);
           const payment = getOrderPaymentPresentation(order);
-          return <article key={order.id} role="button" tabIndex={0} onClick={() => setSelected(order)} onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && setSelected(order)} className="group relative cursor-pointer px-4 py-4 outline-none transition hover:bg-[#fdfbf9] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 sm:px-5">
+          return <article key={order.id} role="button" tabIndex={0} onClick={() => openOrder(order)} onKeyDown={(event) => (event.key === "Enter" || event.key === " ") && openOrder(order)} className="group relative cursor-pointer px-4 py-4 outline-none transition hover:bg-[#fdfbf9] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C85956]/30 sm:px-5">
             <span className={`absolute bottom-4 left-0 top-4 w-[3px] rounded-r-full ${order.status === "cancelled" ? "bg-red-300" : order.status === "fulfilled" ? "bg-emerald-400" : order.fulfillmentType === "brand_direct" ? "bg-[#C85956]" : "bg-amber-300"}`} />
             <div className="grid gap-4 lg:grid-cols-[minmax(185px,.8fr)_minmax(300px,1.5fr)_minmax(150px,.65fr)] lg:items-center">
               <div><div className="flex flex-wrap items-center gap-2"><p className="text-[13px] font-extrabold text-[#242424]">#{order.orderNumber}</p><span className={`rounded-full px-2 py-1 text-[9.5px] font-bold ${orderStatusBadgeClass(order.status)}`}>{ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}</span><span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[9.5px] font-bold ring-1 ring-inset ${paymentToneClass(payment.tone)}`}>{order.paymentMethod === "card" ? <CreditCard className="h-3 w-3" /> : <Banknote className="h-3 w-3" />}{payment.label}</span>{order.isOverdue && <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-[9.5px] font-bold text-red-700"><Clock3 className="h-3 w-3" />Overdue</span>}</div><p className="mt-1.5 truncate text-[11px] text-[#71645b]">{order.shippingName} · {order.shippingCity}</p><p className="mt-1 text-[10.5px] text-[#a09287]">{formatDateOnly(order.createdAt)}</p></div>
@@ -148,8 +172,8 @@ export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, cou
         {totalPages > 1 && <div className="flex items-center justify-between border-t border-[#eee7e1] px-5 py-4"><p className="text-[11px] text-[#8f8177]">Page {page} of {totalPages}</p><div className="flex gap-2"><Link aria-disabled={page <= 1} href={page <= 1 ? hrefFor({ page: 1 }) : hrefFor({ page: page - 1 })} className={`inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-[11px] font-bold ${page <= 1 ? "pointer-events-none border-[#eee7e1] text-[#c5bab2]" : "border-[#e2d7cf] text-[#51473f] hover:bg-[#fcfaf8]"}`}><ChevronLeft className="h-3.5 w-3.5" />Previous</Link><Link aria-disabled={page >= totalPages} href={page >= totalPages ? hrefFor({ page }) : hrefFor({ page: page + 1 })} className={`inline-flex h-9 items-center gap-1 rounded-xl border px-3 text-[11px] font-bold ${page >= totalPages ? "pointer-events-none border-[#eee7e1] text-[#c5bab2]" : "border-[#e2d7cf] text-[#51473f] hover:bg-[#fcfaf8]"}`}>Next<ChevronRight className="h-3.5 w-3.5" /></Link></div></div>}
       </section>
 
-      {selected && <div className="order-print-overlay fixed inset-0 z-[90] flex justify-end bg-[#241c18]/25 backdrop-blur-[1px]" onMouseDown={(event) => event.target === event.currentTarget && setSelected(null)}>
-        <aside data-order-drawer role="dialog" aria-modal="true" aria-label={`Order ${selected.orderNumber}`} className="h-full w-full overflow-y-auto bg-[#fffdfb] shadow-[-24px_0_70px_rgba(36,28,24,.16)] sm:max-w-[520px]">
+      {selected && <div className="order-print-overlay fixed inset-0 z-[90] flex justify-end bg-[#241c18]/25 backdrop-blur-[1px]" onMouseDown={(event) => event.target === event.currentTarget && closeOrder()}>
+        <aside ref={drawerRef} data-order-drawer role="dialog" aria-modal="true" aria-label={`Order ${selected.orderNumber}`} className="h-full w-full overflow-y-auto bg-[#fffdfb] shadow-[-24px_0_70px_rgba(36,28,24,.16)] sm:max-w-[520px]">
           <div data-order-print className="hidden">
             <div className="flex items-start justify-between border-b-2 border-[#242424] pb-5"><div><p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C85956]">Zakhnook · Brand order</p><h1 className="mt-2 text-2xl font-extrabold text-[#242424]">#{selected.orderNumber}</h1><p className="mt-1 text-[11px] text-[#6f635b]">Placed {formatDateTime(selected.createdAt)}</p></div><div className="text-right"><p className="text-[11px] font-bold uppercase text-[#6f635b]">Order total</p><p className="mt-1 text-xl font-extrabold text-[#242424]">{formatPrice(orderTotal(selected), "EGP")}</p><p className="mt-1 text-[11px] font-bold text-[#C85956]">{ORDER_STATUS_LABELS[selected.status as OrderStatus] ?? selected.status}</p></div></div>
             <div className="mt-5 grid grid-cols-3 gap-3"><div className="rounded-xl border border-[#ddd3cb] p-3"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#8d8076]">Customer</p><p className="mt-2 text-[11px] font-bold text-[#242424]">{selected.shippingName}</p><p className="mt-1 text-[10px] text-[#6f635b]">{selected.shippingCity}, {selected.shippingGovernorate}</p></div><div className="rounded-xl border border-[#ddd3cb] p-3"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#8d8076]">Payment</p><p className="mt-2 text-[11px] font-bold text-[#242424]">{selectedPayment?.label}</p><p className="mt-1 text-[10px] text-[#6f635b]">{selectedPayment?.detail}</p></div><div className="rounded-xl border border-[#ddd3cb] p-3"><p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[#8d8076]">Fulfillment</p><p className="mt-2 text-[11px] font-bold text-[#242424]">{selected.fulfillmentType === "mahaly_pool" ? "Zakhnook" : "Brand direct"}</p><p className="mt-1 text-[10px] text-[#6f635b]">{selected.fulfillmentType === "mahaly_pool" ? "Marketplace managed" : "Brand handoff"}</p></div></div>
@@ -157,7 +181,7 @@ export default function BrandOrdersWorkspace({ orders, initialSelectedOrder, cou
             <section className="mt-6"><h2 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-[#6f635b]">Status history</h2><div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-2">{[{ status: "placed", note: "Order placed", createdAt: selected.createdAt }, ...selected.history].map((entry, index) => <div key={`${entry.status}-${entry.createdAt}-${index}`} className="border-l-2 border-[#C85956] pl-2.5"><p className="text-[10px] font-bold text-[#242424]">{entry.status === "placed" ? "Order placed" : ORDER_STATUS_LABELS[entry.status as OrderStatus] ?? label(entry.status)}</p><p className="mt-0.5 text-[9px] text-[#756960]">{formatDateTime(entry.createdAt)}</p>{entry.note && <p className="mt-0.5 text-[9px] leading-4 text-[#756960]">{entry.note}</p>}</div>)}</div></section>
             <p className="mt-8 border-t border-[#d9cfc7] pt-3 text-[9px] text-[#8d8076]">Generated from the Zakhnook brand portal · Tracking and customer returns appear when their operational integrations are connected.</p>
           </div>
-          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#eee5de] bg-[#fffdfb]/95 px-5 py-4 backdrop-blur"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C85956]">Order details</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.03em] text-[#242424]">#{selected.orderNumber}</h2></div><div className="flex gap-2"><button data-print-hide type="button" onClick={() => window.print()} className="flex h-9 items-center gap-1.5 rounded-full border border-[#e7ddd5] px-3 text-[10.5px] font-bold text-[#665950] transition hover:bg-[#f7f1ec]"><Printer className="h-3.5 w-3.5" />Print</button><button data-print-hide type="button" autoFocus onClick={() => setSelected(null)} aria-label="Close order details" className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e7ddd5] text-[#665950] transition hover:bg-[#f7f1ec]"><X className="h-4 w-4" /></button></div></div>
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#eee5de] bg-[#fffdfb]/95 px-5 py-4 backdrop-blur"><div><p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#C85956]">Order details</p><h2 className="mt-1 text-lg font-extrabold tracking-[-0.03em] text-[#242424]">#{selected.orderNumber}</h2></div><div className="flex gap-2"><button data-print-hide type="button" onClick={() => window.print()} className="flex h-9 items-center gap-1.5 rounded-full border border-[#e7ddd5] px-3 text-[10.5px] font-bold text-[#665950] transition hover:bg-[#f7f1ec]"><Printer className="h-3.5 w-3.5" />Print</button><button data-print-hide type="button" autoFocus onClick={closeOrder} aria-label="Close order details" className="flex h-9 w-9 items-center justify-center rounded-full border border-[#e7ddd5] text-[#665950] transition hover:bg-[#f7f1ec]"><X className="h-4 w-4" /></button></div></div>
           <div className="space-y-5 p-5">
             <section className="overflow-hidden rounded-2xl border border-[#eadfd7] bg-white">
               <div className="flex items-start justify-between gap-4 border-b border-[#eee7e1] px-4 py-4">

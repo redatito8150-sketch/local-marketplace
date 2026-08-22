@@ -1,347 +1,150 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ArrowLeft, Banknote, CreditCard, MapPin, PackageCheck, Truck, UserRound } from "lucide-react";
 import { getOrderForAdmin, getAuditLogsForEntity, getSiblingOrders } from "@/lib/data/admin";
 import { formatDateTime, formatPrice, formatSize } from "@/lib/format";
 import { ORDER_STATUS_LABELS, getValidOrderStatusOptions, orderStatusBadgeClass } from "@/lib/admin/statuses";
+import { getOrderPaymentPresentation, paymentToneClass } from "@/lib/orders/paymentPresentation";
 import StatusSelect from "@/components/admin/StatusSelect";
 import InternalNotesField from "@/components/admin/InternalNotesField";
 import CancelMasterOrderButton from "@/components/admin/CancelMasterOrderButton";
 import RecordOrderRefundAction from "@/components/admin/RecordOrderRefundAction";
 import ReverseRefundAllocationButton from "@/components/admin/ReverseRefundAllocationButton";
+import OrderItemThumbnail from "@/components/orders/OrderItemThumbnail";
 import type { OrderStatus } from "@/types";
 
-export default async function AdminOrderDetailPage(
-  props: {
-    params: Promise<{ id: string }>;
-  }
-) {
+export default async function AdminOrderDetailPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const [order, auditLogs] = await Promise.all([
     getOrderForAdmin(params.id),
     getAuditLogsForEntity("order", params.id),
   ]);
   if (!order) notFound();
-  const siblingOrders = await getSiblingOrders(order.masterOrderId, order.id);
-  const cancellableCount =
-    [order, ...siblingOrders].filter((o) => o.status !== "shipped" && o.status !== "fulfilled" && o.status !== "cancelled").length;
 
-  // This order's own breakdown, straight from orders.subtotal_egp/
-  // discount_amount_egp — Admin (unlike Brand Portal) is explicitly allowed
-  // to read these order-wide fields directly, no per-brand scoping needed.
+  const siblingOrders = await getSiblingOrders(order.masterOrderId, order.id);
+  const cancellableCount = [order, ...siblingOrders].filter((item) => !["shipped", "fulfilled", "cancelled"].includes(item.status)).length;
   const subtotalBeforeDiscounts = order.items.reduce(
-    (sum, item) => (item.currency === "EGP" ? sum + (item.originalUnitPrice ?? item.price) * item.quantity : sum),
+    (sum, item) => item.currency === "EGP" ? sum + (item.originalUnitPrice ?? item.price) * item.quantity : sum,
     0
   );
   const productVariantDiscount = Math.max(0, subtotalBeforeDiscounts - order.subtotalEgp);
   const subtotalAfterAllDiscounts = order.subtotalEgp - order.discountAmountEgp;
-  const orderTotal = subtotalAfterAllDiscounts + order.shippingFeeEgp;
-
-  // Full master-order total across every shipment from the same checkout —
-  // only Admin sees this aggregate; Brand Portal never does.
+  const shipmentTotal = subtotalAfterAllDiscounts + order.shippingFeeEgp;
   const masterOrderTotal = [
     { subtotalEgp: order.subtotalEgp, discountAmountEgp: order.discountAmountEgp, shippingFeeEgp: order.shippingFeeEgp },
     ...siblingOrders,
-  ].reduce((sum, o) => sum + (o.subtotalEgp - o.discountAmountEgp + o.shippingFeeEgp), 0);
+  ].reduce((sum, item) => sum + item.subtotalEgp - item.discountAmountEgp + item.shippingFeeEgp, 0);
+  const payment = getOrderPaymentPresentation(order);
+  const activity = [
+    { id: `placed-${order.id}`, title: "Order placed", detail: "Customer checkout recorded", createdAt: order.createdAt, actor: "Storefront" },
+    ...(order.statusHistory ?? []).map((entry) => ({
+      id: entry.id,
+      title: ORDER_STATUS_LABELS[entry.status] ?? entry.status,
+      detail: entry.note ?? "Shipment status updated",
+      createdAt: entry.createdAt,
+      actor: "Order lifecycle",
+    })),
+    ...auditLogs.map((log) => ({
+      id: log.id,
+      title: log.action.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase()),
+      detail: "Administrative action recorded",
+      createdAt: log.createdAt,
+      actor: log.actorName || log.actorLabel,
+    })),
+  ].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tightest text-ink">
-            Order #{order.orderNumber}
-          </h1>
-          <p className="mt-1 text-[13px] text-ink-soft/60">
-            Purchase {order.masterOrderNumber} · {formatDateTime(order.createdAt)}
-          </p>
-        </div>
-        <StatusSelect
-          apiPath={`/api/admin/orders/${order.id}`}
-          value={order.status}
-          options={getValidOrderStatusOptions(order.status, order.fulfillmentType).map((s) => ({
-            value: s,
-            label: ORDER_STATUS_LABELS[s],
-          }))}
-        />
-      </div>
+    <div className="mx-auto max-w-[1440px]">
+      <Link href="/admin/orders" className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#75685f] transition-colors hover:text-[#C85956] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C85956]/20">
+        <ArrowLeft className="h-3.5 w-3.5" />All orders
+      </Link>
 
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
-        <div className="rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Items</h2>
-          <div className="mt-4 divide-y divide-stone-150">
-            {order.items.map((item) => {
+      <header className="mt-4 overflow-hidden rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.045)]">
+        <div className="flex flex-col gap-4 px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.13em] text-[#C85956]">Order workspace</p>
+              <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${orderStatusBadgeClass(order.status)}`}>{ORDER_STATUS_LABELS[order.status]}</span>
+            </div>
+            <h1 className="mt-2 text-2xl font-extrabold tracking-[-0.035em] text-[#242424] sm:text-[28px]">#{order.orderNumber}</h1>
+            <p className="mt-1 text-[11px] text-[#81746b]">Purchase {order.masterOrderNumber} · Placed {formatDateTime(order.createdAt)}</p>
+          </div>
+          <div className="flex flex-col items-start gap-1.5 sm:items-end">
+            <span className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-[#9b8d82]">Update shipment status</span>
+            <StatusSelect
+              apiPath={`/api/admin/orders/${order.id}`}
+              value={order.status}
+              options={getValidOrderStatusOptions(order.status, order.fulfillmentType).map((status) => ({ value: status, label: ORDER_STATUS_LABELS[status] }))}
+            />
+          </div>
+        </div>
+        <div className="grid border-t border-[#eee7e1] bg-[#fcfaf8] sm:grid-cols-2 xl:grid-cols-4">
+          <SummaryCell label="Customer" value={order.shippingName} detail={order.userId ? order.accountEmail || "Account customer" : "Guest checkout"} icon={<UserRound className="h-4 w-4" />} />
+          <SummaryCell label="Payment" value={payment.label} detail={payment.detail} icon={order.paymentMethod === "card" ? <CreditCard className="h-4 w-4" /> : <Banknote className="h-4 w-4" />} />
+          <SummaryCell label="Fulfillment" value={order.fulfillmentType === "mahaly_pool" ? "Zakhnook fulfillment" : "Brand direct"} detail={order.brandSlug || `${order.items.length} variants`} icon={order.fulfillmentType === "mahaly_pool" ? <Truck className="h-4 w-4" /> : <PackageCheck className="h-4 w-4" />} />
+          <SummaryCell label="Shipment total" value={formatPrice(shipmentTotal, "EGP")} detail={siblingOrders.length ? `${formatPrice(masterOrderTotal, "EGP")} across ${siblingOrders.length + 1} shipments` : "Single shipment purchase"} icon={<PackageCheck className="h-4 w-4" />} />
+        </div>
+      </header>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.04)]">
+            <div className="flex items-center justify-between gap-3 border-b border-[#eee7e1] bg-[#fcfaf8] px-5 py-4"><div><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#C85956]">Products</p><h2 className="mt-1 text-sm font-extrabold text-[#302923]">{order.items.length} ordered {order.items.length === 1 ? "variant" : "variants"}</h2></div><p className="text-[10.5px] text-[#8f8177]">This shipment only</p></div>
+            <div className="divide-y divide-[#eee7e1] px-5">{order.items.map((item) => {
               const showStrikethrough =
                 item.discountSource != null && item.discountSource !== "none" && item.originalUnitPrice != null;
               return (
-                <div key={item.id} className="flex items-center justify-between py-3 first:pt-0">
-                  <div>
-                    <p className="text-[13.5px] font-medium text-ink">{item.name}</p>
-                    <p className="text-[12px] text-ink-soft/50">
-                      {item.brand} · Qty {item.quantity} · {formatSize(item.size)}
-                      {item.color ? ` · ${item.color}` : ""}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    {showStrikethrough && (
-                      <p className="text-[11.5px] text-ink-soft/40 line-through">
-                        {formatPrice(item.originalUnitPrice!, item.currency)}
-                      </p>
-                    )}
-                    <p className="text-[13.5px] font-semibold text-ink">
-                      {formatPrice(item.price, item.currency)}
-                      {item.quantity > 1 && (
-                        <span className="ml-1 font-normal text-ink-soft/50">
-                          × {item.quantity} = {formatPrice(item.price * item.quantity, item.currency)}
-                        </span>
-                      )}
-                    </p>
+                <div key={item.id} className="flex gap-4 py-4">
+                  <OrderItemThumbnail image={item.image} name={`${item.name}${item.color ? ` in ${item.color}` : ""}`} size="lg" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                      <div className="min-w-0"><p className="truncate text-[12.5px] font-extrabold text-[#403730]">{item.name}</p><p className="mt-1 text-[10.5px] text-[#887a70]">{item.brand} · {item.color || "No color"} · {formatSize(item.size)}</p></div>
+                      <div className="flex-none sm:text-right">{showStrikethrough && <p className="text-[9.5px] text-[#a09287] line-through">{formatPrice(item.originalUnitPrice! * item.quantity, item.currency)}</p>}<p className={`text-[12px] font-extrabold ${showStrikethrough ? "text-[#C85956]" : "text-[#403730]"}`}>{formatPrice(item.price * item.quantity, item.currency)}</p></div>
+                    </div>
+                    <p className="mt-2 text-[10.5px] text-[#887a70]">Quantity {item.quantity}{item.quantity > 1 && <span> · {formatPrice(item.price, item.currency)} each</span>}</p>
                   </div>
                 </div>
               );
-            })}
-          </div>
+            })}</div>
+            <div className="border-t border-[#eee7e1] bg-[#fcfaf8] px-5 py-4"><div className="ml-auto max-w-[360px] space-y-2 text-[11px]"><PriceRow label="Products subtotal" value={formatPrice(subtotalBeforeDiscounts, "EGP")} />{productVariantDiscount > 0 && <PriceRow label="Product discounts" value={`−${formatPrice(productVariantDiscount, "EGP")}`} accent />}{order.discountAmountEgp > 0 && <PriceRow label={`Coupon${order.couponCode ? ` (${order.couponCode})` : ""}`} value={`−${formatPrice(order.discountAmountEgp, "EGP")}`} accent />}<PriceRow label="Delivery" value={order.shippingFeeEgp > 0 ? formatPrice(order.shippingFeeEgp, "EGP") : "Free"} /><div className="flex items-center justify-between border-t border-[#e8dfd8] pt-3 text-[13px]"><span className="font-extrabold text-[#403730]">Shipment total</span><span className="font-extrabold text-[#242424]">{formatPrice(shipmentTotal, "EGP")}</span></div></div></div>
+          </section>
 
-          <div className="mt-4 space-y-1.5 border-t border-stone-150 pt-4 text-[13px]">
-            <div className="flex items-center justify-between">
-              <span className="text-ink-soft/60">Products subtotal</span>
-              <span className="text-ink">{formatPrice(subtotalBeforeDiscounts, "EGP")}</span>
-            </div>
-            {productVariantDiscount > 0 && (
-              <div className="flex items-center justify-between">
-                <span className="text-ink-soft/60">Product/variant discounts</span>
-                <span className="font-medium text-green-700">-{formatPrice(productVariantDiscount, "EGP")}</span>
-              </div>
-            )}
-            {order.couponCode && (
-              <div className="flex items-center justify-between">
-                <span className="text-ink-soft/60">
-                  Coupon <span className="font-medium text-ink">{order.couponCode}</span>
-                </span>
-                <span className="font-semibold text-green-700">-{formatPrice(order.discountAmountEgp, "EGP")}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between">
-              <span className="text-ink-soft/60">Subtotal after discounts</span>
-              <span className="text-ink">{formatPrice(subtotalAfterAllDiscounts, "EGP")}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-ink-soft/60">Delivery fee</span>
-              <span className="text-ink">{formatPrice(order.shippingFeeEgp, "EGP")}</span>
-            </div>
-            <div className="flex items-center justify-between pt-1">
-              <span className="font-medium text-ink">Order total (this shipment)</span>
-              <span className="font-bold text-ink">{formatPrice(orderTotal, "EGP")}</span>
-            </div>
-            {siblingOrders.length > 0 && (
-              <div className="flex items-center justify-between border-t border-stone-150 pt-2">
-                <span className="font-medium text-ink">
-                  Master order total ({siblingOrders.length + 1} shipments)
-                </span>
-                <span className="font-bold text-ink">{formatPrice(masterOrderTotal, "EGP")}</span>
-              </div>
-            )}
-          </div>
+          <section className="overflow-hidden rounded-[22px] border border-[#eadfd7] bg-white shadow-[0_10px_35px_rgba(72,50,36,0.04)]">
+            <div className="border-b border-[#eee7e1] bg-[#fcfaf8] px-5 py-4"><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#C85956]">Order activity</p><h2 className="mt-1 text-sm font-extrabold text-[#302923]">Lifecycle and admin history</h2></div>
+            <div className="px-5 py-5">{activity.map((entry, index) => <div key={entry.id} className="grid grid-cols-[22px_1fr] gap-3"><div className="flex flex-col items-center"><span className={`mt-0.5 h-3 w-3 rounded-full ring-4 ${index === 0 ? "bg-[#C85956] ring-[#f6e5e3]" : "bg-[#cfc4bb] ring-[#f4f0ec]"}`} />{index < activity.length - 1 && <span className="min-h-10 w-px flex-1 bg-[#e8dfd8]" />}</div><div className="pb-5"><div className="flex flex-col justify-between gap-1 sm:flex-row sm:items-start"><p className="text-[11.5px] font-bold text-[#4a4039]">{entry.title}</p><p className="flex-none text-[9.5px] text-[#94867c]">{formatDateTime(entry.createdAt)}</p></div><p className="mt-1 text-[10.5px] leading-4 text-[#81746b]">{entry.detail}</p><p className="mt-1 text-[9.5px] font-semibold text-[#a09287]">{entry.actor}</p></div></div>)}</div>
+          </section>
         </div>
 
-        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Shipment</h2>
-          <div className="mt-3 space-y-1.5 text-[13px] text-ink-soft/75">
-            <p>
-              <span className="font-medium text-ink">
-                {order.fulfillmentType === "mahaly_pool" ? "Zakhnook pool" : "Brand direct"}
-              </span>
-              {order.brandSlug && ` — ${order.brandSlug}`}
-            </p>
-            <p>Delivery fee: {formatPrice(order.shippingFeeEgp, "EGP")}</p>
-          </div>
-          {siblingOrders.length > 0 && (
-            <div className="mt-4 border-t border-stone-150 pt-3">
-              <p className="text-[11.5px] font-medium text-ink-soft/60">
-                Other shipments in purchase {order.masterOrderNumber}
-              </p>
-              <div className="mt-2 space-y-1.5">
-                {siblingOrders.map((sib) => (
-                  <Link
-                    key={sib.id}
-                    href={`/admin/orders/${sib.id}`}
-                    className="flex items-center justify-between rounded-md bg-stone-50 px-2.5 py-1.5 text-[12px] hover:bg-stone-100"
-                  >
-                    <span className="font-medium text-ink">#{sib.orderNumber}</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${orderStatusBadgeClass(sib.status)}`}
-                    >
-                      {ORDER_STATUS_LABELS[sib.status as OrderStatus] ?? sib.status}
-                    </span>
-                  </Link>
-                ))}
-              </div>
-              {cancellableCount > 0 && (
-                <div className="mt-3">
-                  <CancelMasterOrderButton
-                    masterOrderId={order.masterOrderId}
-                    masterOrderNumber={order.masterOrderNumber}
-                    shipmentCount={siblingOrders.length + 1}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <aside className="space-y-5">
+          <section className="rounded-[22px] border border-[#eadfd7] bg-white p-5 shadow-[0_10px_35px_rgba(72,50,36,0.04)]">
+            <p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#C85956]">Shipment control</p>
+            <div className="mt-3 flex items-center justify-between gap-3"><div><p className="text-[12px] font-bold text-[#403730]">{order.fulfillmentType === "mahaly_pool" ? "Zakhnook pool" : "Brand direct"}</p><p className="mt-1 text-[10.5px] text-[#81746b]">{order.brandSlug || "Marketplace managed"}</p></div><span className={`rounded-full px-2.5 py-1 text-[9.5px] font-bold ${orderStatusBadgeClass(order.status)}`}>{ORDER_STATUS_LABELS[order.status]}</span></div>
+            {siblingOrders.length > 0 && <div className="mt-4 border-t border-[#eee7e1] pt-4"><p className="text-[10px] font-bold uppercase tracking-[0.09em] text-[#9b8d82]">Other purchase shipments</p><div className="mt-2 space-y-2">{siblingOrders.map((sibling) => <Link key={sibling.id} href={`/admin/orders/${sibling.id}`} className="flex items-center justify-between rounded-xl bg-[#f8f4f0] px-3 py-2.5 text-[11px] transition hover:bg-[#f3ece6]"><span className="font-bold text-[#403730]">#{sibling.orderNumber}</span><span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${orderStatusBadgeClass(sibling.status)}`}>{ORDER_STATUS_LABELS[sibling.status as OrderStatus] ?? sibling.status}</span></Link>)}</div>{cancellableCount > 0 && <div className="mt-3"><CancelMasterOrderButton masterOrderId={order.masterOrderId} masterOrderNumber={order.masterOrderNumber} shipmentCount={siblingOrders.length + 1} /></div>}</div>}
+          </section>
 
-        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Customer & delivery</h2>
-          {order.userId && (
-            <div className="mt-4 rounded-lg bg-stone-50 px-3.5 py-3 text-[13px] text-ink-soft/75">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Account customer</p>
-              <p className="mt-1 font-medium text-ink">{order.accountName || "Account holder"}</p>
-              <p>{order.accountEmail || "Email unavailable"}</p>
-              {order.accountPhone && <p>{order.accountPhone}</p>}
-            </div>
-          )}
-          <p className="mt-4 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Delivery recipient</p>
-          <div className="mt-4 space-y-1.5 text-[13px] text-ink-soft/75">
-            <p className="font-medium text-ink">{order.shippingName}</p>
-            <p>{order.shippingEmail}</p>
-            <p>{order.shippingPhone}</p>
-            <p>{order.shippingAddress}</p>
-            <p>
-              {order.shippingCity}, {order.shippingGovernorate}
-            </p>
-          </div>
-          {!order.userId && (
-            <p className="mt-4 rounded-md bg-stone-50 px-3 py-2 text-[12px] text-ink-soft/60">
-              Guest checkout — no account linked to this order.
-            </p>
-          )}
-        </div>
+          <section className="rounded-[22px] border border-[#eadfd7] bg-white p-5 shadow-[0_10px_35px_rgba(72,50,36,0.04)]">
+            <div className="flex items-start gap-3"><MapPin className="mt-0.5 h-4 w-4 flex-none text-[#C85956]" /><div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#9b8d82]">Customer and delivery</p><p className="mt-2 text-[12px] font-bold text-[#403730]">{order.shippingName}</p><p className="mt-1 break-words text-[10.5px] leading-5 text-[#81746b]">{order.shippingEmail}<br />{order.shippingPhone}<br />{order.shippingAddress}<br />{order.shippingCity}, {order.shippingGovernorate}</p>{order.userId ? <p className="mt-3 rounded-lg bg-[#f8f4f0] px-3 py-2 text-[10px] text-[#75685f]">Account: {order.accountName || "Account customer"}{order.accountEmail ? ` · ${order.accountEmail}` : ""}</p> : <p className="mt-3 rounded-lg bg-[#f8f4f0] px-3 py-2 text-[10px] text-[#75685f]">Guest checkout · no account linked</p>}</div></div>
+          </section>
 
-        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Payment</h2>
-          <div className="mt-3 space-y-2 text-[13px] text-ink-soft/75">
-            <p>
-              <span className="font-medium text-ink">
-                {order.paymentMethod === "card" ? "Card (Paymob)" : "Cash on Delivery"}
-              </span>
-            </p>
-            <p>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${
-                  order.paymentStatus === "paid"
-                    ? "bg-green-50 text-green-700"
-                    : order.paymentStatus === "refunded"
-                    ? "bg-red-50 text-red-700"
-                    : order.paymentStatus === "partially_refunded"
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-stone-100 text-ink-soft/70"
-                }`}
-              >
-                {order.paymentStatus === "paid"
-                  ? "Paid"
-                  : order.paymentStatus === "refunded"
-                  ? "Refunded"
-                  : order.paymentStatus === "partially_refunded"
-                  ? "Partially refunded"
-                  : "Unpaid"}
-              </span>
-            </p>
-            {order.paymentAttemptId && (
-              <p className="text-[11.5px] text-ink-soft/50" title={order.paymentAttemptId}>
-                Paymob payment attempt: {order.paymentAttemptId.slice(0, 8)}…
-              </p>
-            )}
-            {order.capturedAmountCents != null && order.capturedAmountCents > 0 && (
-              <div className="mt-3 space-y-1 rounded-lg bg-stone-50 px-3 py-2 text-[11.5px]">
-                <p>Captured: {formatPrice(order.capturedAmountCents / 100, "EGP")}</p>
-                <p>Confirmed refunded: {formatPrice((order.refundedAmountCents ?? 0) / 100, "EGP")}</p>
-                {(order.refundPendingAmountCents ?? 0) > 0 && (
-                  <p className="text-amber-700">
-                    Awaiting Paymob: {formatPrice((order.refundPendingAmountCents ?? 0) / 100, "EGP")}
-                  </p>
-                )}
-              </div>
-            )}
-            {order.paymentMethod === "card" && order.paymentStatus !== "unpaid" && (
-              <div className="mt-3 border-t border-stone-150 pt-3">
-                <RecordOrderRefundAction
-                  orderId={order.id}
-                  paymentStatus={order.paymentStatus}
-                  pendingAmountCents={order.refundPendingAmountCents ?? 0}
-                />
-              </div>
-            )}
-            {(order.refundHistory ?? []).length > 0 && (
-              <div className="mt-3 border-t border-stone-150 pt-3">
-                <p className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-soft/50">Refund history</p>
-                <div className="mt-2 space-y-2">
-                  {(order.refundHistory ?? []).map((entry) => (
-                    <div key={entry.id} className="rounded-lg border border-stone-150 bg-white px-3 py-2 text-[11px]">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-ink">{formatPrice(entry.amountCents / 100, "EGP")}</span>
-                        <span className={entry.status === "confirmed" ? "text-emerald-700" : entry.status === "reversed" ? "text-red-700" : "text-amber-700"}>
-                          {entry.status === "confirmed" ? "Provider confirmed" : entry.status === "reversed" ? "Allocation reversed" : "Awaiting provider"}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-ink-soft/50">Requested {formatDateTime(entry.requestedAt)}</p>
-                      {entry.confirmedAt && <p className="text-ink-soft/50">Confirmed {formatDateTime(entry.confirmedAt)}</p>}
-                      {entry.providerReference && <p className="font-mono text-[10px] text-ink-soft/50">Paymob: {entry.providerReference}</p>}
-                      {entry.note && <p className="mt-1 text-ink-soft/70">{entry.note}</p>}
-                      {entry.status === "confirmed" && order.status !== "cancelled" && (
-                        <ReverseRefundAllocationButton orderId={order.id} allocationId={entry.id} />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+          <section className="rounded-[22px] border border-[#eadfd7] bg-white p-5 shadow-[0_10px_35px_rgba(72,50,36,0.04)]">
+            <div className="flex items-center justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#9b8d82]">Payment</p><p className="mt-2 text-[12px] font-bold text-[#403730]">{order.paymentMethod === "card" ? "Card · Paymob" : "Cash on delivery"}</p></div><span className={`rounded-full px-2.5 py-1 text-[9.5px] font-bold ring-1 ring-inset ${paymentToneClass(payment.tone)}`}>{payment.label}</span></div>
+            {order.paymentAttemptId && <p className="mt-3 truncate font-mono text-[9.5px] text-[#94867c]" title={order.paymentAttemptId}>Attempt {order.paymentAttemptId}</p>}
+            {(order.capturedAmountCents ?? 0) > 0 && <div className="mt-4 space-y-2 rounded-xl bg-[#f8f4f0] p-3 text-[10.5px]"><PriceRow label="Captured" value={formatPrice((order.capturedAmountCents ?? 0) / 100, "EGP")} /><PriceRow label="Confirmed refunded" value={formatPrice((order.refundedAmountCents ?? 0) / 100, "EGP")} />{(order.refundPendingAmountCents ?? 0) > 0 && <PriceRow label="Awaiting Paymob" value={formatPrice((order.refundPendingAmountCents ?? 0) / 100, "EGP")} accent />}</div>}
+            {order.paymentMethod === "card" && order.paymentStatus !== "unpaid" && <div className="mt-4 border-t border-[#eee7e1] pt-4"><RecordOrderRefundAction orderId={order.id} paymentStatus={order.paymentStatus} pendingAmountCents={order.refundPendingAmountCents ?? 0} /></div>}
+            {(order.refundHistory ?? []).length > 0 && <div className="mt-4 border-t border-[#eee7e1] pt-4"><p className="text-[9.5px] font-bold uppercase tracking-[0.09em] text-[#9b8d82]">Refund history</p><div className="mt-2 space-y-2">{(order.refundHistory ?? []).map((entry) => <div key={entry.id} className="rounded-xl border border-[#eee7e1] p-3 text-[10px]"><div className="flex items-center justify-between gap-2"><span className="font-bold text-[#403730]">{formatPrice(entry.amountCents / 100, "EGP")}</span><span className={entry.status === "confirmed" ? "text-emerald-700" : entry.status === "reversed" ? "text-red-700" : "text-amber-700"}>{entry.status === "confirmed" ? "Provider confirmed" : entry.status === "reversed" ? "Allocation reversed" : "Awaiting provider"}</span></div><p className="mt-1 text-[#94867c]">Requested {formatDateTime(entry.requestedAt)}</p>{entry.note && <p className="mt-1 leading-4 text-[#81746b]">{entry.note}</p>}{entry.status === "confirmed" && order.status !== "cancelled" && <ReverseRefundAllocationButton orderId={order.id} allocationId={entry.id} />}</div>)}</div></div>}
+          </section>
 
-        <div className="rounded-xl3 border border-stone-150 bg-white p-6 lg:col-start-1">
-          <h2 className="text-[15px] font-semibold text-ink">Internal Notes</h2>
-          <p className="mt-1 text-[12px] text-ink-soft/50">
-            Only visible to admin/staff — never shown to the customer.
-          </p>
-          <div className="mt-3">
-            <InternalNotesField orderId={order.id} initialValue={order.internalNotes ?? ""} />
-          </div>
-        </div>
-
-        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Tracking timeline</h2>
-          <p className="mt-1 text-[12px] text-ink-soft/50">
-            The same shipment history the customer sees on their own order page.
-          </p>
-          <div className="mt-3 space-y-3">
-            {(order.statusHistory ?? []).map((entry) => (
-              <div key={entry.id} className="text-[12.5px]">
-                <p className="font-medium capitalize text-ink">{ORDER_STATUS_LABELS[entry.status]}</p>
-                <p className="text-[11.5px] text-ink-soft/50">
-                  {formatDateTime(entry.createdAt)}
-                </p>
-              </div>
-            ))}
-            {(!order.statusHistory || order.statusHistory.length === 0) && (
-              <p className="text-[12.5px] text-ink-soft/50">No tracking events yet.</p>
-            )}
-          </div>
-        </div>
-
-        <div className="h-fit rounded-xl3 border border-stone-150 bg-white p-6">
-          <h2 className="text-[15px] font-semibold text-ink">Admin action log</h2>
-          <div className="mt-3 space-y-3">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="text-[12.5px]">
-                <p className="font-medium text-ink capitalize">{log.action.replace("_", " ")}</p>
-                <p className="text-[11.5px] text-ink-soft/50">
-                  {log.actorLabel} · {formatDateTime(log.createdAt)}
-                </p>
-              </div>
-            ))}
-            {auditLogs.length === 0 && (
-              <p className="text-[12.5px] text-ink-soft/50">No actions recorded yet.</p>
-            )}
-          </div>
-        </div>
+          <section className="rounded-[22px] border border-[#eadfd7] bg-white p-5 shadow-[0_10px_35px_rgba(72,50,36,0.04)]"><p className="text-[10px] font-bold uppercase tracking-[0.11em] text-[#9b8d82]">Internal notes</p><p className="mt-1 text-[10.5px] leading-4 text-[#94867c]">Visible to admin and staff only.</p><div className="mt-3"><InternalNotesField orderId={order.id} initialValue={order.internalNotes ?? ""} /></div></section>
+        </aside>
       </div>
     </div>
   );
+}
+
+function SummaryCell({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+  return <div className="flex gap-3 border-b border-[#eee7e1] px-5 py-4 last:border-b-0 sm:border-r sm:[&:nth-child(2)]:border-r-0 xl:border-b-0 xl:[&:nth-child(2)]:border-r xl:last:border-r-0"><span className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-xl bg-white text-[#C85956] shadow-sm">{icon}</span><div className="min-w-0"><p className="text-[9.5px] font-bold uppercase tracking-[0.1em] text-[#9b8d82]">{label}</p><p className="mt-1 truncate text-[11.5px] font-bold text-[#403730]">{value}</p><p className="mt-0.5 truncate text-[9.5px] text-[#94867c]">{detail}</p></div></div>;
+}
+
+function PriceRow({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return <div className={`flex items-center justify-between gap-3 ${accent ? "text-[#C85956]" : "text-[#75685f]"}`}><span>{label}</span><span className="font-bold">{value}</span></div>;
 }

@@ -24,7 +24,7 @@ type OrderParams = {
   page?: string;
 };
 
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 
 export default async function BrandPortalOrdersPage(props: { searchParams: Promise<OrderParams> }) {
   const params = await props.searchParams;
@@ -67,6 +67,7 @@ export default async function BrandPortalOrdersPage(props: { searchParams: Promi
         brandSlug={owner.brandSlug}
         params={{
           brand: owner.isImpersonating ? owner.brandSlug : undefined,
+          order: params.order,
           q: params.q,
           queue,
           from: params.from,

@@ -30,15 +30,20 @@ test("the status dropdown is built from getValidOrderStatusOptions(order.status,
   assert.doesNotMatch(orderDetailPage, /options=\{ORDER_STATUSES\.map/);
 });
 
-test("the page renders a Payment section showing paymentMethod, paymentStatus, and (when present) paymentAttemptId — previously there was no evidence anywhere that an order was paid by card", () => {
-  const paymentSectionMatch = orderDetailPage.match(
-    /<h2 className="text-\[15px\] font-semibold text-ink">Payment<\/h2>[\s\S]*?<\/div>\s*<\/div>/
-  );
-  assert.ok(paymentSectionMatch, "expected to find the Payment section");
-  const section = paymentSectionMatch![0];
-  assert.match(section, /order\.paymentMethod === "card"/);
-  assert.match(section, /Card \(Paymob\)/);
-  assert.match(section, /Cash on Delivery/);
-  assert.match(section, /order\.paymentStatus/);
-  assert.match(section, /order\.paymentAttemptId/);
+test("the redesigned workspace keeps payment method, status, attempt, refund, and reversal evidence", () => {
+  assert.match(orderDetailPage, />Payment<\/p>/);
+  assert.match(orderDetailPage, /order\.paymentMethod === "card"/);
+  assert.match(orderDetailPage, /Card · Paymob/);
+  assert.match(orderDetailPage, /Cash on delivery/);
+  assert.match(orderDetailPage, /getOrderPaymentPresentation\(order\)/);
+  assert.match(orderDetailPage, /order\.paymentAttemptId/);
+  assert.match(orderDetailPage, /RecordOrderRefundAction/);
+  assert.match(orderDetailPage, /ReverseRefundAllocationButton/);
+});
+
+test("the detail workspace keeps product images and combines lifecycle with admin history", () => {
+  assert.match(orderDetailPage, /<OrderItemThumbnail/);
+  assert.match(orderDetailPage, /Lifecycle and admin history/);
+  assert.match(orderDetailPage, /\.\.\.auditLogs\.map/);
+  assert.match(orderDetailPage, /InternalNotesField/);
 });

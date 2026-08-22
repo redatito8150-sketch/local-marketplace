@@ -2,7 +2,6 @@ import { getPaymentAttemptsNeedingRefundReview } from "@/lib/data/admin";
 import { formatDateTime, formatPrice } from "@/lib/format";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import RefundQueueActions from "@/components/admin/RefundQueueActions";
-import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
 
 // Admin visibility for card payments that were captured (money in) but
 // couldn't be fully turned into an order — a total failure
@@ -16,7 +15,6 @@ export default async function RefundQueuePage() {
 
   return (
     <div>
-      <AdminWorkspaceNav workspace="commerce" activeHref="/admin/payments/refund-queue" />
       <DashboardPageHeader
         eyebrow="Card payments"
         title={`Refund review (${pending.length})`}

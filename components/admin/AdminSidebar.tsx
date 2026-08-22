@@ -12,12 +12,14 @@ import {
   Boxes,
   ChevronDown,
   ClipboardList,
+  CreditCard,
   Grid2X2,
   History,
   LayoutDashboard,
   LayoutTemplate,
   MessageSquareWarning,
   Package,
+  RotateCcw,
   Settings,
   ShoppingBag,
   Store,
@@ -58,6 +60,10 @@ const PRIMARY_GROUPS: Array<{ label: string; items: NavItem[] }> = [
         icon: ShoppingBag,
         permission: "manage_orders",
         activePaths: ["/admin/orders", "/admin/payments"],
+        children: [
+          { label: "Payments", href: "/admin/payments", icon: CreditCard },
+          { label: "Refund review", href: "/admin/payments/refund-queue", icon: RotateCcw },
+        ],
       },
       {
         label: "Inventory",
@@ -171,20 +177,30 @@ function NavigationLink({ item, active, count }: { item: NavItem; active: boolea
   );
 }
 
-function InventoryBranch({ item, counts }: { item: NavItem; counts: Record<BadgeKey, number> }) {
+function NavigationBranch({ item, counts }: { item: NavItem; counts: Record<BadgeKey, number> }) {
   const { collapsed } = useDashboardSidebar();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const activityActive = pathname === "/admin/inventory" && searchParams.get("view") === "activity";
-  const overviewActive = pathname === "/admin/inventory" && !activityActive;
-  const warehouseActive = matchesPath(pathname, "/admin/warehouse");
-  const [open, setOpen] = useState(activityActive || warehouseActive);
+  const childIsActive = (href: string) => {
+    const [path, query] = href.split("?");
+    if (!matchesPath(pathname, path)) return false;
+    if (!query) return true;
+    const expected = new URLSearchParams(query);
+    return [...expected.entries()].every(([key, value]) => searchParams.get(key) === value);
+  };
+  const activeChildHref = item.children
+    ?.filter((child) => childIsActive(child.href))
+    .sort((a, b) => b.href.split("?")[0].length - a.href.split("?")[0].length)[0]?.href;
+  const childActive = Boolean(activeChildHref);
+  const overviewActive = itemMatchesPath(pathname, item) && !childActive;
+  const [open, setOpen] = useState(childActive);
   const Icon = item.icon;
+  const branchId = `admin-${item.label.toLowerCase().replaceAll(" ", "-")}-destinations`;
 
   const childLinks = (
     <div
       role="group"
-      aria-label="Inventory destinations"
+      aria-label={`${item.label} destinations`}
       className={collapsed
         ? "relative flex flex-col items-center gap-1 pt-1"
         : "relative ml-[19px] mt-0.5 space-y-0.5 pb-0.5 pl-7"}
@@ -196,7 +212,7 @@ function InventoryBranch({ item, counts }: { item: NavItem; counts: Record<Badge
           : "absolute bottom-[18px] left-0 top-[-4px] w-px bg-[var(--admin-border)]"}
       />
       {item.children?.map((child) => {
-        const active = child.href === "/admin/warehouse" ? warehouseActive : activityActive;
+        const active = child.href === activeChildHref;
         const ChildIcon = child.icon;
         const count = child.badge ? counts[child.badge] : 0;
         return (
@@ -246,14 +262,14 @@ function InventoryBranch({ item, counts }: { item: NavItem; counts: Record<Badge
               type="button"
               onClick={() => setOpen((value) => !value)}
               aria-expanded={open}
-              aria-controls="admin-inventory-destinations"
-              aria-label={open ? "Collapse Inventory destinations" : "Expand Inventory destinations"}
+              aria-controls={branchId}
+              aria-label={open ? `Collapse ${item.label} destinations` : `Expand ${item.label} destinations`}
               className="mr-1 flex h-8 w-8 flex-none items-center justify-center rounded-md text-[var(--admin-text-muted)] transition-colors hover:bg-[var(--admin-surface)] hover:text-[var(--admin-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-primary)]/25"
             >
               <ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform duration-200 ${open ? "rotate-180" : ""}`} strokeWidth={1.8} />
             </button>
           </div>
-          {open ? <div id="admin-inventory-destinations">{childLinks}</div> : null}
+          {open ? <div id={branchId}>{childLinks}</div> : null}
         </>
       )}
     </div>
@@ -274,7 +290,7 @@ function NavigationGroup({ label, items, activeHref, counts }: { label: string; 
             {regularItems.map((item) => <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
           </div>
         ) : null}
-        {branchItems.map((item) => <div key={item.href} className="mx-auto w-14"><InventoryBranch item={item} counts={counts} /></div>)}
+        {branchItems.map((item) => <div key={item.href} className="mx-auto w-14"><NavigationBranch item={item} counts={counts} /></div>)}
       </section>
     );
   }
@@ -284,7 +300,7 @@ function NavigationGroup({ label, items, activeHref, counts }: { label: string; 
       <p className="mb-1.5 flex items-center gap-2 px-3 text-[10.5px] font-semibold tracking-[-0.01em] text-[var(--admin-text-muted)]/70"><span className="h-1 w-1 rounded-full bg-[var(--admin-primary)]/70" aria-hidden="true" />{label}</p>
       <div className="space-y-0.5">
         {items.map((item) => item.children
-          ? <InventoryBranch key={item.href} item={item} counts={counts} />
+          ? <NavigationBranch key={item.href} item={item} counts={counts} />
           : <NavigationLink key={item.href} item={item} active={activeHref === item.href} count={item.badge ? counts[item.badge] : 0} />)}
       </div>
     </section>

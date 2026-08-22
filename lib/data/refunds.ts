@@ -48,9 +48,9 @@ export async function getOrderRefundLedgerForAdmin(orderId: string): Promise<Ord
         .order("created_at", { ascending: false }),
       supabaseAdmin
         .from("payment_refund_allocations")
-        .select("id, request_id, refund_id, amount_cents, created_at, reversed_at")
+        .select("id, request_id, refund_id, amount_cents, allocated_at, reversed_at")
         .eq("order_id", orderId)
-        .order("created_at", { ascending: false }),
+        .order("allocated_at", { ascending: false }),
     ]);
   if (requestError) throw new Error(`payment_refund_requests read failed: ${requestError.message}`);
   if (allocationError) throw new Error(`payment_refund_allocations read failed: ${allocationError.message}`);
