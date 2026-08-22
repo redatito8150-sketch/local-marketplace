@@ -1,5 +1,5 @@
 import { getPaymentAttemptsNeedingRefundReview } from "@/lib/data/admin";
-import { formatPrice } from "@/lib/format";
+import { formatDateTime, formatPrice } from "@/lib/format";
 import { DashboardEmptyState, DashboardPageHeader, DashboardPanel } from "@/components/dashboard/DashboardUI";
 import RefundQueueActions from "@/components/admin/RefundQueueActions";
 import AdminWorkspaceNav from "@/components/admin/AdminWorkspaceNav";
@@ -52,7 +52,7 @@ export default async function RefundQueuePage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-slate-500">
-                      {item.paidAt ? new Date(item.paidAt).toLocaleString("en-US") : "—"}
+                      {item.paidAt ? formatDateTime(item.paidAt) : "—"}
                     </td>
                     <td className="px-5 py-4 font-bold text-slate-900">
                       {formatPrice(item.refundAmountCents / 100, item.currency === "EGP" ? "EGP" : "USD")}
@@ -95,7 +95,7 @@ export default async function RefundQueuePage() {
                       {item.paymentAttemptId}
                     </td>
                     <td className="px-5 py-4 text-slate-500">
-                      {new Date(item.refundedAt!).toLocaleString("en-US")}
+                      {formatDateTime(item.refundedAt!)}
                     </td>
                     <td className="px-5 py-4 text-slate-500">{item.refundNote ?? "—"}</td>
                   </tr>

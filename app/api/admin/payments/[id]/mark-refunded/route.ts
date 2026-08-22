@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logError } from "@/lib/errorLog";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
+import { formatPrice } from "@/lib/format";
 
 // Creates a pending refund request for captured money that never became an
 // order. It cannot confirm a refund; only an exact event from a separately
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     relatedEntityType: "payment_attempt",
     relatedEntityId: id,
     actorLabel: staff.user.email ?? staff.user.id,
-    meta: [{ label: "Amount", value: `${(amountCents / 100).toFixed(2)} EGP` }],
+    meta: [{ label: "Amount", value: formatPrice(amountCents / 100, "EGP") }],
   });
 
   return NextResponse.json(data);

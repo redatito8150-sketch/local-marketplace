@@ -40,7 +40,11 @@ export async function getPublicReviews(args: { brandSlug?: string; productId?: s
   if (productId) query = query.eq("product_id", productId);
   if (filters.rating) query = query.eq("rating", filters.rating);
   if (filters.product) query = query.eq("product_id", filters.product);
-  if (filters.query) query = query.or(`title.ilike.%${filters.query.replace(/[%_,]/g, "")}%,body.ilike.%${filters.query.replace(/[%_,]/g, "")}%`);
+  // Same sanitization as lib/data/products.ts's searchProducts — PostgREST's
+  // or=(…) grammar treats `(`/`)`/`.` as structurally significant, so they get
+  // stripped here too, not just the LIKE wildcards.
+  const reviewSearch = filters.query?.trim().replace(/[%_,().]/g, " ").replace(/\s+/g, " ").slice(0, 80);
+  if (reviewSearch) query = query.or(`title.ilike.%${reviewSearch}%,body.ilike.%${reviewSearch}%`);
   if (filters.sort === "highest") query = query.order("rating", { ascending: false });
   else if (filters.sort === "lowest") query = query.order("rating", { ascending: true });
   else query = query.order("created_at", { ascending: false });

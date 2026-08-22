@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { logError } from "@/lib/errorLog";
 import { logAudit } from "@/lib/auditLog";
 import { notify } from "@/lib/notify";
+import { formatPrice } from "@/lib/format";
 
 // Creates a pending refund request for one paid card order. Staff input is
 // never treated as proof that Paymob moved money. Only an exact refund event
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     relatedEntityType: "order",
     relatedEntityId: id,
     actorLabel: staff.user.email ?? staff.user.id,
-    meta: [{ label: "Amount", value: `${(amountCents / 100).toFixed(2)} EGP` }],
+    meta: [{ label: "Amount", value: formatPrice(amountCents / 100, "EGP") }],
   });
 
   return NextResponse.json(data);
