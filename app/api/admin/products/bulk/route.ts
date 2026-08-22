@@ -51,18 +51,24 @@ export async function POST(request: NextRequest) {
   if (error) return safeErrorResponse("admin.products.bulk.feature", error, "Failed to update products");
 
   const affectedIds = (affectedRows ?? []).map((r) => r.id);
-  for (const id of affectedIds) {
-    const before = existingById.get(id);
-    await logAudit({
-      actorId: staff.user.id,
-      actorLabel,
-      entityType: "product",
-      entityId: id,
-      action: "update",
-      before,
-      after: { featured },
-    });
-  }
+  // Concurrent, not sequential: logAudit awaits sendToDiscord (3s timeout
+  // each), so a serial loop over a large selection could push the whole
+  // request past the serverless function timeout — after the product rows
+  // were already updated, losing both the response and the tail of the
+  // audit trail. Same rows and same per-product Discord embeds either way.
+  await Promise.all(
+    affectedIds.map((id) =>
+      logAudit({
+        actorId: staff.user.id,
+        actorLabel,
+        entityType: "product",
+        entityId: id,
+        action: "update",
+        before: existingById.get(id),
+        after: { featured },
+      })
+    )
+  );
 
   if (affectedIds.length > 0) await notify(
     "product_updated",

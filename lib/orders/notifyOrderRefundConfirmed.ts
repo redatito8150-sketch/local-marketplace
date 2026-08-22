@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getBrandMembersForAdmin, getOrderForAdmin } from "@/lib/data/admin";
+import { formatPrice } from "@/lib/format";
 import { notifyUser } from "@/lib/notify";
 import { sendEmail } from "@/lib/email/sendEmail";
 import { paymentRefundConfirmedEmail } from "@/lib/email/templates/paymentRefundConfirmed";
@@ -13,7 +14,7 @@ export async function notifyOrderRefundConfirmed(input: {
   if (!order) return;
 
   const customerTitle = `Refund confirmed for order ${order.orderNumber}`;
-  const amount = `${(input.amountCents / 100).toFixed(2)} EGP`;
+  const amount = formatPrice(input.amountCents / 100, "EGP");
   if (order.userId) {
     await notifyUser(order.userId, "payment_refund_confirmed", customerTitle, `Paymob confirmed ${amount}.`, {
       relatedEntityType: "order",
