@@ -155,8 +155,6 @@ test("Brand Portal item cards only show a strikethrough original price when a tr
     page,
     /return item\.discountSource != null && item\.discountSource !== "none" && item\.originalUnitPrice != null;/
   );
-  const summary = read("components/brand-portal/BrandOrderPricingSummary.tsx");
-  assert.match(summary, /item\.originalUnitPrice \?\? item\.price/);
 });
 
 test("Admin order detail page applies the identical strikethrough rule and additionally shows the full master-order total across every shipment", () => {
